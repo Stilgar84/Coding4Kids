@@ -1,0 +1,36 @@
+import React from 'react';
+import { Toolbar } from './components/Toolbar';
+import { BlockPalette } from './components/BlockPalette';
+import { WorkspaceCanvas } from './components/WorkspaceCanvas';
+import { GridCanvas } from './components/GridCanvas';
+
+export const App: React.FC = () => {
+  return (
+    <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Top Application Bar */}
+      <Toolbar />
+
+      {/* Main Split-Pane Workspace */}
+      <main className="flex flex-1 flex-col md:flex-row overflow-hidden">
+        {/* Left Pane: Visual Block Programmer */}
+        <section
+          data-testid="pane-programming"
+          className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full border-b-2 md:border-b-0 md:border-r-2 border-slate-800 overflow-hidden"
+        >
+          <BlockPalette />
+          <WorkspaceCanvas />
+        </section>
+
+        {/* Right Pane: 2D Robot Simulation Grid */}
+        <section
+          data-testid="pane-simulation"
+          className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
+        >
+          <GridCanvas />
+        </section>
+      </main>
+    </div>
+  );
+};
+
+export default App;
