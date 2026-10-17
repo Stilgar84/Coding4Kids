@@ -11,6 +11,7 @@ import {
 import {
   createInitialInterpreterState,
   tickInterpreter,
+  validateLoopStructure,
 } from '../engine/interpreter';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
@@ -77,6 +78,7 @@ interface AppState {
   grid: GridState;
   workspace: WorkspaceState;
   activeScope: ScopeType;
+  selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
   isPlaying: boolean;
   speed: number; // ms per tick: 600, 300, 150
@@ -85,11 +87,12 @@ interface AppState {
   // Actions
   setLevel: (levelId: number) => void;
   setActiveScope: (scope: ScopeType) => void;
+  setSelectedBlockId: (id: string | null) => void;
   setEditorTool: (tool: EditorTool) => void;
   setSpeed: (speed: number) => void;
 
   // Workspace actions
-  addBlock: (scope: ScopeType, type: BlockType, repeatCount?: number) => void;
+  addBlock: (scope: ScopeType, type: BlockType, repeatCount?: number, insertAtIndex?: number) => void;
   removeBlock: (scope: ScopeType, blockId: string) => void;
   updateBlockRepeat: (scope: ScopeType, blockId: string, repeatCount?: number) => void;
   reorderBlocks: (scope: ScopeType, fromIndex: number, toIndex: number) => void;
@@ -139,6 +142,7 @@ export const useAppStore = create<AppState>((set, get) => {
       F3: [],
     },
     activeScope: 'MAIN',
+    selectedBlockId: null,
     runtime: null,
     isPlaying: false,
     speed: 400,
@@ -153,18 +157,29 @@ export const useAppStore = create<AppState>((set, get) => {
       });
     },
 
-    setActiveScope: (scope) => set({ activeScope: scope }),
+    setActiveScope: (scope) => set({ activeScope: scope, selectedBlockId: null }),
+    setSelectedBlockId: (id) => set({ selectedBlockId: id }),
     setEditorTool: (tool) => set({ editorTool: tool }),
     setSpeed: (speed) => set({ speed }),
 
-    addBlock: (scope, type, repeatCount) => {
+    addBlock: (scope, type, repeatCount, insertAtIndex) => {
       const id = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      set((state) => ({
-        workspace: {
-          ...state.workspace,
-          [scope]: [...state.workspace[scope], { id, type, repeatCount }],
-        },
-      }));
+      const newBlock = { id, type, repeatCount };
+      set((state) => {
+        const currentBlocks = [...state.workspace[scope]];
+        if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
+          currentBlocks.splice(insertAtIndex, 0, newBlock);
+        } else {
+          currentBlocks.push(newBlock);
+        }
+        return {
+          workspace: {
+            ...state.workspace,
+            [scope]: currentBlocks,
+          },
+          selectedBlockId: id,
+        };
+      });
     },
 
     removeBlock: (scope, blockId) => {
@@ -173,6 +188,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ...state.workspace,
           [scope]: state.workspace[scope].filter((b) => b.id !== blockId),
         },
+        selectedBlockId: state.selectedBlockId === blockId ? null : state.selectedBlockId,
       }));
     },
 
@@ -299,6 +315,17 @@ export const useAppStore = create<AppState>((set, get) => {
 
     step: () => {
       const { runtime, workspace, grid } = get();
+
+      // Guard: do not execute if loops are unclosed in any used workspace scope
+      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+        if (workspace[sc]?.length > 0) {
+          const val = validateLoopStructure(workspace[sc]);
+          if (val.hasError) {
+            return;
+          }
+        }
+      }
+
       const currentRuntime = runtime || createInitialInterpreterState();
 
       const res = tickInterpreter(currentRuntime, workspace, grid);
@@ -324,6 +351,18 @@ export const useAppStore = create<AppState>((set, get) => {
 
     play: () => {
       if (get().isPlaying) return;
+
+      // Guard: do not execute if loops are unclosed in any used workspace scope
+      const { workspace } = get();
+      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+        if (workspace[sc]?.length > 0) {
+          const val = validateLoopStructure(workspace[sc]);
+          if (val.hasError) {
+            return;
+          }
+        }
+      }
+
       if (timerId) clearInterval(timerId);
 
       set({ isPlaying: true });

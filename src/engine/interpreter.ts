@@ -29,6 +29,48 @@ export interface TickResult {
   done: boolean;
 }
 
+export interface LoopValidationResult {
+  isValid: boolean;
+  unclosedLoopStartIds: string[];
+  orphanLoopEndIds: string[];
+  hasError: boolean;
+}
+
+/**
+ * Validates loop structure in a list of blocks, checking for unclosed LOOP_START
+ * and orphan LOOP_END blocks.
+ */
+export function validateLoopStructure(blocks: CodeBlock[]): LoopValidationResult {
+  const unclosedLoopStartIds: string[] = [];
+  const orphanLoopEndIds: string[] = [];
+  const openStack: CodeBlock[] = [];
+
+  for (const block of blocks) {
+    if (block.type === 'LOOP_START') {
+      openStack.push(block);
+    } else if (block.type === 'LOOP_END') {
+      if (openStack.length > 0) {
+        openStack.pop();
+      } else {
+        orphanLoopEndIds.push(block.id);
+      }
+    }
+  }
+
+  for (const block of openStack) {
+    unclosedLoopStartIds.push(block.id);
+  }
+
+  const hasError = unclosedLoopStartIds.length > 0 || orphanLoopEndIds.length > 0;
+
+  return {
+    isValid: !hasError,
+    unclosedLoopStartIds,
+    orphanLoopEndIds,
+    hasError,
+  };
+}
+
 /**
  * Finds the index of the matching LOOP_END for a LOOP_START at startIdx in blocks array.
  */

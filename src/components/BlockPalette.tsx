@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { BlockType } from '../types';
 import {
   ArrowUp,
   ArrowDown,
-  RotateCcw,
-  RotateCw,
+  CornerUpLeft,
+  CornerUpRight,
   Repeat,
-  Square,
+  Undo2,
   PhoneCall,
+  Trash2,
 } from 'lucide-react';
 
 interface PaletteItem {
@@ -37,14 +38,14 @@ const PALETTE_ITEMS: PaletteItem[] = [
   {
     type: 'TURN_LEFT',
     testId: 'palette-turn-left',
-    icon: <RotateCcw className="w-8 h-8 text-white stroke-[3]" />,
+    icon: <CornerUpLeft className="w-8 h-8 text-white stroke-[3]" />,
     bgClass: 'bg-amber-600 hover:bg-amber-500',
     borderClass: 'border-amber-400',
   },
   {
     type: 'TURN_RIGHT',
     testId: 'palette-turn-right',
-    icon: <RotateCw className="w-8 h-8 text-white stroke-[3]" />,
+    icon: <CornerUpRight className="w-8 h-8 text-white stroke-[3]" />,
     bgClass: 'bg-amber-600 hover:bg-amber-500',
     borderClass: 'border-amber-400',
   },
@@ -58,7 +59,7 @@ const PALETTE_ITEMS: PaletteItem[] = [
   {
     type: 'LOOP_END',
     testId: 'palette-loop-end',
-    icon: <Square className="w-8 h-8 text-purple-200 stroke-[3]" />,
+    icon: <Undo2 className="w-8 h-8 text-purple-200 stroke-[3]" />,
     bgClass: 'bg-purple-900 hover:bg-purple-800',
     borderClass: 'border-purple-500',
   },
@@ -103,37 +104,137 @@ const PALETTE_ITEMS: PaletteItem[] = [
 const NUMBER_BADGES = [2, 3, 4, 5, 6, 7, 8, 9];
 
 export const BlockPalette: React.FC = () => {
-  const { activeScope, addBlock, workspace, updateBlockRepeat } = useAppStore();
+  const {
+    activeScope,
+    addBlock,
+    workspace,
+    updateBlockRepeat,
+    selectedBlockId,
+    removeBlock,
+  } = useAppStore();
+
+  const [isDeleteHovered, setIsDeleteHovered] = useState(false);
 
   const handleAdd = (type: BlockType) => {
-    addBlock(activeScope, type);
+    const blocks = workspace[activeScope] || [];
+    if (selectedBlockId) {
+      const idx = blocks.findIndex((b) => b.id === selectedBlockId);
+      if (idx !== -1) {
+        addBlock(activeScope, type, undefined, idx + 1);
+        return;
+      }
+    }
+    // Default to end
+    addBlock(activeScope, type, undefined, blocks.length);
   };
 
   const handleNumberClick = (num: number) => {
-    const blocks = workspace[activeScope];
+    const blocks = workspace[activeScope] || [];
     if (blocks.length === 0) return;
-    const lastBlock = blocks[blocks.length - 1];
+
+    let targetBlock = null;
+    if (selectedBlockId) {
+      targetBlock = blocks.find((b) => b.id === selectedBlockId);
+    }
+    if (!targetBlock) {
+      targetBlock = blocks[blocks.length - 1];
+    }
+
     if (
-      lastBlock.type === 'MOVE_FWD' ||
-      lastBlock.type === 'MOVE_BACK' ||
-      lastBlock.type === 'TURN_LEFT' ||
-      lastBlock.type === 'TURN_RIGHT' ||
-      lastBlock.type === 'LOOP_START'
+      targetBlock &&
+      (targetBlock.type === 'MOVE_FWD' ||
+        targetBlock.type === 'MOVE_BACK' ||
+        targetBlock.type === 'TURN_LEFT' ||
+        targetBlock.type === 'TURN_RIGHT' ||
+        targetBlock.type === 'LOOP_START')
     ) {
-      updateBlockRepeat(activeScope, lastBlock.id, num);
+      updateBlockRepeat(activeScope, targetBlock.id, num);
+    }
+  };
+
+  const handlePaletteBlockDragStart = (e: React.DragEvent, type: BlockType) => {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'PALETTE_BLOCK',
+        blockType: type,
+      })
+    );
+    e.dataTransfer.setData('application/x-robotemu-block', type);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleNumberDragStart = (e: React.DragEvent, num: number) => {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'PALETTE_NUMBER',
+        number: num,
+      })
+    );
+    e.dataTransfer.setData('application/x-robotemu-number', String(num));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragOverPalette = (e: React.DragEvent) => {
+    // Only accept drag if it's a WORKSPACE_BLOCK
+    e.preventDefault();
+    setIsDeleteHovered(true);
+  };
+
+  const handleDragLeavePalette = () => {
+    setIsDeleteHovered(false);
+  };
+
+  const handleDropOnPalette = (e: React.DragEvent) => {
+    setIsDeleteHovered(false);
+    const dataStr = e.dataTransfer.getData('application/json');
+    if (!dataStr) return;
+    try {
+      const data = JSON.parse(dataStr);
+      if (data.type === 'WORKSPACE_BLOCK' && data.blockId) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeBlock(data.scope || activeScope, data.blockId);
+      }
+    } catch {
+      // ignore
     }
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3 bg-slate-900 border-b border-slate-800">
+    <div
+      data-testid="palette-container"
+      onDragOver={handleDragOverPalette}
+      onDragLeave={handleDragLeavePalette}
+      onDrop={handleDropOnPalette}
+      className={`relative flex flex-col gap-2 p-3 bg-slate-900 border-b border-slate-800 transition-colors ${
+        isDeleteHovered
+          ? 'border-red-500 bg-red-950/40 ring-2 ring-red-500/50'
+          : ''
+      }`}
+    >
+      {/* Drop here to delete overlay */}
+      {isDeleteHovered && (
+        <div
+          data-testid="palette-trash-dropzone"
+          className="absolute inset-0 z-30 flex items-center justify-center bg-red-950/80 border-2 border-dashed border-red-500 rounded-lg pointer-events-none text-red-200 font-bold gap-2 text-base animate-pulse"
+        >
+          <Trash2 className="w-6 h-6 text-red-400 stroke-[2.5]" />
+          <span>Drop here to delete</span>
+        </div>
+      )}
+
       {/* Draggable/Tappable Palette Blocks */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         {PALETTE_ITEMS.map((item) => (
           <button
             key={item.type}
             data-testid={item.testId}
+            draggable
+            onDragStart={(e) => handlePaletteBlockDragStart(e, item.type)}
             onClick={() => handleAdd(item.type)}
-            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg transition-transform active:scale-95 ${item.bgClass} ${item.borderClass}`}
+            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 ${item.bgClass} ${item.borderClass}`}
           >
             {item.icon}
           </button>
@@ -146,8 +247,10 @@ export const BlockPalette: React.FC = () => {
           <button
             key={num}
             data-testid={`palette-number-${num}`}
+            draggable
+            onDragStart={(e) => handleNumberDragStart(e, num)}
             onClick={() => handleNumberClick(num)}
-            className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md transition-transform active:scale-95"
+            className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95"
             title={`Set repeat ${num}`}
           >
             {num}

@@ -3,8 +3,9 @@ import {
   createInitialInterpreterState,
   tickInterpreter,
   findMatchingLoopEnd,
+  validateLoopStructure,
 } from '../src/engine/interpreter';
-import { GridState, WorkspaceState } from '../src/types';
+import { GridState, WorkspaceState, CodeBlock } from '../src/types';
 
 function createMockGrid(overrides?: Partial<GridState>): GridState {
   return {
@@ -36,6 +37,38 @@ describe('Lockstep Interpreter & Physics Engine', () => {
       { id: '4', type: 'LOOP_END' as const },
     ];
     expect(findMatchingLoopEnd(blocks, 1)).toBe(3);
+  });
+
+  it('validates balanced and unclosed loop structures', () => {
+    const validBlocks: CodeBlock[] = [
+      { id: 'l1', type: 'LOOP_START' },
+      { id: 'm1', type: 'MOVE_FWD' },
+      { id: 'l2', type: 'LOOP_END' },
+    ];
+    const validResult = validateLoopStructure(validBlocks);
+    expect(validResult.isValid).toBe(true);
+    expect(validResult.hasError).toBe(false);
+    expect(validResult.unclosedLoopStartIds).toHaveLength(0);
+    expect(validResult.orphanLoopEndIds).toHaveLength(0);
+
+    const unclosedStart: CodeBlock[] = [
+      { id: 'l1', type: 'LOOP_START' },
+      { id: 'm1', type: 'MOVE_FWD' },
+    ];
+    const unclosedResult = validateLoopStructure(unclosedStart);
+    expect(unclosedResult.isValid).toBe(false);
+    expect(unclosedResult.hasError).toBe(true);
+    expect(unclosedResult.unclosedLoopStartIds).toEqual(['l1']);
+    expect(unclosedResult.orphanLoopEndIds).toHaveLength(0);
+
+    const orphanEnd: CodeBlock[] = [
+      { id: 'm1', type: 'MOVE_FWD' },
+      { id: 'l2', type: 'LOOP_END' },
+    ];
+    const orphanResult = validateLoopStructure(orphanEnd);
+    expect(orphanResult.isValid).toBe(false);
+    expect(orphanResult.hasError).toBe(true);
+    expect(orphanResult.orphanLoopEndIds).toEqual(['l2']);
   });
 
   it('executes a single step forward and updates robot position', () => {

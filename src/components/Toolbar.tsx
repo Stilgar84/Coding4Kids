@@ -1,5 +1,7 @@
 import React from 'react';
 import { useAppStore, EditorTool, PRESET_LEVELS } from '../store/useAppStore';
+import { ScopeType } from '../types';
+import { validateLoopStructure } from '../engine/interpreter';
 import {
   Play,
   Pause,
@@ -26,7 +28,12 @@ export const Toolbar: React.FC = () => {
     setSpeed,
     editorTool,
     setEditorTool,
+    workspace,
   } = useAppStore();
+
+  const hasLoopError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((sc) => {
+    return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
+  });
 
   const toggleSpeed = () => {
     if (speed === 400) setSpeed(200);
@@ -78,9 +85,14 @@ export const Toolbar: React.FC = () => {
         ) : (
           <button
             data-testid="btn-play"
+            disabled={hasLoopError}
             onClick={play}
-            className="flex items-center justify-center w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-2xl shadow-lg border-2 border-emerald-300 transition-transform active:scale-95"
-            title="Play"
+            className={`flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg border-2 transition-transform ${
+              hasLoopError
+                ? 'bg-slate-800 border-red-500/60 text-slate-500 cursor-not-allowed opacity-60'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 active:scale-95'
+            }`}
+            title={hasLoopError ? 'Cannot play: unclosed loop detected' : 'Play'}
           >
             <Play className="w-6 h-6 stroke-[3] ml-0.5" />
           </button>
@@ -89,9 +101,14 @@ export const Toolbar: React.FC = () => {
         {/* Step Button */}
         <button
           data-testid="btn-step"
+          disabled={hasLoopError}
           onClick={step}
-          className="flex items-center justify-center w-12 h-12 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl shadow-lg border-2 border-sky-400 transition-transform active:scale-95"
-          title="Step"
+          className={`flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg border-2 transition-transform ${
+            hasLoopError
+              ? 'bg-slate-800 border-red-500/60 text-slate-500 cursor-not-allowed opacity-60'
+              : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400 active:scale-95'
+          }`}
+          title={hasLoopError ? 'Cannot step: unclosed loop detected' : 'Step'}
         >
           <SkipForward className="w-6 h-6 stroke-[3]" />
         </button>
