@@ -30,7 +30,25 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        // Precache all assets (JS, CSS, images, icons) so they are served Cache-First
+        globPatterns: ['**/*.{js,css,ico,png,svg}'],
+        navigateFallback: null,
+        // Only index.html / document navigation requests use Network-First
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' ||
+              request.destination === 'document' ||
+              url.pathname.endsWith('/index.html'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pwa-html-cache',
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
       }
     })
   ],
