@@ -20,7 +20,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Specify your required Node.js version
+          node-version: '24' # Specify your required Node.js version
           cache: 'npm'
 
       # Step 3: Install all dependencies listed in package.json
@@ -28,8 +28,17 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install
+        #run: npx playwright install --with-deps
 
       # Step 4: Run the test suite defined in package.json
       - name: Run npm test
         run: npm test
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+            name: playwright-report
+            path: playwright-report/
+            retention-days: 10
