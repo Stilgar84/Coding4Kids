@@ -92,4 +92,6 @@ export interface InterpreterRuntimeState {
   activeScope: ScopeType;
   status: SimulationStatus;
   stepCount: number;
+  activeRepeatProgress?: { blockId: string; current: number; total: number } | null;
 }
+

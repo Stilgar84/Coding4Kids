@@ -216,6 +216,27 @@ export const WorkspaceCanvas: React.FC = () => {
             const showDropAfter = dropIndicatorIndex === idx + 1;
             const showCaretAfter = isSelected && !showDropAfter;
 
+            let iterationProgress: { current: number; total: number } | null = null;
+            if (block.type === 'LOOP_START') {
+              const activeLoop = runtime?.loopStack?.find(
+                (f) => f.scope === activeScope && f.loopStartPc === idx
+              );
+              if (activeLoop) {
+                iterationProgress = {
+                  current: activeLoop.currentIteration,
+                  total: activeLoop.totalIterations,
+                };
+              }
+            } else if (
+              runtime?.activeRepeatProgress &&
+              runtime.activeRepeatProgress.blockId === block.id
+            ) {
+              iterationProgress = {
+                current: runtime.activeRepeatProgress.current,
+                total: runtime.activeRepeatProgress.total,
+              };
+            }
+
             return (
               <React.Fragment key={block.id}>
                 {/* Visual insertion indicator before first block (only rendered when active!) */}
@@ -234,6 +255,7 @@ export const WorkspaceCanvas: React.FC = () => {
                   isSelected={isSelected}
                   isLoopError={isLoopError}
                   isDragging={draggingBlockId === block.id}
+                  iterationProgress={iterationProgress}
                   onSelect={() => setSelectedBlockId(block.id)}
                   onDragStartBlock={(_e, _index, blockId) => setDraggingBlockId(blockId)}
                   onDragEndBlock={handleDragEnd}

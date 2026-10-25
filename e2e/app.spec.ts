@@ -210,4 +210,94 @@ test.describe('Robot Emulator E2E Suite', () => {
     // Badge should be removed
     await expect(badge).toHaveCount(0);
   });
+
+  test('auto-resets and plays when clicking play button after program reached success or collision', async ({ page }) => {
+    // Select Level 1
+    await page.getByTestId('btn-level-1').click();
+
+    // Add Forward block with multiplier 4 to reach goal
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-number-4').click();
+
+    // Run to goal
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 5000 });
+
+    // Now click Play again! Should auto-reset first and run to victory again
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('allows resizing the playing board in each direction', async ({ page }) => {
+    await page.getByTestId('btn-level-1').click();
+
+    // Initial size indicator is 5 × 5
+    const indicator = page.getByTestId('grid-size-indicator');
+    await expect(indicator).toHaveText('5 × 5');
+
+    // Extend RIGHT
+    await page.getByTestId('btn-resize-right-plus').click();
+    await expect(indicator).toHaveText('6 × 5');
+
+    // Extend BOTTOM
+    await page.getByTestId('btn-resize-bottom-plus').click();
+    await expect(indicator).toHaveText('6 × 6');
+
+    // Extend LEFT
+    await page.getByTestId('btn-resize-left-plus').click();
+    await expect(indicator).toHaveText('7 × 6');
+
+    // Extend TOP
+    await page.getByTestId('btn-resize-top-plus').click();
+    await expect(indicator).toHaveText('7 × 7');
+  });
+
+  test('shows current iteration as <current>/<total> with distinct color on label at runtime', async ({ page }) => {
+    // Add Move Forward block with multiplier 3
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-number-3').click();
+
+    // Step 1: block executes iteration 1 of 3
+    await page.getByTestId('btn-step').click();
+
+    // Label should display 1/3 with current colored
+    const badge = page.locator('[data-testid^="badge-repeat-MOVE_FWD"]');
+    await expect(badge).toBeVisible();
+    const currentSpan = page.getByTestId('iteration-current');
+    const totalSpan = page.getByTestId('iteration-total');
+
+    await expect(currentSpan).toHaveText('1');
+    await expect(totalSpan).toHaveText('3');
+    await expect(currentSpan).toHaveClass(/text-amber-400/);
+
+    // Step 2: iteration 2 of 3
+    await page.getByTestId('btn-step').click();
+    await expect(currentSpan).toHaveText('2');
+    await expect(totalSpan).toHaveText('3');
+  });
+
+  test('allows dragging mouse to draw multiple barriers in barrier mode', async ({ page }) => {
+    await page.getByTestId('btn-level-1').click();
+
+    // Activate wall/barrier tool
+    await page.getByTestId('tool-wall').click();
+
+    // Drag mouse across horizontal wall hitboxes at row 1: (0, 1), (1, 1), (2, 1)
+    const box0 = await page.getByTestId('wall-h-hitbox-0-1').boundingBox();
+    const box1 = await page.getByTestId('wall-h-hitbox-1-1').boundingBox();
+    const box2 = await page.getByTestId('wall-h-hitbox-2-1').boundingBox();
+
+    if (box0 && box1 && box2) {
+      await page.mouse.move(box0.x + box0.width / 2, box0.y + box0.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2, { steps: 5 });
+      await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 5 });
+      await page.mouse.up();
+    }
+
+    // Verify all 3 walls were created
+    await expect(page.getByTestId('wall-h-0-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-1-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-2-1')).toBeVisible();
+  });
 });

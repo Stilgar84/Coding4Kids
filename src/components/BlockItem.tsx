@@ -20,6 +20,7 @@ interface BlockItemProps {
   isSelected?: boolean;
   isLoopError?: boolean;
   isDragging?: boolean;
+  iterationProgress?: { current: number; total: number } | null;
   onSelect?: () => void;
   onDragStartBlock?: (e: React.DragEvent, index: number, blockId: string) => void;
   onDragEndBlock?: () => void;
@@ -35,6 +36,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   isSelected = false,
   isLoopError = false,
   isDragging = false,
+  iterationProgress = null,
   onSelect,
   onDragStartBlock,
   onDragEndBlock,
@@ -309,8 +311,28 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       </div>
 
       {/* Number Badge Slot: Absolute-positioned so it does not alter block height or vertical alignment.
-          Clicking on it removes the tag! */}
-      {showRepeatBadge && (
+          Shows <current>/<total> at runtime when iterating, or multiplier tag when idle */}
+      {iterationProgress ? (
+        <div
+          data-testid={`badge-repeat-${block.id}`}
+          data-iteration-badge="true"
+          className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center min-w-[28px] h-6 px-1.5 rounded-full border-2 border-yellow-300 bg-slate-900 shadow-lg text-xs"
+        >
+          <span
+            data-testid="iteration-current"
+            className="text-amber-400 font-extrabold"
+          >
+            {iterationProgress.current}
+          </span>
+          <span className="text-slate-400 font-bold mx-0.5">/</span>
+          <span
+            data-testid="iteration-total"
+            className="text-slate-100 font-bold"
+          >
+            {iterationProgress.total}
+          </span>
+        </div>
+      ) : showRepeatBadge ? (
         <button
           type="button"
           data-testid={`badge-repeat-${block.id}`}
@@ -323,7 +345,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         >
           {block.repeatCount}
         </button>
-      )}
+      ) : null}
     </div>
   );
 };

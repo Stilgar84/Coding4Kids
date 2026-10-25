@@ -20,6 +20,7 @@ export function createInitialInterpreterState(): InterpreterRuntimeState {
     activeScope: 'MAIN',
     status: 'RUNNING',
     stepCount: 0,
+    activeRepeatProgress: null,
   };
 }
 
@@ -189,6 +190,7 @@ export function tickInterpreter(
         activeBlockId,
         activeScope: targetScope,
         stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
       },
       nextGrid: grid,
       done: false,
@@ -224,6 +226,7 @@ export function tickInterpreter(
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
       },
       nextGrid: grid,
       done: false,
@@ -256,6 +259,7 @@ export function tickInterpreter(
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
       },
       nextGrid: grid,
       done: false,
@@ -265,6 +269,11 @@ export function tickInterpreter(
   // Handle Basic Movement/Turning blocks (MOVE_FWD, MOVE_BACK, TURN_LEFT, TURN_RIGHT)
   const totalRepeats = currentBlock.repeatCount ?? 1;
   const currentSubTick = currentFrame.subTickLeft > 0 ? currentFrame.subTickLeft : totalRepeats;
+  const iterationIndex = totalRepeats - currentSubTick + 1;
+  const activeRepeatProgress =
+    totalRepeats > 1
+      ? { blockId: currentBlock.id, current: iterationIndex, total: totalRepeats }
+      : null;
 
   // Execute motion in physics engine
   const moveRes = executeRobotAction(
@@ -280,6 +289,7 @@ export function tickInterpreter(
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
+        activeRepeatProgress,
       },
       nextGrid: {
         ...grid,
@@ -323,6 +333,7 @@ export function tickInterpreter(
       activeScope,
       status: moveRes.isSuccess ? 'SUCCESS' : 'RUNNING',
       stepCount: runtime.stepCount + 1,
+      activeRepeatProgress,
     },
     nextGrid,
     done: isDone,

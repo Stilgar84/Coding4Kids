@@ -100,6 +100,8 @@ interface AppState {
 
   // Grid editing actions
   toggleWall: (edge: WallEdge) => void;
+  addWall: (edge: WallEdge) => void;
+  resizeBoard: (direction: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT', delta: number) => void;
   setCellContent: (x: number, y: number) => void;
   toggleTrace: () => void;
   clearGridUserCustoms: () => void;
@@ -245,6 +247,129 @@ export const useAppStore = create<AppState>((set, get) => {
       });
     },
 
+    addWall: (edge) => {
+      set((state) => {
+        const exists = state.grid.barriers.some(
+          (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
+        );
+        if (exists) return state;
+        return {
+          grid: {
+            ...state.grid,
+            barriers: [...state.grid.barriers, edge],
+          },
+        };
+      });
+    },
+
+    resizeBoard: (direction, delta) => {
+      if (delta === 0) return;
+      set((state) => {
+        const { grid } = state;
+        const minSize = 3;
+        const maxSize = 16;
+        const { width, height, robot, flags, barriers, trace } = grid;
+
+        if (direction === 'RIGHT') {
+          const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
+          if (newWidth === width) return state;
+          if (delta < 0) {
+            const hasBlocked =
+              robot.x >= newWidth ||
+              robot.initialX >= newWidth ||
+              flags.some((f) => f.x >= newWidth) ||
+              barriers.some((b) => b.x >= newWidth);
+            if (hasBlocked) return state;
+          }
+          return { grid: { ...grid, width: newWidth } };
+        }
+
+        if (direction === 'BOTTOM') {
+          const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
+          if (newHeight === height) return state;
+          if (delta < 0) {
+            const hasBlocked =
+              robot.y >= newHeight ||
+              robot.initialY >= newHeight ||
+              flags.some((f) => f.y >= newHeight) ||
+              barriers.some((b) => b.y >= newHeight);
+            if (hasBlocked) return state;
+          }
+          return { grid: { ...grid, height: newHeight } };
+        }
+
+        if (direction === 'LEFT') {
+          const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
+          if (newWidth === width) return state;
+          if (delta < 0) {
+            const hasBlocked =
+              robot.x === 0 ||
+              robot.initialX === 0 ||
+              flags.some((f) => f.x === 0) ||
+              barriers.some((b) => (b.orientation === 'H' ? b.x === 0 : b.x <= 1));
+            if (hasBlocked) return state;
+          }
+
+          const shiftX = delta;
+          const nextRobot = {
+            ...robot,
+            x: robot.x + shiftX,
+            initialX: robot.initialX + shiftX,
+          };
+          const nextFlags = flags.map((f) => ({ ...f, x: f.x + shiftX }));
+          const nextBarriers = barriers.map((b) => ({ ...b, x: b.x + shiftX }));
+          const nextTrace = trace.map((t) => ({ ...t, x: t.x + shiftX }));
+
+          return {
+            grid: {
+              ...grid,
+              width: newWidth,
+              robot: nextRobot,
+              flags: nextFlags,
+              barriers: nextBarriers,
+              trace: nextTrace,
+            },
+          };
+        }
+
+        if (direction === 'TOP') {
+          const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
+          if (newHeight === height) return state;
+          if (delta < 0) {
+            const hasBlocked =
+              robot.y === 0 ||
+              robot.initialY === 0 ||
+              flags.some((f) => f.y === 0) ||
+              barriers.some((b) => (b.orientation === 'V' ? b.y === 0 : b.y <= 1));
+            if (hasBlocked) return state;
+          }
+
+          const shiftY = delta;
+          const nextRobot = {
+            ...robot,
+            y: robot.y + shiftY,
+            initialY: robot.initialY + shiftY,
+          };
+          const nextFlags = flags.map((f) => ({ ...f, y: f.y + shiftY }));
+          const nextBarriers = barriers.map((b) => ({ ...b, y: b.y + shiftY }));
+          const nextTrace = trace.map((t) => ({ ...t, y: t.y + shiftY }));
+
+          return {
+            grid: {
+              ...grid,
+              height: newHeight,
+              robot: nextRobot,
+              flags: nextFlags,
+              barriers: nextBarriers,
+              trace: nextTrace,
+            },
+          };
+        }
+
+        return state;
+      });
+    },
+
     setCellContent: (x, y) => {
       const { editorTool, grid } = get();
       if (editorTool === 'ROBOT') {
@@ -351,6 +476,16 @@ export const useAppStore = create<AppState>((set, get) => {
 
     play: () => {
       if (get().isPlaying) return;
+
+      const { grid, runtime } = get();
+      const hasEndedOrFail =
+        grid.status === 'SUCCESS' ||
+        grid.status === 'COLLISION' ||
+        (runtime !== null && runtime.callStack.length === 0);
+
+      if (hasEndedOrFail) {
+        get().reset();
+      }
 
       // Guard: do not execute if loops are unclosed in any used workspace scope
       const { workspace } = get();

@@ -6,6 +6,7 @@ import {
   validateLoopStructure,
 } from '../src/engine/interpreter';
 import { GridState, WorkspaceState, CodeBlock } from '../src/types';
+import { useAppStore } from '../src/store/useAppStore';
 
 function createMockGrid(overrides?: Partial<GridState>): GridState {
   return {
@@ -87,7 +88,7 @@ describe('Lockstep Interpreter & Physics Engine', () => {
     expect(res.nextRuntime.activeBlockId).toBe('b1');
   });
 
-  it('handles number multiplier badges step-by-step', () => {
+  it('handles number multiplier badges step-by-step and tracks activeRepeatProgress', () => {
     let grid = createMockGrid();
     let runtime = createInitialInterpreterState();
     const workspace: WorkspaceState = {
@@ -101,11 +102,21 @@ describe('Lockstep Interpreter & Physics Engine', () => {
     const res1 = tickInterpreter(runtime, workspace, grid);
     expect(res1.nextGrid.robot.x).toBe(1);
     expect(res1.nextRuntime.callStack[0].pc).toBe(0); // Still on block b1
+    expect(res1.nextRuntime.activeRepeatProgress).toEqual({
+      blockId: 'b1',
+      current: 1,
+      total: 2,
+    });
 
     // Tick 2 (reaches goal at x: 2)
     const res2 = tickInterpreter(res1.nextRuntime, workspace, res1.nextGrid);
     expect(res2.nextGrid.robot.x).toBe(2);
     expect(res2.nextGrid.status).toBe('SUCCESS');
+    expect(res2.nextRuntime.activeRepeatProgress).toEqual({
+      blockId: 'b1',
+      current: 2,
+      total: 2,
+    });
   });
 
   it('stops with COLLISION when hitting a wall barrier', () => {
@@ -127,7 +138,7 @@ describe('Lockstep Interpreter & Physics Engine', () => {
     expect(res.nextGrid.robot.x).toBe(0); // Did not pass barrier
   });
 
-  it('executes loops accurately using lockstep iterations', () => {
+  it('executes loops accurately tracking loopStack iterations', () => {
     let grid = createMockGrid({
       robot: { x: 0, y: 0, dir: 'SOUTH', initialX: 0, initialY: 0, initialDir: 'SOUTH' },
     });
@@ -142,6 +153,15 @@ describe('Lockstep Interpreter & Physics Engine', () => {
       F2: [],
       F3: [],
     };
+
+    // First tick enters LOOP_START: loopStack pushed with currentIteration 1, totalIterations 3
+    const res1 = tickInterpreter(runtime, workspace, grid);
+    expect(res1.nextRuntime.loopStack).toHaveLength(1);
+    expect(res1.nextRuntime.loopStack[0].currentIteration).toBe(1);
+    expect(res1.nextRuntime.loopStack[0].totalIterations).toBe(3);
+
+    runtime = res1.nextRuntime;
+    grid = res1.nextGrid;
 
     // Run until completion or max 15 steps
     let steps = 0;
@@ -181,5 +201,65 @@ describe('Lockstep Interpreter & Physics Engine', () => {
     // Step 3: F1 finished, pops frame, executes TURN_RIGHT in MAIN
     const res3 = tickInterpreter(res2.nextRuntime, workspace, res2.nextGrid);
     expect(res3.nextGrid.robot.dir).toBe('SOUTH');
+  });
+
+  it('resizes board in all 4 directions with correct coordinate shifting', () => {
+    const store = useAppStore.getState();
+    store.setLevel(1); // 5x5 board, robot at (0, 2)
+
+    // Resize RIGHT (+1)
+    store.resizeBoard('RIGHT', 1);
+    expect(useAppStore.getState().grid.width).toBe(6);
+    expect(useAppStore.getState().grid.robot.x).toBe(0);
+
+    // Resize BOTTOM (+1)
+    store.resizeBoard('BOTTOM', 1);
+    expect(useAppStore.getState().grid.height).toBe(6);
+    expect(useAppStore.getState().grid.robot.y).toBe(2);
+
+    // Resize LEFT (+1) -> shifts robot x by +1
+    store.resizeBoard('LEFT', 1);
+    expect(useAppStore.getState().grid.width).toBe(7);
+    expect(useAppStore.getState().grid.robot.x).toBe(1);
+
+    // Resize TOP (+1) -> shifts robot y by +1
+    store.resizeBoard('TOP', 1);
+    expect(useAppStore.getState().grid.height).toBe(7);
+    expect(useAppStore.getState().grid.robot.y).toBe(3);
+  });
+
+  it('adds barriers idempotently with addWall', () => {
+    const store = useAppStore.getState();
+    store.clearGridUserCustoms();
+
+    store.addWall({ orientation: 'H', x: 1, y: 1 });
+    const count1 = useAppStore.getState().grid.barriers.length;
+
+    // Adding same wall again should not duplicate
+    store.addWall({ orientation: 'H', x: 1, y: 1 });
+    const count2 = useAppStore.getState().grid.barriers.length;
+    expect(count2).toBe(count1);
+  });
+
+  it('auto-resets when play is called after program ended with success or collision', () => {
+    const store = useAppStore.getState();
+    store.setLevel(1);
+
+    // Simulate collision state
+    useAppStore.setState({
+      grid: {
+        ...useAppStore.getState().grid,
+        status: 'COLLISION',
+        robot: { ...useAppStore.getState().grid.robot, x: 4, y: 4 },
+      },
+    });
+
+    // Calling play should reset before stepping
+    store.play();
+    store.pause(); // immediately pause
+
+    // Robot should not be at (4, 4), it should have been reset to initial (0, 2) and stepped
+    expect(useAppStore.getState().grid.robot.initialX).toBe(0);
+    expect(useAppStore.getState().grid.robot.initialY).toBe(2);
   });
 });
