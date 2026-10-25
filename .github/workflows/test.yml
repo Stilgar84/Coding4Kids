@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
       # Step 4: Run the test suite defined in package.json
       - name: Run npm test
         run: npm test
