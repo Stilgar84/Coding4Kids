@@ -1,3 +1,6 @@
+[![Build](https://github.com/Stilgar84/Coding4Kids/actions/workflows/static.yml/badge.svg)](https://github.com/Stilgar84/Coding4Kids/actions/workflows/static.yml)
+ [![Tests](https://github.com/Stilgar84/Coding4Kids/actions/workflows/test.yml/badge.svg)](https://github.com/Stilgar84/Coding4Kids/actions/workflows/test.yml)
+
 # 🤖 Robot Emulator
 
 A kid-friendly, pre-reader visual robot programming app with a 2D grid simulation, designed for Windows PC and Android tablets with full offline PWA support.
