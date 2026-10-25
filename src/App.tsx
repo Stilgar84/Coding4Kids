@@ -3,6 +3,7 @@ import { Toolbar } from './components/Toolbar';
 import { BlockPalette } from './components/BlockPalette';
 import { WorkspaceCanvas } from './components/WorkspaceCanvas';
 import { GridCanvas } from './components/GridCanvas';
+import { SolutionModal } from './components/SolutionModal';
 
 export const App: React.FC = () => {
   return (
@@ -29,6 +30,9 @@ export const App: React.FC = () => {
           <GridCanvas />
         </section>
       </main>
+
+      {/* Solution Viewer Modal */}
+      <SolutionModal />
     </div>
   );
 };

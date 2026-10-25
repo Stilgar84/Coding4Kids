@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppStore, EditorTool, PRESET_LEVELS } from '../store/useAppStore';
 import { ScopeType } from '../types';
 import { validateLoopStructure } from '../engine/interpreter';
+import { LESSONS } from '../data/lessons';
 import {
   Play,
   Pause,
@@ -13,6 +14,9 @@ import {
   Trophy,
   Eraser,
   Zap,
+  Lightbulb,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export const Toolbar: React.FC = () => {
@@ -29,7 +33,10 @@ export const Toolbar: React.FC = () => {
     editorTool,
     setEditorTool,
     workspace,
+    setSolutionOpen,
   } = useAppStore();
+
+  const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
 
   const hasLoopError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((sc) => {
     return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
@@ -51,28 +58,89 @@ export const Toolbar: React.FC = () => {
     setEditorTool(editorTool === tool ? 'NONE' : tool);
   };
 
+  const handlePrevLevel = () => {
+    const prevId = currentLevel > 1 ? currentLevel - 1 : PRESET_LEVELS.length;
+    setLevel(prevId);
+  };
+
+  const handleNextLevel = () => {
+    const nextId = currentLevel < PRESET_LEVELS.length ? currentLevel + 1 : 1;
+    setLevel(nextId);
+  };
+
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-900 border-b-2 border-slate-800 shadow-md">
-      {/* Level Selection (1, 2, 3) */}
-      <div className="flex items-center gap-2">
-        {PRESET_LEVELS.map((lvl) => (
+      {/* Lesson Navigation & Selection */}
+      <div className="flex items-center gap-2 max-w-full overflow-hidden">
+        {/* Prev / Next Chevrons */}
+        <div className="flex items-center gap-1">
           <button
-            key={lvl.id}
-            data-testid={`btn-level-${lvl.id}`}
-            onClick={() => setLevel(lvl.id)}
-            className={`flex items-center justify-center w-11 h-11 rounded-2xl font-black text-lg border-2 transition-all ${
-              currentLevel === lvl.id
-                ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
-                : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
-            }`}
+            onClick={handlePrevLevel}
+            className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
+            title="Previous Lesson"
           >
-            {lvl.id}
+            <ChevronLeft className="w-5 h-5" />
           </button>
-        ))}
+          <button
+            onClick={handleNextLevel}
+            className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
+            title="Next Lesson"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Dropdown Selector for Course Lessons */}
+        <div className="flex items-center gap-1.5 bg-slate-800 px-2 rounded-2xl border-2 border-slate-700">
+          <span className="text-base" title={currentLesson.moduleTitle}>
+            {currentLesson.moduleIcon}
+          </span>
+          <select
+            value={currentLevel}
+            onChange={(e) => setLevel(Number(e.target.value))}
+            className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[240px] truncate"
+            title="Select Course Lesson"
+          >
+            {LESSONS.map((l) => (
+              <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
+                {l.id}. {l.title} ({l.concept})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Level Quick Buttons (Scrollable Tray) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[240px] md:max-w-[320px] lg:max-w-[420px] no-scrollbar">
+          {PRESET_LEVELS.map((lvl) => (
+            <button
+              key={lvl.id}
+              data-testid={`btn-level-${lvl.id}`}
+              onClick={() => setLevel(lvl.id)}
+              className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm border-2 transition-all ${
+                currentLevel === lvl.id
+                  ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {lvl.id}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Playback Controls */}
+      {/* Center: Playback Controls & Solution Button */}
       <div className="flex items-center gap-2">
+        {/* Solution Button */}
+        <button
+          data-testid="btn-solution"
+          onClick={() => setSolutionOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 h-12 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl border-2 border-amber-300 shadow-lg transition-transform active:scale-95"
+          title="View Lesson Solution"
+        >
+          <Lightbulb className="w-5 h-5 fill-slate-950" />
+          <span className="hidden sm:inline">Solution</span>
+        </button>
+
         {isPlaying ? (
           <button
             data-testid="btn-pause"

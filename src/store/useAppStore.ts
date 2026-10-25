@@ -7,12 +7,14 @@ import {
   BlockType,
   WallEdge,
   Direction,
+  CodeBlock,
 } from '../types';
 import {
   createInitialInterpreterState,
   tickInterpreter,
   validateLoopStructure,
 } from '../engine/interpreter';
+import { LESSONS } from '../data/lessons';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
 
@@ -25,53 +27,14 @@ export interface LevelPreset {
   flags: { id: string; x: number; y: number; isGoal: boolean; order: number; collected: boolean }[];
 }
 
-export const PRESET_LEVELS: LevelPreset[] = [
-  {
-    id: 1,
-    width: 5,
-    height: 5,
-    robot: { x: 0, y: 2, dir: 'EAST' },
-    barriers: [],
-    flags: [{ id: 'goal', x: 4, y: 2, isGoal: true, order: 1, collected: false }],
-  },
-  {
-    id: 2,
-    width: 5,
-    height: 5,
-    robot: { x: 0, y: 4, dir: 'NORTH' },
-    barriers: [
-      { orientation: 'H', x: 0, y: 2 },
-      { orientation: 'H', x: 1, y: 2 },
-      { orientation: 'V', x: 3, y: 2 },
-      { orientation: 'V', x: 3, y: 3 },
-    ],
-    flags: [
-      { id: 'f1', x: 2, y: 2, isGoal: false, order: 1, collected: false },
-      { id: 'goal', x: 4, y: 0, isGoal: true, order: 2, collected: false },
-    ],
-  },
-  {
-    id: 3,
-    width: 6,
-    height: 6,
-    robot: { x: 0, y: 0, dir: 'EAST' },
-    barriers: [
-      { orientation: 'H', x: 0, y: 1 },
-      { orientation: 'H', x: 1, y: 1 },
-      { orientation: 'H', x: 2, y: 1 },
-      { orientation: 'H', x: 3, y: 1 },
-      { orientation: 'V', x: 4, y: 2 },
-      { orientation: 'V', x: 4, y: 3 },
-      { orientation: 'H', x: 1, y: 4 },
-      { orientation: 'H', x: 2, y: 4 },
-    ],
-    flags: [
-      { id: 'f1', x: 4, y: 1, isGoal: false, order: 1, collected: false },
-      { id: 'f2', x: 1, y: 3, isGoal: false, order: 2, collected: false },
-      { id: 'goal', x: 5, y: 5, isGoal: true, order: 3, collected: false },
-    ],
-  },
-];
+export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
+  id: lesson.id,
+  width: lesson.grid.width,
+  height: lesson.grid.height,
+  robot: lesson.grid.robot,
+  barriers: lesson.grid.barriers,
+  flags: lesson.grid.flags,
+}));
 
 interface AppState {
   currentLevel: number;
@@ -83,6 +46,7 @@ interface AppState {
   isPlaying: boolean;
   speed: number; // ms per tick: 600, 300, 150
   editorTool: EditorTool;
+  isSolutionOpen: boolean;
 
   // Actions
   setLevel: (levelId: number) => void;
@@ -90,6 +54,8 @@ interface AppState {
   setSelectedBlockId: (id: string | null) => void;
   setEditorTool: (tool: EditorTool) => void;
   setSpeed: (speed: number) => void;
+  setSolutionOpen: (open: boolean) => void;
+  loadSolution: (lessonId?: number) => void;
 
   // Workspace actions
   addBlock: (scope: ScopeType, type: BlockType, repeatCount?: number, insertAtIndex?: number) => void;
@@ -149,6 +115,34 @@ export const useAppStore = create<AppState>((set, get) => {
     isPlaying: false,
     speed: 400,
     editorTool: 'NONE',
+    isSolutionOpen: false,
+
+    setSolutionOpen: (open) => set({ isSolutionOpen: open }),
+
+    loadSolution: (lessonId) => {
+      const id = lessonId ?? get().currentLevel;
+      const lesson = LESSONS.find((l) => l.id === id);
+      if (!lesson) return;
+
+      get().reset();
+
+      const cloneBlocks = (blocks: CodeBlock[]) =>
+        blocks.map((b) => ({
+          ...b,
+          id: `${b.type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        }));
+
+      set({
+        workspace: {
+          MAIN: cloneBlocks(lesson.solution.MAIN),
+          F1: cloneBlocks(lesson.solution.F1 || []),
+          F2: cloneBlocks(lesson.solution.F2 || []),
+          F3: cloneBlocks(lesson.solution.F3 || []),
+        },
+        activeScope: 'MAIN',
+        selectedBlockId: null,
+      });
+    },
 
     setLevel: (levelId) => {
       get().reset();

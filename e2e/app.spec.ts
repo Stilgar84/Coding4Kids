@@ -300,4 +300,37 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(page.getByTestId('wall-h-1-1')).toBeVisible();
     await expect(page.getByTestId('wall-h-2-1')).toBeVisible();
   });
+
+  test('displays solution modal on clicking solution button and loads solution into workspace', async ({ page }) => {
+    // Select Level 1
+    await page.getByTestId('btn-level-1').click();
+
+    // Verify solution button exists
+    const solutionBtn = page.getByTestId('btn-solution');
+    await expect(solutionBtn).toBeVisible();
+
+    // Click Solution button
+    await solutionBtn.click();
+
+    // Solution modal should be visible
+    const modal = page.getByTestId('solution-modal');
+    await expect(modal).toBeVisible();
+
+    // Click Load Solution button
+    const loadBtn = page.getByTestId('btn-load-solution');
+    await expect(loadBtn).toBeVisible();
+    await loadBtn.click();
+
+    // Close modal
+    await page.getByTestId('btn-close-solution').click();
+    await expect(modal).not.toBeVisible();
+
+    // Verify blocks were loaded into workspace
+    const blocks = page.locator('[data-testid^="block-"]');
+    await expect(blocks.first()).toBeVisible();
+
+    // Hit play to verify that loaded solution reaches success
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 5000 });
+  });
 });
