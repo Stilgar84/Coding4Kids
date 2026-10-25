@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { ScopeType } from '../types';
 import { BlockItem } from './BlockItem';
-import { Trash2, Sparkles, AlertTriangle } from 'lucide-react';
+import { Trash, Trash2, Sparkles, AlertTriangle } from 'lucide-react';
 import { validateLoopStructure } from '../engine/interpreter';
 
 interface ScopeTab {
@@ -55,12 +55,34 @@ export const WorkspaceCanvas: React.FC = () => {
     setSelectedBlockId,
     addBlock,
     reorderBlocks,
+    removeBlock,
   } = useAppStore();
 
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
 
   const blocks = workspace[activeScope] || [];
+
+  const handleDeleteSelected = () => {
+    if (selectedBlockId) {
+      removeBlock(activeScope, selectedBlockId);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlockId) {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+          return;
+        }
+        e.preventDefault();
+        removeBlock(activeScope, selectedBlockId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeScope, selectedBlockId, removeBlock]);
 
   // Loop validation diagnostics
   const loopValidation = validateLoopStructure(blocks);
@@ -161,15 +183,35 @@ export const WorkspaceCanvas: React.FC = () => {
           })}
         </div>
 
-        {/* Clear Scope Button */}
-        <button
-          data-testid="btn-clear-workspace"
-          onClick={() => clearWorkspace(activeScope)}
-          className="flex items-center justify-center w-12 h-12 bg-slate-800 hover:bg-red-600/80 text-slate-400 hover:text-white rounded-2xl border-2 border-slate-700 transition-colors"
-          title="Clear"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
+        {/* Workspace Actions: Delete Selected & Clear All */}
+        <div className="flex items-center gap-2">
+          {/* Delete Current Selected Element Only */}
+          <button
+            data-testid="btn-delete-selected"
+            onClick={handleDeleteSelected}
+            disabled={!selectedBlockId}
+            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
+              selectedBlockId
+                ? 'bg-slate-800 hover:bg-rose-600 text-rose-400 hover:text-white border-slate-700 shadow-md cursor-pointer active:scale-95'
+                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+            }`}
+            title={selectedBlockId ? 'Delete selected element' : 'Select an element to delete'}
+            aria-label="Delete selected element"
+          >
+            <Trash className="w-5 h-5" />
+          </button>
+
+          {/* Clear Scope / Delete All Button */}
+          <button
+            data-testid="btn-clear-workspace"
+            onClick={() => clearWorkspace(activeScope)}
+            className="flex items-center justify-center w-12 h-12 bg-slate-800 hover:bg-red-600/80 text-slate-400 hover:text-white rounded-2xl border-2 border-slate-700 transition-colors active:scale-95"
+            title="Delete all"
+            aria-label="Delete all"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Unclosed Loop Warning Banner */}

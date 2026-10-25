@@ -234,7 +234,7 @@ export const BlockPalette: React.FC = () => {
             draggable
             onDragStart={(e) => handlePaletteBlockDragStart(e, item.type)}
             onClick={() => handleAdd(item.type)}
-            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 ${item.bgClass} ${item.borderClass}`}
+            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none ${item.bgClass} ${item.borderClass}`}
           >
             {item.icon}
           </button>
@@ -250,7 +250,7 @@ export const BlockPalette: React.FC = () => {
             draggable
             onDragStart={(e) => handleNumberDragStart(e, num)}
             onClick={() => handleNumberClick(num)}
-            className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95"
+            className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
             title={`Set repeat ${num}`}
           >
             {num}

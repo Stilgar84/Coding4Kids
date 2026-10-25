@@ -276,7 +276,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         e.stopPropagation();
         if (onSelect) onSelect();
       }}
-      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 ${
+      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 touch-none ${
         isDragging ? 'opacity-40' : ''
       } ${
         isNumberHovered

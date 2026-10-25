@@ -333,4 +333,253 @@ test.describe('Robot Emulator E2E Suite', () => {
     await page.getByTestId('btn-play').click();
     await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 5000 });
   });
+
+  test('supports deleting only the current selected block via delete selected button', async ({ page }) => {
+    const deleteSelectedBtn = page.getByTestId('btn-delete-selected');
+    const clearWorkspaceBtn = page.getByTestId('btn-clear-workspace');
+
+    // Both buttons should be visible
+    await expect(deleteSelectedBtn).toBeVisible();
+    await expect(clearWorkspaceBtn).toBeVisible();
+
+    // With nothing selected, delete selected button should be disabled
+    await expect(deleteSelectedBtn).toBeDisabled();
+
+    // Add three blocks: Move Forward, Turn Left, Move Forward
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-turn-left').click();
+    await page.getByTestId('palette-move-fwd').click();
+
+    const allBlocks = page.locator('[data-testid^="block-"]');
+    await expect(allBlocks).toHaveCount(3);
+
+    // Select the middle block (Turn Left)
+    const turnLeftBlock = page.locator('[data-testid^="block-TURN_LEFT"]');
+    await turnLeftBlock.click();
+
+    // Delete selected button should now be enabled
+    await expect(deleteSelectedBtn).toBeEnabled();
+
+    // Click delete selected button
+    await deleteSelectedBtn.click();
+
+    // Verify only the middle block was removed and 2 Forward blocks remain
+    await expect(allBlocks).toHaveCount(2);
+    await expect(turnLeftBlock).toHaveCount(0);
+    const forwardBlocks = page.locator('[data-testid^="block-MOVE_FWD"]');
+    await expect(forwardBlocks).toHaveCount(2);
+
+    // Delete selected button should now be disabled again
+    await expect(deleteSelectedBtn).toBeDisabled();
+
+    // Select the first block and press Delete key on keyboard
+    await forwardBlocks.first().click();
+    await expect(deleteSelectedBtn).toBeEnabled();
+    await page.keyboard.press('Delete');
+    await expect(allBlocks).toHaveCount(1);
+
+    // Now test Delete All (Clear Workspace)
+    await clearWorkspaceBtn.click();
+    await expect(allBlocks).toHaveCount(0);
+    await expect(deleteSelectedBtn).toBeDisabled();
+  });
+
+  test('supports touch drag and drop to add blocks and repeat badges', async ({ page }) => {
+    // Helper to simulate touch drag
+    const touchDrag = async (srcSelector: string, tgtSelector: string) => {
+      await page.evaluate(({ src, tgt }) => {
+        const srcEl = document.querySelector(src);
+        const tgtEl = document.querySelector(tgt);
+        if (!srcEl || !tgtEl) throw new Error(`Not found: ${src} -> ${tgt}`);
+
+        const srcRect = srcEl.getBoundingClientRect();
+        const tgtRect = tgtEl.getBoundingClientRect();
+
+        const startX = srcRect.left + srcRect.width / 2;
+        const startY = srcRect.top + srcRect.height / 2;
+        const endX = tgtRect.left + tgtRect.width / 2;
+        const endY = tgtRect.top + tgtRect.height / 2;
+
+        const touchStart = new Touch({
+          identifier: 101,
+          target: srcEl,
+          clientX: startX,
+          clientY: startY,
+          pageX: startX,
+          pageY: startY,
+          screenX: startX,
+          screenY: startY,
+        });
+
+        srcEl.dispatchEvent(new TouchEvent('touchstart', {
+          bubbles: true,
+          cancelable: true,
+          touches: [touchStart],
+          targetTouches: [touchStart],
+          changedTouches: [touchStart],
+        }));
+
+        const steps = 6;
+        for (let i = 1; i <= steps; i++) {
+          const curX = startX + (endX - startX) * (i / steps);
+          const curY = startY + (endY - startY) * (i / steps);
+          const touchMove = new Touch({
+            identifier: 101,
+            target: srcEl,
+            clientX: curX,
+            clientY: curY,
+            pageX: curX,
+            pageY: curY,
+            screenX: curX,
+            screenY: curY,
+          });
+
+          window.dispatchEvent(new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true,
+            touches: [touchMove],
+            targetTouches: [touchMove],
+            changedTouches: [touchMove],
+          }));
+        }
+
+        const touchEnd = new Touch({
+          identifier: 101,
+          target: srcEl,
+          clientX: endX,
+          clientY: endY,
+          pageX: endX,
+          pageY: endY,
+          screenX: endX,
+          screenY: endY,
+        });
+
+        window.dispatchEvent(new TouchEvent('touchend', {
+          bubbles: true,
+          cancelable: true,
+          touches: [],
+          targetTouches: [],
+          changedTouches: [touchEnd],
+        }));
+      }, { src: srcSelector, tgt: tgtSelector });
+    };
+
+    // Touch-drag Move Forward block from palette into the workspace sequence
+    await touchDrag('[data-testid="palette-move-fwd"]', '[data-testid="workspace-sequence"]');
+
+    // Verify block was added
+    const block = page.locator('[data-testid^="block-MOVE_FWD"]');
+    await expect(block).toBeVisible();
+
+    // Touch-drag number 5 onto the block
+    await touchDrag('[data-testid="palette-number-5"]', '[data-testid^="block-MOVE_FWD"]');
+
+    // Verify multiplier badge 5 is attached
+    const badge = page.locator('[data-testid^="badge-repeat-MOVE_FWD"]');
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('5');
+
+    // Touch-drag the block to palette to delete it
+    await touchDrag('[data-testid^="block-MOVE_FWD"]', '[data-testid="palette-container"]');
+    await expect(block).toHaveCount(0);
+  });
+
+  test('supports touch drag and drop to reorder blocks within sequence', async ({ page }) => {
+    // Helper to simulate touch drag
+    const touchDrag = async (srcSelector: string, tgtSelector: string, dropRightHalf = false) => {
+      await page.evaluate(({ src, tgt, rightHalf }) => {
+        const srcEl = document.querySelector(src);
+        const tgtEl = document.querySelector(tgt);
+        if (!srcEl || !tgtEl) throw new Error(`Not found: ${src} -> ${tgt}`);
+
+        const srcRect = srcEl.getBoundingClientRect();
+        const tgtRect = tgtEl.getBoundingClientRect();
+
+        const startX = srcRect.left + srcRect.width / 2;
+        const startY = srcRect.top + srcRect.height / 2;
+        const endX = rightHalf ? tgtRect.right - 5 : tgtRect.left + 5;
+        const endY = tgtRect.top + tgtRect.height / 2;
+
+        const touchStart = new Touch({
+          identifier: 202,
+          target: srcEl,
+          clientX: startX,
+          clientY: startY,
+          pageX: startX,
+          pageY: startY,
+          screenX: startX,
+          screenY: startY,
+        });
+
+        srcEl.dispatchEvent(new TouchEvent('touchstart', {
+          bubbles: true,
+          cancelable: true,
+          touches: [touchStart],
+          targetTouches: [touchStart],
+          changedTouches: [touchStart],
+        }));
+
+        const steps = 6;
+        for (let i = 1; i <= steps; i++) {
+          const curX = startX + (endX - startX) * (i / steps);
+          const curY = startY + (endY - startY) * (i / steps);
+          const touchMove = new Touch({
+            identifier: 202,
+            target: srcEl,
+            clientX: curX,
+            clientY: curY,
+            pageX: curX,
+            pageY: curY,
+            screenX: curX,
+            screenY: curY,
+          });
+
+          window.dispatchEvent(new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true,
+            touches: [touchMove],
+            targetTouches: [touchMove],
+            changedTouches: [touchMove],
+          }));
+        }
+
+        const touchEnd = new Touch({
+          identifier: 202,
+          target: srcEl,
+          clientX: endX,
+          clientY: endY,
+          pageX: endX,
+          pageY: endY,
+          screenX: endX,
+          screenY: endY,
+        });
+
+        window.dispatchEvent(new TouchEvent('touchend', {
+          bubbles: true,
+          cancelable: true,
+          touches: [],
+          targetTouches: [],
+          changedTouches: [touchEnd],
+        }));
+      }, { src: srcSelector, tgt: tgtSelector, rightHalf: dropRightHalf });
+    };
+
+    // Add Move Forward then Turn Left
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-turn-left').click();
+
+    const blocks = page.locator('[data-testid^="block-"]');
+    await expect(blocks).toHaveCount(2);
+
+    // Initial order: [MOVE_FWD, TURN_LEFT]
+    const firstBlockBefore = await blocks.nth(0).getAttribute('data-testid');
+    expect(firstBlockBefore).toContain('MOVE_FWD');
+
+    // Touch-drag TURN_LEFT to the left half of MOVE_FWD (reordering to front)
+    await touchDrag('[data-testid^="block-TURN_LEFT"]', '[data-testid^="block-MOVE_FWD"]', false);
+
+    // Order should now be: [TURN_LEFT, MOVE_FWD]
+    const firstBlockAfter = await blocks.nth(0).getAttribute('data-testid');
+    expect(firstBlockAfter).toContain('TURN_LEFT');
+  });
 });
