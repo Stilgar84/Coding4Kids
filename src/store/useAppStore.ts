@@ -70,6 +70,7 @@ interface AppState {
   resizeBoard: (direction: 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT', delta: number) => void;
   setCellContent: (x: number, y: number) => void;
   toggleTrace: () => void;
+  toggleFitToView: () => void;
   clearGridUserCustoms: () => void;
 
   // Execution actions
@@ -84,7 +85,7 @@ let timerId: NodeJS.Timeout | null = null;
 export const useAppStore = create<AppState>((set, get) => {
   const initialPreset = PRESET_LEVELS[0];
 
-  const createGridFromPreset = (preset: LevelPreset): GridState => ({
+  const createGridFromPreset = (preset: LevelPreset, prevFitToView: boolean = false): GridState => ({
     width: preset.width,
     height: preset.height,
     robot: {
@@ -98,6 +99,7 @@ export const useAppStore = create<AppState>((set, get) => {
     trace: [{ x: preset.robot.x, y: preset.robot.y }],
     status: 'IDLE',
     showTrace: true,
+    fitToView: prevFitToView,
   });
 
   return {
@@ -145,11 +147,12 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setLevel: (levelId) => {
+      const prevFitToView = get().grid.fitToView ?? false;
       get().reset();
       const preset = PRESET_LEVELS.find((p) => p.id === levelId) || PRESET_LEVELS[0];
       set({
         currentLevel: levelId,
-        grid: createGridFromPreset(preset),
+        grid: createGridFromPreset(preset, prevFitToView),
       });
     },
 
@@ -427,9 +430,16 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
     },
 
+    toggleFitToView: () => {
+      set((state) => ({
+        grid: { ...state.grid, fitToView: !state.grid.fitToView },
+      }));
+    },
+
     clearGridUserCustoms: () => {
+      const prevFitToView = get().grid.fitToView ?? false;
       const preset = PRESET_LEVELS.find((p) => p.id === get().currentLevel) || PRESET_LEVELS[0];
-      set({ grid: createGridFromPreset(preset) });
+      set({ grid: createGridFromPreset(preset, prevFitToView) });
     },
 
     step: () => {

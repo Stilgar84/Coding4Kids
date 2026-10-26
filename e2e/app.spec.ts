@@ -582,4 +582,76 @@ test.describe('Robot Emulator E2E Suite', () => {
     const firstBlockAfter = await blocks.nth(0).getAttribute('data-testid');
     expect(firstBlockAfter).toContain('TURN_LEFT');
   });
+
+  test('keeps trajectory and fit buttons in place when grid scrolls', async ({ page }) => {
+    // Set small viewport so scrolling is triggered
+    await page.setViewportSize({ width: 700, height: 500 });
+    const scrollContainer = page.getByTestId('grid-scroll-container');
+    const traceBtn = page.getByTestId('btn-toggle-trace');
+    const fitBtn = page.getByTestId('btn-toggle-fit');
+
+    await expect(traceBtn).toBeVisible();
+    await expect(fitBtn).toBeVisible();
+
+    const traceBoxBefore = await traceBtn.boundingBox();
+    const fitBoxBefore = await fitBtn.boundingBox();
+    expect(traceBoxBefore).not.toBeNull();
+    expect(fitBoxBefore).not.toBeNull();
+
+    // Scroll the map container
+    await scrollContainer.evaluate((el) => {
+      el.scrollLeft = 80;
+      el.scrollTop = 80;
+    });
+
+    const traceBoxAfter = await traceBtn.boundingBox();
+    const fitBoxAfter = await fitBtn.boundingBox();
+
+    // Floating buttons remain pinned in place
+    expect(traceBoxAfter?.x).toBeCloseTo(traceBoxBefore!.x, 1);
+    expect(traceBoxAfter?.y).toBeCloseTo(traceBoxBefore!.y, 1);
+    expect(fitBoxAfter?.x).toBeCloseTo(fitBoxBefore!.x, 1);
+    expect(fitBoxAfter?.y).toBeCloseTo(fitBoxBefore!.y, 1);
+  });
+
+  test('does not cut off top and left of map view on small viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 480 });
+    const scrollContainer = page.getByTestId('grid-scroll-container');
+
+    // Ensure scrolled to (0, 0)
+    await scrollContainer.evaluate((el) => {
+      el.scrollLeft = 0;
+      el.scrollTop = 0;
+    });
+
+    const containerBox = await scrollContainer.boundingBox();
+    const topHandle = page.getByTestId('resize-handle-top');
+    const leftHandle = page.getByTestId('resize-handle-left');
+
+    const topHandleBox = await topHandle.boundingBox();
+    const leftHandleBox = await leftHandle.boundingBox();
+
+    // Top and left handles must be within visible viewport (not clipped off in negative coordinates)
+    expect(topHandleBox!.y).toBeGreaterThanOrEqual(containerBox!.y);
+    expect(leftHandleBox!.x).toBeGreaterThanOrEqual(containerBox!.x);
+  });
+
+  test('toggles fit to available size mode to scale the map view within viewport', async ({ page }) => {
+    const fitBtn = page.getByTestId('btn-toggle-fit');
+    await expect(fitBtn).toBeVisible();
+
+    // Initially fit mode is off
+    const wrapper = page.getByTestId('grid-fit-wrapper');
+
+    // Toggle fit mode ON
+    await fitBtn.click();
+    await expect(fitBtn).toHaveAttribute('title', /Reset to Actual Size/i);
+
+    // Verify wrapper has explicit scaled dimensions applied
+    await expect(wrapper).toHaveAttribute('style', /width:/);
+
+    // Toggle fit mode OFF
+    await fitBtn.click();
+    await expect(fitBtn).toHaveAttribute('title', /Fit to Available Size/i);
+  });
 });

@@ -68,6 +68,7 @@ export interface GridState {
   trace: CellCoord[];
   status: SimulationStatus;
   showTrace: boolean;
+  fitToView?: boolean;
 }
 
 export interface StackFrame {

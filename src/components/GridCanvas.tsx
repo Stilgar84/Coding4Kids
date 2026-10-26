@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { WallEdge, Direction } from '../types';
-import { Trophy, Footprints } from 'lucide-react';
+import { Trophy, Footprints, Maximize2, Minimize2 } from 'lucide-react';
 
 const CELL_SIZE = 72; // pixels per cell
 
@@ -13,14 +13,53 @@ export const GridCanvas: React.FC = () => {
     resizeBoard,
     setCellContent,
     toggleTrace,
+    toggleFitToView,
     editorTool,
   } = useAppStore();
 
-  const { width, height, robot, barriers, flags, trace, status, showTrace } = grid;
+  const { width, height, robot, barriers, flags, trace, status, showTrace, fitToView } = grid;
   const isBarrierMode = editorTool === 'WALL';
+  const isFitToView = Boolean(fitToView);
 
   const svgWidth = width * CELL_SIZE;
   const svgHeight = height * CELL_SIZE;
+  const boardBaseWidth = svgWidth + 24;
+  const boardBaseHeight = svgHeight + 24;
+  const CLEARANCE = 48; // Clearance for boundary resize handles and indicators
+  const unscaledTotalWidth = boardBaseWidth + CLEARANCE;
+  const unscaledTotalHeight = boardBaseHeight + CLEARANCE;
+
+  // Viewport container measurement for fit-to-view calculation
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      setContainerSize({
+        width: el.clientWidth,
+        height: el.clientHeight,
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const availableWidth = Math.max(containerSize.width - 32, 100);
+  const availableHeight = Math.max(containerSize.height - 32, 100);
+  const computedScale = Math.min(
+    availableWidth / unscaledTotalWidth,
+    availableHeight / unscaledTotalHeight
+  );
+  const scale =
+    containerSize.width > 0 && containerSize.height > 0
+      ? Math.max(0.1, Math.min(2.0, computedScale))
+      : 1;
 
   // Barrier drag drawing tracking
   const [isDrawingBarriers, setIsDrawingBarriers] = useState(false);
@@ -115,6 +154,8 @@ export const GridCanvas: React.FC = () => {
     const startX = e.clientX;
     const startY = e.clientY;
     let accumulatedDelta = 0;
+    const currentScale = isFitToView ? scale : 1;
+    const stepSize = CELL_SIZE * currentScale * 0.7;
 
     const onPointerMove = (moveEv: PointerEvent) => {
       moveEv.preventDefault();
@@ -123,13 +164,13 @@ export const GridCanvas: React.FC = () => {
 
       let currentStep = 0;
       if (direction === 'RIGHT') {
-        currentStep = Math.trunc(dx / (CELL_SIZE * 0.7));
+        currentStep = Math.trunc(dx / stepSize);
       } else if (direction === 'BOTTOM') {
-        currentStep = Math.trunc(dy / (CELL_SIZE * 0.7));
+        currentStep = Math.trunc(dy / stepSize);
       } else if (direction === 'LEFT') {
-        currentStep = Math.trunc(-dx / (CELL_SIZE * 0.7));
+        currentStep = Math.trunc(-dx / stepSize);
       } else if (direction === 'TOP') {
-        currentStep = Math.trunc(-dy / (CELL_SIZE * 0.7));
+        currentStep = Math.trunc(-dy / stepSize);
       }
 
       const diff = currentStep - accumulatedDelta;
@@ -166,12 +207,12 @@ export const GridCanvas: React.FC = () => {
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center w-full h-full p-8 overflow-auto bg-slate-950/60 select-none">
+    <div className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none">
       {/* Simulation status banner if collision or victory */}
       {status === 'COLLISION' && (
         <div
           data-testid="status-collision"
-          className="absolute top-4 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 animate-bounce flex items-center gap-2"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 animate-bounce flex items-center gap-2 pointer-events-none"
         >
           <span className="text-xl">💥</span>
         </div>
@@ -180,15 +221,47 @@ export const GridCanvas: React.FC = () => {
       {status === 'SUCCESS' && (
         <div
           data-testid="status-success"
-          className="absolute top-4 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 animate-pulse flex items-center gap-2"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 animate-pulse flex items-center gap-2 pointer-events-none"
         >
           <Trophy className="w-6 h-6" />
           <span className="text-xl">⭐ ⭐ ⭐</span>
         </div>
       )}
 
-      {/* SVG Grid Container with Boundary Drag Handles */}
-      <div className="relative p-2 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-2xl">
+      {/* Scrollable Viewport Container for the Grid Map */}
+      <div
+        ref={containerRef}
+        data-testid="grid-scroll-container"
+        className="w-full h-full overflow-auto flex"
+      >
+        <div
+          data-testid="grid-fit-wrapper"
+          className="m-auto shrink-0 flex items-center justify-center transition-all duration-200"
+          style={
+            isFitToView
+              ? {
+                  width: `${unscaledTotalWidth * scale}px`,
+                  height: `${unscaledTotalHeight * scale}px`,
+                  overflow: 'visible',
+                }
+              : {
+                  padding: '2rem',
+                }
+          }
+        >
+          <div
+            style={
+              isFitToView
+                ? {
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'center center',
+                  }
+                : undefined
+            }
+            className="shrink-0 transition-transform duration-200"
+          >
+            {/* SVG Grid Container with Boundary Drag Handles */}
+            <div className="relative p-2 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-2xl">
         {/* Grid dimensions pill */}
         <div
           data-testid="grid-size-indicator"
@@ -506,21 +579,41 @@ export const GridCanvas: React.FC = () => {
             </g>
           </g>
         </svg>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Floating Trace Toggle Button */}
-      <button
-        data-testid="btn-toggle-trace"
-        onClick={toggleTrace}
-        className={`absolute bottom-4 right-4 p-3 rounded-2xl shadow-lg border-2 transition-all ${
-          showTrace
-            ? 'bg-sky-500 border-sky-300 text-white shadow-sky-500/30'
-            : 'bg-slate-800 border-slate-700 text-slate-400'
-        }`}
-        title="Trace"
-      >
-        <Footprints className="w-6 h-6" />
-      </button>
+      {/* Floating Controls Overlay: Trajectory button and Fit Toggle button (Fixed in place) */}
+      <div className="absolute bottom-4 right-4 z-30 flex flex-col items-center gap-2 pointer-events-auto">
+        {/* Toggle Fit to Screen Button */}
+        <button
+          data-testid="btn-toggle-fit"
+          onClick={toggleFitToView}
+          className={`p-3 rounded-2xl shadow-lg border-2 transition-all ${
+            isFitToView
+              ? 'bg-sky-500 border-sky-300 text-white shadow-sky-500/30'
+              : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+          }`}
+          title={isFitToView ? 'Reset to Actual Size (100%)' : 'Fit to Available Size'}
+        >
+          {isFitToView ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+        </button>
+
+        {/* Floating Trace / Trajectory Toggle Button */}
+        <button
+          data-testid="btn-toggle-trace"
+          onClick={toggleTrace}
+          className={`p-3 rounded-2xl shadow-lg border-2 transition-all ${
+            showTrace
+              ? 'bg-sky-500 border-sky-300 text-white shadow-sky-500/30'
+              : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+          }`}
+          title="Trace"
+        >
+          <Footprints className="w-6 h-6" />
+        </button>
+      </div>
     </div>
   );
 };
