@@ -206,12 +206,16 @@ export function initTouchDragDrop(): () => void {
 
       if (dist >= DRAG_START_THRESHOLD) {
         // If movement started inside the palette, only activate block drag if pointer/touch moves below the block bar
-        const isPaletteItem = sourceElement.closest('[data-testid="palette-container"]');
-        if (isPaletteItem) {
-          const paletteRect = (isPaletteItem as HTMLElement).getBoundingClientRect();
-          const isBelowBar = currentCoords.clientY > paletteRect.bottom;
+        const paletteRow =
+          sourceElement.closest('[data-testid="palette-action-row"]') ||
+          sourceElement.closest('[data-testid="palette-number-row"]') ||
+          sourceElement.closest('[data-testid="palette-container"]');
+        if (paletteRow) {
+          const rowRect = (paletteRow as HTMLElement).getBoundingClientRect();
+          const isBelowBar = currentCoords.clientY > rowRect.bottom + 4;
           if (!isBelowBar) {
-            // Still inside block bar: allow horizontal scrolling, do not trigger drag yet
+            // Still inside block bar: allow horizontal scrolling, do not trigger drag yet, but prevent touchcancel
+            if (e.cancelable) e.preventDefault();
             return;
           }
         }

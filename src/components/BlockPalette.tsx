@@ -92,6 +92,7 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isDownRef = React.useRef(false);
+  const activePointerIdRef = React.useRef<number | null>(null);
   const startXRef = React.useRef(0);
   const startYRef = React.useRef(0);
   const startScrollLeftRef = React.useRef(0);
@@ -109,22 +110,23 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
     }
     dragAvatarRef.current = null;
     isDownRef.current = false;
+    activePointerIdRef.current = null;
     isDraggingBlockRef.current = false;
     targetButtonRef.current = null;
     currentDataTransferRef.current = null;
     lastHoverElRef.current = null;
     setTimeout(() => {
       hasScrolledRef.current = false;
-    }, 50);
+    }, 60);
   }, []);
 
   React.useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       if (!isDownRef.current || !containerRef.current) return;
-      const paletteContainer =
-        containerRef.current.closest('[data-testid="palette-container"]') || containerRef.current;
-      const paletteRect = paletteContainer.getBoundingClientRect();
-      const isBelowBar = e.clientY > paletteRect.bottom;
+      if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
+
+      const rowRect = containerRef.current.getBoundingClientRect();
+      const isBelowBar = e.clientY > rowRect.bottom + 4;
       const dx = e.clientX - startXRef.current;
 
       // Activate block drag if pointer moves below the block bar, even if there was horizontal movement!
@@ -187,8 +189,10 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
       }
     };
 
-    const onMouseUp = (e: MouseEvent) => {
+    const onPointerUp = (e: PointerEvent) => {
       if (!isDownRef.current) return;
+      if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
+
       if (isDraggingBlockRef.current && currentDataTransferRef.current) {
         const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
         if (dropTarget) {
@@ -201,22 +205,25 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
       cleanup();
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', cleanup);
     window.addEventListener('dragend', cleanup);
     window.addEventListener('drop', cleanup);
 
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', cleanup);
       window.removeEventListener('dragend', cleanup);
       window.removeEventListener('drop', cleanup);
     };
   }, [cleanup]);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
     isDownRef.current = true;
+    activePointerIdRef.current = e.pointerId;
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     startScrollLeftRef.current = containerRef.current?.scrollLeft || 0;
@@ -249,11 +256,11 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
     <div
       ref={containerRef}
       data-testid={testId}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
       onClickCapture={handleClickCapture}
       onDragStartCapture={handleDragStartCapture}
       onWheel={handleWheel}
-      className={`palette-scrollbar flex items-center gap-2 overflow-x-auto pb-1.5 select-none ${className}`}
+      className={`palette-scrollbar flex items-center gap-2 overflow-x-auto pb-1.5 select-none touch-none ${className}`}
     >
       {children}
     </div>
