@@ -262,4 +262,32 @@ describe('Lockstep Interpreter & Physics Engine', () => {
     expect(useAppStore.getState().grid.robot.initialX).toBe(0);
     expect(useAppStore.getState().grid.robot.initialY).toBe(2);
   });
+
+  it('executes parameterized turtle actions via decoupled interpreter', () => {
+    const store = useAppStore.getState();
+    store.setSimEnvironment('turtle');
+    store.clearWorkspace();
+
+    // Add FORWARD, TURN_RIGHT (30° with multiplier 3 -> 90°), and SET_PEN_COLOR (red)
+    store.addBlock('MAIN', 'FORWARD');
+    store.addBlock('MAIN', 'TURN_RIGHT', 3, undefined, { angle: 30 });
+    store.addBlock('MAIN', 'SET_PEN_COLOR', undefined, undefined, { color: '#ef4444' });
+
+    // Step 1: Forward
+    store.step();
+    expect(useAppStore.getState().turtleState.robot.y).toBeCloseTo(-50);
+    expect(useAppStore.getState().turtleState.paths).toHaveLength(1);
+
+    // Step 2, 3, 4: Turn right 30° three times (total 90°)
+    store.step();
+    expect(useAppStore.getState().turtleState.robot.heading).toBe(30);
+    store.step();
+    expect(useAppStore.getState().turtleState.robot.heading).toBe(60);
+    store.step();
+    expect(useAppStore.getState().turtleState.robot.heading).toBe(90);
+
+    // Step 5: Set pen color to Red
+    store.step();
+    expect(useAppStore.getState().turtleState.penColor).toBe('#ef4444');
+  });
 });

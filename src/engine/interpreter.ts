@@ -1,13 +1,14 @@
 import {
   WorkspaceState,
-  GridState,
   InterpreterRuntimeState,
   ScopeType,
   CodeBlock,
   StackFrame,
   LoopFrame,
+  GridState,
 } from '../types';
-import { executeRobotAction } from './physics';
+import { SimulationEnvironment } from './simulation/types';
+import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 
 export const MAX_CALL_STACK_DEPTH = 32;
 export const MAX_TOTAL_STEPS = 1000;
@@ -24,9 +25,9 @@ export function createInitialInterpreterState(): InterpreterRuntimeState {
   };
 }
 
-export interface TickResult {
+export interface TickResult<TState = any> {
   nextRuntime: InterpreterRuntimeState;
-  nextGrid: GridState;
+  nextGrid: TState;
   done: boolean;
 }
 
@@ -91,23 +92,27 @@ export function findMatchingLoopEnd(blocks: CodeBlock[], startIdx: number): numb
 }
 
 /**
- * Performs a single atomic lockstep execution tick.
+ * Performs a single atomic lockstep execution tick decoupled from any specific simulation.
  */
-export function tickInterpreter(
+export function tickInterpreter<TState = GridState>(
   runtime: InterpreterRuntimeState,
   workspace: WorkspaceState,
-  grid: GridState
-): TickResult {
+  simState: TState,
+  simEnv: SimulationEnvironment<TState> = gridSimulationEnvironment as unknown as SimulationEnvironment<TState>
+): TickResult<TState> {
   // If already stopped, do nothing
   if (runtime.status === 'SUCCESS' || runtime.status === 'COLLISION') {
-    return { nextRuntime: runtime, nextGrid: grid, done: true };
+    return { nextRuntime: runtime, nextGrid: simState, done: true };
   }
 
   // Safety guard against infinite loops
   if (runtime.stepCount >= MAX_TOTAL_STEPS) {
+    const nextSimState = (simState && typeof simState === 'object')
+      ? { ...simState, status: 'COLLISION' }
+      : simState;
     return {
       nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId: null },
-      nextGrid: { ...grid, status: 'COLLISION' },
+      nextGrid: nextSimState,
       done: true,
     };
   }
@@ -127,11 +132,13 @@ export function tickInterpreter(
 
   // If call stack is empty, program has completed
   if (callStack.length === 0) {
-    // Check if on goal
-    const onGoal = grid.flags.some((f) => f.isGoal && f.x === grid.robot.x && f.y === grid.robot.y);
-    const nonGoalFlags = grid.flags.filter((f) => !f.isGoal);
-    const allCollected = nonGoalFlags.every((f) => f.collected);
-    const finalStatus = onGoal && allCollected ? 'SUCCESS' : 'IDLE';
+    const finalStatus = simEnv.evaluateCompletion
+      ? simEnv.evaluateCompletion(simState)
+      : 'IDLE';
+
+    const nextSimState = (simState && typeof simState === 'object')
+      ? { ...simState, status: finalStatus }
+      : simState;
 
     return {
       nextRuntime: {
@@ -140,10 +147,7 @@ export function tickInterpreter(
         activeBlockId: null,
         status: finalStatus,
       },
-      nextGrid: {
-        ...grid,
-        status: finalStatus,
-      },
+      nextGrid: nextSimState,
       done: true,
     };
   }
@@ -154,7 +158,7 @@ export function tickInterpreter(
 
   if (!currentBlock) {
     callStack.pop();
-    return tickInterpreter({ ...runtime, callStack }, workspace, grid);
+    return tickInterpreter({ ...runtime, callStack }, workspace, simState, simEnv);
   }
 
   const blockType = currentBlock.type;
@@ -172,9 +176,12 @@ export function tickInterpreter(
 
     // Check stack overflow
     if (callStack.length >= MAX_CALL_STACK_DEPTH) {
+      const nextSimState = (simState && typeof simState === 'object')
+        ? { ...simState, status: 'COLLISION' }
+        : simState;
       return {
         nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId },
-        nextGrid: { ...grid, status: 'COLLISION' },
+        nextGrid: nextSimState,
         done: true,
       };
     }
@@ -192,7 +199,7 @@ export function tickInterpreter(
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
       },
-      nextGrid: grid,
+      nextGrid: simState,
       done: false,
     };
   }
@@ -228,7 +235,7 @@ export function tickInterpreter(
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
       },
-      nextGrid: grid,
+      nextGrid: simState,
       done: false,
     };
   }
@@ -261,12 +268,12 @@ export function tickInterpreter(
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
       },
-      nextGrid: grid,
+      nextGrid: simState,
       done: false,
     };
   }
 
-  // Handle Basic Movement/Turning blocks (MOVE_FWD, MOVE_BACK, TURN_LEFT, TURN_RIGHT)
+  // Handle Domain Action blocks (e.g. MOVE_FWD, TURN_LEFT, SET_PEN_COLOR, etc.)
   const totalRepeats = currentBlock.repeatCount ?? 1;
   const currentSubTick = currentFrame.subTickLeft > 0 ? currentFrame.subTickLeft : totalRepeats;
   const iterationIndex = totalRepeats - currentSubTick + 1;
@@ -275,13 +282,13 @@ export function tickInterpreter(
       ? { blockId: currentBlock.id, current: iterationIndex, total: totalRepeats }
       : null;
 
-  // Execute motion in physics engine
-  const moveRes = executeRobotAction(
-    blockType as 'MOVE_FWD' | 'MOVE_BACK' | 'TURN_LEFT' | 'TURN_RIGHT',
-    grid
-  );
+  // Delegate action to the active simulation environment!
+  const actionRes = simEnv.executeAction(blockType, simState, {
+    repeatCount: totalRepeats,
+    params: currentBlock.params,
+  });
 
-  if (moveRes.isCollision) {
+  if (actionRes.isCollision) {
     return {
       nextRuntime: {
         ...runtime,
@@ -291,10 +298,7 @@ export function tickInterpreter(
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress,
       },
-      nextGrid: {
-        ...grid,
-        status: 'COLLISION',
-      },
+      nextGrid: actionRes.nextState,
       done: true,
     };
   }
@@ -309,20 +313,7 @@ export function tickInterpreter(
 
   callStack[callStack.length - 1] = currentFrame;
 
-  const nextGrid: GridState = {
-    ...grid,
-    robot: {
-      ...grid.robot,
-      x: moveRes.newX,
-      y: moveRes.newY,
-      dir: moveRes.newDir,
-    },
-    flags: moveRes.flags,
-    trace: moveRes.trace,
-    status: moveRes.isSuccess ? 'SUCCESS' : 'RUNNING',
-  };
-
-  const isDone = moveRes.isSuccess;
+  const isDone = actionRes.isSuccess || actionRes.status === 'SUCCESS';
 
   return {
     nextRuntime: {
@@ -331,11 +322,11 @@ export function tickInterpreter(
       loopStack,
       activeBlockId,
       activeScope,
-      status: moveRes.isSuccess ? 'SUCCESS' : 'RUNNING',
+      status: actionRes.status,
       stepCount: runtime.stepCount + 1,
       activeRepeatProgress,
     },
-    nextGrid,
+    nextGrid: actionRes.nextState,
     done: isDone,
   };
 }

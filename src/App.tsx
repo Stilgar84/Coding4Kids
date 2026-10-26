@@ -2,10 +2,16 @@ import React from 'react';
 import { Toolbar } from './components/Toolbar';
 import { BlockPalette } from './components/BlockPalette';
 import { WorkspaceCanvas } from './components/WorkspaceCanvas';
-import { GridCanvas } from './components/GridCanvas';
 import { SolutionModal } from './components/SolutionModal';
+import { useAppStore } from './store/useAppStore';
+import { getSimEnvironment } from './engine/simulation/registry';
 
 export const App: React.FC = () => {
+  const { activeSimId, grid, turtleState, runtime } = useAppStore();
+  const simEnv = getSimEnvironment(activeSimId);
+  const Renderer = simEnv?.Renderer;
+  const activeState = activeSimId === 'grid' ? grid : turtleState;
+
   return (
     <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Application Bar */}
@@ -22,12 +28,12 @@ export const App: React.FC = () => {
           <WorkspaceCanvas />
         </section>
 
-        {/* Right Pane: 2D Robot Simulation Grid */}
+        {/* Right Pane: Active Simulation World (Grid or Turtle LOGO) */}
         <section
           data-testid="pane-simulation"
           className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
         >
-          <GridCanvas />
+          {Renderer && <Renderer state={activeState} runtimeStatus={runtime?.status} />}
         </section>
       </main>
 
@@ -38,3 +44,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

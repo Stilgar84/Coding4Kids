@@ -131,7 +131,7 @@ export const WorkspaceCanvas: React.FC = () => {
     try {
       const data = JSON.parse(dataStr);
       if (data.type === 'PALETTE_BLOCK') {
-        addBlock(activeScope, data.blockType, undefined, targetIndex);
+        addBlock(activeScope, data.blockType, undefined, targetIndex, data.params);
       } else if (data.type === 'WORKSPACE_BLOCK') {
         const fromIndex = data.index;
         if (fromIndex !== undefined && fromIndex !== null && fromIndex !== targetIndex) {

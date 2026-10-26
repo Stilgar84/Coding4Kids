@@ -56,7 +56,7 @@ function extractTouchCoords(touch: Touch): TouchCoords {
   };
 }
 
-function dispatchDragEvent(
+export function dispatchDragEvent(
   type: 'dragstart' | 'drag' | 'dragenter' | 'dragleave' | 'dragover' | 'drop' | 'dragend',
   target: EventTarget,
   coords: TouchCoords,
@@ -205,7 +205,18 @@ export function initTouchDragDrop(): () => void {
       const dist = Math.hypot(dx, dy);
 
       if (dist >= DRAG_START_THRESHOLD) {
-        // Drag threshold reached: initiate drag operation
+        // If movement started inside the palette, only activate block drag if pointer/touch moves below the block bar
+        const isPaletteItem = sourceElement.closest('[data-testid="palette-container"]');
+        if (isPaletteItem) {
+          const paletteRect = (isPaletteItem as HTMLElement).getBoundingClientRect();
+          const isBelowBar = currentCoords.clientY > paletteRect.bottom;
+          if (!isBelowBar) {
+            // Still inside block bar: allow horizontal scrolling, do not trigger drag yet
+            return;
+          }
+        }
+
+        // Drag threshold reached (and below block bar if from palette): initiate drag operation
         isDragging = true;
         currentDataTransfer = new TouchDataTransfer();
 
@@ -222,10 +233,10 @@ export function initTouchDragDrop(): () => void {
           return;
         }
 
-        // Create drag avatar clone
+        // Create drag avatar clone centered around pointer/touch
         const rect = sourceElement.getBoundingClientRect();
-        avatarOffsetX = startCoords.clientX - rect.left;
-        avatarOffsetY = startCoords.clientY - rect.top;
+        avatarOffsetX = rect.width / 2;
+        avatarOffsetY = rect.height / 2;
 
         dragAvatar = sourceElement.cloneNode(true) as HTMLElement;
         dragAvatar.removeAttribute('id');

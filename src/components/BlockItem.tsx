@@ -9,6 +9,10 @@ import {
   Undo2,
   PhoneCall,
   AlertTriangle,
+  RotateCcw,
+  RotateCw,
+  PenTool,
+  Slash,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -46,12 +50,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   const { updateBlockRepeat } = useAppStore();
   const [isNumberHovered, setIsNumberHovered] = useState(false);
 
-  const supportsMultiplier =
-    block.type === 'MOVE_FWD' ||
-    block.type === 'MOVE_BACK' ||
-    block.type === 'TURN_LEFT' ||
-    block.type === 'TURN_RIGHT' ||
-    block.type === 'LOOP_START';
+  // Check if block type supports repeat multipliers
+  const nonRepeatableTypes = ['PEN_UP', 'PEN_DOWN', 'SET_PEN_COLOR', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'CALL_F3'];
+  const supportsMultiplier = !nonRepeatableTypes.includes(block.type);
 
   const showRepeatBadge =
     supportsMultiplier &&
@@ -60,13 +61,13 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
   // Block color & icon mapping
   const renderBlockContent = () => {
-    // For runtime active node, use direct color change to vibrant yellow (no circle around it)
     const activeClass =
       'bg-yellow-400 border-yellow-200 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.85)]';
     const iconColor = isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]';
 
     switch (block.type) {
       case 'MOVE_FWD':
+      case 'FORWARD':
         return (
           <div
             className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
@@ -76,7 +77,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             <ArrowUp className={`w-7 h-7 ${iconColor}`} />
           </div>
         );
+
       case 'MOVE_BACK':
+      case 'BACKWARD':
         return (
           <div
             className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
@@ -86,6 +89,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             <ArrowDown className={`w-7 h-7 ${iconColor}`} />
           </div>
         );
+
       case 'TURN_LEFT':
         return (
           <div
@@ -93,9 +97,19 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               isActive ? activeClass : 'bg-amber-600 border-amber-400'
             }`}
           >
-            <CornerUpLeft className={`w-7 h-7 ${iconColor}`} />
+            {block.params?.angle ? (
+              <div className="flex flex-col items-center justify-center leading-none">
+                <RotateCcw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
+                <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>
+                  {block.params.angle}°
+                </span>
+              </div>
+            ) : (
+              <CornerUpLeft className={`w-7 h-7 ${iconColor}`} />
+            )}
           </div>
         );
+
       case 'TURN_RIGHT':
         return (
           <div
@@ -103,9 +117,94 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               isActive ? activeClass : 'bg-amber-600 border-amber-400'
             }`}
           >
-            <CornerUpRight className={`w-7 h-7 ${iconColor}`} />
+            {block.params?.angle ? (
+              <div className="flex flex-col items-center justify-center leading-none">
+                <RotateCw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
+                <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>
+                  {block.params.angle}°
+                </span>
+              </div>
+            ) : (
+              <CornerUpRight className={`w-7 h-7 ${iconColor}`} />
+            )}
           </div>
         );
+
+      case 'ARC_LEFT':
+        return (
+          <div
+            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
+              isActive ? activeClass : 'bg-indigo-600 border-indigo-400'
+            }`}
+          >
+            <div className="flex flex-col items-center justify-center leading-none">
+              <svg className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`} viewBox="0 0 24 24" fill="none" strokeWidth="2.5">
+                <path d="M 19 20 A 15 15 0 0 0 4 5" />
+                <polyline points="4 10 4 5 9 5" />
+              </svg>
+              <span className={`text-[9px] font-black ${isActive ? 'text-slate-950' : 'text-indigo-200'}`}>Arc L</span>
+            </div>
+          </div>
+        );
+
+      case 'ARC_RIGHT':
+        return (
+          <div
+            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
+              isActive ? activeClass : 'bg-indigo-600 border-indigo-400'
+            }`}
+          >
+            <div className="flex flex-col items-center justify-center leading-none">
+              <svg className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`} viewBox="0 0 24 24" fill="none" strokeWidth="2.5">
+                <path d="M 5 20 A 15 15 0 0 1 20 5" />
+                <polyline points="20 10 20 5 15 5" />
+              </svg>
+              <span className={`text-[9px] font-black ${isActive ? 'text-slate-950' : 'text-indigo-200'}`}>Arc R</span>
+            </div>
+          </div>
+        );
+
+      case 'PEN_UP':
+        return (
+          <div
+            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
+              isActive ? activeClass : 'bg-teal-700 border-teal-400'
+            }`}
+          >
+            <div className="relative flex items-center justify-center">
+              <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950' : 'text-teal-200'}`} />
+              <Slash className="w-7 h-7 text-red-400 stroke-[2.5] absolute -top-0.5 -left-0.5" />
+            </div>
+          </div>
+        );
+
+      case 'PEN_DOWN':
+        return (
+          <div
+            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
+              isActive ? activeClass : 'bg-teal-600 border-teal-300'
+            }`}
+          >
+            <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-teal-100 stroke-[2.5]'}`} />
+          </div>
+        );
+
+      case 'SET_PEN_COLOR': {
+        const color = block.params?.color || '#0f172a';
+        return (
+          <div
+            className={`w-full h-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-2 shadow-md transition-colors ${
+              isActive ? activeClass : 'bg-slate-800 border-slate-500'
+            }`}
+          >
+            <div
+              className="w-5 h-5 rounded-full border-2 border-white shadow-sm"
+              style={{ backgroundColor: color }}
+            />
+          </div>
+        );
+      }
+
       case 'LOOP_START':
         return (
           <div
@@ -116,6 +215,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             <Repeat className={`w-7 h-7 ${iconColor}`} />
           </div>
         );
+
       case 'LOOP_END':
         return (
           <div
@@ -130,6 +230,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             />
           </div>
         );
+
       case 'CALL_F1':
         return (
           <div
@@ -147,6 +248,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             </span>
           </div>
         );
+
       case 'CALL_F2':
         return (
           <div
@@ -164,6 +266,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             </span>
           </div>
         );
+
       case 'CALL_F3':
         return (
           <div
@@ -179,6 +282,17 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             >
               3
             </span>
+          </div>
+        );
+
+      default:
+        return (
+          <div
+            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md ${
+              isActive ? activeClass : 'bg-slate-700 border-slate-500'
+            }`}
+          >
+            <span className="text-xs font-bold text-white truncate">{block.type}</span>
           </div>
         );
     }
@@ -349,3 +463,4 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     </div>
   );
 };
+

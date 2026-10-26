@@ -1,60 +1,32 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { BlockType } from '../types';
+import { getSimEnvironment } from '../engine/simulation/registry';
+import { SimPaletteItem } from '../engine/simulation/types';
 import {
-  ArrowUp,
-  ArrowDown,
-  CornerUpLeft,
-  CornerUpRight,
   Repeat,
   Undo2,
   PhoneCall,
   Trash2,
 } from 'lucide-react';
+import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
 
-interface PaletteItem {
-  type: BlockType;
+interface CoreControlItem {
+  type: string;
   testId: string;
   icon: React.ReactNode;
   bgClass: string;
   borderClass: string;
+  supportsRepeat?: boolean;
 }
 
-const PALETTE_ITEMS: PaletteItem[] = [
-  {
-    type: 'MOVE_FWD',
-    testId: 'palette-move-fwd',
-    icon: <ArrowUp className="w-8 h-8 text-white stroke-[3]" />,
-    bgClass: 'bg-sky-600 hover:bg-sky-500',
-    borderClass: 'border-sky-400',
-  },
-  {
-    type: 'MOVE_BACK',
-    testId: 'palette-move-back',
-    icon: <ArrowDown className="w-8 h-8 text-white stroke-[3]" />,
-    bgClass: 'bg-sky-700 hover:bg-sky-600',
-    borderClass: 'border-sky-500',
-  },
-  {
-    type: 'TURN_LEFT',
-    testId: 'palette-turn-left',
-    icon: <CornerUpLeft className="w-8 h-8 text-white stroke-[3]" />,
-    bgClass: 'bg-amber-600 hover:bg-amber-500',
-    borderClass: 'border-amber-400',
-  },
-  {
-    type: 'TURN_RIGHT',
-    testId: 'palette-turn-right',
-    icon: <CornerUpRight className="w-8 h-8 text-white stroke-[3]" />,
-    bgClass: 'bg-amber-600 hover:bg-amber-500',
-    borderClass: 'border-amber-400',
-  },
+const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   {
     type: 'LOOP_START',
     testId: 'palette-loop-start',
     icon: <Repeat className="w-8 h-8 text-white stroke-[3]" />,
     bgClass: 'bg-purple-700 hover:bg-purple-600',
     borderClass: 'border-purple-400',
+    supportsRepeat: true,
   },
   {
     type: 'LOOP_END',
@@ -62,6 +34,7 @@ const PALETTE_ITEMS: PaletteItem[] = [
     icon: <Undo2 className="w-8 h-8 text-purple-200 stroke-[3]" />,
     bgClass: 'bg-purple-900 hover:bg-purple-800',
     borderClass: 'border-purple-500',
+    supportsRepeat: false,
   },
   {
     type: 'CALL_F1',
@@ -74,6 +47,7 @@ const PALETTE_ITEMS: PaletteItem[] = [
     ),
     bgClass: 'bg-emerald-600 hover:bg-emerald-500',
     borderClass: 'border-emerald-400',
+    supportsRepeat: false,
   },
   {
     type: 'CALL_F2',
@@ -86,6 +60,7 @@ const PALETTE_ITEMS: PaletteItem[] = [
     ),
     bgClass: 'bg-blue-600 hover:bg-blue-500',
     borderClass: 'border-blue-400',
+    supportsRepeat: false,
   },
   {
     type: 'CALL_F3',
@@ -98,13 +73,196 @@ const PALETTE_ITEMS: PaletteItem[] = [
     ),
     bgClass: 'bg-rose-600 hover:bg-rose-500',
     borderClass: 'border-rose-400',
+    supportsRepeat: false,
   },
 ];
 
 const NUMBER_BADGES = [2, 3, 4, 5, 6, 7, 8, 9];
 
+interface PaletteScrollRowProps {
+  children: React.ReactNode;
+  className?: string;
+  testId?: string;
+}
+
+export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
+  children,
+  className = '',
+  testId,
+}) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const isDownRef = React.useRef(false);
+  const startXRef = React.useRef(0);
+  const startYRef = React.useRef(0);
+  const startScrollLeftRef = React.useRef(0);
+  const isDraggingBlockRef = React.useRef(false);
+  const hasScrolledRef = React.useRef(false);
+  const targetButtonRef = React.useRef<HTMLElement | null>(null);
+  const dragAvatarRef = React.useRef<HTMLElement | null>(null);
+  const avatarOffsetRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const currentDataTransferRef = React.useRef<TouchDataTransfer | null>(null);
+  const lastHoverElRef = React.useRef<Element | null>(null);
+
+  const cleanup = React.useCallback(() => {
+    if (dragAvatarRef.current && dragAvatarRef.current.parentElement) {
+      dragAvatarRef.current.parentElement.removeChild(dragAvatarRef.current);
+    }
+    dragAvatarRef.current = null;
+    isDownRef.current = false;
+    isDraggingBlockRef.current = false;
+    targetButtonRef.current = null;
+    currentDataTransferRef.current = null;
+    lastHoverElRef.current = null;
+    setTimeout(() => {
+      hasScrolledRef.current = false;
+    }, 50);
+  }, []);
+
+  React.useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDownRef.current || !containerRef.current) return;
+      const paletteContainer =
+        containerRef.current.closest('[data-testid="palette-container"]') || containerRef.current;
+      const paletteRect = paletteContainer.getBoundingClientRect();
+      const isBelowBar = e.clientY > paletteRect.bottom;
+      const dx = e.clientX - startXRef.current;
+
+      // Activate block drag if pointer moves below the block bar, even if there was horizontal movement!
+      if (!isDraggingBlockRef.current && targetButtonRef.current && isBelowBar) {
+        isDraggingBlockRef.current = true;
+        const dataTransfer = new TouchDataTransfer();
+        currentDataTransferRef.current = dataTransfer;
+
+        // Dispatch dragstart on the source button to populate payload
+        dispatchDragEvent('dragstart', targetButtonRef.current, e, dataTransfer);
+
+        // Create drag avatar centered around pointer
+        const rect = targetButtonRef.current.getBoundingClientRect();
+        avatarOffsetRef.current = { x: rect.width / 2, y: rect.height / 2 };
+        const avatar = targetButtonRef.current.cloneNode(true) as HTMLElement;
+        avatar.removeAttribute('id');
+        avatar.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+        Object.assign(avatar.style, {
+          position: 'fixed',
+          left: `${e.clientX - avatarOffsetRef.current.x}px`,
+          top: `${e.clientY - avatarOffsetRef.current.y}px`,
+          width: `${rect.width}px`,
+          height: `${rect.height}px`,
+          margin: '0',
+          zIndex: '999999',
+          pointerEvents: 'none',
+          opacity: '0.88',
+          transform: 'scale(1.06)',
+          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.5)',
+          boxSizing: 'border-box',
+        });
+        document.body.appendChild(avatar);
+        dragAvatarRef.current = avatar;
+      }
+
+      if (isDraggingBlockRef.current) {
+        if (dragAvatarRef.current) {
+          dragAvatarRef.current.style.left = `${e.clientX - avatarOffsetRef.current.x}px`;
+          dragAvatarRef.current.style.top = `${e.clientY - avatarOffsetRef.current.y}px`;
+        }
+        const hoverEl = document.elementFromPoint(e.clientX, e.clientY);
+        if (hoverEl !== lastHoverElRef.current) {
+          if (lastHoverElRef.current && currentDataTransferRef.current) {
+            dispatchDragEvent('dragleave', lastHoverElRef.current, e, currentDataTransferRef.current, hoverEl);
+          }
+          if (hoverEl && currentDataTransferRef.current) {
+            dispatchDragEvent('dragenter', hoverEl, e, currentDataTransferRef.current, lastHoverElRef.current);
+          }
+          lastHoverElRef.current = hoverEl;
+        }
+        if (hoverEl && currentDataTransferRef.current) {
+          dispatchDragEvent('dragover', hoverEl, e, currentDataTransferRef.current);
+        }
+      } else {
+        // Horizontal scroll inside/around the bar
+        if (Math.abs(dx) > 3) {
+          containerRef.current.scrollLeft = startScrollLeftRef.current - dx;
+          hasScrolledRef.current = true;
+        }
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isDownRef.current) return;
+      if (isDraggingBlockRef.current && currentDataTransferRef.current) {
+        const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
+        if (dropTarget) {
+          dispatchDragEvent('drop', dropTarget, e, currentDataTransferRef.current);
+        }
+        if (targetButtonRef.current) {
+          dispatchDragEvent('dragend', targetButtonRef.current, e, currentDataTransferRef.current);
+        }
+      }
+      cleanup();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('dragend', cleanup);
+    window.addEventListener('drop', cleanup);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('dragend', cleanup);
+      window.removeEventListener('drop', cleanup);
+    };
+  }, [cleanup]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    isDownRef.current = true;
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+    startScrollLeftRef.current = containerRef.current?.scrollLeft || 0;
+    isDraggingBlockRef.current = false;
+    hasScrolledRef.current = false;
+    targetButtonRef.current = (e.target as HTMLElement).closest('button');
+  };
+
+  const handleClickCapture = (e: React.MouseEvent) => {
+    if (hasScrolledRef.current || isDraggingBlockRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      hasScrolledRef.current = false;
+    }
+  };
+
+  const handleDragStartCapture = (e: React.DragEvent) => {
+    // Suppress native dragstart within block bar so our smooth drag & scroll take precedence
+    e.preventDefault();
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      containerRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid={testId}
+      onMouseDown={handleMouseDown}
+      onClickCapture={handleClickCapture}
+      onDragStartCapture={handleDragStartCapture}
+      onWheel={handleWheel}
+      className={`palette-scrollbar flex items-center gap-2 overflow-x-auto pb-1.5 select-none ${className}`}
+    >
+      {children}
+    </div>
+  );
+};
+
 export const BlockPalette: React.FC = () => {
   const {
+    activeSimId,
     activeScope,
     addBlock,
     workspace,
@@ -115,17 +273,32 @@ export const BlockPalette: React.FC = () => {
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
 
-  const handleAdd = (type: BlockType) => {
+  const currentSimEnv = getSimEnvironment(activeSimId);
+  const simPaletteItems: SimPaletteItem[] = currentSimEnv?.paletteItems || [];
+
+  const handleAddSimBlock = (item: SimPaletteItem) => {
     const blocks = workspace[activeScope] || [];
     if (selectedBlockId) {
       const idx = blocks.findIndex((b) => b.id === selectedBlockId);
       if (idx !== -1) {
-        addBlock(activeScope, type, undefined, idx + 1);
+        addBlock(activeScope, item.actionType, undefined, idx + 1, item.params);
         return;
       }
     }
     // Default to end
-    addBlock(activeScope, type, undefined, blocks.length);
+    addBlock(activeScope, item.actionType, undefined, blocks.length, item.params);
+  };
+
+  const handleAddCoreBlock = (item: CoreControlItem) => {
+    const blocks = workspace[activeScope] || [];
+    if (selectedBlockId) {
+      const idx = blocks.findIndex((b) => b.id === selectedBlockId);
+      if (idx !== -1) {
+        addBlock(activeScope, item.type, undefined, idx + 1);
+        return;
+      }
+    }
+    addBlock(activeScope, item.type, undefined, blocks.length);
   };
 
   const handleNumberClick = (num: number) => {
@@ -140,27 +313,47 @@ export const BlockPalette: React.FC = () => {
       targetBlock = blocks[blocks.length - 1];
     }
 
-    if (
-      targetBlock &&
-      (targetBlock.type === 'MOVE_FWD' ||
-        targetBlock.type === 'MOVE_BACK' ||
-        targetBlock.type === 'TURN_LEFT' ||
-        targetBlock.type === 'TURN_RIGHT' ||
-        targetBlock.type === 'LOOP_START')
-    ) {
+    if (!targetBlock) return;
+
+    // Check if current block supports repeat
+    const isControlRepeatable = targetBlock.type === 'LOOP_START';
+    const isSimRepeatable = simPaletteItems.some(
+      (p) => p.actionType === targetBlock.type && p.supportsRepeat !== false
+    );
+    // Legacy support for basic grid types
+    const isGridRepeatable =
+      targetBlock.type === 'MOVE_FWD' ||
+      targetBlock.type === 'MOVE_BACK' ||
+      targetBlock.type === 'TURN_LEFT' ||
+      targetBlock.type === 'TURN_RIGHT';
+
+    if (isControlRepeatable || isSimRepeatable || isGridRepeatable) {
       updateBlockRepeat(activeScope, targetBlock.id, num);
     }
   };
 
-  const handlePaletteBlockDragStart = (e: React.DragEvent, type: BlockType) => {
+  const handlePaletteBlockDragStart = (e: React.DragEvent, item: SimPaletteItem) => {
     e.dataTransfer.setData(
       'application/json',
       JSON.stringify({
         type: 'PALETTE_BLOCK',
-        blockType: type,
+        blockType: item.actionType,
+        params: item.params,
       })
     );
-    e.dataTransfer.setData('application/x-robotemu-block', type);
+    e.dataTransfer.setData('application/x-robotemu-block', item.actionType);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleCoreControlDragStart = (e: React.DragEvent, item: CoreControlItem) => {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'PALETTE_BLOCK',
+        blockType: item.type,
+      })
+    );
+    e.dataTransfer.setData('application/x-robotemu-block', item.type);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -177,7 +370,6 @@ export const BlockPalette: React.FC = () => {
   };
 
   const handleDragOverPalette = (e: React.DragEvent) => {
-    // Only accept drag if it's a WORKSPACE_BLOCK
     e.preventDefault();
     setIsDeleteHovered(true);
   };
@@ -225,24 +417,46 @@ export const BlockPalette: React.FC = () => {
         </div>
       )}
 
-      {/* Draggable/Tappable Palette Blocks */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {PALETTE_ITEMS.map((item) => (
+      {/* Draggable/Tappable Action & Control Blocks */}
+      <PaletteScrollRow testId="palette-action-row">
+        {/* Dynamic Simulation Palette Blocks */}
+        {simPaletteItems.map((item) => {
+          const testId = `palette-${item.id}`;
+          return (
+            <button
+              key={item.id}
+              data-testid={testId}
+              draggable
+              onDragStart={(e) => handlePaletteBlockDragStart(e, item)}
+              onClick={() => handleAddSimBlock(item)}
+              title={item.name}
+              className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[56px] min-h-[56px] ${item.bgClass} ${item.borderClass}`}
+            >
+              {item.icon({ isActive: false })}
+            </button>
+          );
+        })}
+
+        {/* Vertical divider */}
+        <div className="w-[1px] h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
+
+        {/* Core Control Structure Blocks (LOOP, Functions) */}
+        {CORE_CONTROL_ITEMS.map((item) => (
           <button
             key={item.type}
             data-testid={item.testId}
             draggable
-            onDragStart={(e) => handlePaletteBlockDragStart(e, item.type)}
-            onClick={() => handleAdd(item.type)}
-            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none ${item.bgClass} ${item.borderClass}`}
+            onDragStart={(e) => handleCoreControlDragStart(e, item)}
+            onClick={() => handleAddCoreBlock(item)}
+            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[56px] min-h-[56px] ${item.bgClass} ${item.borderClass}`}
           >
             {item.icon}
           </button>
         ))}
-      </div>
+      </PaletteScrollRow>
 
       {/* Number Multipliers Row */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <PaletteScrollRow testId="palette-number-row">
         {NUMBER_BADGES.map((num) => (
           <button
             key={num}
@@ -256,7 +470,8 @@ export const BlockPalette: React.FC = () => {
             {num}
           </button>
         ))}
-      </div>
+      </PaletteScrollRow>
     </div>
   );
 };
+

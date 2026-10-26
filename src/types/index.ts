@@ -13,9 +13,11 @@ export type BlockType =
 
 export interface CodeBlock {
   id: string;
-  type: BlockType;
+  type: string;
   /** Multiplier badge for movement or loop iteration count (2..9) */
   repeatCount?: number;
+  /** Block configuration parameters (e.g. angle: 30, color: '#ef4444') */
+  params?: Record<string, any>;
 }
 
 export type ScopeType = 'MAIN' | 'F1' | 'F2' | 'F3';

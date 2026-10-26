@@ -4,11 +4,18 @@ import {
   WorkspaceState,
   InterpreterRuntimeState,
   ScopeType,
-  BlockType,
   WallEdge,
   Direction,
   CodeBlock,
 } from '../types';
+import { TurtleState } from '../simulations/turtle/types';
+import { createInitialTurtleState, turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
+import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
+import { getSimEnvironment, registerSimulation } from '../engine/simulation/registry';
+
+// Register environments
+registerSimulation(gridSimulationEnvironment);
+registerSimulation(turtleSimulationEnvironment);
 import {
   createInitialInterpreterState,
   tickInterpreter,
@@ -37,18 +44,22 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
 }));
 
 interface AppState {
+  // Environment selection
+  activeSimId: 'grid' | 'turtle';
   currentLevel: number;
   grid: GridState;
+  turtleState: TurtleState;
   workspace: WorkspaceState;
   activeScope: ScopeType;
   selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
   isPlaying: boolean;
-  speed: number; // ms per tick: 600, 300, 150
+  speed: number; // ms per tick: 400 (1x), 200 (2x), 100 (4x), 50 (8x)
   editorTool: EditorTool;
   isSolutionOpen: boolean;
 
   // Actions
+  setSimEnvironment: (simId: 'grid' | 'turtle') => void;
   setLevel: (levelId: number) => void;
   setActiveScope: (scope: ScopeType) => void;
   setSelectedBlockId: (id: string | null) => void;
@@ -58,7 +69,7 @@ interface AppState {
   loadSolution: (lessonId?: number) => void;
 
   // Workspace actions
-  addBlock: (scope: ScopeType, type: BlockType, repeatCount?: number, insertAtIndex?: number) => void;
+  addBlock: (scope: ScopeType, type: string, repeatCount?: number, insertAtIndex?: number, params?: Record<string, any>) => void;
   removeBlock: (scope: ScopeType, blockId: string) => void;
   updateBlockRepeat: (scope: ScopeType, blockId: string, repeatCount?: number) => void;
   reorderBlocks: (scope: ScopeType, fromIndex: number, toIndex: number) => void;
@@ -72,6 +83,10 @@ interface AppState {
   toggleTrace: () => void;
   toggleFitToView: () => void;
   clearGridUserCustoms: () => void;
+
+  // Turtle environment actions
+  updateTurtleViewport: (updates: Partial<{ pan: { x: number; y: number }; zoom: number; fitToView: boolean }>) => void;
+  clearTurtleCanvas: () => void;
 
   // Execution actions
   step: () => void;
@@ -103,8 +118,10 @@ export const useAppStore = create<AppState>((set, get) => {
   });
 
   return {
+    activeSimId: 'grid',
     currentLevel: 1,
     grid: createGridFromPreset(initialPreset),
+    turtleState: createInitialTurtleState(),
     workspace: {
       MAIN: [],
       F1: [],
@@ -118,6 +135,11 @@ export const useAppStore = create<AppState>((set, get) => {
     speed: 400,
     editorTool: 'NONE',
     isSolutionOpen: false,
+
+    setSimEnvironment: (simId) => {
+      get().reset();
+      set({ activeSimId: simId });
+    },
 
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
 
@@ -159,11 +181,25 @@ export const useAppStore = create<AppState>((set, get) => {
     setActiveScope: (scope) => set({ activeScope: scope, selectedBlockId: null }),
     setSelectedBlockId: (id) => set({ selectedBlockId: id }),
     setEditorTool: (tool) => set({ editorTool: tool }),
-    setSpeed: (speed) => set({ speed }),
+    setSpeed: (speed) => {
+      set({ speed });
+      // If currently playing, restart the interval with the updated speed
+      if (get().isPlaying && timerId) {
+        clearInterval(timerId);
+        timerId = setInterval(() => {
+          if (!get().isPlaying) {
+            if (timerId) clearInterval(timerId);
+            timerId = null;
+            return;
+          }
+          get().step();
+        }, speed);
+      }
+    },
 
-    addBlock: (scope, type, repeatCount, insertAtIndex) => {
+    addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
       const id = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newBlock = { id, type, repeatCount };
+      const newBlock: CodeBlock = { id, type, repeatCount, params };
       set((state) => {
         const currentBlocks = [...state.workspace[scope]];
         if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
@@ -442,8 +478,25 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ grid: createGridFromPreset(preset, prevFitToView) });
     },
 
+    updateTurtleViewport: (updates) => {
+      set((state) => ({
+        turtleState: {
+          ...state.turtleState,
+          ...updates,
+          pan: updates.pan ? { ...state.turtleState.pan, ...updates.pan } : state.turtleState.pan,
+        },
+      }));
+    },
+
+    clearTurtleCanvas: () => {
+      get().reset();
+      set({
+        turtleState: createInitialTurtleState(),
+      });
+    },
+
     step: () => {
-      const { runtime, workspace, grid } = get();
+      const { runtime, workspace, activeSimId, grid, turtleState } = get();
 
       // Guard: do not execute if loops are unclosed in any used workspace scope
       for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
@@ -456,20 +509,32 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       const currentRuntime = runtime || createInitialInterpreterState();
+      const simEnv = getSimEnvironment(activeSimId);
+      if (!simEnv) return;
 
-      const res = tickInterpreter(currentRuntime, workspace, grid);
+      const activeState = activeSimId === 'grid' ? grid : turtleState;
+      const res = tickInterpreter(currentRuntime, workspace, activeState, simEnv);
 
       // Auto switch active tab to current running scope if function called
       const activeScope = res.nextRuntime.callStack.length > 0
         ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
         : get().activeScope;
 
-      set({
-        runtime: res.nextRuntime,
-        grid: res.nextGrid,
-        activeScope,
-        isPlaying: !res.done && get().isPlaying,
-      });
+      if (activeSimId === 'grid') {
+        set({
+          runtime: res.nextRuntime,
+          grid: res.nextGrid as GridState,
+          activeScope,
+          isPlaying: !res.done && get().isPlaying,
+        });
+      } else {
+        set({
+          runtime: res.nextRuntime,
+          turtleState: res.nextGrid as TurtleState,
+          activeScope,
+          isPlaying: !res.done && get().isPlaying,
+        });
+      }
 
       if (res.done && timerId) {
         clearInterval(timerId);
@@ -481,10 +546,11 @@ export const useAppStore = create<AppState>((set, get) => {
     play: () => {
       if (get().isPlaying) return;
 
-      const { grid, runtime } = get();
+      const { activeSimId, grid, turtleState, runtime } = get();
+      const currentSimState = activeSimId === 'grid' ? grid : turtleState;
       const hasEndedOrFail =
-        grid.status === 'SUCCESS' ||
-        grid.status === 'COLLISION' ||
+        currentSimState.status === 'SUCCESS' ||
+        currentSimState.status === 'COLLISION' ||
         (runtime !== null && runtime.callStack.length === 0);
 
       if (hasEndedOrFail) {
@@ -528,23 +594,38 @@ export const useAppStore = create<AppState>((set, get) => {
     reset: () => {
       if (timerId) clearInterval(timerId);
       timerId = null;
-      const { grid } = get();
-      set({
-        isPlaying: false,
-        runtime: null,
-        grid: {
-          ...grid,
-          robot: {
-            ...grid.robot,
-            x: grid.robot.initialX,
-            y: grid.robot.initialY,
-            dir: grid.robot.initialDir,
+      const { grid, turtleState, activeSimId } = get();
+
+      if (activeSimId === 'grid') {
+        set({
+          isPlaying: false,
+          runtime: null,
+          grid: {
+            ...grid,
+            robot: {
+              ...grid.robot,
+              x: grid.robot.initialX,
+              y: grid.robot.initialY,
+              dir: grid.robot.initialDir,
+            },
+            flags: grid.flags.map((f) => ({ ...f, collected: false })),
+            trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
+            status: 'IDLE',
           },
-          flags: grid.flags.map((f) => ({ ...f, collected: false })),
-          trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
-          status: 'IDLE',
-        },
-      });
+        });
+      } else {
+        set({
+          isPlaying: false,
+          runtime: null,
+          turtleState: {
+            ...turtleState,
+            robot: { x: 0, y: 0, heading: 0 },
+            paths: [],
+            status: 'IDLE',
+          },
+        });
+      }
     },
   };
 });
+
