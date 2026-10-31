@@ -3,6 +3,7 @@ import { Toolbar } from './components/Toolbar';
 import { BlockPalette } from './components/BlockPalette';
 import { WorkspaceCanvas } from './components/WorkspaceCanvas';
 import { SolutionModal } from './components/SolutionModal';
+import { ExportImportModal } from './components/ExportImportModal';
 import { useAppStore } from './store/useAppStore';
 import { getSimEnvironment } from './engine/simulation/registry';
 
@@ -39,6 +40,9 @@ export const App: React.FC = () => {
 
       {/* Solution Viewer Modal */}
       <SolutionModal />
+
+      {/* Share / Export / Import Modal */}
+      <ExportImportModal />
     </div>
   );
 };

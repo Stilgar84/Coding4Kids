@@ -13,6 +13,7 @@ import {
   Lightbulb,
   ChevronLeft,
   ChevronRight,
+  Share2,
 } from 'lucide-react';
 
 export const Toolbar: React.FC = () => {
@@ -30,6 +31,7 @@ export const Toolbar: React.FC = () => {
     setSpeed,
     workspace,
     setSolutionOpen,
+    setExportImportOpen,
     grid,
     turtleState,
   } = useAppStore();
@@ -180,6 +182,17 @@ export const Toolbar: React.FC = () => {
             <span className="hidden sm:inline">Solution</span>
           </button>
         )}
+
+        {/* Export / Import Button */}
+        <button
+          data-testid="btn-export-import"
+          onClick={() => setExportImportOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 h-12 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl border-2 border-indigo-400 shadow-lg transition-transform active:scale-95"
+          title="Share / Export / Import Program"
+        >
+          <Share2 className="w-5 h-5" />
+          <span className="hidden sm:inline">Share</span>
+        </button>
 
         {isPlaying ? (
           <button

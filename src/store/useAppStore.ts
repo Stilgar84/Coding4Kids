@@ -22,6 +22,7 @@ import {
   validateLoopStructure,
 } from '../engine/interpreter';
 import { LESSONS } from '../data/lessons';
+import { exportToString, importFromString } from '../engine/serialization/codeSerializer';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
 
@@ -57,6 +58,7 @@ interface AppState {
   speed: number; // ms per tick: 400 (1x), 200 (2x), 100 (4x), 50 (8x)
   editorTool: EditorTool;
   isSolutionOpen: boolean;
+  isExportImportOpen: boolean;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -66,7 +68,10 @@ interface AppState {
   setEditorTool: (tool: EditorTool) => void;
   setSpeed: (speed: number) => void;
   setSolutionOpen: (open: boolean) => void;
+  setExportImportOpen: (open: boolean) => void;
   loadSolution: (lessonId?: number) => void;
+  exportCode: (includeMap?: boolean) => string;
+  importCode: (data: string) => { success: boolean; error?: string };
 
   // Workspace actions
   addBlock: (scope: ScopeType, type: string, repeatCount?: number, insertAtIndex?: number, params?: Record<string, any>) => void;
@@ -135,6 +140,7 @@ export const useAppStore = create<AppState>((set, get) => {
     speed: 400,
     editorTool: 'NONE',
     isSolutionOpen: false,
+    isExportImportOpen: false,
 
     setSimEnvironment: (simId) => {
       get().reset();
@@ -142,6 +148,57 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
+
+    setExportImportOpen: (open) => set({ isExportImportOpen: open }),
+
+    exportCode: (includeMap = true) => {
+      const { activeSimId, workspace, grid, turtleState } = get();
+      if (activeSimId === 'grid') {
+        if (includeMap) {
+          return exportToString(workspace, 'grid', grid);
+        } else {
+          return exportToString(workspace, 'generic');
+        }
+      } else {
+        return exportToString(workspace, 'turtle', turtleState);
+      }
+    },
+
+    importCode: (data: string) => {
+      const res = importFromString(data);
+      if (!res.success) {
+        return { success: false, error: res.error || 'Failed to import code' };
+      }
+
+      get().pause();
+
+      if (res.envId === 'turtle') {
+        set({
+          activeSimId: 'turtle',
+          turtleState: createInitialTurtleState(),
+          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          runtime: null,
+          selectedBlockId: null,
+        });
+      } else if (res.envId === 'grid') {
+        set({
+          activeSimId: 'grid',
+          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          ...(res.gridState ? { grid: res.gridState } : {}),
+          runtime: null,
+          selectedBlockId: null,
+        });
+      } else {
+        set({
+          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          runtime: null,
+          selectedBlockId: null,
+        });
+      }
+
+      get().reset();
+      return { success: true };
+    },
 
     loadSolution: (lessonId) => {
       const id = lessonId ?? get().currentLevel;
