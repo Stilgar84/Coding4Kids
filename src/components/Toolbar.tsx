@@ -50,18 +50,16 @@ export const Toolbar: React.FC = () => {
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
   const toggleSpeed = () => {
-    if (speed === 400) setSpeed(200);
-    else if (speed === 200) setSpeed(100);
-    else if (speed === 100) setSpeed(50);
-    else if (speed === 50) setSpeed('instant');
+    if (speed === 400) setSpeed(100);
+    else if (speed === 100) setSpeed(25);
+    else if (speed === 25) setSpeed('instant');
     else setSpeed(400);
   };
 
   const getSpeedLabel = () => {
     if (isInstant) return 'Instant';
-    if (speed === 50) return '8x';
+    if (speed === 25) return '16x';
     if (speed === 100) return '4x';
-    if (speed === 200) return '2x';
     return '1x';
   };
 

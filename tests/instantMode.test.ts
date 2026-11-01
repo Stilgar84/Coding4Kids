@@ -24,22 +24,19 @@ describe('Instant Simulation Mode', () => {
   });
 
   describe('1. Speed Cycle and Helpers', () => {
-    it('correctly cycles through speeds: 400 -> 200 -> 100 -> 50 -> instant -> 400', () => {
+    it('correctly cycles through speeds: 400 -> 100 -> 25 -> instant -> 400', () => {
       const cycleNext = (current: SimulationSpeed): SimulationSpeed => {
-        if (current === 400) return 200;
-        if (current === 200) return 100;
-        if (current === 100) return 50;
-        if (current === 50) return 'instant';
+        if (current === 400) return 100;
+        if (current === 100) return 25;
+        if (current === 25) return 'instant';
         return 400;
       };
 
       let speed: SimulationSpeed = 400;
       speed = cycleNext(speed);
-      expect(speed).toBe(200);
-      speed = cycleNext(speed);
       expect(speed).toBe(100);
       speed = cycleNext(speed);
-      expect(speed).toBe(50);
+      expect(speed).toBe(25);
       speed = cycleNext(speed);
       expect(speed).toBe('instant');
       speed = cycleNext(speed);
@@ -269,7 +266,7 @@ describe('Instant Simulation Mode', () => {
   });
 
   describe('4. Infinite Loop & Iteration Capping', () => {
-    it('caps execution at MAX_INSTANT_SIMULATION_STEPS (400) without hanging', () => {
+    it('caps execution at MAX_INSTANT_SIMULATION_STEPS (1000) without hanging', () => {
       useAppStore.getState().setSpeed('instant');
 
       // Create a large loop with in-place action (TURN_LEFT) that does not collide

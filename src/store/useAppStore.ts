@@ -87,7 +87,7 @@ interface AppState {
   selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
   isPlaying: boolean;
-  speed: SimulationSpeed; // ms per tick: 400 (1x), 200 (2x), 100 (4x), 50 (8x), or 'instant'
+  speed: SimulationSpeed; // ms per tick: 400 (1x), 100 (4x), 25 (16x), or 'instant'
   editorTool: EditorTool;
   isSolutionOpen: boolean;
   isExportImportOpen: boolean;

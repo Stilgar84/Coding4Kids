@@ -61,7 +61,7 @@ export interface RobotState {
 
 export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION';
 
-export type SimulationSpeed = 400 | 200 | 100 | 50 | 'instant';
+export type SimulationSpeed = 400 | 100 | 25 | 'instant';
 
 export interface GridState {
   width: number;

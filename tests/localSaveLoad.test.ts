@@ -80,7 +80,7 @@ describe('Local Save and Load Feature Tests', () => {
       expect(result.stepCount).toBe(1);
     });
 
-    it('enforces MAX_SAVE_SIMULATION_STEPS (200 limit) on infinite or long loops', () => {
+    it('enforces MAX_SAVE_SIMULATION_STEPS (1000 limit) on infinite or long loops', () => {
       // Loop forever: TURN_LEFT repeatedly
       const gridState = createDefaultGridState();
       const workspace: WorkspaceState = {
@@ -96,8 +96,8 @@ describe('Local Save and Load Feature Tests', () => {
 
       const result = runHeadlessSimulation(workspace, 'grid', gridState, MAX_SAVE_SIMULATION_STEPS);
       expect(result.stepCount).toBe(MAX_SAVE_SIMULATION_STEPS);
-      expect(result.stepCount).toBe(200);
-      // Status should remain IDLE (not COLLISION or SUCCESS)
+      expect(result.stepCount).toBe(1000);
+      // Status should remain IDLE (runner limit reached before interpreter safety guard)
       expect(result.status).toBe('IDLE');
     });
 

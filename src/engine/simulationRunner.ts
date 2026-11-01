@@ -18,8 +18,8 @@ import { turtleSimulationEnvironment } from '../simulations/turtle/turtleEnviron
 registerSimulation(gridSimulationEnvironment);
 registerSimulation(turtleSimulationEnvironment);
 
-export const MAX_SAVE_SIMULATION_STEPS = 200;
-export const MAX_INSTANT_SIMULATION_STEPS = 400;
+export const MAX_SAVE_SIMULATION_STEPS = 1000;
+export const MAX_INSTANT_SIMULATION_STEPS = 1000;
 
 export interface SimulationRunResult<TState = any> {
   finalState: TState;
