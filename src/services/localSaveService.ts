@@ -10,7 +10,7 @@ export interface SavedProgramEntry {
   createdAt: number;
   simId: 'grid' | 'turtle';
   code: string; // Base64URL payload according to binary_format.md
-  screenshot: string; // SVG data URL (white background)
+  screenshot: string; // SVG data URL thumbnail
   status: SimulationStatus;
   stepCount: number;
   levelId?: number;

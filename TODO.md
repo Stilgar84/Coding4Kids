@@ -1,7 +1,6 @@
-# bug
+# bugs
 
-* turtle does not reset pen color and up/down state
-* save svg background color (and the rest) should match map display (so black/dark for robot mode and white for turtle)
+
 
 # action parameters
 
@@ -10,12 +9,13 @@ or use one or more block stuck on the side.
 
 # copy/cut/pasting
 
+moving within a function, or between function. cloning, bulk delete
 
 # conditional
 
 # variables
 
-# saving code and map
+# edit mode for map, read only by default
 
 also make default map readonly unless in edit mode
 

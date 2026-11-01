@@ -168,7 +168,9 @@ export const SaveProgramModal: React.FC = () => {
                 {activeSimId === 'grid' ? 'Grid World' : 'Turtle LOGO'}
               </span>
             </div>
-            <div className="relative w-full h-48 bg-white rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner group">
+            <div className={`relative w-full h-48 rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner group ${
+              activeSimId === 'grid' ? 'bg-slate-950' : 'bg-white'
+            }`}>
               <img
                 data-testid="save-map-preview"
                 src={simData.screenshot}

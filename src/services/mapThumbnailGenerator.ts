@@ -17,7 +17,8 @@ function getDirectionAngle(dir: Direction): number {
 }
 
 /**
- * Generates an SVG string representation of a Grid world with a clean white background.
+ * Generates an SVG string representation of a Grid world with a dark background
+ * matching the in-app robot grid display.
  */
 export function renderGridMapSvg(grid: GridState): string {
   const width = Math.max(1, grid.width || 5);
@@ -30,28 +31,28 @@ export function renderGridMapSvg(grid: GridState): string {
 
   let elements: string[] = [];
 
-  // White base background
+  // Dark base background (matches bg-slate-950/60 outer container)
   elements.push(
-    `<rect width="${totalWidth}" height="${totalHeight}" fill="#ffffff" rx="8" />`
+    `<rect width="${totalWidth}" height="${totalHeight}" fill="#0c0c1d" rx="8" />`
   );
 
   // Group translated by padding
   elements.push(`<g transform="translate(${padding}, ${padding})">`);
 
-  // Checkerboard cells
+  // Checkerboard cells (dark theme matching GridCanvas.tsx)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const isEven = (x + y) % 2 === 0;
-      const fill = isEven ? '#f8fafc' : '#ffffff';
+      const fill = isEven ? '#1e293b' : '#0f172a';
       elements.push(
-        `<rect x="${x * CELL_SIZE}" y="${y * CELL_SIZE}" width="${CELL_SIZE}" height="${CELL_SIZE}" fill="${fill}" stroke="#e2e8f0" stroke-width="1" />`
+        `<rect x="${x * CELL_SIZE}" y="${y * CELL_SIZE}" width="${CELL_SIZE}" height="${CELL_SIZE}" fill="${fill}" stroke="#334155" stroke-width="1" />`
       );
     }
   }
 
   // Board boundary stroke
   elements.push(
-    `<rect x="0" y="0" width="${boardWidth}" height="${boardHeight}" fill="none" stroke="#94a3b8" stroke-width="2" rx="4" />`
+    `<rect x="0" y="0" width="${boardWidth}" height="${boardHeight}" fill="none" stroke="#475569" stroke-width="2" rx="4" />`
   );
 
   // Trace path
@@ -63,7 +64,7 @@ export function renderGridMapSvg(grid: GridState): string {
       )
       .join(' ');
     elements.push(
-      `<polyline points="${points}" fill="none" stroke="#0284c7" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />`
+      `<polyline points="${points}" fill="none" stroke="#38bdf8" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round" stroke-linejoin="round" opacity="0.80" />`
     );
   }
 
@@ -80,7 +81,7 @@ export function renderGridMapSvg(grid: GridState): string {
           </g>`
         );
       } else {
-        const fill = flag.collected ? '#94a3b8' : '#2563eb';
+        const fill = flag.collected ? '#64748b' : '#3b82f6';
         elements.push(
           `<g transform="translate(${cx}, ${cy})">
             <circle r="10" fill="${fill}" stroke="#ffffff" stroke-width="1.5" />
@@ -119,15 +120,16 @@ export function renderGridMapSvg(grid: GridState): string {
     const rx = grid.robot.x * CELL_SIZE + CELL_SIZE / 2;
     const ry = grid.robot.y * CELL_SIZE + CELL_SIZE / 2;
     const angle = getDirectionAngle(grid.robot.dir);
-    const robotColor = grid.status === 'COLLISION' ? '#dc2626' : '#0284c7';
+    const robotColor = grid.status === 'COLLISION' ? '#dc2626' : '#0ea5e9';
 
     elements.push(
       `<g transform="translate(${rx}, ${ry})">
         <g transform="rotate(${angle})">
+          <circle r="14" fill="#0284c7" opacity="0.3" />
           <circle r="12" fill="${robotColor}" stroke="#ffffff" stroke-width="2" />
           <polygon points="0,-10 4,-2 -4,-2" fill="#ffffff" />
-          <circle cx="-3" cy="2" r="1.5" fill="#ffffff" />
-          <circle cx="3" cy="2" r="1.5" fill="#ffffff" />
+          <circle cx="-3" cy="2" r="1.5" fill="#0f172a" />
+          <circle cx="3" cy="2" r="1.5" fill="#0f172a" />
         </g>
       </g>`
     );

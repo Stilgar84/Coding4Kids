@@ -132,8 +132,10 @@ export const LoadProgramModal: React.FC = () => {
                   data-testid={`saved-card-${entry.id}`}
                   className="group relative flex flex-col bg-slate-950 border-2 border-slate-800 hover:border-slate-600 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-xl"
                 >
-                  {/* Screenshot Thumbnail (White Background) */}
-                  <div className="relative w-full h-36 bg-white p-2 flex items-center justify-center border-b border-slate-800 overflow-hidden">
+                  {/* Screenshot Thumbnail */}
+                  <div className={`relative w-full h-36 p-2 flex items-center justify-center border-b border-slate-800 overflow-hidden ${
+                    entry.simId === 'grid' ? 'bg-slate-950' : 'bg-white'
+                  }`}>
                     {entry.screenshot ? (
                       <img
                         src={entry.screenshot}

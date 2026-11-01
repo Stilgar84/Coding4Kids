@@ -151,12 +151,12 @@ describe('Local Save and Load Feature Tests', () => {
       expect(dataUri).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
 
       const decodedSvg = decodeURIComponent(dataUri.replace('data:image/svg+xml;charset=utf-8,', ''));
-      // Must contain white background
-      expect(decodedSvg).toContain('fill="#ffffff"');
-      // Must contain grid lines / checkerboard
-      expect(decodedSvg).toContain('#e2e8f0');
+      // Must contain dark background (matching robot grid display)
+      expect(decodedSvg).toContain('fill="#0c0c1d"');
+      // Must contain dark checkerboard cells
+      expect(decodedSvg).toContain('#334155');
       // Must contain trace path
-      expect(decodedSvg).toContain('stroke="#0284c7"');
+      expect(decodedSvg).toContain('stroke="#38bdf8"');
       // Must contain barrier
       expect(decodedSvg).toContain('fill="#ef4444"');
       // Must contain goal flag
