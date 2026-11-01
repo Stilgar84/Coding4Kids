@@ -242,7 +242,9 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
 
   const handleDragStartCapture = (e: React.DragEvent) => {
     // Suppress native dragstart within block bar so our smooth drag & scroll take precedence
-    e.preventDefault();
+    if (e.isTrusted) {
+      e.preventDefault();
+    }
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
