@@ -7,6 +7,7 @@ import {
   WallEdge,
   Direction,
   CodeBlock,
+  SimulationSpeed,
 } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState, turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
@@ -21,10 +22,41 @@ import {
   tickInterpreter,
   validateLoopStructure,
 } from '../engine/interpreter';
+import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { LESSONS } from '../data/lessons';
 import { exportToString, importFromString } from '../engine/serialization/codeSerializer';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
+
+export const getInitialGridState = (grid: GridState): GridState => ({
+  ...grid,
+  robot: {
+    ...grid.robot,
+    x: grid.robot.initialX,
+    y: grid.robot.initialY,
+    dir: grid.robot.initialDir,
+  },
+  flags: grid.flags.map((f) => ({ ...f, collected: false })),
+  trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
+  status: 'IDLE',
+});
+
+export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => ({
+  ...turtleState,
+  robot: { x: 0, y: 0, heading: 0 },
+  paths: [],
+  status: 'IDLE',
+});
+
+export function computeInstantSimulation(
+  workspace: WorkspaceState,
+  simId: 'grid' | 'turtle',
+  grid: GridState,
+  turtleState: TurtleState
+) {
+  const initialState = simId === 'grid' ? getInitialGridState(grid) : getInitialTurtleState(turtleState);
+  return runHeadlessSimulation(workspace, simId, initialState, MAX_INSTANT_SIMULATION_STEPS);
+}
 
 export interface LevelPreset {
   id: number;
@@ -55,7 +87,7 @@ interface AppState {
   selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
   isPlaying: boolean;
-  speed: number; // ms per tick: 400 (1x), 200 (2x), 100 (4x), 50 (8x)
+  speed: SimulationSpeed; // ms per tick: 400 (1x), 200 (2x), 100 (4x), 50 (8x), or 'instant'
   editorTool: EditorTool;
   isSolutionOpen: boolean;
   isExportImportOpen: boolean;
@@ -68,7 +100,8 @@ interface AppState {
   setActiveScope: (scope: ScopeType) => void;
   setSelectedBlockId: (id: string | null) => void;
   setEditorTool: (tool: EditorTool) => void;
-  setSpeed: (speed: number) => void;
+  setSpeed: (speed: SimulationSpeed | number) => void;
+  runInstantIfActive: () => void;
   setSolutionOpen: (open: boolean) => void;
   setExportImportOpen: (open: boolean) => void;
   setSaveModalOpen: (open: boolean) => void;
@@ -151,6 +184,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setSimEnvironment: (simId) => {
       get().reset();
       set({ activeSimId: simId });
+      get().runInstantIfActive();
     },
 
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
@@ -207,6 +241,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       get().reset();
+      get().runInstantIfActive();
       return { success: true };
     },
 
@@ -233,6 +268,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeScope: 'MAIN',
         selectedBlockId: null,
       });
+      get().runInstantIfActive();
     },
 
     setLevel: (levelId) => {
@@ -243,24 +279,67 @@ export const useAppStore = create<AppState>((set, get) => {
         currentLevel: levelId,
         grid: createGridFromPreset(preset, prevFitToView),
       });
+      get().runInstantIfActive();
     },
 
     setActiveScope: (scope) => set({ activeScope: scope, selectedBlockId: null }),
     setSelectedBlockId: (id) => set({ selectedBlockId: id }),
     setEditorTool: (tool) => set({ editorTool: tool }),
     setSpeed: (speed) => {
-      set({ speed });
-      // If currently playing, restart the interval with the updated speed
-      if (get().isPlaying && timerId) {
-        clearInterval(timerId);
-        timerId = setInterval(() => {
-          if (!get().isPlaying) {
-            if (timerId) clearInterval(timerId);
-            timerId = null;
-            return;
-          }
-          get().step();
-        }, speed);
+      const wasInstant = get().speed === 'instant' || (get().speed as any) === 0;
+      const normalizedSpeed: SimulationSpeed =
+        speed === 0 || speed === 'instant' ? 'instant' : (speed as SimulationSpeed);
+
+      if (normalizedSpeed === 'instant') {
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+        set({ speed: 'instant', isPlaying: false });
+        get().runInstantIfActive();
+      } else {
+        set({ speed: normalizedSpeed });
+        if (wasInstant) {
+          get().reset();
+        } else if (get().isPlaying && timerId) {
+          clearInterval(timerId);
+          timerId = setInterval(() => {
+            if (!get().isPlaying) {
+              if (timerId) clearInterval(timerId);
+              timerId = null;
+              return;
+            }
+            get().step();
+          }, normalizedSpeed);
+        }
+      }
+    },
+
+    runInstantIfActive: () => {
+      const { speed, workspace, activeSimId, grid, turtleState } = get();
+      if (speed !== 'instant' && (speed as any) !== 0) return;
+
+      const result = computeInstantSimulation(workspace, activeSimId, grid, turtleState);
+      if (activeSimId === 'grid') {
+        set({
+          grid: result.finalState as GridState,
+          runtime: {
+            ...result.finalRuntime,
+            activeBlockId: null,
+            activeRepeatProgress: null,
+          },
+          isPlaying: false,
+        });
+      } else {
+        set({
+          turtleState: result.finalState as TurtleState,
+          runtime: {
+            ...result.finalRuntime,
+            activeBlockId: null,
+            activeRepeatProgress: null,
+          },
+          isPlaying: false,
+        });
       }
     },
 
@@ -282,6 +361,7 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: id,
         };
       });
+      get().runInstantIfActive();
     },
 
     removeBlock: (scope, blockId) => {
@@ -292,6 +372,7 @@ export const useAppStore = create<AppState>((set, get) => {
         },
         selectedBlockId: state.selectedBlockId === blockId ? null : state.selectedBlockId,
       }));
+      get().runInstantIfActive();
     },
 
     updateBlockRepeat: (scope, blockId, repeatCount) => {
@@ -303,6 +384,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ),
         },
       }));
+      get().runInstantIfActive();
     },
 
     reorderBlocks: (scope, fromIndex, toIndex) => {
@@ -317,6 +399,7 @@ export const useAppStore = create<AppState>((set, get) => {
           },
         };
       });
+      get().runInstantIfActive();
     },
 
     clearWorkspace: (scope) => {
@@ -329,6 +412,7 @@ export const useAppStore = create<AppState>((set, get) => {
           workspace: { MAIN: [], F1: [], F2: [], F3: [] },
         });
       }
+      get().runInstantIfActive();
     },
 
     toggleWall: (edge) => {
@@ -345,6 +429,7 @@ export const useAppStore = create<AppState>((set, get) => {
           grid: { ...state.grid, barriers: newBarriers },
         };
       });
+      get().runInstantIfActive();
     },
 
     addWall: (edge) => {
@@ -360,6 +445,7 @@ export const useAppStore = create<AppState>((set, get) => {
           },
         };
       });
+      get().runInstantIfActive();
     },
 
     resizeBoard: (direction, delta) => {
@@ -468,6 +554,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
         return state;
       });
+      get().runInstantIfActive();
     },
 
     setCellContent: (x, y) => {
@@ -525,6 +612,7 @@ export const useAppStore = create<AppState>((set, get) => {
         const nextFlags = grid.flags.filter((f) => !(f.x === x && f.y === y));
         set({ grid: { ...grid, flags: nextFlags } });
       }
+      get().runInstantIfActive();
     },
 
     toggleTrace: () => {
@@ -543,6 +631,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const prevFitToView = get().grid.fitToView ?? false;
       const preset = PRESET_LEVELS.find((p) => p.id === get().currentLevel) || PRESET_LEVELS[0];
       set({ grid: createGridFromPreset(preset, prevFitToView) });
+      get().runInstantIfActive();
     },
 
     updateTurtleViewport: (updates) => {
@@ -560,9 +649,13 @@ export const useAppStore = create<AppState>((set, get) => {
       set({
         turtleState: createInitialTurtleState(),
       });
+      get().runInstantIfActive();
     },
 
     step: () => {
+      const { speed } = get();
+      if (speed === 'instant' || (speed as any) === 0) return;
+
       const { runtime, workspace, activeSimId, grid, turtleState } = get();
 
       // Guard: do not execute if loops are unclosed in any used workspace scope
@@ -611,6 +704,24 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     play: () => {
+      const { speed, workspace } = get();
+      if (speed === 'instant' || (speed as any) === 0) {
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+          if (workspace[sc]?.length > 0) {
+            const val = validateLoopStructure(workspace[sc]);
+            if (val.hasError) {
+              return;
+            }
+          }
+        }
+        get().runInstantIfActive();
+        return;
+      }
+
       if (get().isPlaying) return;
 
       const { activeSimId, grid, turtleState, runtime } = get();
@@ -625,7 +736,6 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       // Guard: do not execute if loops are unclosed in any used workspace scope
-      const { workspace } = get();
       for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
         if (workspace[sc]?.length > 0) {
           const val = validateLoopStructure(workspace[sc]);
@@ -649,7 +759,7 @@ export const useAppStore = create<AppState>((set, get) => {
           return;
         }
         get().step();
-      }, get().speed);
+      }, get().speed as number);
     },
 
     pause: () => {
@@ -667,29 +777,13 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           isPlaying: false,
           runtime: null,
-          grid: {
-            ...grid,
-            robot: {
-              ...grid.robot,
-              x: grid.robot.initialX,
-              y: grid.robot.initialY,
-              dir: grid.robot.initialDir,
-            },
-            flags: grid.flags.map((f) => ({ ...f, collected: false })),
-            trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
-            status: 'IDLE',
-          },
+          grid: getInitialGridState(grid),
         });
       } else {
         set({
           isPlaying: false,
           runtime: null,
-          turtleState: {
-            ...turtleState,
-            robot: { x: 0, y: 0, heading: 0 },
-            paths: [],
-            status: 'IDLE',
-          },
+          turtleState: getInitialTurtleState(turtleState),
         });
       }
     },

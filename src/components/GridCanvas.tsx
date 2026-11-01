@@ -15,7 +15,10 @@ export const GridCanvas: React.FC = () => {
     toggleTrace,
     toggleFitToView,
     editorTool,
+    speed,
   } = useAppStore();
+
+  const isInstant = speed === 'instant' || (speed as any) === 0;
 
   const { width, height, robot, barriers, flags, trace, status, showTrace, fitToView } = grid;
   const isBarrierMode = editorTool === 'WALL';
@@ -423,10 +426,10 @@ export const GridCanvas: React.FC = () => {
                 key={flag.id}
                 data-testid={flag.isGoal ? `goal-flag-${flag.x}-${flag.y}` : `flag-${flag.order}`}
                 transform={`translate(${cx}, ${cy})`}
-                className="pointer-events-none transition-all duration-300"
+                className={`pointer-events-none ${isInstant ? '' : 'transition-all duration-300'}`}
               >
                 {flag.isGoal ? (
-                  <g className={flag.collected ? 'scale-125 opacity-90' : 'animate-pulse'}>
+                  <g className={flag.collected ? 'scale-125 opacity-90' : (isInstant ? '' : 'animate-pulse')}>
                     <circle r={22} fill="#eab308" className="shadow-lg" />
                     <circle r={18} fill="#ca8a04" />
                     <foreignObject x={-14} y={-14} width={28} height={28}>
@@ -550,7 +553,7 @@ export const GridCanvas: React.FC = () => {
             transform={`translate(${robot.x * CELL_SIZE + CELL_SIZE / 2}, ${
               robot.y * CELL_SIZE + CELL_SIZE / 2
             })`}
-            className="transition-all duration-300 ease-out pointer-events-none"
+            className={`pointer-events-none ${isInstant ? '' : 'transition-all duration-300 ease-out'}`}
           >
             {/* Rotate robot to face direction */}
             <g transform={`rotate(${getAngle(robot.dir)})`}>
@@ -558,7 +561,7 @@ export const GridCanvas: React.FC = () => {
               <circle
                 r={24}
                 fill="#0284c7"
-                className="opacity-30 animate-pulse"
+                className={`opacity-30 ${isInstant ? '' : 'animate-pulse'}`}
               />
               {/* Robot body base */}
               <circle

@@ -19,6 +19,7 @@ registerSimulation(gridSimulationEnvironment);
 registerSimulation(turtleSimulationEnvironment);
 
 export const MAX_SAVE_SIMULATION_STEPS = 200;
+export const MAX_INSTANT_SIMULATION_STEPS = 400;
 
 export interface SimulationRunResult<TState = any> {
   finalState: TState;
@@ -28,7 +29,7 @@ export interface SimulationRunResult<TState = any> {
 }
 
 /**
- * Runs a simulation headless from initial state to completion or up to MAX_SAVE_SIMULATION_STEPS (200).
+ * Runs a simulation headless from initial state to completion or up to maxSteps (default 200).
  * Does not mutate active reactive stores.
  */
 export function runHeadlessSimulation<TState = any>(
@@ -41,11 +42,13 @@ export function runHeadlessSimulation<TState = any>(
   const initialRuntime = createInitialInterpreterState();
 
   if (!simEnv) {
+    const finalState =
+      simState && typeof simState === 'object' ? { ...simState, status: 'IDLE' } : simState;
     return {
-      finalState: simState,
+      finalState,
       status: 'IDLE',
       stepCount: 0,
-      finalRuntime: initialRuntime,
+      finalRuntime: { ...initialRuntime, status: 'IDLE' },
     };
   }
 
@@ -54,11 +57,13 @@ export function runHeadlessSimulation<TState = any>(
     if (workspace[sc]?.length > 0) {
       const val = validateLoopStructure(workspace[sc]);
       if (val.hasError) {
+        const finalState =
+          simState && typeof simState === 'object' ? { ...simState, status: 'IDLE' } : simState;
         return {
-          finalState: simState,
+          finalState,
           status: 'IDLE',
           stepCount: 0,
-          finalRuntime: initialRuntime,
+          finalRuntime: { ...initialRuntime, status: 'IDLE' },
         };
       }
     }
@@ -70,11 +75,13 @@ export function runHeadlessSimulation<TState = any>(
     0
   );
   if (totalBlocks === 0) {
+    const finalState =
+      simState && typeof simState === 'object' ? { ...simState, status: 'IDLE' } : simState;
     return {
-      finalState: simState,
+      finalState,
       status: 'IDLE',
       stepCount: 0,
-      finalRuntime: initialRuntime,
+      finalRuntime: { ...initialRuntime, status: 'IDLE' },
     };
   }
 
@@ -96,11 +103,15 @@ export function runHeadlessSimulation<TState = any>(
   const status: SimulationStatus =
     rawStatus === 'SUCCESS' || rawStatus === 'COLLISION' ? rawStatus : 'IDLE';
 
+  const finalState =
+    state && typeof state === 'object' ? { ...state, status } : state;
+  const finalRuntime: InterpreterRuntimeState = { ...runtime, status };
+
   return {
-    finalState: state,
+    finalState,
     status,
     stepCount: steps,
-    finalRuntime: runtime,
+    finalRuntime,
   };
 }
 

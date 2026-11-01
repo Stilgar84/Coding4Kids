@@ -9,8 +9,9 @@ interface TurtleCanvasProps {
 }
 
 export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
-  const { turtleState, updateTurtleViewport } = useAppStore();
+  const { turtleState, updateTurtleViewport, speed } = useAppStore();
   const state = turtleState;
+  const isInstant = speed === 'instant' || (speed as any) === 0;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 600 });
@@ -179,10 +180,10 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
           <g
             data-testid="turtle-robot"
             transform={`translate(${state.robot.x}, ${state.robot.y}) rotate(${state.robot.heading})`}
-            className="transition-transform duration-200"
+            className={isInstant ? '' : 'transition-transform duration-200'}
           >
             {/* Pulsing selection aura */}
-            <circle r={22} fill="#38bdf8" opacity="0.15" className="animate-pulse" />
+            <circle r={22} fill="#38bdf8" opacity="0.15" className={isInstant ? '' : 'animate-pulse'} />
 
             {/* Turtle Shell / Body */}
             <circle r={18} fill="#0284c7" stroke="#38bdf8" strokeWidth={2.5} className="shadow-lg" />

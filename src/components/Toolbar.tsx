@@ -47,14 +47,18 @@ export const Toolbar: React.FC = () => {
     return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
   });
 
+  const isInstant = speed === 'instant' || (speed as any) === 0;
+
   const toggleSpeed = () => {
     if (speed === 400) setSpeed(200);
     else if (speed === 200) setSpeed(100);
     else if (speed === 100) setSpeed(50);
+    else if (speed === 50) setSpeed('instant');
     else setSpeed(400);
   };
 
   const getSpeedLabel = () => {
+    if (isInstant) return 'Instant';
     if (speed === 50) return '8x';
     if (speed === 100) return '4x';
     if (speed === 200) return '2x';
@@ -248,14 +252,20 @@ export const Toolbar: React.FC = () => {
         {/* Step Button */}
         <button
           data-testid="btn-step"
-          disabled={hasLoopError}
+          disabled={hasLoopError || isInstant}
           onClick={step}
           className={`flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg border-2 transition-transform ${
-            hasLoopError
-              ? 'bg-slate-800 border-red-500/60 text-slate-500 cursor-not-allowed opacity-60'
+            hasLoopError || isInstant
+              ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed opacity-60'
               : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400 active:scale-95'
           }`}
-          title={hasLoopError ? 'Cannot step: unclosed loop detected' : 'Step'}
+          title={
+            hasLoopError
+              ? 'Cannot step: unclosed loop detected'
+              : isInstant
+              ? 'Step disabled in Instant mode'
+              : 'Step'
+          }
         >
           <SkipForward className="w-6 h-6 stroke-[3]" />
         </button>
@@ -274,10 +284,14 @@ export const Toolbar: React.FC = () => {
         <button
           data-testid="btn-speed"
           onClick={toggleSpeed}
-          className="flex items-center justify-center gap-1 px-3 h-12 bg-slate-800 hover:bg-slate-700 text-yellow-400 rounded-2xl border-2 border-slate-700 font-black text-sm"
-          title="Speed"
+          className={`flex items-center justify-center gap-1 px-3 h-12 rounded-2xl border-2 font-black text-sm transition-all ${
+            isInstant
+              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md scale-105'
+              : 'bg-slate-800 hover:bg-slate-700 text-yellow-400 border-slate-700'
+          }`}
+          title={isInstant ? 'Simulation Speed: Instant' : 'Speed'}
         >
-          <Zap className="w-4 h-4 fill-yellow-400" />
+          <Zap className={`w-4 h-4 ${isInstant ? 'fill-slate-950 text-slate-950' : 'fill-yellow-400'}`} />
           <span>{getSpeedLabel()}</span>
         </button>
       </div>
