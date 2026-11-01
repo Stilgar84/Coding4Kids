@@ -44,6 +44,9 @@ export const getInitialGridState = (grid: GridState): GridState => ({
 export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => ({
   ...turtleState,
   robot: { x: 0, y: 0, heading: 0 },
+  penDown: true,
+  penColor: '#0f172a',
+  penWidth: 6,
   paths: [],
   status: 'IDLE',
 });

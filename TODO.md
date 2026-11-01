@@ -1,12 +1,15 @@
+# bug
+
+* turtle does not reset pen color and up/down state
+* save svg background color (and the rest) should match map display (so black/dark for robot mode and white for turtle)
 
 # action parameters
 
 either use the repeat tag, replacing it
 or use one or more block stuck on the side.
 
-# saving code, or export to string
+# copy/cut/pasting
 
-compatibility important
 
 # conditional
 
