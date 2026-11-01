@@ -59,6 +59,8 @@ interface AppState {
   editorTool: EditorTool;
   isSolutionOpen: boolean;
   isExportImportOpen: boolean;
+  isSaveModalOpen: boolean;
+  isLoadModalOpen: boolean;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -69,6 +71,8 @@ interface AppState {
   setSpeed: (speed: number) => void;
   setSolutionOpen: (open: boolean) => void;
   setExportImportOpen: (open: boolean) => void;
+  setSaveModalOpen: (open: boolean) => void;
+  setLoadModalOpen: (open: boolean) => void;
   loadSolution: (lessonId?: number) => void;
   exportCode: (includeMap?: boolean) => string;
   importCode: (data: string) => { success: boolean; error?: string };
@@ -141,6 +145,8 @@ export const useAppStore = create<AppState>((set, get) => {
     editorTool: 'NONE',
     isSolutionOpen: false,
     isExportImportOpen: false,
+    isSaveModalOpen: false,
+    isLoadModalOpen: false,
 
     setSimEnvironment: (simId) => {
       get().reset();
@@ -150,6 +156,10 @@ export const useAppStore = create<AppState>((set, get) => {
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
 
     setExportImportOpen: (open) => set({ isExportImportOpen: open }),
+
+    setSaveModalOpen: (open) => set({ isSaveModalOpen: open }),
+
+    setLoadModalOpen: (open) => set({ isLoadModalOpen: open }),
 
     exportCode: (includeMap = true) => {
       const { activeSimId, workspace, grid, turtleState } = get();

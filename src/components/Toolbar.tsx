@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Share2,
+  Save,
+  FolderOpen,
 } from 'lucide-react';
 
 export const Toolbar: React.FC = () => {
@@ -32,6 +34,8 @@ export const Toolbar: React.FC = () => {
     workspace,
     setSolutionOpen,
     setExportImportOpen,
+    setSaveModalOpen,
+    setLoadModalOpen,
     grid,
     turtleState,
   } = useAppStore();
@@ -182,6 +186,28 @@ export const Toolbar: React.FC = () => {
             <span className="hidden sm:inline">Solution</span>
           </button>
         )}
+
+        {/* Save Button */}
+        <button
+          data-testid="btn-save-modal"
+          onClick={() => setSaveModalOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 h-12 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-2xl border-2 border-sky-400 shadow-lg transition-transform active:scale-95"
+          title="Save Program Locally"
+        >
+          <Save className="w-5 h-5" />
+          <span className="hidden sm:inline">Save</span>
+        </button>
+
+        {/* Load Button */}
+        <button
+          data-testid="btn-load-modal"
+          onClick={() => setLoadModalOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 h-12 bg-slate-800 hover:bg-slate-700 text-slate-200 font-black rounded-2xl border-2 border-slate-700 shadow-lg transition-transform active:scale-95"
+          title="Load Saved Programs"
+        >
+          <FolderOpen className="w-5 h-5" />
+          <span className="hidden sm:inline">Load</span>
+        </button>
 
         {/* Export / Import Button */}
         <button

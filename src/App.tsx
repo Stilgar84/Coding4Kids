@@ -4,6 +4,8 @@ import { BlockPalette } from './components/BlockPalette';
 import { WorkspaceCanvas } from './components/WorkspaceCanvas';
 import { SolutionModal } from './components/SolutionModal';
 import { ExportImportModal } from './components/ExportImportModal';
+import { SaveProgramModal } from './components/SaveProgramModal';
+import { LoadProgramModal } from './components/LoadProgramModal';
 import { useAppStore } from './store/useAppStore';
 import { getSimEnvironment } from './engine/simulation/registry';
 
@@ -43,6 +45,10 @@ export const App: React.FC = () => {
 
       {/* Share / Export / Import Modal */}
       <ExportImportModal />
+
+      {/* Local Save & Load Modals */}
+      <SaveProgramModal />
+      <LoadProgramModal />
     </div>
   );
 };
