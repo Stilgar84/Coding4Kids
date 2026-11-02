@@ -484,6 +484,133 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(block).toHaveCount(0);
   });
 
+  test('tablet drag and drop with concurrent pointer and touch events creates exactly one block per drop', async ({ page }) => {
+    const tabletDrag = async (srcSelector: string, tgtSelector: string) => {
+      await page.evaluate(({ src, tgt }) => {
+        const srcEl = document.querySelector(src);
+        const tgtEl = document.querySelector(tgt);
+        if (!srcEl || !tgtEl) throw new Error(`Not found: ${src} -> ${tgt}`);
+
+        const srcRect = srcEl.getBoundingClientRect();
+        const tgtRect = tgtEl.getBoundingClientRect();
+
+        const startX = srcRect.left + srcRect.width / 2;
+        const startY = srcRect.top + srcRect.height / 2;
+        const endX = tgtRect.left + tgtRect.width / 2;
+        const endY = tgtRect.top + tgtRect.height / 2;
+
+        const touchId = 201;
+
+        // 1. pointerdown (touch)
+        srcEl.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: touchId,
+          pointerType: 'touch',
+          clientX: startX,
+          clientY: startY,
+        }));
+
+        // 2. touchstart
+        const touchStart = new Touch({
+          identifier: touchId,
+          target: srcEl,
+          clientX: startX,
+          clientY: startY,
+          pageX: startX,
+          pageY: startY,
+          screenX: startX,
+          screenY: startY,
+        });
+        srcEl.dispatchEvent(new TouchEvent('touchstart', {
+          bubbles: true,
+          cancelable: true,
+          touches: [touchStart],
+          targetTouches: [touchStart],
+          changedTouches: [touchStart],
+        }));
+
+        // Move steps
+        const steps = 6;
+        for (let i = 1; i <= steps; i++) {
+          const curX = startX + (endX - startX) * (i / steps);
+          const curY = startY + (endY - startY) * (i / steps);
+
+          window.dispatchEvent(new PointerEvent('pointermove', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: touchId,
+            pointerType: 'touch',
+            clientX: curX,
+            clientY: curY,
+          }));
+
+          const touchMove = new Touch({
+            identifier: touchId,
+            target: srcEl,
+            clientX: curX,
+            clientY: curY,
+            pageX: curX,
+            pageY: curY,
+            screenX: curX,
+            screenY: curY,
+          });
+          window.dispatchEvent(new TouchEvent('touchmove', {
+            bubbles: true,
+            cancelable: true,
+            touches: [touchMove],
+            targetTouches: [touchMove],
+            changedTouches: [touchMove],
+          }));
+        }
+
+        // 3. pointerup (fires first on tablet)
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: touchId,
+          pointerType: 'touch',
+          clientX: endX,
+          clientY: endY,
+        }));
+
+        // 4. touchend (fires after pointerup on tablet)
+        const touchEnd = new Touch({
+          identifier: touchId,
+          target: srcEl,
+          clientX: endX,
+          clientY: endY,
+          pageX: endX,
+          pageY: endY,
+          screenX: endX,
+          screenY: endY,
+        });
+        window.dispatchEvent(new TouchEvent('touchend', {
+          bubbles: true,
+          cancelable: true,
+          touches: [],
+          targetTouches: [],
+          changedTouches: [touchEnd],
+        }));
+      }, { src: srcSelector, tgt: tgtSelector });
+    };
+
+    // First drag: should add exactly 1 block
+    await tabletDrag('[data-testid="palette-move-fwd"]', '[data-testid="workspace-sequence"]');
+    const blocksAfterFirst = page.locator('[data-testid^="block-"]');
+    await expect(blocksAfterFirst).toHaveCount(1);
+
+    // Second drag: should add exactly 1 block (total 2 blocks, NOT 3 or 4!)
+    await tabletDrag('[data-testid="palette-turn-left"]', '[data-testid="workspace-sequence"]');
+    const blocksAfterSecond = page.locator('[data-testid^="block-"]');
+    await expect(blocksAfterSecond).toHaveCount(2);
+
+    // Third drag: should add exactly 1 block (total 3 blocks)
+    await tabletDrag('[data-testid="palette-turn-right"]', '[data-testid="workspace-sequence"]');
+    const blocksAfterThird = page.locator('[data-testid^="block-"]');
+    await expect(blocksAfterThird).toHaveCount(3);
+  });
+
   test('supports touch drag and drop to reorder blocks within sequence', async ({ page }) => {
     // Helper to simulate touch drag
     const touchDrag = async (srcSelector: string, tgtSelector: string, dropRightHalf = false) => {

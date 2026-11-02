@@ -131,8 +131,8 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
       const isBelowBar = e.clientY > rowRect.bottom + 4;
       const dx = e.clientX - startXRef.current;
 
-      // Activate block drag if pointer moves below the block bar, even if there was horizontal movement!
-      if (!isDraggingBlockRef.current && targetButtonRef.current && isBelowBar) {
+      // Activate block drag if pointer moves below the block bar (mouse only; touch is handled by touchDragDrop polyfill)
+      if (!isDraggingBlockRef.current && targetButtonRef.current && isBelowBar && e.pointerType === 'mouse') {
         isDraggingBlockRef.current = true;
         const dataTransfer = new TouchDataTransfer();
         currentDataTransferRef.current = dataTransfer;
