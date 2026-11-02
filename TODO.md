@@ -10,6 +10,13 @@ instead turtle should move at constant speed along the arc and it be drawn up to
 then there is no need to add delay for those drawing action.
 
 Constant movement and rotation speed , other action 0time. Can add wait command
+rotation time could be fix or dependent on rotation amount.
+
+both rotation and move could either be linear speed or that acceleration/decelleration
+to be non linear
+
+actually could add wait time on non movement action but that should be toggleable
+(depeding on whenever you trace the program or just enjoi the animation)
 
 # 
 
