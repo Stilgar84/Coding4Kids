@@ -654,4 +654,78 @@ test.describe('Robot Emulator E2E Suite', () => {
     await fitBtn.click();
     await expect(fitBtn).toHaveAttribute('title', /Fit to Available Size/i);
   });
+
+  test('opens action parameter popover visibly below badge without being clipped by palette', async ({ page }) => {
+    // Switch to Turtle simulation mode
+    await page.getByTestId('sim-tab-turtle').click();
+
+    // Add Turn Left block
+    await page.getByTestId('palette-turtle-turn-left').click();
+
+    // The angle parameter badge should be visible on the workspace block
+    const paramBadge = page.getByTestId('block-param-badge-angle');
+    await expect(paramBadge).toBeVisible();
+
+    // Click the badge to open parameter popover
+    await paramBadge.click();
+
+    // Popover should be visible
+    const popover = page.getByTestId('param-popover-angle');
+    await expect(popover).toBeVisible();
+
+    // Palette bounding box vs popover bounding box:
+    // Popover must not be hidden under or overlapping behind palette
+    const paletteBox = await page.getByTestId('palette-container').boundingBox();
+    const popoverBox = await popover.boundingBox();
+
+    expect(paletteBox).not.toBeNull();
+    expect(popoverBox).not.toBeNull();
+
+    // Popover y must be below the palette's bottom
+    expect(popoverBox!.y).toBeGreaterThanOrEqual(paletteBox!.y + paletteBox!.height);
+
+    // Click 45° option
+    const option45 = page.getByTestId('param-option-45');
+    await expect(option45).toBeVisible();
+    await option45.click();
+
+    // Popover closes after selection
+    await expect(popover).not.toBeVisible();
+  });
+
+  test('displays action param toggle icon on repeat row and toggles parameter visibility without full row title', async ({ page }) => {
+    // Parameter toggle button is always visible on the repeat row
+    const toggleBtn = page.getByTestId('palette-param-toggle-btn');
+    await expect(toggleBtn).toBeVisible();
+
+    // Subpalette header full row title should not exist
+    await expect(page.getByTestId('subpalette-header')).toHaveCount(0);
+
+    // Switch to Turtle simulation mode
+    await page.getByTestId('sim-tab-turtle').click();
+
+    // Add Turn Left block (has angle parameters)
+    await page.getByTestId('palette-turtle-turn-left').click();
+
+    // Subpalette parameter options should be visible without any full row title
+    const subpalette = page.getByTestId('block-subpalette');
+    await expect(subpalette).toBeVisible();
+    await expect(page.getByTestId('subpalette-header')).toHaveCount(0);
+
+    // Toggle icon hides the parameter palette
+    await toggleBtn.click();
+    await expect(subpalette).toHaveCount(0);
+
+    // Toggle icon shows the parameter palette again
+    await toggleBtn.click();
+    await expect(subpalette).toBeVisible();
+
+    // Clicking an option in subpalette updates parameters
+    const subpaletteOpt45 = page.getByTestId('subpalette-param-angle-45');
+    await expect(subpaletteOpt45).toBeVisible();
+    await subpaletteOpt45.click();
+
+    // Parameter badge on block should show 45°
+    await expect(page.getByTestId('block-param-badge-angle')).toContainText('45°');
+  });
 });

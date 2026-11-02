@@ -96,12 +96,15 @@ interface AppState {
   isExportImportOpen: boolean;
   isSaveModalOpen: boolean;
   isLoadModalOpen: boolean;
+  isSubpaletteCollapsed: boolean;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
   setLevel: (levelId: number) => void;
   setActiveScope: (scope: ScopeType) => void;
   setSelectedBlockId: (id: string | null) => void;
+  toggleSubpalette: () => void;
+  setSubpaletteCollapsed: (collapsed: boolean) => void;
   setEditorTool: (tool: EditorTool) => void;
   setSpeed: (speed: SimulationSpeed | number) => void;
   runInstantIfActive: () => void;
@@ -117,6 +120,7 @@ interface AppState {
   addBlock: (scope: ScopeType, type: string, repeatCount?: number, insertAtIndex?: number, params?: Record<string, any>) => void;
   removeBlock: (scope: ScopeType, blockId: string) => void;
   updateBlockRepeat: (scope: ScopeType, blockId: string, repeatCount?: number) => void;
+  updateBlockParams: (scope: ScopeType, blockId: string, params: Record<string, any>) => void;
   reorderBlocks: (scope: ScopeType, fromIndex: number, toIndex: number) => void;
   clearWorkspace: (scope?: ScopeType) => void;
 
@@ -183,12 +187,17 @@ export const useAppStore = create<AppState>((set, get) => {
     isExportImportOpen: false,
     isSaveModalOpen: false,
     isLoadModalOpen: false,
+    isSubpaletteCollapsed: false,
 
     setSimEnvironment: (simId) => {
       get().reset();
       set({ activeSimId: simId });
       get().runInstantIfActive();
     },
+
+    toggleSubpalette: () => set((state) => ({ isSubpaletteCollapsed: !state.isSubpaletteCollapsed })),
+
+    setSubpaletteCollapsed: (collapsed) => set({ isSubpaletteCollapsed: collapsed }),
 
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
 
@@ -348,7 +357,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
       const id = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newBlock: CodeBlock = { id, type, repeatCount, params };
+      const simEnv = getSimEnvironment(get().activeSimId);
+      const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === type);
+      const resolvedParams = params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
+      const newBlock: CodeBlock = { id, type, repeatCount, params: resolvedParams };
       set((state) => {
         const currentBlocks = [...state.workspace[scope]];
         if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
@@ -364,6 +376,18 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: id,
         };
       });
+      get().runInstantIfActive();
+    },
+
+    updateBlockParams: (scope, blockId, newParams) => {
+      set((state) => ({
+        workspace: {
+          ...state.workspace,
+          [scope]: state.workspace[scope].map((b) =>
+            b.id === blockId ? { ...b, params: { ...(b.params || {}), ...newParams } } : b
+          ),
+        },
+      }));
       get().runInstantIfActive();
     },
 

@@ -30,6 +30,7 @@ import {
   OP_TURTLE_PEN_UP,
   OP_TURTLE_PEN_DOWN,
   OP_TURTLE_SET_PEN_COLOR,
+  OP_TURTLE_SET_PEN_WIDTH,
   ImportResult,
   EnvIdName,
 } from './types';
@@ -142,6 +143,9 @@ export function exportToString(
             break;
           case 'SET_PEN_COLOR':
             opcode = OP_TURTLE_SET_PEN_COLOR;
+            break;
+          case 'SET_PEN_WIDTH':
+            opcode = OP_TURTLE_SET_PEN_WIDTH;
             break;
           default:
             throw new Error(`Unsupported Turtle block type: ${block.type}`);
@@ -300,6 +304,9 @@ export function importFromString(serialized: string): ImportResult {
                 break;
               case OP_TURTLE_SET_PEN_COLOR:
                 type = 'SET_PEN_COLOR';
+                break;
+              case OP_TURTLE_SET_PEN_WIDTH:
+                type = 'SET_PEN_WIDTH';
                 break;
               default:
                 throw new Error(`Unknown Turtle opcode: 0x${opcode.toString(16)}`);

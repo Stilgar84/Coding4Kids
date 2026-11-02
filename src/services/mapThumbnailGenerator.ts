@@ -1,5 +1,6 @@
 import { GridState, Direction } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
+import { getArcSvgPath } from '../simulations/turtle/physics';
 
 const CELL_SIZE = 40;
 
@@ -189,9 +190,7 @@ export function renderTurtleMapSvg(turtle: TurtleState): string {
           }" stroke-width="${path.width || 2}" stroke-linecap="round" />`
         );
       } else if (path.type === 'ARC') {
-        const largeArcFlag = Math.abs(path.sweepAngle) > 180 ? 1 : 0;
-        const sweepFlag = path.sweepAngle > 0 ? 1 : 0;
-        const d = `M ${path.fromX} ${path.fromY} A ${path.radius} ${path.radius} 0 ${largeArcFlag} ${sweepFlag} ${path.toX} ${path.toY}`;
+        const d = getArcSvgPath(path);
         elements.push(
           `<path d="${d}" fill="none" stroke="${path.color || '#0f172a'}" stroke-width="${
             path.width || 2

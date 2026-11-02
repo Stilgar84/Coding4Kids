@@ -310,6 +310,7 @@ describe('Binary Serialization', () => {
           { id: 't8', type: 'PEN_DOWN' },
           { id: 't9', type: 'SET_PEN_COLOR', params: { color: '#ef4444' } }, // Red (index 1)
           { id: 't10', type: 'SET_PEN_COLOR', params: { color: '#8b5cf6' } }, // Purple (index 5)
+          { id: 't11', type: 'SET_PEN_WIDTH', params: { width: 12 } },
         ],
         F1: [],
         F2: [],
@@ -324,7 +325,7 @@ describe('Binary Serialization', () => {
       expect(res.turtleState).toBeDefined();
 
       const main = res.workspace?.MAIN || [];
-      expect(main).toHaveLength(10);
+      expect(main).toHaveLength(11);
 
       expect(main[0].type).toBe('FORWARD');
       expect(main[0].repeatCount).toBe(4);
@@ -353,6 +354,9 @@ describe('Binary Serialization', () => {
 
       expect(main[9].type).toBe('SET_PEN_COLOR');
       expect(main[9].params?.color).toBe('#8b5cf6');
+
+      expect(main[10].type).toBe('SET_PEN_WIDTH');
+      expect(main[10].params?.width).toBe(12);
     });
 
     it('roundtrips all 6 palette colors', () => {

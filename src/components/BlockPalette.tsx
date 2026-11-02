@@ -7,8 +7,10 @@ import {
   Undo2,
   PhoneCall,
   Trash2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
+import { BlockSubpalette } from './BlockSubpalette';
 
 interface CoreControlItem {
   type: string;
@@ -277,13 +279,44 @@ export const BlockPalette: React.FC = () => {
     workspace,
     updateBlockRepeat,
     selectedBlockId,
+    setSelectedBlockId,
     removeBlock,
+    isSubpaletteCollapsed,
+    toggleSubpalette,
   } = useAppStore();
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const simPaletteItems: SimPaletteItem[] = currentSimEnv?.paletteItems || [];
+
+  const blocks = workspace[activeScope] || [];
+  let targetBlock = selectedBlockId ? blocks.find((b) => b.id === selectedBlockId) : null;
+  if (!targetBlock && blocks.length > 0) {
+    const last = blocks[blocks.length - 1];
+    const lastPaletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === last.type);
+    if (lastPaletteItem?.paramDefs && lastPaletteItem.paramDefs.length > 0) {
+      targetBlock = last;
+    }
+  }
+
+  const targetPaletteItem = currentSimEnv?.paletteItems.find(
+    (p) => p.actionType === targetBlock?.type
+  );
+  const hasParams = Boolean(
+    targetPaletteItem?.paramDefs && targetPaletteItem.paramDefs.length > 0
+  );
+
+  const handleToggleParams = () => {
+    if (!selectedBlockId && targetBlock) {
+      setSelectedBlockId(targetBlock.id);
+      if (isSubpaletteCollapsed) {
+        toggleSubpalette();
+      }
+      return;
+    }
+    toggleSubpalette();
+  };
 
   const handleAddSimBlock = (item: SimPaletteItem) => {
     const blocks = workspace[activeScope] || [];
@@ -464,22 +497,54 @@ export const BlockPalette: React.FC = () => {
         ))}
       </PaletteScrollRow>
 
-      {/* Number Multipliers Row */}
-      <PaletteScrollRow testId="palette-number-row">
-        {NUMBER_BADGES.map((num) => (
-          <button
-            key={num}
-            data-testid={`palette-number-${num}`}
-            draggable
-            onDragStart={(e) => handleNumberDragStart(e, num)}
-            onClick={() => handleNumberClick(num)}
-            className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
-            title={`Set repeat ${num}`}
-          >
-            {num}
-          </button>
-        ))}
-      </PaletteScrollRow>
+      {/* Repeat Tags & Action Param Toggle Row */}
+      <div className="flex items-center gap-2">
+        {/* Toggle icon for action parameters - always visible and on the left */}
+        <button
+          type="button"
+          data-testid="palette-param-toggle-btn"
+          onClick={handleToggleParams}
+          title={
+            hasParams
+              ? !isSubpaletteCollapsed
+                ? 'Hide action parameters'
+                : 'Show action parameters'
+              : 'Action parameters'
+          }
+          className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all active:scale-95 touch-none ${
+            hasParams && !isSubpaletteCollapsed
+              ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md ring-2 ring-amber-400/40'
+              : hasParams
+              ? 'bg-slate-800 hover:bg-slate-700 border-amber-500/50 text-amber-400/90 shadow-sm'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <SlidersHorizontal className="w-5 h-5 stroke-[2.2]" />
+        </button>
+
+        {/* Divider between param toggle and repeat badges */}
+        <div className="w-[1px] h-8 bg-slate-700/60 flex-shrink-0" />
+
+        {/* Number Multipliers Row (Repeat tags) */}
+        <PaletteScrollRow testId="palette-number-row" className="flex-1 min-w-0">
+          {NUMBER_BADGES.map((num) => (
+            <button
+              key={num}
+              data-testid={`palette-number-${num}`}
+              draggable
+              onDragStart={(e) => handleNumberDragStart(e, num)}
+              onClick={() => handleNumberClick(num)}
+              className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+              title={`Set repeat ${num}`}
+            >
+              {num}
+            </button>
+          ))}
+        </PaletteScrollRow>
+      </div>
+
+      {/* Subpalette for Selected Block Parameters */}
+      <BlockSubpalette />
     </div>
   );
 };

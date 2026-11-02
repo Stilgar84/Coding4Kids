@@ -1,12 +1,40 @@
 import React from 'react';
 import { SimulationStatus } from '../../types';
 
+export type ActionParamType = 'angle' | 'color' | 'penWidth' | 'radius' | 'number';
+
+export interface ActionParamOption<T = any> {
+  value: T;
+  label?: string;
+  description?: string;
+}
+
+export interface ActionParamDef {
+  id: string; // e.g. 'angle' | 'color' | 'width' | 'radius'
+  label: string;
+  type: ActionParamType;
+  defaultValue: any;
+  unit?: string;
+  options: ActionParamOption[];
+  visualVariant?: 'rotation' | 'arcAngle' | 'radius';
+}
+
+export function getDefaultParams(paramDefs?: ActionParamDef[]): Record<string, any> | undefined {
+  if (!paramDefs || paramDefs.length === 0) return undefined;
+  const params: Record<string, any> = {};
+  for (const def of paramDefs) {
+    params[def.id] = def.defaultValue;
+  }
+  return params;
+}
+
 export interface SimPaletteItem {
-  id: string; // unique item id in palette, e.g. 'turn-left-30', 'pen-color-red'
+  id: string; // unique item id in palette, e.g. 'turtle-turn-left', 'turtle-pen-color'
   actionType: string; // underlying action type, e.g. 'TURN_LEFT', 'SET_PEN_COLOR'
   name: string;
   category: 'motion' | 'pen' | 'action';
-  params?: Record<string, any>; // e.g. { angle: 30 }, { color: '#ef4444' }
+  params?: Record<string, any>; // default / template params
+  paramDefs?: ActionParamDef[]; // Parameter definitions (options, defaults, labels)
   icon: (props: { className?: string; isActive?: boolean }) => React.ReactNode;
   bgClass: string;
   borderClass: string;

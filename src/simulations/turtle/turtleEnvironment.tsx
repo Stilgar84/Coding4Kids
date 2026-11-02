@@ -1,4 +1,9 @@
-import { SimulationEnvironment, SimPaletteItem, SimActionResult } from '../../engine/simulation/types';
+import {
+  SimulationEnvironment,
+  SimPaletteItem,
+  SimActionResult,
+  ActionParamDef,
+} from '../../engine/simulation/types';
 import { TurtleState } from './types';
 import {
   moveTurtleForward,
@@ -16,6 +21,7 @@ import {
   RotateCw,
   PenTool,
   Slash,
+  Palette,
 } from 'lucide-react';
 
 export function createInitialTurtleState(): TurtleState {
@@ -36,6 +42,93 @@ export function createInitialTurtleState(): TurtleState {
     computedBounds: { minX: -100, minY: -100, maxX: 100, maxY: 100 },
   };
 }
+
+export const TURTLE_ANGLE_PARAM_DEF: ActionParamDef = {
+  id: 'angle',
+  label: 'Angle',
+  type: 'angle',
+  visualVariant: 'rotation',
+  defaultValue: 90,
+  unit: '°',
+  options: [
+    { value: 15, label: '15°' },
+    { value: 30, label: '30°' },
+    { value: 45, label: '45°' },
+    { value: 60, label: '60°' },
+    { value: 90, label: '90°' },
+    { value: 120, label: '120°' },
+    { value: 135, label: '135°' },
+    { value: 180, label: '180°' },
+  ],
+};
+
+export const TURTLE_ARC_RADIUS_PARAM_DEF: ActionParamDef = {
+  id: 'radius',
+  label: 'Radius',
+  type: 'radius',
+  visualVariant: 'radius',
+  defaultValue: 50,
+  unit: 'px',
+  options: [
+    { value: 25, label: '25' },
+    { value: 50, label: '50' },
+    { value: 75, label: '75' },
+    { value: 100, label: '100' },
+    { value: 150, label: '150' },
+  ],
+};
+
+export const TURTLE_ARC_ANGLE_PARAM_DEF: ActionParamDef = {
+  id: 'angle',
+  label: 'Angle',
+  type: 'angle',
+  visualVariant: 'arcAngle',
+  defaultValue: 90,
+  unit: '°',
+  options: [
+    { value: 30, label: '30°' },
+    { value: 45, label: '45°' },
+    { value: 60, label: '60°' },
+    { value: 90, label: '90°' },
+    { value: 120, label: '120°' },
+    { value: 180, label: '180°' },
+    { value: 270, label: '270°' },
+    { value: 360, label: '360°' },
+  ],
+};
+
+export const TURTLE_COLOR_PARAM_DEF: ActionParamDef = {
+  id: 'color',
+  label: 'Color',
+  type: 'color',
+  defaultValue: '#0f172a',
+  options: [
+    { value: '#0f172a', label: 'Black' },
+    { value: '#ef4444', label: 'Red' },
+    { value: '#3b82f6', label: 'Blue' },
+    { value: '#10b981', label: 'Green' },
+    { value: '#f59e0b', label: 'Amber' },
+    { value: '#8b5cf6', label: 'Purple' },
+    { value: '#ec4899', label: 'Pink' },
+    { value: '#06b6d4', label: 'Cyan' },
+  ],
+};
+
+export const TURTLE_PEN_WIDTH_PARAM_DEF: ActionParamDef = {
+  id: 'width',
+  label: 'Line Width',
+  type: 'penWidth',
+  defaultValue: 6,
+  unit: 'px',
+  options: [
+    { value: 2, label: '2px' },
+    { value: 4, label: '4px' },
+    { value: 6, label: '6px' },
+    { value: 8, label: '8px' },
+    { value: 12, label: '12px' },
+    { value: 16, label: '16px' },
+  ],
+};
 
 const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
   // Movement
@@ -64,72 +157,32 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     supportsRepeat: true,
   },
 
-  // Turn Left 30°
+  // Turn Left
   {
-    id: 'turtle-turn-left-30',
+    id: 'turtle-turn-left',
     actionType: 'TURN_LEFT',
-    name: 'Turn Left 30°',
+    name: 'Turn Left',
     category: 'motion',
-    params: { angle: 30 },
+    paramDefs: [TURTLE_ANGLE_PARAM_DEF],
+    params: { angle: 90 },
     icon: ({ isActive }) => (
-      <div className="flex flex-col items-center justify-center leading-none">
-        <RotateCcw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-        <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>30°</span>
-      </div>
+      <RotateCcw className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
     ),
     bgClass: 'bg-amber-600 hover:bg-amber-500',
     borderClass: 'border-amber-400',
     supportsRepeat: true,
   },
 
-  // Turn Left 45°
+  // Turn Right
   {
-    id: 'turtle-turn-left-45',
-    actionType: 'TURN_LEFT',
-    name: 'Turn Left 45°',
-    category: 'motion',
-    params: { angle: 45 },
-    icon: ({ isActive }) => (
-      <div className="flex flex-col items-center justify-center leading-none">
-        <RotateCcw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-        <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>45°</span>
-      </div>
-    ),
-    bgClass: 'bg-amber-600 hover:bg-amber-500',
-    borderClass: 'border-amber-400',
-    supportsRepeat: true,
-  },
-
-  // Turn Right 30°
-  {
-    id: 'turtle-turn-right-30',
+    id: 'turtle-turn-right',
     actionType: 'TURN_RIGHT',
-    name: 'Turn Right 30°',
+    name: 'Turn Right',
     category: 'motion',
-    params: { angle: 30 },
+    paramDefs: [TURTLE_ANGLE_PARAM_DEF],
+    params: { angle: 90 },
     icon: ({ isActive }) => (
-      <div className="flex flex-col items-center justify-center leading-none">
-        <RotateCw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-        <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>30°</span>
-      </div>
-    ),
-    bgClass: 'bg-amber-600 hover:bg-amber-500',
-    borderClass: 'border-amber-400',
-    supportsRepeat: true,
-  },
-
-  // Turn Right 45°
-  {
-    id: 'turtle-turn-right-45',
-    actionType: 'TURN_RIGHT',
-    name: 'Turn Right 45°',
-    category: 'motion',
-    params: { angle: 45 },
-    icon: ({ isActive }) => (
-      <div className="flex flex-col items-center justify-center leading-none">
-        <RotateCw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-        <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>45°</span>
-      </div>
+      <RotateCw className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
     ),
     bgClass: 'bg-amber-600 hover:bg-amber-500',
     borderClass: 'border-amber-400',
@@ -142,6 +195,7 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     actionType: 'ARC_LEFT',
     name: 'Arc Left',
     category: 'motion',
+    paramDefs: [TURTLE_ARC_RADIUS_PARAM_DEF, TURTLE_ARC_ANGLE_PARAM_DEF],
     params: { radius: 50, angle: 90 },
     icon: ({ isActive }) => (
       <div className="flex flex-col items-center justify-center leading-none">
@@ -163,6 +217,7 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     actionType: 'ARC_RIGHT',
     name: 'Arc Right',
     category: 'motion',
+    paramDefs: [TURTLE_ARC_RADIUS_PARAM_DEF, TURTLE_ARC_ANGLE_PARAM_DEF],
     params: { radius: 50, angle: 90 },
     icon: ({ isActive }) => (
       <div className="flex flex-col items-center justify-center leading-none">
@@ -209,75 +264,38 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     supportsRepeat: false,
   },
 
-  // Pen Color: Black
+  // Pen Color
   {
-    id: 'turtle-pen-color-black',
+    id: 'turtle-pen-color',
     actionType: 'SET_PEN_COLOR',
-    name: 'Black Pen',
+    name: 'Pen Color',
     category: 'pen',
+    paramDefs: [TURTLE_COLOR_PARAM_DEF],
     params: { color: '#0f172a' },
-    icon: () => (
-      <div className="flex flex-col items-center justify-center gap-1">
-        <div className="w-5 h-5 rounded-full bg-slate-950 border-2 border-white shadow-sm" />
-        <span className="text-[9px] font-bold text-slate-200 uppercase">Black</span>
-      </div>
+    icon: ({ isActive }) => (
+      <Palette className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-pink-300 stroke-[2.5]'}`} />
     ),
     bgClass: 'bg-slate-800 hover:bg-slate-700',
     borderClass: 'border-slate-500',
     supportsRepeat: false,
   },
 
-  // Pen Color: Red
+  // Pen Width
   {
-    id: 'turtle-pen-color-red',
-    actionType: 'SET_PEN_COLOR',
-    name: 'Red Pen',
+    id: 'turtle-pen-width',
+    actionType: 'SET_PEN_WIDTH',
+    name: 'Pen Width',
     category: 'pen',
-    params: { color: '#ef4444' },
-    icon: () => (
+    paramDefs: [TURTLE_PEN_WIDTH_PARAM_DEF],
+    params: { width: 6 },
+    icon: ({ isActive }) => (
       <div className="flex flex-col items-center justify-center gap-1">
-        <div className="w-5 h-5 rounded-full bg-red-500 border-2 border-white shadow-sm" />
-        <span className="text-[9px] font-bold text-red-200 uppercase">Red</span>
+        <div className={`w-6 h-1.5 rounded-full ${isActive ? 'bg-slate-950' : 'bg-white'}`} />
+        <span className={`text-[9px] font-bold ${isActive ? 'text-slate-950' : 'text-slate-300'}`}>Width</span>
       </div>
     ),
-    bgClass: 'bg-red-800 hover:bg-red-700',
-    borderClass: 'border-red-500',
-    supportsRepeat: false,
-  },
-
-  // Pen Color: Blue
-  {
-    id: 'turtle-pen-color-blue',
-    actionType: 'SET_PEN_COLOR',
-    name: 'Blue Pen',
-    category: 'pen',
-    params: { color: '#3b82f6' },
-    icon: () => (
-      <div className="flex flex-col items-center justify-center gap-1">
-        <div className="w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
-        <span className="text-[9px] font-bold text-blue-200 uppercase">Blue</span>
-      </div>
-    ),
-    bgClass: 'bg-blue-800 hover:bg-blue-700',
-    borderClass: 'border-blue-500',
-    supportsRepeat: false,
-  },
-
-  // Pen Color: Green
-  {
-    id: 'turtle-pen-color-green',
-    actionType: 'SET_PEN_COLOR',
-    name: 'Green Pen',
-    category: 'pen',
-    params: { color: '#22c55e' },
-    icon: () => (
-      <div className="flex flex-col items-center justify-center gap-1">
-        <div className="w-5 h-5 rounded-full bg-green-500 border-2 border-white shadow-sm" />
-        <span className="text-[9px] font-bold text-green-200 uppercase">Green</span>
-      </div>
-    ),
-    bgClass: 'bg-emerald-800 hover:bg-emerald-700',
-    borderClass: 'border-emerald-500',
+    bgClass: 'bg-slate-800 hover:bg-slate-700',
+    borderClass: 'border-slate-500',
     supportsRepeat: false,
   },
 ];
@@ -359,6 +377,12 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
       case 'SET_PEN_COLOR': {
         const color = options?.params?.color ?? '#0f172a';
         nextState = { ...nextState, penColor: color };
+        break;
+      }
+
+      case 'SET_PEN_WIDTH': {
+        const width = options?.params?.width ?? 6;
+        nextState = { ...nextState, penWidth: width };
         break;
       }
 

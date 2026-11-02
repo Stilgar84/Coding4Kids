@@ -44,6 +44,7 @@ export const OP_TURTLE_ARC_RIGHT = 0x15;
 export const OP_TURTLE_PEN_UP = 0x16;
 export const OP_TURTLE_PEN_DOWN = 0x17;
 export const OP_TURTLE_SET_PEN_COLOR = 0x18;
+export const OP_TURTLE_SET_PEN_WIDTH = 0x19;
 
 // Turtle Color Palette
 export const TURTLE_COLOR_PALETTE: readonly string[] = [
@@ -53,6 +54,8 @@ export const TURTLE_COLOR_PALETTE: readonly string[] = [
   '#10b981', // 3: Green
   '#f59e0b', // 4: Amber
   '#8b5cf6', // 5: Purple
+  '#ec4899', // 6: Pink
+  '#06b6d4', // 7: Cyan
 ];
 
 export interface ImportResult {

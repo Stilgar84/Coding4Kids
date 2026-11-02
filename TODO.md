@@ -1,11 +1,12 @@
 # bugs
 
+Constant movement and rotation speed , other action 0time. Can add wait command
+
+# 
+
+we could allow for free input on action paramter (optionally in addition for defaut proposed values)
 
 
-# action parameters
-
-either use the repeat tag, replacing it
-or use one or more block stuck on the side.
 
 # copy/cut/pasting
 

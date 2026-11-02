@@ -193,3 +193,34 @@ export function arcTurtle(
     computedBounds: updateBoundingBox(newPaths, newRobot),
   };
 }
+
+/**
+ * Computes the SVG path string 'd' for an ARC path.
+ * Handles full 360-degree circles by splitting into two semicircles so SVG does not drop the arc.
+ */
+export function getArcSvgPath(p: {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  radius: number;
+  startHeading: number;
+  sweepAngle: number;
+}): string {
+  const isRight = p.sweepAngle > 0;
+  const sweepFlag = isRight ? 1 : 0;
+  const isFullCircle = Math.abs(p.sweepAngle) >= 360;
+
+  if (isFullCircle) {
+    const startRad = (p.startHeading * Math.PI) / 180;
+    const normalAngle = isRight ? startRad + Math.PI / 2 : startRad - Math.PI / 2;
+    const cx = p.fromX + p.radius * Math.sin(normalAngle);
+    const cy = p.fromY - p.radius * Math.cos(normalAngle);
+    const midX = Number((2 * cx - p.fromX).toFixed(4));
+    const midY = Number((2 * cy - p.fromY).toFixed(4));
+    return `M ${p.fromX} ${p.fromY} A ${p.radius} ${p.radius} 0 0 ${sweepFlag} ${midX} ${midY} A ${p.radius} ${p.radius} 0 0 ${sweepFlag} ${p.fromX} ${p.fromY}`;
+  }
+
+  const largeArcFlag = Math.abs(p.sweepAngle) > 180 ? 1 : 0;
+  return `M ${p.fromX} ${p.fromY} A ${p.radius} ${p.radius} 0 ${largeArcFlag} ${sweepFlag} ${p.toX} ${p.toY}`;
+}

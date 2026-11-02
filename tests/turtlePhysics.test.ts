@@ -163,5 +163,25 @@ describe('Turtle Physics & Kinematics', () => {
     expect(fwdRes.nextState.paths.length).toBe(1);
     expect(fwdRes.nextState.paths[0].color).toBe('#ef4444');
     expect(fwdRes.nextState.paths[0].width).toBe(6);
+
+    // Set Pen Width 12
+    const widthRes = turtleSimulationEnvironment.executeAction('SET_PEN_WIDTH', fwdRes.nextState, { params: { width: 12 } });
+    expect(widthRes.nextState.penWidth).toBe(12);
+
+    // Draw line with penWidth 12
+    const fwd2Res = turtleSimulationEnvironment.executeAction('FORWARD', widthRes.nextState, { params: { distance: 50 } });
+    expect(fwd2Res.nextState.paths.length).toBe(2);
+    expect(fwd2Res.nextState.paths[1].width).toBe(12);
+  });
+
+  it('executes parameterized ARC with custom radius and angle', () => {
+    let state = createInitialTurtleState();
+    const arcRes = turtleSimulationEnvironment.executeAction('ARC_LEFT', state, { params: { radius: 75, angle: 45 } });
+    expect(arcRes.nextState.robot.heading).toBe(315);
+    expect(arcRes.nextState.paths.length).toBe(1);
+    if (arcRes.nextState.paths[0].type === 'ARC') {
+      expect(arcRes.nextState.paths[0].radius).toBe(75);
+      expect(arcRes.nextState.paths[0].sweepAngle).toBe(-45);
+    }
   });
 });

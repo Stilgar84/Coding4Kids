@@ -13,8 +13,11 @@ import {
   RotateCw,
   PenTool,
   Slash,
+  Palette,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { getSimEnvironment } from '../engine/simulation/registry';
+import { BlockParamBadge } from './params/BlockParamBadge';
 
 interface BlockItemProps {
   block: CodeBlock;
@@ -47,11 +50,27 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   onDragOverSlot,
   onDropAtSlot,
 }) => {
-  const { updateBlockRepeat } = useAppStore();
+  const { updateBlockRepeat, updateBlockParams, runtime } = useAppStore();
+  const subscribedSimId = useAppStore((state) => state.activeSimId);
+  const activeSimId = useAppStore.getState().activeSimId || subscribedSimId;
   const [isNumberHovered, setIsNumberHovered] = useState(false);
 
+  const currentSimEnv = getSimEnvironment(activeSimId);
+  const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === block.type);
+  const paramDefs = paletteItem?.paramDefs || [];
+  const hasParams = paramDefs.length > 0;
+
   // Check if block type supports repeat multipliers
-  const nonRepeatableTypes = ['PEN_UP', 'PEN_DOWN', 'SET_PEN_COLOR', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'CALL_F3'];
+  const nonRepeatableTypes = [
+    'PEN_UP',
+    'PEN_DOWN',
+    'SET_PEN_COLOR',
+    'SET_PEN_WIDTH',
+    'LOOP_END',
+    'CALL_F1',
+    'CALL_F2',
+    'CALL_F3',
+  ];
   const supportsMultiplier = !nonRepeatableTypes.includes(block.type);
 
   const showRepeatBadge =
@@ -59,185 +78,229 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     block.repeatCount !== undefined &&
     block.repeatCount > 1;
 
-  // Block color & icon mapping
-  const renderBlockContent = () => {
-    const activeClass =
-      'bg-yellow-400 border-yellow-200 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.85)]';
-    const iconColor = isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]';
+  // Theme & color classes for action and parameter container
+  const getBlockTheme = () => {
+    if (isActive) {
+      return {
+        bgClass: 'bg-yellow-400',
+        borderClass: 'border-yellow-200',
+        iconColor: 'text-slate-950 stroke-[3]',
+        activeClass:
+          'bg-yellow-400 border-yellow-200 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.85)]',
+      };
+    }
+
+    let bgClass = 'bg-slate-700';
+    let borderClass = 'border-slate-500';
 
     switch (block.type) {
       case 'MOVE_FWD':
       case 'FORWARD':
-        return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-sky-600 border-sky-400'
-            }`}
-          >
-            <ArrowUp className={`w-7 h-7 ${iconColor}`} />
-          </div>
-        );
+        bgClass = 'bg-sky-600';
+        borderClass = 'border-sky-400';
+        break;
 
       case 'MOVE_BACK':
       case 'BACKWARD':
-        return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-sky-700 border-sky-500'
-            }`}
-          >
-            <ArrowDown className={`w-7 h-7 ${iconColor}`} />
-          </div>
-        );
+        bgClass = 'bg-sky-700';
+        borderClass = 'border-sky-500';
+        break;
 
       case 'TURN_LEFT':
-        return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-amber-600 border-amber-400'
-            }`}
-          >
-            {block.params?.angle ? (
-              <div className="flex flex-col items-center justify-center leading-none">
-                <RotateCcw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-                <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>
-                  {block.params.angle}°
-                </span>
-              </div>
-            ) : (
-              <CornerUpLeft className={`w-7 h-7 ${iconColor}`} />
-            )}
-          </div>
+      case 'TURN_RIGHT':
+        bgClass = 'bg-amber-600';
+        borderClass = 'border-amber-400';
+        break;
+
+      case 'ARC_LEFT':
+      case 'ARC_RIGHT':
+        bgClass = 'bg-indigo-600';
+        borderClass = 'border-indigo-400';
+        break;
+
+      case 'PEN_UP':
+        bgClass = 'bg-teal-700';
+        borderClass = 'border-teal-400';
+        break;
+
+      case 'PEN_DOWN':
+        bgClass = 'bg-teal-600';
+        borderClass = 'border-teal-300';
+        break;
+
+      case 'SET_PEN_COLOR':
+      case 'SET_PEN_WIDTH':
+        bgClass = 'bg-slate-800';
+        borderClass = 'border-slate-500';
+        break;
+
+      case 'LOOP_START':
+        bgClass = 'bg-purple-700';
+        borderClass = 'border-purple-400';
+        break;
+
+      case 'LOOP_END':
+        bgClass = 'bg-purple-900';
+        borderClass = 'border-purple-500';
+        break;
+
+      case 'CALL_F1':
+        bgClass = 'bg-emerald-600';
+        borderClass = 'border-emerald-400';
+        break;
+
+      case 'CALL_F2':
+        bgClass = 'bg-blue-600';
+        borderClass = 'border-blue-400';
+        break;
+
+      case 'CALL_F3':
+        bgClass = 'bg-rose-600';
+        borderClass = 'border-rose-400';
+        break;
+
+      default:
+        bgClass = 'bg-slate-700';
+        borderClass = 'border-slate-500';
+        break;
+    }
+
+    return {
+      bgClass,
+      borderClass,
+      iconColor: 'text-white stroke-[3]',
+      activeClass:
+        'bg-yellow-400 border-yellow-200 text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.85)]',
+    };
+  };
+
+  const theme = getBlockTheme();
+  const iconColor = theme.iconColor;
+
+  // Inner icon / content for the action block
+  const renderBlockIcon = () => {
+    switch (block.type) {
+      case 'MOVE_FWD':
+      case 'FORWARD':
+        return <ArrowUp className={`w-7 h-7 ${iconColor}`} />;
+
+      case 'MOVE_BACK':
+      case 'BACKWARD':
+        return <ArrowDown className={`w-7 h-7 ${iconColor}`} />;
+
+      case 'TURN_LEFT':
+        return activeSimId === 'turtle' ? (
+          <RotateCcw className={`w-7 h-7 ${iconColor}`} />
+        ) : (
+          <CornerUpLeft className={`w-7 h-7 ${iconColor}`} />
         );
 
       case 'TURN_RIGHT':
-        return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-amber-600 border-amber-400'
-            }`}
-          >
-            {block.params?.angle ? (
-              <div className="flex flex-col items-center justify-center leading-none">
-                <RotateCw className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-white stroke-[2.5]'}`} />
-                <span className={`text-[10px] font-black mt-0.5 ${isActive ? 'text-slate-950' : 'text-amber-200'}`}>
-                  {block.params.angle}°
-                </span>
-              </div>
-            ) : (
-              <CornerUpRight className={`w-7 h-7 ${iconColor}`} />
-            )}
-          </div>
+        return activeSimId === 'turtle' ? (
+          <RotateCw className={`w-7 h-7 ${iconColor}`} />
+        ) : (
+          <CornerUpRight className={`w-7 h-7 ${iconColor}`} />
         );
 
       case 'ARC_LEFT':
         return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-indigo-600 border-indigo-400'
-            }`}
-          >
-            <div className="flex flex-col items-center justify-center leading-none">
-              <svg className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`} viewBox="0 0 24 24" fill="none" strokeWidth="2.5">
-                <path d="M 19 20 A 15 15 0 0 0 4 5" />
-                <polyline points="4 10 4 5 9 5" />
-              </svg>
-              <span className={`text-[9px] font-black ${isActive ? 'text-slate-950' : 'text-indigo-200'}`}>Arc L</span>
-            </div>
+          <div className="flex flex-col items-center justify-center leading-none">
+            <svg
+              className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              strokeWidth="2.5"
+            >
+              <path d="M 19 20 A 15 15 0 0 0 4 5" />
+              <polyline points="4 10 4 5 9 5" />
+            </svg>
+            <span
+              className={`text-[9px] font-black ${
+                isActive ? 'text-slate-950' : 'text-indigo-200'
+              }`}
+            >
+              Arc L
+            </span>
           </div>
         );
 
       case 'ARC_RIGHT':
         return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-indigo-600 border-indigo-400'
-            }`}
-          >
-            <div className="flex flex-col items-center justify-center leading-none">
-              <svg className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`} viewBox="0 0 24 24" fill="none" strokeWidth="2.5">
-                <path d="M 5 20 A 15 15 0 0 1 20 5" />
-                <polyline points="20 10 20 5 15 5" />
-              </svg>
-              <span className={`text-[9px] font-black ${isActive ? 'text-slate-950' : 'text-indigo-200'}`}>Arc R</span>
-            </div>
+          <div className="flex flex-col items-center justify-center leading-none">
+            <svg
+              className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              strokeWidth="2.5"
+            >
+              <path d="M 5 20 A 15 15 0 0 1 20 5" />
+              <polyline points="20 10 20 5 15 5" />
+            </svg>
+            <span
+              className={`text-[9px] font-black ${
+                isActive ? 'text-slate-950' : 'text-indigo-200'
+              }`}
+            >
+              Arc R
+            </span>
           </div>
         );
 
       case 'PEN_UP':
         return (
-          <div
-            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-teal-700 border-teal-400'
-            }`}
-          >
-            <div className="relative flex items-center justify-center">
-              <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950' : 'text-teal-200'}`} />
-              <Slash className="w-7 h-7 text-red-400 stroke-[2.5] absolute -top-0.5 -left-0.5" />
-            </div>
+          <div className="relative flex items-center justify-center">
+            <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950' : 'text-teal-200'}`} />
+            <Slash className="w-7 h-7 text-red-400 stroke-[2.5] absolute -top-0.5 -left-0.5" />
           </div>
         );
 
       case 'PEN_DOWN':
         return (
-          <div
-            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-teal-600 border-teal-300'
+          <PenTool
+            className={`w-6 h-6 ${
+              isActive ? 'text-slate-950 stroke-[2.5]' : 'text-teal-100 stroke-[2.5]'
             }`}
-          >
-            <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-teal-100 stroke-[2.5]'}`} />
-          </div>
+          />
         );
 
-      case 'SET_PEN_COLOR': {
-        const color = block.params?.color || '#0f172a';
+      case 'SET_PEN_COLOR':
         return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-slate-800 border-slate-500'
+          <Palette
+            className={`w-6 h-6 stroke-[2.5] ${
+              isActive ? 'text-slate-950' : 'text-pink-300'
             }`}
-          >
-            <div
-              className="w-5 h-5 rounded-full border-2 border-white shadow-sm"
-              style={{ backgroundColor: color }}
-            />
+          />
+        );
+
+      case 'SET_PEN_WIDTH':
+        return (
+          <div className="flex flex-col items-center justify-center gap-1">
+            <div className={`w-6 h-1.5 rounded-full ${isActive ? 'bg-slate-950' : 'bg-white'}`} />
+            <span
+              className={`text-[9px] font-bold ${
+                isActive ? 'text-slate-950' : 'text-slate-300'
+              }`}
+            >
+              Width
+            </span>
           </div>
         );
-      }
 
       case 'LOOP_START':
-        return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-purple-700 border-purple-400'
-            }`}
-          >
-            <Repeat className={`w-7 h-7 ${iconColor}`} />
-          </div>
-        );
+        return <Repeat className={`w-7 h-7 ${iconColor}`} />;
 
       case 'LOOP_END':
         return (
-          <div
-            className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-purple-900 border-purple-500'
+          <Undo2
+            className={`w-7 h-7 ${
+              isActive ? 'text-slate-950 stroke-[3]' : 'text-purple-200 stroke-[3]'
             }`}
-          >
-            <Undo2
-              className={`w-7 h-7 ${
-                isActive ? 'text-slate-950 stroke-[3]' : 'text-purple-200 stroke-[3]'
-              }`}
-            />
-          </div>
+          />
         );
 
       case 'CALL_F1':
         return (
-          <div
-            className={`w-full h-full flex items-center justify-center gap-1 rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-emerald-600 border-emerald-400'
-            }`}
-          >
+          <div className="flex items-center justify-center gap-1">
             <PhoneCall
               className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
@@ -251,11 +314,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'CALL_F2':
         return (
-          <div
-            className={`w-full h-full flex items-center justify-center gap-1 rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-blue-600 border-blue-400'
-            }`}
-          >
+          <div className="flex items-center justify-center gap-1">
             <PhoneCall
               className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
@@ -269,11 +328,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'CALL_F3':
         return (
-          <div
-            className={`w-full h-full flex items-center justify-center gap-1 rounded-2xl border-2 p-2 shadow-md transition-colors ${
-              isActive ? activeClass : 'bg-rose-600 border-rose-400'
-            }`}
-          >
+          <div className="flex items-center justify-center gap-1">
             <PhoneCall
               className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
@@ -286,16 +341,24 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         );
 
       default:
-        return (
-          <div
-            className={`w-full h-full flex items-center justify-center rounded-2xl border-2 p-2 shadow-md ${
-              isActive ? activeClass : 'bg-slate-700 border-slate-500'
-            }`}
-          >
-            <span className="text-xs font-bold text-white truncate">{block.type}</span>
-          </div>
-        );
+        return <span className="text-xs font-bold text-white truncate">{block.type}</span>;
     }
+  };
+
+  // Block visual container: left side has flat right edge when parameters are present
+  const renderBlockContent = () => {
+    const roundedClass = hasParams ? 'rounded-l-2xl rounded-r-none' : 'rounded-2xl';
+    const borderEdgesClass = hasParams ? 'border-2 border-r-0' : 'border-2';
+
+    return (
+      <div
+        className={`w-full h-full flex flex-col items-center justify-center ${roundedClass} ${borderEdgesClass} p-2 shadow-md transition-colors ${
+          isActive ? theme.activeClass : `${theme.bgClass} ${theme.borderClass}`
+        }`}
+      >
+        {renderBlockIcon()}
+      </div>
+    );
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -411,17 +474,46 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         </div>
       )}
 
-      {/* Main Block Visual: Fixed uniform dimensions ensuring identical vertical alignment */}
+      {/* Main Block Visual & Attached Parameter Badges */}
       <div
-        className={`w-[56px] h-[56px] flex items-center justify-center rounded-2xl ${
+        className={`flex items-center rounded-2xl transition-all ${
           isNumberHovered
             ? 'ring-4 ring-yellow-400'
             : isLoopError
             ? 'ring-2 ring-red-500'
+            : isSelected
+            ? 'ring-2 ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)]'
             : ''
         }`}
       >
-        {renderBlockContent()}
+        <div className="w-[56px] h-[56px] flex items-center justify-center flex-shrink-0">
+          {renderBlockContent()}
+        </div>
+
+        {/* Attached Parameter Badges on the Right */}
+        {hasParams && (
+          <div
+            data-testid={`block-params-container-${block.id}`}
+            className={`flex items-center gap-1.5 pl-1 pr-2 h-[56px] -ml-px rounded-r-2xl border-2 border-l-0 shadow-md transition-colors flex-shrink-0 ${
+              isActive
+                ? 'bg-yellow-400 border-yellow-200'
+                : `${theme.bgClass} ${theme.borderClass}`
+            }`}
+          >
+            {paramDefs.map((def) => (
+              <BlockParamBadge
+                key={def.id}
+                paramDef={def}
+                value={block.params?.[def.id]}
+                actionType={block.type}
+                disabled={runtime?.status === 'RUNNING'}
+                onChange={(newVal) =>
+                  updateBlockParams(scope, block.id, { [def.id]: newVal })
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Number Badge Slot: Absolute-positioned so it does not alter block height or vertical alignment.

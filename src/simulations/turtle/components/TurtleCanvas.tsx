@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { TurtleState } from '../types';
+import { getArcSvgPath } from '../physics';
 import { SimulationStatus } from '../../../types';
 import { useAppStore } from '../../../store/useAppStore';
 
@@ -155,11 +156,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
               );
             }
             if (p.type === 'ARC') {
-              // SVG Arc path:
-              // M fromX fromY A radius radius 0 largeArcFlag sweepFlag toX toY
-              const largeArcFlag = Math.abs(p.sweepAngle) > 180 ? 1 : 0;
-              const sweepFlag = p.sweepAngle > 0 ? 1 : 0;
-              const d = `M ${p.fromX} ${p.fromY} A ${p.radius} ${p.radius} 0 ${largeArcFlag} ${sweepFlag} ${p.toX} ${p.toY}`;
+              const d = getArcSvgPath(p);
 
               return (
                 <path

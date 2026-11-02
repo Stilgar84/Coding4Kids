@@ -6,6 +6,7 @@ import {
   OP_TURTLE_ARC_LEFT,
   OP_TURTLE_ARC_RIGHT,
   OP_TURTLE_SET_PEN_COLOR,
+  OP_TURTLE_SET_PEN_WIDTH,
   TURTLE_COLOR_PALETTE,
 } from '../types';
 
@@ -60,6 +61,12 @@ export function writeTurtleParams(
       break;
     }
 
+    case OP_TURTLE_SET_PEN_WIDTH: {
+      const width = Math.round(params?.width ?? 6);
+      writer.writeVLE(width);
+      break;
+    }
+
     default:
       // No parameters for other opcodes (FORWARD, BACKWARD, PEN_UP, PEN_DOWN)
       break;
@@ -90,6 +97,11 @@ export function readTurtleParams(
     case OP_TURTLE_SET_PEN_COLOR: {
       const colorByte = reader.readUint8();
       return { color: byteToColor(colorByte) };
+    }
+
+    case OP_TURTLE_SET_PEN_WIDTH: {
+      const width = reader.readVLE();
+      return { width };
     }
 
     default:
