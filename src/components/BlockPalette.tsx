@@ -19,6 +19,7 @@ interface CoreControlItem {
   bgClass: string;
   borderClass: string;
   supportsRepeat?: boolean;
+  params?: Record<string, any>;
 }
 
 const CORE_CONTROL_ITEMS: CoreControlItem[] = [
@@ -37,6 +38,28 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     bgClass: 'bg-purple-900 hover:bg-purple-800',
     borderClass: 'border-purple-500',
     supportsRepeat: false,
+  },
+  {
+    type: 'VAR_ASSIGN',
+    testId: 'palette-var-assign',
+    icon: (
+      <span className="font-mono font-bold text-sm text-white tracking-tight">a=b</span>
+    ),
+    bgClass: 'bg-violet-700 hover:bg-violet-600',
+    borderClass: 'border-violet-400',
+    supportsRepeat: false,
+    params: { a: 'a', b: 1 },
+  },
+  {
+    type: 'VAR_OP',
+    testId: 'palette-var-op',
+    icon: (
+      <span className="font-mono font-bold text-xs text-white tracking-tight">a=b*c</span>
+    ),
+    bgClass: 'bg-indigo-700 hover:bg-indigo-600',
+    borderClass: 'border-indigo-400',
+    supportsRepeat: false,
+    params: { a: 'a', b: 'a', op: '+', c: 1 },
   },
   {
     type: 'CALL_F1',
@@ -303,8 +326,9 @@ export const BlockPalette: React.FC = () => {
   const targetPaletteItem = currentSimEnv?.paletteItems.find(
     (p) => p.actionType === targetBlock?.type
   );
+  const isVarBlock = targetBlock?.type === 'VAR_ASSIGN' || targetBlock?.type === 'VAR_OP';
   const hasParams = Boolean(
-    targetPaletteItem?.paramDefs && targetPaletteItem.paramDefs.length > 0
+    (targetPaletteItem?.paramDefs && targetPaletteItem.paramDefs.length > 0) || isVarBlock
   );
 
   const handleToggleParams = () => {
@@ -336,14 +360,14 @@ export const BlockPalette: React.FC = () => {
     if (selectedBlockId) {
       const idx = blocks.findIndex((b) => b.id === selectedBlockId);
       if (idx !== -1) {
-        addBlock(activeScope, item.type, undefined, idx + 1);
+        addBlock(activeScope, item.type, undefined, idx + 1, item.params);
         return;
       }
     }
-    addBlock(activeScope, item.type, undefined, blocks.length);
+    addBlock(activeScope, item.type, undefined, blocks.length, item.params);
   };
 
-  const handleNumberClick = (num: number) => {
+  const handleNumberClick = (num: number | string) => {
     const blocks = workspace[activeScope] || [];
     if (blocks.length === 0) return;
 
@@ -370,7 +394,7 @@ export const BlockPalette: React.FC = () => {
       targetBlock.type === 'TURN_RIGHT';
 
     if (isControlRepeatable || isSimRepeatable || isGridRepeatable) {
-      updateBlockRepeat(activeScope, targetBlock.id, num);
+      updateBlockRepeat(activeScope, targetBlock.id, num as any);
     }
   };
 
@@ -393,13 +417,14 @@ export const BlockPalette: React.FC = () => {
       JSON.stringify({
         type: 'PALETTE_BLOCK',
         blockType: item.type,
+        params: item.params,
       })
     );
     e.dataTransfer.setData('application/x-robotemu-block', item.type);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
-  const handleNumberDragStart = (e: React.DragEvent, num: number) => {
+  const handleNumberDragStart = (e: React.DragEvent, num: number | string) => {
     e.dataTransfer.setData(
       'application/json',
       JSON.stringify({
@@ -538,6 +563,20 @@ export const BlockPalette: React.FC = () => {
               title={`Set repeat ${num}`}
             >
               {num}
+            </button>
+          ))}
+          <div className="w-[1px] h-6 bg-slate-700/60 mx-1 flex-shrink-0" />
+          {(['a', 'b', 'c', 'n'] as const).map((v) => (
+            <button
+              key={v}
+              data-testid={`palette-number-var-${v}`}
+              draggable
+              onDragStart={(e) => handleNumberDragStart(e, v)}
+              onClick={() => handleNumberClick(v)}
+              className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+              title={`Set repeat variable ${v}`}
+            >
+              {v}
             </button>
           ))}
         </PaletteScrollRow>

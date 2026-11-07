@@ -128,6 +128,19 @@ export class BinaryReader {
   }
 
   /**
+   * Reads a 64-bit IEEE 754 floating point number (little-endian, 8 bytes).
+   */
+  readFloat64(): number {
+    if (this.offset + 8 > this.buffer.length) {
+      throw new Error(`Cannot read Float64: only ${this.remaining} bytes remaining at offset ${this.offset}`);
+    }
+    const view = new DataView(this.buffer.buffer, this.buffer.byteOffset, this.buffer.byteLength);
+    const val = view.getFloat64(this.offset, true);
+    this.offset += 8;
+    return val;
+  }
+
+  /**
    * Reads a slice of N bytes.
    */
   readBytes(length: number): Uint8Array {

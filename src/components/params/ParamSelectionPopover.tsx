@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionParamDef } from '../../engine/simulation/types';
+import { ALL_VARIABLE_NAMES } from '../../types';
 import { ParamVisual } from './VisualParamBadges';
 import { X } from 'lucide-react';
 
@@ -125,6 +126,11 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   }, [onClose, anchorRef]);
 
   const effectiveValue = currentValue !== undefined ? currentValue : paramDef.defaultValue;
+  const isNumerical =
+    paramDef.type === 'angle' ||
+    paramDef.type === 'radius' ||
+    paramDef.type === 'penWidth' ||
+    paramDef.type === 'number';
 
   const content = (
     <div
@@ -189,6 +195,39 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
           );
         })}
       </div>
+
+      {/* Variables Section for Numerical Parameters */}
+      {isNumerical && (
+        <div className="flex flex-col gap-1 border-t border-slate-800 pt-1.5">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+            Variables
+          </span>
+          <div className="grid grid-cols-6 gap-1 max-h-28 overflow-y-auto p-0.5">
+            {ALL_VARIABLE_NAMES.map((v) => {
+              const isSelected = effectiveValue === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  data-testid={`param-option-var-${v}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(v);
+                    onClose();
+                  }}
+                  className={`flex items-center justify-center py-1 rounded border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300 ring-2 ring-amber-400/40'
+                      : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-amber-200 hover:border-slate-500'
+                  }`}
+                >
+                  {v}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 

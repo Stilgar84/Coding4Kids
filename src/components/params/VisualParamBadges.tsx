@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActionParamDef } from '../../engine/simulation/types';
+import { isVariableName } from '../../types';
 
 // ==========================================
 // 1. Rotation Visual (Robot trajectory before and after turn)
@@ -346,6 +347,20 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
   actionType,
 }) => {
   const effectiveValue = value !== undefined ? value : paramDef.defaultValue;
+
+  if (isVariableName(effectiveValue)) {
+    return (
+      <span
+        data-testid={`var-badge-${effectiveValue}`}
+        className={`italic font-mono font-black text-amber-300 bg-slate-950/80 rounded border border-amber-400/60 shadow-sm flex items-center justify-center leading-none ${
+          compact ? 'px-1.5 py-0.5 text-xs min-w-[20px] h-[20px]' : 'px-2 py-1 text-sm min-w-[28px] h-[28px]'
+        }`}
+      >
+        {effectiveValue}
+      </span>
+    );
+  }
+
   const isRight = actionType === 'TURN_RIGHT' || actionType === 'ARC_RIGHT';
   const direction = isRight ? 'right' : 'left';
 

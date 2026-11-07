@@ -1,4 +1,4 @@
-import { WorkspaceState, GridState } from '../../types';
+import { WorkspaceState, GridState, VariableName, toVariableName, BinaryOp } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
 
 // Format versions
@@ -27,6 +27,53 @@ export const OP_CALL_FN = 0x03;
 export const OP_IF = 0x04;
 export const OP_ELSE = 0x05;
 export const OP_END_IF = 0x06;
+export const OP_VAR_ASSIGN = 0x07;
+export const OP_VAR_OP = 0x08;
+
+// Block Header Bitmasks
+export const MASK_HAS_VAR_PARAM = 0x80; // Bit 7 of block header byte
+export const MASK_HAS_REP = 0x40;       // Bit 6 of block header byte
+
+// 2-Bit Operand Types for VAR_ASSIGN and VAR_OP
+export const OPERAND_TYPE_VAR = 0;     // 00: Variable (1 byte: 0..25)
+export const OPERAND_TYPE_POS_INT = 1; // 01: Positive / non-negative integer (VLE)
+export const OPERAND_TYPE_NEG_INT = 2; // 10: Negative integer (VLE(abs(n)))
+export const OPERAND_TYPE_DOUBLE = 3;  // 11: Double (8 bytes IEEE 754 float64)
+
+export const BINARY_OPS: readonly BinaryOp[] = [
+  '+',  // 0x00
+  '-',  // 0x01
+  '*',  // 0x02
+  '/',  // 0x03
+  '%',  // 0x04
+  '==', // 0x05
+  '!=', // 0x06
+  '<',  // 0x07
+  '<=', // 0x08
+  '>',  // 0x09
+  '>=', // 0x0A
+  '&&', // 0x0B
+  '||', // 0x0C
+];
+
+export function opToByte(op: BinaryOp): number {
+  const idx = BINARY_OPS.indexOf(op);
+  return idx >= 0 ? idx : 0;
+}
+
+export function byteToOp(byte: number): BinaryOp {
+  return BINARY_OPS[byte] ?? '+';
+}
+
+export function varNameToIndex(name: VariableName | string): number {
+  const ch = name.toLowerCase().charCodeAt(0);
+  return Math.max(0, Math.min(25, ch - 97));
+}
+
+export function indexToVarName(idx: number): VariableName {
+  const safeIdx = Math.max(0, Math.min(25, idx));
+  return toVariableName(String.fromCharCode(97 + safeIdx));
+}
 
 // Grid World Opcodes (envId = 0x01, envVersion = 1)
 export const OP_GRID_MOVE_FWD = 0x10;

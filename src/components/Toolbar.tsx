@@ -38,6 +38,7 @@ export const Toolbar: React.FC = () => {
     setLoadModalOpen,
     grid,
     turtleState,
+    runtime,
   } = useAppStore();
 
   const currentSimEnv = getSimEnvironment(activeSimId);
@@ -292,6 +293,28 @@ export const Toolbar: React.FC = () => {
           <Zap className={`w-4 h-4 ${isInstant ? 'fill-slate-950 text-slate-950' : 'fill-yellow-400'}`} />
           <span>{getSpeedLabel()}</span>
         </button>
+
+        {/* Active Runtime Variables Indicator */}
+        {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
+          <div
+            data-testid="toolbar-variables"
+            className="flex items-center gap-2 px-3 h-12 bg-slate-950/80 border-2 border-slate-700/80 rounded-2xl text-xs font-mono shadow-inner"
+            title="Runtime Variables"
+          >
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">VARS:</span>
+            <div className="flex items-center gap-2 overflow-x-auto max-w-[200px] sm:max-w-[300px]">
+              {Object.entries(runtime.variables).map(([k, v]) => (
+                <span key={k} className="text-amber-300 font-bold flex items-center whitespace-nowrap">
+                  <span className="italic">{k}</span>
+                  <span className="text-slate-500 mx-0.5">=</span>
+                  <span className="text-violet-200">
+                    {typeof v === 'number' ? (Number.isInteger(v) ? v : Number(v.toFixed(2))) : v}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Section: Environment-Specific Toolbar Tools */}

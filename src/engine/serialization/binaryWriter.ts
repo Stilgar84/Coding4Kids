@@ -78,6 +78,16 @@ export class BinaryWriter {
   }
 
   /**
+   * Writes a 64-bit IEEE 754 floating point number (little-endian, 8 bytes).
+   */
+  writeFloat64(val: number): void {
+    this.ensureCapacity(8);
+    const view = new DataView(this.buffer.buffer, this.buffer.byteOffset, this.buffer.byteLength);
+    view.setFloat64(this.offset, val, true);
+    this.offset += 8;
+  }
+
+  /**
    * Writes a sequence of bytes.
    */
   writeBytes(bytes: Uint8Array | number[]): void {

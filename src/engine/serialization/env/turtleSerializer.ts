@@ -8,6 +8,8 @@ import {
   OP_TURTLE_SET_PEN_COLOR,
   OP_TURTLE_SET_PEN_WIDTH,
   TURTLE_COLOR_PALETTE,
+  varNameToIndex,
+  indexToVarName,
 } from '../types';
 
 /**
@@ -36,22 +38,36 @@ export function byteToColor(byte: number): string {
 export function writeTurtleParams(
   writer: BinaryWriter,
   opcode: number,
-  params?: Record<string, any>
+  params?: Record<string, any>,
+  paramVarMask: number = 0
 ): void {
   switch (opcode) {
     case OP_TURTLE_TURN_LEFT:
     case OP_TURTLE_TURN_RIGHT: {
-      const angle = Math.round(params?.angle ?? 90);
-      writer.writeVLE(angle);
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(params?.angle));
+      } else {
+        const angle = Math.round(params?.angle ?? 90);
+        writer.writeVLE(angle);
+      }
       break;
     }
 
     case OP_TURTLE_ARC_LEFT:
     case OP_TURTLE_ARC_RIGHT: {
-      const radius = Math.round(params?.radius ?? 50);
-      const angle = Math.round(params?.angle ?? 90);
-      writer.writeVLE(radius);
-      writer.writeVLE(angle);
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(params?.radius));
+      } else {
+        const radius = Math.round(params?.radius ?? 50);
+        writer.writeVLE(radius);
+      }
+
+      if ((paramVarMask & 0x04) !== 0) {
+        writer.writeUint8(varNameToIndex(params?.angle));
+      } else {
+        const angle = Math.round(params?.angle ?? 90);
+        writer.writeVLE(angle);
+      }
       break;
     }
 
@@ -62,8 +78,12 @@ export function writeTurtleParams(
     }
 
     case OP_TURTLE_SET_PEN_WIDTH: {
-      const width = Math.round(params?.width ?? 6);
-      writer.writeVLE(width);
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(params?.width));
+      } else {
+        const width = Math.round(params?.width ?? 6);
+        writer.writeVLE(width);
+      }
       break;
     }
 
@@ -78,19 +98,26 @@ export function writeTurtleParams(
  */
 export function readTurtleParams(
   reader: BinaryReader,
-  opcode: number
+  opcode: number,
+  paramVarMask: number = 0
 ): Record<string, any> | undefined {
   switch (opcode) {
     case OP_TURTLE_TURN_LEFT:
     case OP_TURTLE_TURN_RIGHT: {
-      const angle = reader.readVLE();
+      const angle = (paramVarMask & 0x02) !== 0
+        ? indexToVarName(reader.readUint8())
+        : reader.readVLE();
       return { angle };
     }
 
     case OP_TURTLE_ARC_LEFT:
     case OP_TURTLE_ARC_RIGHT: {
-      const radius = reader.readVLE();
-      const angle = reader.readVLE();
+      const radius = (paramVarMask & 0x02) !== 0
+        ? indexToVarName(reader.readUint8())
+        : reader.readVLE();
+      const angle = (paramVarMask & 0x04) !== 0
+        ? indexToVarName(reader.readUint8())
+        : reader.readVLE();
       return { radius, angle };
     }
 
@@ -100,7 +127,9 @@ export function readTurtleParams(
     }
 
     case OP_TURTLE_SET_PEN_WIDTH: {
-      const width = reader.readVLE();
+      const width = (paramVarMask & 0x02) !== 0
+        ? indexToVarName(reader.readUint8())
+        : reader.readVLE();
       return { width };
     }
 

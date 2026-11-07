@@ -8,6 +8,7 @@ import {
   Direction,
   CodeBlock,
   SimulationSpeed,
+  VariableName,
 } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState, turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
@@ -117,9 +118,9 @@ interface AppState {
   importCode: (data: string) => { success: boolean; error?: string };
 
   // Workspace actions
-  addBlock: (scope: ScopeType, type: string, repeatCount?: number, insertAtIndex?: number, params?: Record<string, any>) => void;
+  addBlock: (scope: ScopeType, type: string, repeatCount?: number | VariableName, insertAtIndex?: number, params?: Record<string, any>) => void;
   removeBlock: (scope: ScopeType, blockId: string) => void;
-  updateBlockRepeat: (scope: ScopeType, blockId: string, repeatCount?: number) => void;
+  updateBlockRepeat: (scope: ScopeType, blockId: string, repeatCount?: number | VariableName) => void;
   updateBlockParams: (scope: ScopeType, blockId: string, params: Record<string, any>) => void;
   reorderBlocks: (scope: ScopeType, fromIndex: number, toIndex: number) => void;
   clearWorkspace: (scope?: ScopeType) => void;

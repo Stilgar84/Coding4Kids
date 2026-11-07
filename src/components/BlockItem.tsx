@@ -70,13 +70,16 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     'CALL_F1',
     'CALL_F2',
     'CALL_F3',
+    'VAR_ASSIGN',
+    'VAR_OP',
   ];
   const supportsMultiplier = !nonRepeatableTypes.includes(block.type);
 
+  const isVarRepeat = typeof block.repeatCount === 'string' && /^[a-z]$/.test(block.repeatCount);
   const showRepeatBadge =
     supportsMultiplier &&
     block.repeatCount !== undefined &&
-    block.repeatCount > 1;
+    (isVarRepeat || (block.type === 'LOOP_START' ? (block.repeatCount as number) >= 0 : (block.repeatCount as number) > 1));
 
   // Theme & color classes for action and parameter container
   const getBlockTheme = () => {
@@ -157,6 +160,16 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       case 'CALL_F3':
         bgClass = 'bg-rose-600';
         borderClass = 'border-rose-400';
+        break;
+
+      case 'VAR_ASSIGN':
+        bgClass = 'bg-violet-700';
+        borderClass = 'border-violet-400';
+        break;
+
+      case 'VAR_OP':
+        bgClass = 'bg-indigo-700';
+        borderClass = 'border-indigo-400';
         break;
 
       default:
@@ -340,6 +353,38 @@ export const BlockItem: React.FC<BlockItemProps> = ({
           </div>
         );
 
+      case 'VAR_ASSIGN':
+        return (
+          <div className="flex items-center gap-1 font-mono font-bold text-sm select-none px-1">
+            <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
+              {block.params?.a ?? 'a'}
+            </span>
+            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
+            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
+              {block.params?.b ?? 1}
+            </span>
+          </div>
+        );
+
+      case 'VAR_OP':
+        return (
+          <div className="flex items-center gap-1 font-mono font-bold text-xs select-none px-1">
+            <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
+              {block.params?.a ?? 'a'}
+            </span>
+            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
+            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
+              {block.params?.b ?? 'a'}
+            </span>
+            <span className={isActive ? 'text-slate-950 font-black' : 'text-amber-400'}>
+              {block.params?.op ?? '+'}
+            </span>
+            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
+              {block.params?.c ?? 1}
+            </span>
+          </div>
+        );
+
       default:
         return <span className="text-xs font-bold text-white truncate">{block.type}</span>;
     }
@@ -486,7 +531,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             : ''
         }`}
       >
-        <div className="w-[56px] h-[56px] flex items-center justify-center flex-shrink-0">
+        <div className={`${(block.type === 'VAR_ASSIGN' || block.type === 'VAR_OP') ? 'min-w-[56px] px-2' : 'w-[56px]'} h-[56px] flex items-center justify-center flex-shrink-0`}>
           {renderBlockContent()}
         </div>
 
@@ -549,7 +594,11 @@ export const BlockItem: React.FC<BlockItemProps> = ({
           className="absolute -bottom-2 -right-1 z-20 flex items-center justify-center w-6 h-6 rounded-full border-2 border-yellow-200 bg-yellow-400 hover:bg-red-500 hover:border-red-300 hover:text-white text-slate-950 font-black text-xs shadow-md transition-colors cursor-pointer"
           title="Click to remove tag"
         >
-          {block.repeatCount}
+          {typeof block.repeatCount === 'string' ? (
+            <span className="italic font-mono">{block.repeatCount}</span>
+          ) : (
+            block.repeatCount
+          )}
         </button>
       ) : null}
     </div>

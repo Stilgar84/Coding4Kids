@@ -6,12 +6,51 @@ import {
   StackFrame,
   LoopFrame,
   GridState,
+  VariableName,
+  BinaryOp,
 } from '../types';
 import { SimulationEnvironment } from './simulation/types';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 
 export const MAX_CALL_STACK_DEPTH = 32;
 export const MAX_TOTAL_STEPS = 1000;
+
+export function evaluateValue(
+  val: number | string | undefined,
+  variables: Record<string, number>,
+  defaultValue: number = 0
+): number {
+  if (val === undefined || val === null) return defaultValue;
+  if (typeof val === 'number') return isNaN(val) ? defaultValue : val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^[a-z]$/.test(trimmed)) {
+      return variables[trimmed] ?? 0;
+    }
+    const num = Number(trimmed);
+    return isNaN(num) ? defaultValue : num;
+  }
+  return defaultValue;
+}
+
+export function evaluateBinaryOp(b: number, op: BinaryOp | string, c: number): number {
+  switch (op) {
+    case '+': return b + c;
+    case '-': return b - c;
+    case '*': return b * c;
+    case '/': return c === 0 ? 0 : b / c; // Safe divide by zero
+    case '%': return c === 0 ? 0 : b % c;
+    case '==': return b === c ? 1 : 0;
+    case '!=': return b !== c ? 1 : 0;
+    case '<': return b < c ? 1 : 0;
+    case '<=': return b <= c ? 1 : 0;
+    case '>': return b > c ? 1 : 0;
+    case '>=': return b >= c ? 1 : 0;
+    case '&&': return (b !== 0 && c !== 0) ? 1 : 0;
+    case '||': return (b !== 0 || c !== 0) ? 1 : 0;
+    default: return 0;
+  }
+}
 
 export function createInitialInterpreterState(): InterpreterRuntimeState {
   return {
@@ -22,6 +61,7 @@ export function createInitialInterpreterState(): InterpreterRuntimeState {
     status: 'RUNNING',
     stepCount: 0,
     activeRepeatProgress: null,
+    variables: {} as Record<VariableName, number>,
   };
 }
 
@@ -204,13 +244,96 @@ export function tickInterpreter<TState = GridState>(
     };
   }
 
+  // Handle Variable Assignment: a = b
+  if (blockType === 'VAR_ASSIGN') {
+    const a = (currentBlock.params?.a || 'a') as VariableName;
+    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0);
+    const nextVariables: Record<VariableName, number> = {
+      ...runtime.variables,
+      [a]: bVal,
+    };
+    currentFrame.pc++;
+    callStack[callStack.length - 1] = currentFrame;
+
+    return {
+      nextRuntime: {
+        ...runtime,
+        callStack,
+        loopStack,
+        activeBlockId,
+        activeScope,
+        variables: nextVariables,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle Variable Binary Operation: a = b op c
+  if (blockType === 'VAR_OP') {
+    const a = (currentBlock.params?.a || 'a') as VariableName;
+    const op = (currentBlock.params?.op || '+') as BinaryOp;
+    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0);
+    const cVal = evaluateValue(currentBlock.params?.c, runtime.variables, 0);
+    const result = evaluateBinaryOp(bVal, op, cVal);
+    const nextVariables: Record<VariableName, number> = {
+      ...runtime.variables,
+      [a]: result,
+    };
+    currentFrame.pc++;
+    callStack[callStack.length - 1] = currentFrame;
+
+    return {
+      nextRuntime: {
+        ...runtime,
+        callStack,
+        loopStack,
+        activeBlockId,
+        activeScope,
+        variables: nextVariables,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
   // Handle LOOP_START
   if (blockType === 'LOOP_START') {
     const matchingEnd = findMatchingLoopEnd(scopeBlocks, currentFrame.pc);
-    const loopCount = currentBlock.repeatCount ?? 2;
+    const rawCount = currentBlock.repeatCount !== undefined
+      ? evaluateValue(currentBlock.repeatCount, runtime.variables, 2)
+      : 2;
+    const loopCount = Math.round(rawCount);
 
-    if (matchingEnd === -1 || loopCount <= 0) {
-      // Skip invalid loop or jump past
+    if (loopCount <= 0) {
+      // Conditional skip: Jump directly past the matching LOOP_END block!
+      if (matchingEnd !== -1) {
+        currentFrame.pc = matchingEnd + 1;
+      } else {
+        currentFrame.pc++;
+      }
+      callStack[callStack.length - 1] = currentFrame;
+      return {
+        nextRuntime: {
+          ...runtime,
+          callStack,
+          loopStack,
+          activeBlockId,
+          activeScope,
+          stepCount: runtime.stepCount + 1,
+          activeRepeatProgress: null,
+        },
+        nextGrid: simState,
+        done: false,
+      };
+    }
+
+    if (matchingEnd === -1) {
+      // Skip invalid loop
       currentFrame.pc++;
       callStack[callStack.length - 1] = currentFrame;
     } else {
@@ -274,7 +397,31 @@ export function tickInterpreter<TState = GridState>(
   }
 
   // Handle Domain Action blocks (e.g. MOVE_FWD, TURN_LEFT, SET_PEN_COLOR, etc.)
-  const totalRepeats = currentBlock.repeatCount ?? 1;
+  const rawRepeats = currentBlock.repeatCount !== undefined
+    ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1)
+    : 1;
+  const totalRepeats = Math.round(rawRepeats);
+
+  if (totalRepeats <= 0) {
+    // 0-repeat skip: Do not execute simulation action, advance directly to next block
+    currentFrame.pc++;
+    currentFrame.subTickLeft = 0;
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        callStack,
+        loopStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
   const currentSubTick = currentFrame.subTickLeft > 0 ? currentFrame.subTickLeft : totalRepeats;
   const iterationIndex = totalRepeats - currentSubTick + 1;
   const activeRepeatProgress =
@@ -282,10 +429,22 @@ export function tickInterpreter<TState = GridState>(
       ? { blockId: currentBlock.id, current: iterationIndex, total: totalRepeats }
       : null;
 
+  // Resolve numerical parameters in params
+  const resolvedParams: Record<string, any> = {};
+  if (currentBlock.params) {
+    for (const [k, v] of Object.entries(currentBlock.params)) {
+      if (typeof v === 'string' && /^[a-z]$/.test(v.trim())) {
+        resolvedParams[k] = evaluateValue(v, runtime.variables, 0);
+      } else {
+        resolvedParams[k] = v;
+      }
+    }
+  }
+
   // Delegate action to the active simulation environment!
   const actionRes = simEnv.executeAction(blockType, simState, {
     repeatCount: totalRepeats,
-    params: currentBlock.params,
+    params: resolvedParams,
   });
 
   if (actionRes.isCollision) {

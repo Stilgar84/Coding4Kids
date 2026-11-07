@@ -105,9 +105,13 @@ export const SolutionModal: React.FC = () => {
         {icon}
         {label && <span className="font-black text-base">{label}</span>}
 
-        {block.repeatCount && block.repeatCount > 1 && (
+        {block.repeatCount !== undefined && (typeof block.repeatCount === 'string' || block.repeatCount > 1) && (
           <span className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 rounded-full bg-yellow-400 border border-yellow-200 text-slate-950 text-xs font-black shadow">
-            {block.repeatCount}
+            {typeof block.repeatCount === 'string' ? (
+              <span className="italic font-mono">{block.repeatCount}</span>
+            ) : (
+              block.repeatCount
+            )}
           </span>
         )}
       </div>

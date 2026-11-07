@@ -1,6 +1,6 @@
 # bugs
 
-on tablet, drag and dropping a block in he code create two instance of the block. not at the start, but once triggered it does it consistently, investigate
+sometime crash on export, and save not working. corruption? env switching
 
 --
 
@@ -17,6 +17,24 @@ to be non linear
 
 actually could add wait time on non movement action but that should be toggleable
 (depeding on whenever you trace the program or just enjoi the animation)
+
+--
+
+code can be edited will running, which is strange
+
+allow auto restart run on change (even in non instant mode)
+
+--
+
+undo/redo
+
+--
+
+time traveling debugger
+
+---
+
+qr code sharing
 
 # 
 
@@ -39,13 +57,24 @@ current iteration count? what about nested? reserved letter?
 
 if then else end
 
+also have variable inspector / spy
+
+improve the value selector with +/- 1 5 10 50 100 instead of fixed values?
+
+add a selector between basic and advanced mode 
+
+Maybe add unary op
+With abs, trigonometry function,...
+
 # copy/cut/pasting
 
 moving within a function, or between function. cloning, bulk delete
 
 # conditional
 
+# time traveling debugger
 
+step backward, time scruber...
 
 # edit mode for map, read only by default
 
