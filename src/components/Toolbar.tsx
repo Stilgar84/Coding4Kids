@@ -16,6 +16,8 @@ import {
   Share2,
   Save,
   FolderOpen,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 
 export const Toolbar: React.FC = () => {
@@ -39,6 +41,10 @@ export const Toolbar: React.FC = () => {
     grid,
     turtleState,
     runtime,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useAppStore();
 
   const currentSimEnv = getSimEnvironment(activeSimId);
@@ -277,6 +283,38 @@ export const Toolbar: React.FC = () => {
           title="Reset"
         >
           <RotateCcw className="w-6 h-6 stroke-[2.5]" />
+        </button>
+
+        {/* Undo Button */}
+        <button
+          data-testid="btn-undo"
+          disabled={!canUndo}
+          onClick={undo}
+          className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-transform ${
+            canUndo
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 shadow-md'
+              : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+          }`}
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo (Ctrl+Z)"
+        >
+          <Undo2 className="w-5 h-5 stroke-[2.5]" />
+        </button>
+
+        {/* Redo Button */}
+        <button
+          data-testid="btn-redo"
+          disabled={!canRedo}
+          onClick={redo}
+          className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-transform ${
+            canRedo
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 shadow-md'
+              : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+          }`}
+          title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+          aria-label="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+        >
+          <Redo2 className="w-5 h-5 stroke-[2.5]" />
         </button>
 
         {/* Speed Toggle */}

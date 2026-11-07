@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { ScopeType } from '../types';
 import { BlockItem } from './BlockItem';
-import { Trash, Trash2, Sparkles, AlertTriangle } from 'lucide-react';
+import { Trash, Trash2, Sparkles, AlertTriangle, Undo2, Redo2 } from 'lucide-react';
 import { validateLoopStructure } from '../engine/interpreter';
 
 interface ScopeTab {
@@ -56,6 +56,10 @@ export const WorkspaceCanvas: React.FC = () => {
     addBlock,
     reorderBlocks,
     removeBlock,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useAppStore();
 
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
@@ -183,8 +187,40 @@ export const WorkspaceCanvas: React.FC = () => {
           })}
         </div>
 
-        {/* Workspace Actions: Delete Selected & Clear All */}
+        {/* Workspace Actions: Undo, Redo, Delete Selected & Clear All */}
         <div className="flex items-center gap-2">
+          {/* Workspace Undo Button */}
+          <button
+            data-testid="btn-workspace-undo"
+            onClick={undo}
+            disabled={!canUndo}
+            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
+              canUndo
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 shadow-md cursor-pointer active:scale-95'
+                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+            }`}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 className="w-5 h-5" />
+          </button>
+
+          {/* Workspace Redo Button */}
+          <button
+            data-testid="btn-workspace-redo"
+            onClick={redo}
+            disabled={!canRedo}
+            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
+              canRedo
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 shadow-md cursor-pointer active:scale-95'
+                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+            }`}
+            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 className="w-5 h-5" />
+          </button>
+
           {/* Delete Current Selected Element Only */}
           <button
             data-testid="btn-delete-selected"

@@ -8,8 +8,10 @@ import { SaveProgramModal } from './components/SaveProgramModal';
 import { LoadProgramModal } from './components/LoadProgramModal';
 import { useAppStore } from './store/useAppStore';
 import { getSimEnvironment } from './engine/simulation/registry';
+import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 
 export const App: React.FC = () => {
+  useUndoRedoShortcuts();
   const { activeSimId, grid, turtleState, runtime } = useAppStore();
   const simEnv = getSimEnvironment(activeSimId);
   const Renderer = simEnv?.Renderer;

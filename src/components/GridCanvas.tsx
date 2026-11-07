@@ -16,6 +16,8 @@ export const GridCanvas: React.FC = () => {
     toggleFitToView,
     editorTool,
     speed,
+    startHistoryBatch,
+    endHistoryBatch,
   } = useAppStore();
 
   const isInstant = speed === 'instant' || (speed as any) === 0;
@@ -68,6 +70,7 @@ export const GridCanvas: React.FC = () => {
   const [isDrawingBarriers, setIsDrawingBarriers] = useState(false);
   const dragStartEdgeRef = useRef<WallEdge | null>(null);
   const hasMovedToOtherEdgesRef = useRef(false);
+  const edgeExistedAtMouseDownRef = useRef(false);
   const lastCellRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -75,25 +78,34 @@ export const GridCanvas: React.FC = () => {
       setIsDrawingBarriers(false);
       dragStartEdgeRef.current = null;
       lastCellRef.current = null;
+      endHistoryBatch();
     };
     window.addEventListener('mouseup', handleMouseUp);
     return () => window.removeEventListener('mouseup', handleMouseUp);
-  }, []);
+  }, [endHistoryBatch]);
 
   // Handle clicking or dragging on an edge
   const handleEdgeMouseDown = (edge: WallEdge, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isBarrierMode) {
+      startHistoryBatch('Draw walls');
       setIsDrawingBarriers(true);
       dragStartEdgeRef.current = edge;
       hasMovedToOtherEdgesRef.current = false;
-      addWall(edge);
+      const exists = barriers.some(
+        (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
+      );
+      edgeExistedAtMouseDownRef.current = exists;
+      if (!exists) {
+        addWall(edge);
+      }
     }
   };
 
   const handleEdgeMouseEnter = (edge: WallEdge, e: React.MouseEvent) => {
     if (isBarrierMode && (isDrawingBarriers || e.buttons === 1)) {
       if (!isDrawingBarriers) {
+        startHistoryBatch('Draw walls');
         setIsDrawingBarriers(true);
       }
       hasMovedToOtherEdgesRef.current = true;
@@ -108,8 +120,10 @@ export const GridCanvas: React.FC = () => {
       if (hasMovedToOtherEdgesRef.current) {
         return;
       }
-      // Single stationary click on an edge: toggle it!
-      toggleWall(edge);
+      // If edge existed at mousedown, stationary click toggles it off
+      if (edgeExistedAtMouseDownRef.current) {
+        toggleWall(edge);
+      }
     } else {
       toggleWall(edge);
     }
@@ -119,6 +133,7 @@ export const GridCanvas: React.FC = () => {
   const handleCellMouseDown = (x: number, y: number) => {
     lastCellRef.current = { x, y };
     if (isBarrierMode) {
+      startHistoryBatch('Draw walls');
       setIsDrawingBarriers(true);
       hasMovedToOtherEdgesRef.current = false;
     }
@@ -154,6 +169,7 @@ export const GridCanvas: React.FC = () => {
   ) => {
     e.preventDefault();
     e.stopPropagation();
+    startHistoryBatch('Resize board');
     const startX = e.clientX;
     const startY = e.clientY;
     let accumulatedDelta = 0;
@@ -185,6 +201,7 @@ export const GridCanvas: React.FC = () => {
 
     const onPointerUp = (upEv: PointerEvent) => {
       upEv.preventDefault();
+      endHistoryBatch();
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);

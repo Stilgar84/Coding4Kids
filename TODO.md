@@ -2,21 +2,6 @@
 
 sometime crash on export, and save not working. corruption? env switching
 
---
-
-for turtle mode, when not using instant speed, the drawing should be improved to look like the turtle is doing the drawing. today the new segment is show instantly and then the turtle is animated to end point.
-instead turtle should move at constant speed along the arc and it be drawn up to were the turtle is, not ahead of time. 
-
-then there is no need to add delay for those drawing action.
-
-Constant movement and rotation speed , other action 0time. Can add wait command
-rotation time could be fix or dependent on rotation amount.
-
-both rotation and move could either be linear speed or that acceleration/decelleration
-to be non linear
-
-actually could add wait time on non movement action but that should be toggleable
-(depeding on whenever you trace the program or just enjoi the animation)
 
 --
 
@@ -28,7 +13,6 @@ maybe could have some kind of infinite mode when robot loop and drawing slowly f
 
 --
 
-undo/redo
 
 --
 

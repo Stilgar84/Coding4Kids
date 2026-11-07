@@ -104,6 +104,16 @@ export interface LevelPreset {
   flags: { id: string; x: number; y: number; isGoal: boolean; order: number; collected: boolean }[];
 }
 
+export interface HistorySnapshot {
+  workspace: WorkspaceState;
+  grid: GridState;
+  turtleState?: TurtleState;
+  activeScope: ScopeType;
+  selectedBlockId: string | null;
+  activeSimId: 'grid' | 'turtle';
+  description?: string;
+}
+
 export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
   id: lesson.id,
   width: lesson.grid.width,
@@ -132,6 +142,17 @@ interface AppState {
   isSaveModalOpen: boolean;
   isLoadModalOpen: boolean;
   isSubpaletteCollapsed: boolean;
+
+  // History state & actions
+  past: HistorySnapshot[];
+  future: HistorySnapshot[];
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+  startHistoryBatch: (description?: string) => void;
+  endHistoryBatch: () => void;
+  clearHistory: () => void;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -190,6 +211,18 @@ interface TurtlePendingCommit {
 }
 
 let pendingTurtleCommit: TurtlePendingCommit | null = null;
+const MAX_HISTORY = 100;
+let activeBatchSnapshot: HistorySnapshot | null = null;
+
+const takeSnapshot = (state: AppState, desc?: string): HistorySnapshot => ({
+  workspace: cloneWorkspace(state.workspace),
+  grid: JSON.parse(JSON.stringify(state.grid)),
+  turtleState: JSON.parse(JSON.stringify(state.turtleState)),
+  activeScope: state.activeScope,
+  selectedBlockId: state.selectedBlockId,
+  activeSimId: state.activeSimId,
+  description: desc,
+});
 
 const requestFrame = (cb: (time: number) => void, duration?: number, startTime?: number) => {
   if (typeof requestAnimationFrame !== 'undefined') {
@@ -468,6 +501,21 @@ export const useAppStore = create<AppState>((set, get) => {
     fitToView: prevFitToView,
   });
 
+  const recordMutation = (desc?: string) => {
+    if (activeBatchSnapshot !== null) {
+      return;
+    }
+    const snapshot = takeSnapshot(get(), desc);
+    const currentPast = get().past;
+    const newPast = [...currentPast.slice(Math.max(0, currentPast.length - (MAX_HISTORY - 1))), snapshot];
+    set({
+      past: newPast,
+      future: [],
+      canUndo: true,
+      canRedo: false,
+    });
+  };
+
   return {
     activeSimId: 'grid',
     currentLevel: 1,
@@ -492,10 +540,136 @@ export const useAppStore = create<AppState>((set, get) => {
     isLoadModalOpen: false,
     isSubpaletteCollapsed: false,
 
+    past: [],
+    future: [],
+    canUndo: false,
+    canRedo: false,
+
+    undo: () => {
+      const { past, future } = get();
+      if (past.length === 0) return;
+
+      activeBatchSnapshot = null;
+      get().pause();
+
+      const previousSnapshot = past[past.length - 1];
+      const newPast = past.slice(0, past.length - 1);
+
+      const currentSnapshot = takeSnapshot(get(), 'Current state before undo');
+      currentSnapshot.activeScope = previousSnapshot.activeScope;
+
+      const newFuture = [...future, currentSnapshot];
+
+      set({
+        workspace: cloneWorkspace(previousSnapshot.workspace),
+        grid: JSON.parse(JSON.stringify(previousSnapshot.grid)),
+        ...(previousSnapshot.turtleState
+          ? { turtleState: JSON.parse(JSON.stringify(previousSnapshot.turtleState)) }
+          : {}),
+        activeScope: previousSnapshot.activeScope,
+        selectedBlockId: previousSnapshot.selectedBlockId,
+        activeSimId: previousSnapshot.activeSimId,
+        savedWorkspaces: {
+          ...get().savedWorkspaces,
+          [previousSnapshot.activeSimId]: cloneWorkspace(previousSnapshot.workspace),
+        },
+        runtime: null,
+        past: newPast,
+        future: newFuture,
+        canUndo: newPast.length > 0,
+        canRedo: true,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
+    redo: () => {
+      const { past, future } = get();
+      if (future.length === 0) return;
+
+      activeBatchSnapshot = null;
+      get().pause();
+
+      const nextSnapshot = future[future.length - 1];
+      const newFuture = future.slice(0, future.length - 1);
+
+      const currentSnapshot = takeSnapshot(get(), 'Current state before redo');
+      currentSnapshot.activeScope = nextSnapshot.activeScope;
+
+      const newPast = [...past.slice(Math.max(0, past.length - (MAX_HISTORY - 1))), currentSnapshot];
+
+      set({
+        workspace: cloneWorkspace(nextSnapshot.workspace),
+        grid: JSON.parse(JSON.stringify(nextSnapshot.grid)),
+        ...(nextSnapshot.turtleState
+          ? { turtleState: JSON.parse(JSON.stringify(nextSnapshot.turtleState)) }
+          : {}),
+        activeScope: nextSnapshot.activeScope,
+        selectedBlockId: nextSnapshot.selectedBlockId,
+        activeSimId: nextSnapshot.activeSimId,
+        savedWorkspaces: {
+          ...get().savedWorkspaces,
+          [nextSnapshot.activeSimId]: cloneWorkspace(nextSnapshot.workspace),
+        },
+        runtime: null,
+        past: newPast,
+        future: newFuture,
+        canUndo: true,
+        canRedo: newFuture.length > 0,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
+    startHistoryBatch: (description?: string) => {
+      if (activeBatchSnapshot === null) {
+        activeBatchSnapshot = takeSnapshot(get(), description);
+      }
+    },
+
+    endHistoryBatch: () => {
+      if (activeBatchSnapshot === null) return;
+      const initial = activeBatchSnapshot;
+      activeBatchSnapshot = null;
+
+      const currentWorkspace = get().workspace;
+      const currentGrid = get().grid;
+      const currentTurtle = get().turtleState;
+
+      const hasWorkspaceChanged = JSON.stringify(initial.workspace) !== JSON.stringify(currentWorkspace);
+      const hasGridChanged = JSON.stringify(initial.grid) !== JSON.stringify(currentGrid);
+      const hasTurtleChanged =
+        initial.turtleState && JSON.stringify(initial.turtleState) !== JSON.stringify(currentTurtle);
+
+      if (hasWorkspaceChanged || hasGridChanged || hasTurtleChanged) {
+        const currentPast = get().past;
+        const newPast = [...currentPast.slice(Math.max(0, currentPast.length - (MAX_HISTORY - 1))), initial];
+        set({
+          past: newPast,
+          future: [],
+          canUndo: true,
+          canRedo: false,
+        });
+      }
+    },
+
+    clearHistory: () => {
+      activeBatchSnapshot = null;
+      set({
+        past: [],
+        future: [],
+        canUndo: false,
+        canRedo: false,
+      });
+    },
+
     setSimEnvironment: (simId) => {
       const { activeSimId, workspace, savedWorkspaces } = get();
       if (simId === activeSimId) return;
 
+      get().clearHistory();
       get().reset();
 
       // Keep the code saved in memory associated with the source env
@@ -551,6 +725,8 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!res.success) {
         return { success: false, error: res.error || 'Failed to import code' };
       }
+
+      recordMutation('Import code');
 
       get().pause();
 
@@ -612,6 +788,8 @@ export const useAppStore = create<AppState>((set, get) => {
       const lesson = LESSONS.find((l) => l.id === id);
       if (!lesson) return;
 
+      recordMutation('Load solution');
+
       get().reset();
 
       const cloneBlocks = (blocks: CodeBlock[]) =>
@@ -640,6 +818,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setLevel: (levelId) => {
+      get().clearHistory();
       const prevFitToView = get().grid.fitToView ?? false;
       get().reset();
       const preset = PRESET_LEVELS.find((p) => p.id === levelId) || PRESET_LEVELS[0];
@@ -749,6 +928,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
+      recordMutation('Add block');
       const id = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const simEnv = getSimEnvironment(get().activeSimId);
       const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === type);
@@ -773,6 +953,9 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     updateBlockParams: (scope, blockId, newParams) => {
+      const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
+      if (!currentBlock) return;
+      recordMutation('Update block params');
       set((state) => ({
         workspace: {
           ...state.workspace,
@@ -785,6 +968,9 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     removeBlock: (scope, blockId) => {
+      const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
+      if (!currentBlock) return;
+      recordMutation('Remove block');
       set((state) => ({
         workspace: {
           ...state.workspace,
@@ -796,6 +982,9 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     updateBlockRepeat: (scope, blockId, repeatCount) => {
+      const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
+      if (!currentBlock || currentBlock.repeatCount === repeatCount) return;
+      recordMutation('Update block repeat');
       set((state) => ({
         workspace: {
           ...state.workspace,
@@ -808,6 +997,8 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     reorderBlocks: (scope, fromIndex, toIndex) => {
+      if (fromIndex === toIndex) return;
+      recordMutation('Reorder blocks');
       set((state) => {
         const blocks = [...state.workspace[scope]];
         const [moved] = blocks.splice(fromIndex, 1);
@@ -823,6 +1014,12 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     clearWorkspace: (scope) => {
+      const ws = get().workspace;
+      const hasBlocks = scope
+        ? (ws[scope]?.length ?? 0) > 0
+        : (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((s) => (ws[s]?.length ?? 0) > 0);
+      if (!hasBlocks) return;
+      recordMutation(scope ? 'Clear scope' : 'Clear workspace');
       if (scope) {
         set((state) => {
           const newWorkspace = { ...state.workspace, [scope]: [] };
@@ -848,6 +1045,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     toggleWall: (edge) => {
+      recordMutation('Toggle wall');
       set((state) => {
         const exists = state.grid.barriers.some(
           (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
@@ -865,11 +1063,12 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addWall: (edge) => {
+      const exists = get().grid.barriers.some(
+        (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
+      );
+      if (exists) return;
+      recordMutation('Add wall');
       set((state) => {
-        const exists = state.grid.barriers.some(
-          (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
-        );
-        if (exists) return state;
         return {
           grid: {
             ...state.grid,
@@ -882,10 +1081,61 @@ export const useAppStore = create<AppState>((set, get) => {
 
     resizeBoard: (direction, delta) => {
       if (delta === 0) return;
+      const { grid } = get();
+      const minSize = 3;
+      const maxSize = 16;
+      const { width, height, robot, flags, barriers } = grid;
+
+      if (direction === 'RIGHT') {
+        const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
+        if (newWidth === width) return;
+        if (delta < 0) {
+          const hasBlocked =
+            robot.x >= newWidth ||
+            robot.initialX >= newWidth ||
+            flags.some((f) => f.x >= newWidth) ||
+            barriers.some((b) => b.x >= newWidth);
+          if (hasBlocked) return;
+        }
+      } else if (direction === 'BOTTOM') {
+        const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
+        if (newHeight === height) return;
+        if (delta < 0) {
+          const hasBlocked =
+            robot.y >= newHeight ||
+            robot.initialY >= newHeight ||
+            flags.some((f) => f.y >= newHeight) ||
+            barriers.some((b) => b.y >= newHeight);
+          if (hasBlocked) return;
+        }
+      } else if (direction === 'LEFT') {
+        const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
+        if (newWidth === width) return;
+        if (delta < 0) {
+          const hasBlocked =
+            robot.x === 0 ||
+            robot.initialX === 0 ||
+            flags.some((f) => f.x === 0) ||
+            barriers.some((b) => (b.orientation === 'H' ? b.x === 0 : b.x <= 1));
+          if (hasBlocked) return;
+        }
+      } else if (direction === 'TOP') {
+        const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
+        if (newHeight === height) return;
+        if (delta < 0) {
+          const hasBlocked =
+            robot.y === 0 ||
+            robot.initialY === 0 ||
+            flags.some((f) => f.y === 0) ||
+            barriers.some((b) => (b.orientation === 'V' ? b.y === 0 : b.y <= 1));
+          if (hasBlocked) return;
+        }
+      }
+
+      recordMutation('Resize board');
+
       set((state) => {
         const { grid } = state;
-        const minSize = 3;
-        const maxSize = 16;
         const { width, height, robot, flags, barriers, trace } = grid;
 
         if (direction === 'RIGHT') {
@@ -992,6 +1242,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setCellContent: (x, y) => {
       const { editorTool, grid } = get();
       if (editorTool === 'ROBOT') {
+        recordMutation('Place/rotate robot');
         const nextDir: Direction =
           grid.robot.x === x && grid.robot.y === y
             ? grid.robot.dir === 'NORTH'
@@ -1018,6 +1269,7 @@ export const useAppStore = create<AppState>((set, get) => {
           },
         });
       } else if (editorTool === 'FLAG') {
+        recordMutation('Place flag');
         const nextFlags = grid.flags.filter((f) => !(f.x === x && f.y === y));
         const order = nextFlags.filter((f) => !f.isGoal).length + 1;
         nextFlags.push({
@@ -1030,6 +1282,7 @@ export const useAppStore = create<AppState>((set, get) => {
         });
         set({ grid: { ...grid, flags: nextFlags } });
       } else if (editorTool === 'GOAL') {
+        recordMutation('Place goal');
         const nextFlags = grid.flags.filter((f) => !f.isGoal && !(f.x === x && f.y === y));
         nextFlags.push({
           id: `goal_${Date.now()}`,
@@ -1041,6 +1294,9 @@ export const useAppStore = create<AppState>((set, get) => {
         });
         set({ grid: { ...grid, flags: nextFlags } });
       } else if (editorTool === 'ERASE') {
+        const hasFlag = grid.flags.some((f) => f.x === x && f.y === y);
+        if (!hasFlag) return;
+        recordMutation('Erase cell');
         const nextFlags = grid.flags.filter((f) => !(f.x === x && f.y === y));
         set({ grid: { ...grid, flags: nextFlags } });
       }
@@ -1060,6 +1316,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     clearGridUserCustoms: () => {
+      recordMutation('Clear grid customs');
       const prevFitToView = get().grid.fitToView ?? false;
       const preset = PRESET_LEVELS.find((p) => p.id === get().currentLevel) || PRESET_LEVELS[0];
       set({ grid: createGridFromPreset(preset, prevFitToView) });
@@ -1077,6 +1334,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     clearTurtleCanvas: () => {
+      recordMutation('Clear turtle canvas');
       get().reset();
       set({
         turtleState: createInitialTurtleState(),

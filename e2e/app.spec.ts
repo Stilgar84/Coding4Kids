@@ -876,4 +876,118 @@ test.describe('Robot Emulator E2E Suite', () => {
     const infoPill = page.getByTestId('turtle-info-pill');
     await expect(infoPill).toContainText('Y: -50');
   });
+
+  test('supports undo and redo via toolbar and workspace buttons for code edits', async ({ page }) => {
+    // Toolbar buttons initially disabled
+    const tbUndo = page.getByTestId('btn-undo');
+    const tbRedo = page.getByTestId('btn-redo');
+    const wsUndo = page.getByTestId('btn-workspace-undo');
+    const wsRedo = page.getByTestId('btn-workspace-redo');
+
+    await expect(tbUndo).toBeDisabled();
+    await expect(tbRedo).toBeDisabled();
+    await expect(wsUndo).toBeDisabled();
+    await expect(wsRedo).toBeDisabled();
+
+    // Add block via palette
+    await page.getByTestId('palette-move-fwd').click();
+    const blocks = page.locator('[data-testid^="block-"]');
+    await expect(blocks).toHaveCount(1);
+    await expect(tbUndo).toBeEnabled();
+    await expect(tbRedo).toBeDisabled();
+
+    // Click Toolbar Undo
+    await tbUndo.click();
+    await expect(blocks).toHaveCount(0);
+    await expect(tbUndo).toBeDisabled();
+    await expect(tbRedo).toBeEnabled();
+
+    // Click Workspace Redo
+    await wsRedo.click();
+    await expect(blocks).toHaveCount(1);
+    await expect(tbUndo).toBeEnabled();
+    await expect(tbRedo).toBeDisabled();
+
+    // Click Workspace Undo
+    await wsUndo.click();
+    await expect(blocks).toHaveCount(0);
+    await expect(tbUndo).toBeDisabled();
+    await expect(tbRedo).toBeEnabled();
+
+    // Click Toolbar Redo
+    await tbRedo.click();
+    await expect(blocks).toHaveCount(1);
+  });
+
+  test('supports undo and redo keyboard shortcuts (Ctrl+Z and Ctrl+Y)', async ({ page }) => {
+    // Add block via palette
+    await page.getByTestId('palette-turn-left').click();
+    const blocks = page.locator('[data-testid^="block-"]');
+    await expect(blocks).toHaveCount(1);
+
+    // Press Ctrl+Z to undo
+    await page.keyboard.press('Control+z');
+    await expect(blocks).toHaveCount(0);
+
+    // Press Ctrl+Y to redo
+    await page.keyboard.press('Control+y');
+    await expect(blocks).toHaveCount(1);
+
+    // Press Ctrl+Shift+Z to redo alternative
+    await page.keyboard.press('Control+z');
+    await expect(blocks).toHaveCount(0);
+    await page.keyboard.press('Control+Shift+z');
+    await expect(blocks).toHaveCount(1);
+  });
+
+  test('supports undo and redo for single wall hitbox toggle', async ({ page }) => {
+    const wallHitbox = page.getByTestId('wall-v-hitbox-1-2');
+    await wallHitbox.click();
+    await expect(page.getByTestId('wall-v-1-2')).toBeVisible();
+
+    // Click Undo button
+    await page.getByTestId('btn-undo').click();
+    await expect(page.getByTestId('wall-v-1-2')).toHaveCount(0);
+
+    // Click Redo button
+    await page.getByTestId('btn-redo').click();
+    await expect(page.getByTestId('wall-v-1-2')).toBeVisible();
+  });
+
+  test('batches dragged walls into a single undo step', async ({ page }) => {
+    await page.getByTestId('btn-level-1').click();
+
+    // Activate wall/barrier tool
+    await page.getByTestId('tool-wall').click();
+
+    // Drag mouse across horizontal wall hitboxes at row 1: (0, 1), (1, 1), (2, 1)
+    const box0 = await page.getByTestId('wall-h-hitbox-0-1').boundingBox();
+    const box1 = await page.getByTestId('wall-h-hitbox-1-1').boundingBox();
+    const box2 = await page.getByTestId('wall-h-hitbox-2-1').boundingBox();
+
+    if (box0 && box1 && box2) {
+      await page.mouse.move(box0.x + box0.width / 2, box0.y + box0.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2, { steps: 5 });
+      await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 5 });
+      await page.mouse.up();
+    }
+
+    // Verify all 3 walls were created
+    await expect(page.getByTestId('wall-h-0-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-1-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-2-1')).toBeVisible();
+
+    // Click Undo once: should undo ALL 3 walls in one step
+    await page.getByTestId('btn-undo').click();
+    await expect(page.getByTestId('wall-h-0-1')).toHaveCount(0);
+    await expect(page.getByTestId('wall-h-1-1')).toHaveCount(0);
+    await expect(page.getByTestId('wall-h-2-1')).toHaveCount(0);
+
+    // Click Redo once: restores all 3 walls
+    await page.getByTestId('btn-redo').click();
+    await expect(page.getByTestId('wall-h-0-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-1-1')).toBeVisible();
+    await expect(page.getByTestId('wall-h-2-1')).toBeVisible();
+  });
 });
