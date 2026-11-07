@@ -52,6 +52,32 @@ export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => 
   status: 'IDLE',
 });
 
+export const createEmptyWorkspace = (): WorkspaceState => ({
+  MAIN: [],
+  F1: [],
+  F2: [],
+  F3: [],
+});
+
+export const cloneWorkspace = (ws: WorkspaceState): WorkspaceState => ({
+  MAIN: (ws?.MAIN || []).map((b) => ({
+    ...b,
+    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
+  })),
+  F1: (ws?.F1 || []).map((b) => ({
+    ...b,
+    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
+  })),
+  F2: (ws?.F2 || []).map((b) => ({
+    ...b,
+    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
+  })),
+  F3: (ws?.F3 || []).map((b) => ({
+    ...b,
+    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
+  })),
+});
+
 export function computeInstantSimulation(
   workspace: WorkspaceState,
   simId: 'grid' | 'turtle',
@@ -87,6 +113,7 @@ interface AppState {
   grid: GridState;
   turtleState: TurtleState;
   workspace: WorkspaceState;
+  savedWorkspaces: Record<string, WorkspaceState>;
   activeScope: ScopeType;
   selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
@@ -178,6 +205,7 @@ export const useAppStore = create<AppState>((set, get) => {
       F2: [],
       F3: [],
     },
+    savedWorkspaces: {},
     activeScope: 'MAIN',
     selectedBlockId: null,
     runtime: null,
@@ -191,8 +219,31 @@ export const useAppStore = create<AppState>((set, get) => {
     isSubpaletteCollapsed: false,
 
     setSimEnvironment: (simId) => {
+      const { activeSimId, workspace, savedWorkspaces } = get();
+      if (simId === activeSimId) return;
+
       get().reset();
-      set({ activeSimId: simId });
+
+      // Keep the code saved in memory associated with the source env
+      const updatedSavedWorkspaces: Record<string, WorkspaceState> = {
+        ...savedWorkspaces,
+        [activeSimId]: cloneWorkspace(workspace),
+      };
+
+      // Restore any saved code for destination env or clear it
+      const destinationWorkspace = updatedSavedWorkspaces[simId]
+        ? cloneWorkspace(updatedSavedWorkspaces[simId])
+        : createEmptyWorkspace();
+
+      set({
+        activeSimId: simId,
+        savedWorkspaces: updatedSavedWorkspaces,
+        workspace: destinationWorkspace,
+        selectedBlockId: null,
+        activeScope: 'MAIN',
+      });
+
+      get().reset();
       get().runInstantIfActive();
     },
 
@@ -229,27 +280,51 @@ export const useAppStore = create<AppState>((set, get) => {
 
       get().pause();
 
+      const { activeSimId, workspace, savedWorkspaces } = get();
+      const newWorkspace = res.workspace || createEmptyWorkspace();
+
       if (res.envId === 'turtle') {
+        const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
+        if (activeSimId !== 'turtle') {
+          updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
+        }
+        updatedSavedWorkspaces['turtle'] = cloneWorkspace(newWorkspace);
+
         set({
           activeSimId: 'turtle',
           turtleState: createInitialTurtleState(),
-          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          workspace: newWorkspace,
+          savedWorkspaces: updatedSavedWorkspaces,
           runtime: null,
           selectedBlockId: null,
+          activeScope: 'MAIN',
         });
       } else if (res.envId === 'grid') {
+        const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
+        if (activeSimId !== 'grid') {
+          updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
+        }
+        updatedSavedWorkspaces['grid'] = cloneWorkspace(newWorkspace);
+
         set({
           activeSimId: 'grid',
-          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          workspace: newWorkspace,
+          savedWorkspaces: updatedSavedWorkspaces,
           ...(res.gridState ? { grid: res.gridState } : {}),
           runtime: null,
           selectedBlockId: null,
+          activeScope: 'MAIN',
         });
       } else {
         set({
-          workspace: res.workspace || { MAIN: [], F1: [], F2: [], F3: [] },
+          workspace: newWorkspace,
+          savedWorkspaces: {
+            ...savedWorkspaces,
+            [activeSimId]: cloneWorkspace(newWorkspace),
+          },
           runtime: null,
           selectedBlockId: null,
+          activeScope: 'MAIN',
         });
       }
 
@@ -271,12 +346,18 @@ export const useAppStore = create<AppState>((set, get) => {
           id: `${b.type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         }));
 
+      const newWorkspace = {
+        MAIN: cloneBlocks(lesson.solution.MAIN),
+        F1: cloneBlocks(lesson.solution.F1 || []),
+        F2: cloneBlocks(lesson.solution.F2 || []),
+        F3: cloneBlocks(lesson.solution.F3 || []),
+      };
+
       set({
-        workspace: {
-          MAIN: cloneBlocks(lesson.solution.MAIN),
-          F1: cloneBlocks(lesson.solution.F1 || []),
-          F2: cloneBlocks(lesson.solution.F2 || []),
-          F3: cloneBlocks(lesson.solution.F3 || []),
+        workspace: newWorkspace,
+        savedWorkspaces: {
+          ...get().savedWorkspaces,
+          [get().activeSimId]: cloneWorkspace(newWorkspace),
         },
         activeScope: 'MAIN',
         selectedBlockId: null,
@@ -432,13 +513,25 @@ export const useAppStore = create<AppState>((set, get) => {
 
     clearWorkspace: (scope) => {
       if (scope) {
-        set((state) => ({
-          workspace: { ...state.workspace, [scope]: [] },
-        }));
-      } else {
-        set({
-          workspace: { MAIN: [], F1: [], F2: [], F3: [] },
+        set((state) => {
+          const newWorkspace = { ...state.workspace, [scope]: [] };
+          return {
+            workspace: newWorkspace,
+            savedWorkspaces: {
+              ...state.savedWorkspaces,
+              [state.activeSimId]: cloneWorkspace(newWorkspace),
+            },
+          };
         });
+      } else {
+        const emptyWorkspace = createEmptyWorkspace();
+        set((state) => ({
+          workspace: emptyWorkspace,
+          savedWorkspaces: {
+            ...state.savedWorkspaces,
+            [state.activeSimId]: cloneWorkspace(emptyWorkspace),
+          },
+        }));
       }
       get().runInstantIfActive();
     },

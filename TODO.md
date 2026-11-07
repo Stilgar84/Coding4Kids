@@ -24,6 +24,8 @@ code can be edited will running, which is strange
 
 allow auto restart run on change (even in non instant mode)
 
+maybe could have some kind of infinite mode when robot loop and drawing slowly fades out just before been redrawn?
+
 --
 
 undo/redo
@@ -80,11 +82,18 @@ step backward, time scruber...
 
 also make default map readonly unless in edit mode
 
-# alternate sim, decouple coding from sim
+# ability to save
 
 # make lesson hierarchical
 
 and add constraint on length
+
+also improve exercise so that they are more constrainted
+
+# saving custom blocks or as function
+
+could save reusable function as blocks or just general function in library.
+for example as drawing primitive.
 
 # alt sim ideas
 
