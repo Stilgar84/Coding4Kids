@@ -102,6 +102,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
   const centerX = containerSize.width / 2 + effectivePanX;
   const centerY = containerSize.height / 2 + effectivePanY;
 
+  const robotPose = state.activeAnimation ? state.activeAnimation.currentPose : state.robot;
+
   return (
     <div
       ref={containerRef}
@@ -173,11 +175,43 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
             return null;
           })}
 
+          {/* Active In-Progress Drawing Segment */}
+          {state.activeAnimation && state.activeAnimation.penDown && (
+            state.activeAnimation.type === 'LINE' ? (
+              <line
+                data-testid="turtle-active-line"
+                x1={state.activeAnimation.fromPose.x}
+                y1={state.activeAnimation.fromPose.y}
+                x2={state.activeAnimation.currentPose.x}
+                y2={state.activeAnimation.currentPose.y}
+                stroke={state.activeAnimation.penColor}
+                strokeWidth={state.activeAnimation.penWidth}
+                strokeLinecap="round"
+              />
+            ) : state.activeAnimation.type === 'ARC' && state.activeAnimation.radius !== undefined && state.activeAnimation.currentSweep !== undefined ? (
+              <path
+                data-testid="turtle-active-arc"
+                d={getArcSvgPath({
+                  fromX: state.activeAnimation.fromPose.x,
+                  fromY: state.activeAnimation.fromPose.y,
+                  toX: state.activeAnimation.currentPose.x,
+                  toY: state.activeAnimation.currentPose.y,
+                  radius: state.activeAnimation.radius,
+                  startHeading: state.activeAnimation.fromPose.heading,
+                  sweepAngle: state.activeAnimation.currentSweep,
+                })}
+                fill="none"
+                stroke={state.activeAnimation.penColor}
+                strokeWidth={state.activeAnimation.penWidth}
+                strokeLinecap="round"
+              />
+            ) : null
+          )}
+
           {/* Robot Turtle Avatar */}
           <g
             data-testid="turtle-robot"
-            transform={`translate(${state.robot.x}, ${state.robot.y}) rotate(${state.robot.heading})`}
-            className={isInstant ? '' : 'transition-transform duration-200'}
+            transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading})`}
           >
             {/* Pulsing selection aura */}
             <circle r={22} fill="#38bdf8" opacity="0.15" className={isInstant ? '' : 'animate-pulse'} />
@@ -223,11 +257,11 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
         className="absolute bottom-4 left-4 z-20 flex items-center gap-3 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl text-xs font-mono text-slate-200 pointer-events-none select-none shadow-lg"
       >
         <span>
-          X: <b className="text-amber-400">{Math.round(state.robot.x)}</b> Y: <b className="text-amber-400">{Math.round(state.robot.y)}</b>
+          X: <b className="text-amber-400">{Math.round(robotPose.x)}</b> Y: <b className="text-amber-400">{Math.round(robotPose.y)}</b>
         </span>
         <span className="text-slate-500">|</span>
         <span>
-          ∠ <b className="text-sky-400">{Math.round(state.robot.heading)}°</b>
+          ∠ <b className="text-sky-400">{Math.round(robotPose.heading)}°</b>
         </span>
         <span className="text-slate-500">|</span>
         <span className="flex items-center gap-1.5">

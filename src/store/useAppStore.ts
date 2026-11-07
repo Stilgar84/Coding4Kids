@@ -22,7 +22,13 @@ import {
   createInitialInterpreterState,
   tickInterpreter,
   validateLoopStructure,
+  evaluateValue,
 } from '../engine/interpreter';
+import {
+  isTurtleMotionAction,
+  createTurtleAnimation,
+  interpolateAnimationPose,
+} from '../simulations/turtle/physics';
 import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { LESSONS } from '../data/lessons';
 import { exportToString, importFromString } from '../engine/serialization/codeSerializer';
@@ -50,6 +56,7 @@ export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => 
   penWidth: 6,
   paths: [],
   status: 'IDLE',
+  activeAnimation: null,
 });
 
 export const createEmptyWorkspace = (): WorkspaceState => ({
@@ -173,8 +180,275 @@ interface AppState {
 }
 
 let timerId: NodeJS.Timeout | null = null;
+let turtleRafId: number | null = null;
+
+interface TurtlePendingCommit {
+  finalTurtleState: TurtleState;
+  finalRuntime: InterpreterRuntimeState;
+  isDone: boolean;
+  isSingleStep: boolean;
+}
+
+let pendingTurtleCommit: TurtlePendingCommit | null = null;
+
+const requestFrame = (cb: (time: number) => void, duration?: number, startTime?: number) => {
+  if (typeof requestAnimationFrame !== 'undefined') {
+    return requestAnimationFrame(cb);
+  }
+  const time = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const finishTime = startTime !== undefined && duration !== undefined ? startTime + duration + 1 : time;
+  cb(finishTime);
+  return 0;
+};
+
+const cancelFrame = (id: number) => {
+  if (typeof cancelAnimationFrame !== 'undefined') {
+    cancelAnimationFrame(id);
+  }
+};
 
 export const useAppStore = create<AppState>((set, get) => {
+  function stepTurtleAnimation(timestamp: number) {
+    turtleRafId = null;
+    const { turtleState } = get();
+    const anim = turtleState.activeAnimation;
+
+    if (!anim || !pendingTurtleCommit) {
+      return;
+    }
+
+    const elapsed = timestamp - anim.startTime;
+    const progress =
+      anim.duration > 0
+        ? elapsed >= anim.duration - 0.001
+          ? 1
+          : Math.min(1, Math.max(0, elapsed / anim.duration))
+        : 1;
+
+    if (progress < 1) {
+      const { pose, currentSweep } = interpolateAnimationPose(anim, progress);
+      set({
+        turtleState: {
+          ...turtleState,
+          activeAnimation: {
+            ...anim,
+            currentPose: pose,
+            progress,
+            currentSweep,
+          },
+        },
+      });
+      turtleRafId = requestFrame(stepTurtleAnimation, anim.duration, anim.startTime);
+    } else {
+      const commit = pendingTurtleCommit;
+      pendingTurtleCommit = null;
+
+      const completedTurtleState: TurtleState = {
+        ...commit.finalTurtleState,
+        activeAnimation: null,
+      };
+
+      if (commit.isDone || commit.isSingleStep) {
+        set({
+          turtleState: completedTurtleState,
+          runtime: commit.finalRuntime,
+          isPlaying: false,
+        });
+      } else {
+        set({
+          turtleState: completedTurtleState,
+          runtime: commit.finalRuntime,
+        });
+        runTurtleExecutionLoop(false);
+      }
+    }
+  }
+
+  function runTurtleExecutionLoop(isSingleStep: boolean) {
+    const { speed, workspace } = get();
+    if (speed === 'instant' || (speed as any) === 0) return;
+
+    for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+      if (workspace[sc]?.length > 0) {
+        const val = validateLoopStructure(workspace[sc]);
+        if (val.hasError) {
+          set({ isPlaying: false });
+          return;
+        }
+      }
+    }
+
+    const currentTurtleState = get().turtleState;
+    if (currentTurtleState.activeAnimation && pendingTurtleCommit) {
+      pendingTurtleCommit.isSingleStep = isSingleStep;
+      const anim = currentTurtleState.activeAnimation;
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const resumedStartTime = now - anim.progress * anim.duration;
+
+      set({
+        isPlaying: !isSingleStep,
+        turtleState: {
+          ...currentTurtleState,
+          activeAnimation: {
+            ...anim,
+            startTime: resumedStartTime,
+          },
+        },
+      });
+
+      if (turtleRafId !== null) cancelFrame(turtleRafId);
+      turtleRafId = requestFrame(stepTurtleAnimation, anim.duration, anim.startTime);
+      return;
+    }
+
+    let runtime = get().runtime || createInitialInterpreterState();
+    let turtleState = get().turtleState;
+    const simEnv = getSimEnvironment('turtle');
+    if (!simEnv) return;
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    while (true) {
+      if (
+        turtleState.status === 'SUCCESS' ||
+        turtleState.status === 'COLLISION' ||
+        runtime.callStack.length === 0
+      ) {
+        set({ isPlaying: false });
+        return;
+      }
+
+      const currentFrame = runtime.callStack[runtime.callStack.length - 1];
+      const scopeBlocks = workspace[currentFrame.scope] || [];
+      const currentBlock = scopeBlocks[currentFrame.pc];
+
+      const isMotion = currentBlock && isTurtleMotionAction(currentBlock.type);
+
+      if (!isMotion) {
+        const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+        runtime = res.nextRuntime;
+        turtleState = res.nextGrid as TurtleState;
+
+        const activeScope = runtime.callStack.length > 0
+          ? runtime.callStack[runtime.callStack.length - 1].scope
+          : get().activeScope;
+
+        set({
+          runtime,
+          turtleState,
+          activeScope,
+        });
+
+        if (res.done) {
+          set({ isPlaying: false });
+          return;
+        }
+
+        continue;
+      }
+
+      const rawRepeats = currentBlock.repeatCount !== undefined
+        ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1)
+        : 1;
+      const totalRepeats = Math.round(rawRepeats);
+
+      if (totalRepeats <= 0) {
+        const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+        runtime = res.nextRuntime;
+        turtleState = res.nextGrid as TurtleState;
+
+        const activeScope = runtime.callStack.length > 0
+          ? runtime.callStack[runtime.callStack.length - 1].scope
+          : get().activeScope;
+
+        set({
+          runtime,
+          turtleState,
+          activeScope,
+        });
+
+        if (res.done) {
+          set({ isPlaying: false });
+          return;
+        }
+
+        continue;
+      }
+
+      const fromPose = { ...turtleState.robot };
+      const penDown = turtleState.penDown;
+      const penColor = turtleState.penColor;
+      const penWidth = turtleState.penWidth;
+
+      const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+      const toPose = { ...(res.nextGrid as TurtleState).robot };
+
+      const activeScope = res.nextRuntime.callStack.length > 0
+        ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
+        : get().activeScope;
+
+      const resolvedParams: Record<string, any> = {};
+      if (currentBlock.params) {
+        for (const [k, v] of Object.entries(currentBlock.params)) {
+          if (typeof v === 'string' && /^[a-z]$/.test(v.trim())) {
+            resolvedParams[k] = evaluateValue(v, runtime.variables, 0);
+          } else {
+            resolvedParams[k] = v;
+          }
+        }
+      }
+
+      const anim = createTurtleAnimation(
+        currentBlock.type,
+        fromPose,
+        toPose,
+        penDown,
+        penColor,
+        penWidth,
+        resolvedParams,
+        speed,
+        now
+      );
+
+      if (anim.duration === 0) {
+        runtime = res.nextRuntime;
+        turtleState = res.nextGrid as TurtleState;
+        set({
+          runtime,
+          turtleState,
+          activeScope,
+        });
+
+        if (res.done || isSingleStep) {
+          set({ isPlaying: false });
+          return;
+        }
+
+        continue;
+      }
+
+      pendingTurtleCommit = {
+        finalTurtleState: res.nextGrid as TurtleState,
+        finalRuntime: res.nextRuntime,
+        isDone: res.done,
+        isSingleStep,
+      };
+
+      set({
+        turtleState: {
+          ...turtleState,
+          activeAnimation: anim,
+        },
+        runtime: res.nextRuntime,
+        activeScope,
+        isPlaying: !isSingleStep,
+      });
+
+      if (turtleRafId !== null) cancelFrame(turtleRafId);
+      turtleRafId = requestFrame(stepTurtleAnimation, anim.duration, anim.startTime);
+      return;
+    }
+  }
   const initialPreset = PRESET_LEVELS[0];
 
   const createGridFromPreset = (preset: LevelPreset, prevFitToView: boolean = false): GridState => ({
@@ -380,7 +654,8 @@ export const useAppStore = create<AppState>((set, get) => {
     setSelectedBlockId: (id) => set({ selectedBlockId: id }),
     setEditorTool: (tool) => set({ editorTool: tool }),
     setSpeed: (speed) => {
-      const wasInstant = get().speed === 'instant' || (get().speed as any) === 0;
+      const prevSpeed = get().speed;
+      const wasInstant = prevSpeed === 'instant' || (prevSpeed as any) === 0;
       const normalizedSpeed: SimulationSpeed =
         speed === 0 || speed === 'instant' ? 'instant' : (speed as SimulationSpeed);
 
@@ -389,22 +664,58 @@ export const useAppStore = create<AppState>((set, get) => {
           clearInterval(timerId);
           timerId = null;
         }
+        if (turtleRafId !== null) {
+          cancelFrame(turtleRafId);
+          turtleRafId = null;
+        }
+        if (pendingTurtleCommit) {
+          set({
+            turtleState: {
+              ...pendingTurtleCommit.finalTurtleState,
+              activeAnimation: null,
+            },
+            runtime: pendingTurtleCommit.finalRuntime,
+          });
+          pendingTurtleCommit = null;
+        }
         set({ speed: 'instant', isPlaying: false });
         get().runInstantIfActive();
       } else {
         set({ speed: normalizedSpeed });
         if (wasInstant) {
           get().reset();
-        } else if (get().isPlaying && timerId) {
-          clearInterval(timerId);
-          timerId = setInterval(() => {
-            if (!get().isPlaying) {
-              if (timerId) clearInterval(timerId);
-              timerId = null;
-              return;
-            }
-            get().step();
-          }, normalizedSpeed);
+        } else if (get().activeSimId === 'grid') {
+          if (get().isPlaying && timerId) {
+            clearInterval(timerId);
+            timerId = setInterval(() => {
+              if (!get().isPlaying) {
+                if (timerId) clearInterval(timerId);
+                timerId = null;
+                return;
+              }
+              get().step();
+            }, normalizedSpeed);
+          }
+        } else {
+          // Turtle mode: dynamically scale remaining duration of active animation
+          const { turtleState } = get();
+          if (turtleState.activeAnimation && typeof prevSpeed === 'number') {
+            const anim = turtleState.activeAnimation;
+            const ratio = (normalizedSpeed as number) / prevSpeed;
+            const newDuration = anim.duration * ratio;
+            const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            const newStartTime = now - anim.progress * newDuration;
+            set({
+              turtleState: {
+                ...turtleState,
+                activeAnimation: {
+                  ...anim,
+                  duration: newDuration,
+                  startTime: newStartTime,
+                },
+              },
+            });
+          }
         }
       }
     },
@@ -774,62 +1085,82 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     step: () => {
-      const { speed } = get();
+      const { speed, activeSimId } = get();
       if (speed === 'instant' || (speed as any) === 0) return;
 
-      const { runtime, workspace, activeSimId, grid, turtleState } = get();
+      if (activeSimId === 'grid') {
+        const { runtime, workspace, grid } = get();
 
-      // Guard: do not execute if loops are unclosed in any used workspace scope
-      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-        if (workspace[sc]?.length > 0) {
-          const val = validateLoopStructure(workspace[sc]);
-          if (val.hasError) {
-            return;
+        // Guard: do not execute if loops are unclosed in any used workspace scope
+        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+          if (workspace[sc]?.length > 0) {
+            const val = validateLoopStructure(workspace[sc]);
+            if (val.hasError) {
+              return;
+            }
           }
         }
-      }
 
-      const currentRuntime = runtime || createInitialInterpreterState();
-      const simEnv = getSimEnvironment(activeSimId);
-      if (!simEnv) return;
+        const currentRuntime = runtime || createInitialInterpreterState();
+        const simEnv = getSimEnvironment('grid');
+        if (!simEnv) return;
 
-      const activeState = activeSimId === 'grid' ? grid : turtleState;
-      const res = tickInterpreter(currentRuntime, workspace, activeState, simEnv);
+        const res = tickInterpreter(currentRuntime, workspace, grid, simEnv);
 
-      // Auto switch active tab to current running scope if function called
-      const activeScope = res.nextRuntime.callStack.length > 0
-        ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-        : get().activeScope;
+        // Auto switch active tab to current running scope if function called
+        const activeScope = res.nextRuntime.callStack.length > 0
+          ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
+          : get().activeScope;
 
-      if (activeSimId === 'grid') {
         set({
           runtime: res.nextRuntime,
           grid: res.nextGrid as GridState,
           activeScope,
           isPlaying: !res.done && get().isPlaying,
         });
-      } else {
-        set({
-          runtime: res.nextRuntime,
-          turtleState: res.nextGrid as TurtleState,
-          activeScope,
-          isPlaying: !res.done && get().isPlaying,
-        });
-      }
 
-      if (res.done && timerId) {
-        clearInterval(timerId);
-        timerId = null;
-        set({ isPlaying: false });
+        if (res.done && timerId) {
+          clearInterval(timerId);
+          timerId = null;
+          set({ isPlaying: false });
+        }
+      } else {
+        // Turtle mode
+        // If an animation is currently active, snap-commit it first
+        if (get().turtleState.activeAnimation && pendingTurtleCommit) {
+          if (turtleRafId !== null) {
+            cancelFrame(turtleRafId);
+            turtleRafId = null;
+          }
+          const commit = pendingTurtleCommit;
+          pendingTurtleCommit = null;
+          set({
+            turtleState: {
+              ...commit.finalTurtleState,
+              activeAnimation: null,
+            },
+            runtime: commit.finalRuntime,
+          });
+          if (commit.isDone) {
+            set({ isPlaying: false });
+            return;
+          }
+        }
+
+        runTurtleExecutionLoop(true);
       }
     },
 
     play: () => {
-      const { speed, workspace } = get();
+      const { speed, workspace, activeSimId } = get();
       if (speed === 'instant' || (speed as any) === 0) {
         if (timerId) {
           clearInterval(timerId);
           timerId = null;
+        }
+        if (turtleRafId !== null) {
+          cancelFrame(turtleRafId);
+          turtleRafId = null;
         }
         for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
           if (workspace[sc]?.length > 0) {
@@ -845,7 +1176,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       if (get().isPlaying) return;
 
-      const { activeSimId, grid, turtleState, runtime } = get();
+      const { grid, turtleState, runtime } = get();
       const currentSimState = activeSimId === 'grid' ? grid : turtleState;
       const hasEndedOrFail =
         currentSimState.status === 'SUCCESS' ||
@@ -866,32 +1197,54 @@ export const useAppStore = create<AppState>((set, get) => {
         }
       }
 
-      if (timerId) clearInterval(timerId);
+      if (activeSimId === 'grid') {
+        if (timerId) clearInterval(timerId);
+        set({ isPlaying: true });
 
-      set({ isPlaying: true });
-
-      // Run immediate first step
-      get().step();
-
-      timerId = setInterval(() => {
-        if (!get().isPlaying) {
-          if (timerId) clearInterval(timerId);
-          timerId = null;
-          return;
-        }
+        // Run immediate first step
         get().step();
-      }, get().speed as number);
+
+        timerId = setInterval(() => {
+          if (!get().isPlaying) {
+            if (timerId) clearInterval(timerId);
+            timerId = null;
+            return;
+          }
+          get().step();
+        }, get().speed as number);
+      } else {
+        // Turtle runner: RAF-driven constant speed loop
+        set({ isPlaying: true });
+        runTurtleExecutionLoop(false);
+      }
     },
 
     pause: () => {
-      if (timerId) clearInterval(timerId);
-      timerId = null;
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+      if (turtleRafId !== null) {
+        cancelFrame(turtleRafId);
+        turtleRafId = null;
+      }
+      if (pendingTurtleCommit) {
+        pendingTurtleCommit.isSingleStep = false;
+      }
       set({ isPlaying: false });
     },
 
     reset: () => {
-      if (timerId) clearInterval(timerId);
-      timerId = null;
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+      if (turtleRafId !== null) {
+        cancelFrame(turtleRafId);
+        turtleRafId = null;
+      }
+      pendingTurtleCommit = null;
+
       const { grid, turtleState, activeSimId } = get();
 
       if (activeSimId === 'grid') {

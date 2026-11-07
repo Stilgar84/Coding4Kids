@@ -40,6 +40,7 @@ export function createInitialTurtleState(): TurtleState {
     zoom: 1,
     fitToView: false,
     computedBounds: { minX: -100, minY: -100, maxX: 100, maxY: 100 },
+    activeAnimation: null,
   };
 }
 

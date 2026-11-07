@@ -31,6 +31,25 @@ export interface TurtleArc {
 
 export type TurtlePathItem = TurtleLine | TurtleArc;
 
+export interface TurtleActiveAnimation {
+  type: 'LINE' | 'ARC' | 'TURN';
+  fromPose: TurtlePose;
+  toPose: TurtlePose;
+  currentPose: TurtlePose;
+  progress: number; // 0 to 1
+  duration: number; // in ms
+  startTime: number;
+  penDown: boolean;
+  penColor: string;
+  penWidth: number;
+  // Arc specific:
+  radius?: number;
+  sweepAngle?: number;
+  currentSweep?: number;
+  // Turn specific:
+  deltaDegrees?: number;
+}
+
 export interface TurtleBounds {
   minX: number;
   minY: number;
@@ -50,4 +69,5 @@ export interface TurtleState {
   zoom: number;
   fitToView: boolean;
   computedBounds: TurtleBounds;
+  activeAnimation?: TurtleActiveAnimation | null;
 }

@@ -855,4 +855,25 @@ test.describe('Robot Emulator E2E Suite', () => {
     // Parameter badge on block should show 45°
     await expect(page.getByTestId('block-param-badge-angle')).toContainText('45°');
   });
+
+  test('animates turtle drawing in real-time with active line segment and avatar updates', async ({ page }) => {
+    // Switch to Turtle simulation mode
+    await page.getByTestId('sim-tab-turtle').click();
+    await expect(page.getByTestId('turtle-canvas-container')).toBeVisible();
+
+    // Add Forward block (50px)
+    await page.getByTestId('palette-turtle-forward').click();
+
+    // Step once - starts real-time motion
+    await page.getByTestId('btn-step').click();
+
+    // Robot avatar exists and moves smoothly
+    const robot = page.getByTestId('turtle-robot');
+    await expect(robot).toBeVisible();
+
+    // After animation completes, completed path line exists and avatar is at (0, -50)
+    await expect(page.getByTestId('turtle-line-0')).toBeVisible({ timeout: 5000 });
+    const infoPill = page.getByTestId('turtle-info-pill');
+    await expect(infoPill).toContainText('Y: -50');
+  });
 });
