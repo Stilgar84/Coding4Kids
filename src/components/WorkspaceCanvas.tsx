@@ -165,8 +165,8 @@ export const WorkspaceCanvas: React.FC = () => {
       onClick={handleCanvasClick}
       data-bg-canvas="true"
     >
-      {/* Scope Navigation Tabs & Actions */}
-      <div className="flex items-center justify-between p-2 bg-slate-900 border-b border-slate-800">
+      {/* Scope Navigation Tabs & Actions (Desktop / Tablet view; mobile uses collapsible subpalette function bar) */}
+      <div className="hidden md:flex items-center justify-between p-2 bg-slate-900 border-b border-slate-800">
         <div className="flex items-center gap-2">
           {SCOPE_TABS.map((tab) => {
             const isSelected = activeScope === tab.id;
@@ -321,7 +321,7 @@ export const WorkspaceCanvas: React.FC = () => {
                 {showDropBefore && (
                   <div
                     data-testid="drop-indicator-line"
-                    className="w-1.5 h-12 bg-yellow-400 rounded-full shadow-[0_0_10px_rgba(250,204,21,0.8)] animate-pulse flex-shrink-0"
+                    className="w-1.5 h-8 md:h-12 bg-yellow-400 rounded-full shadow-[0_0_10px_rgba(250,204,21,0.8)] animate-pulse flex-shrink-0"
                   />
                 )}
 
@@ -345,12 +345,12 @@ export const WorkspaceCanvas: React.FC = () => {
                 {showDropAfter ? (
                   <div
                     data-testid="drop-indicator-line"
-                    className="w-1.5 h-12 bg-yellow-400 rounded-full shadow-[0_0_10px_rgba(250,204,21,0.8)] animate-pulse flex-shrink-0"
+                    className="w-1.5 h-8 md:h-12 bg-yellow-400 rounded-full shadow-[0_0_10px_rgba(250,204,21,0.8)] animate-pulse flex-shrink-0"
                   />
                 ) : showCaretAfter ? (
                   <div
                     data-testid="selection-insertion-pip"
-                    className="w-1 h-9 bg-sky-400 rounded-full shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse flex-shrink-0"
+                    className="w-1 h-6 md:h-9 bg-sky-400 rounded-full shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse flex-shrink-0"
                     title="Insertion point"
                   />
                 ) : null}

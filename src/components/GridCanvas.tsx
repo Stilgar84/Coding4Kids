@@ -22,6 +22,20 @@ export const GridCanvas: React.FC = () => {
 
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
+  const handleToggleFit = () => {
+    setUserZoom(1);
+    setPanOffset({ x: 0, y: 0 });
+    toggleFitToView();
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      setUserZoom((prev) => Math.min(3.5, Math.max(0.4, prev * factor)));
+    }
+  };
+
   const { width, height, robot, barriers, flags, trace, status, showTrace, fitToView } = grid;
   const isBarrierMode = editorTool === 'WALL';
   const isFitToView = Boolean(fitToView);
@@ -37,6 +51,80 @@ export const GridCanvas: React.FC = () => {
   // Viewport container measurement for fit-to-view calculation
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [userZoom, setUserZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+
+  const pinchStartRef = useRef<{
+    dist: number;
+    zoom: number;
+    centerX: number;
+    centerY: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const centerX = (t1.clientX + t2.clientX) / 2;
+        const centerY = (t1.clientY + t2.clientY) / 2;
+        pinchStartRef.current = {
+          dist,
+          zoom: userZoom,
+          centerX,
+          centerY,
+          panX: panOffset.x,
+          panY: panOffset.y,
+        };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartRef.current) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const centerX = (t1.clientX + t2.clientX) / 2;
+        const centerY = (t1.clientY + t2.clientY) / 2;
+
+        const scaleChange = dist / pinchStartRef.current.dist;
+        const nextZoom = Math.min(3.5, Math.max(0.4, pinchStartRef.current.zoom * scaleChange));
+        setUserZoom(nextZoom);
+
+        const dx = centerX - pinchStartRef.current.centerX;
+        const dy = centerY - pinchStartRef.current.centerY;
+        setPanOffset({
+          x: pinchStartRef.current.panX + dx,
+          y: pinchStartRef.current.panY + dy,
+        });
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchStartRef.current = null;
+      }
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [userZoom, panOffset]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -252,7 +340,8 @@ export const GridCanvas: React.FC = () => {
       <div
         ref={containerRef}
         data-testid="grid-scroll-container"
-        className="w-full h-full overflow-auto flex"
+        onWheel={handleWheel}
+        className="w-full h-full overflow-auto flex touch-none"
       >
         <div
           data-testid="grid-fit-wrapper"
@@ -270,14 +359,12 @@ export const GridCanvas: React.FC = () => {
           }
         >
           <div
-            style={
-              isFitToView
-                ? {
-                    transform: `scale(${scale})`,
-                    transformOrigin: 'center center',
-                  }
-                : undefined
-            }
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${
+                (isFitToView ? scale : 1) * userZoom
+              })`,
+              transformOrigin: 'center center',
+            }}
             className="shrink-0 transition-transform duration-200"
           >
             {/* SVG Grid Container with Boundary Drag Handles */}
@@ -609,7 +696,7 @@ export const GridCanvas: React.FC = () => {
         {/* Toggle Fit to Screen Button */}
         <button
           data-testid="btn-toggle-fit"
-          onClick={toggleFitToView}
+          onClick={handleToggleFit}
           className={`p-3 rounded-2xl shadow-lg border-2 transition-all ${
             isFitToView
               ? 'bg-sky-500 border-sky-300 text-white shadow-sky-500/30'

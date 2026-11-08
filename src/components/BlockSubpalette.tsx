@@ -36,7 +36,7 @@ export const BlockSubpalette: React.FC = () => {
     return (
       <div
         data-testid="block-subpalette-var-assign"
-        className="flex flex-col gap-2 bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
+        className="flex flex-col gap-2 max-h-[160px] md:max-h-[220px] overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
       >
         {/* Variable A */}
         <div className="flex flex-col gap-1">
@@ -51,7 +51,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-assign-a-${v}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { a: v })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
                   currentA === v
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-300 hover:border-slate-500'
@@ -78,7 +78,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-assign-b-var-${v}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: v })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
                   currentB === v
                     ? 'bg-violet-500/20 border-violet-400 text-violet-200 ring-2 ring-violet-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-violet-300 hover:border-slate-500'
@@ -94,7 +94,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-assign-b-num-${n}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: n })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
                   currentB === n
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-200 hover:border-slate-500'
@@ -106,7 +106,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
-              className="w-14 h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
+              className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentB === 'number' ? currentB : ''}
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
@@ -129,7 +129,7 @@ export const BlockSubpalette: React.FC = () => {
     return (
       <div
         data-testid="block-subpalette-var-op"
-        className="flex flex-col gap-2 bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
+        className="flex flex-col gap-2 max-h-[160px] md:max-h-[220px] overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
       >
         {/* Variable A */}
         <div className="flex flex-col gap-1">
@@ -144,7 +144,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-a-${v}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { a: v })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
                   currentA === v
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-300 hover:border-slate-500'
@@ -171,7 +171,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-b-var-${v}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: v })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
                   currentB === v
                     ? 'bg-violet-500/20 border-violet-400 text-violet-200 ring-2 ring-violet-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-violet-300 hover:border-slate-500'
@@ -187,7 +187,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-b-num-${n}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: n })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
                   currentB === n
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-200 hover:border-slate-500'
@@ -199,7 +199,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
-              className="w-14 h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
+              className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentB === 'number' ? currentB : ''}
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
@@ -222,7 +222,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-choice-${op}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { op })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[36px] h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[30px] h-[30px] md:min-w-[36px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
                   currentOp === op
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-300 hover:border-slate-500'
@@ -249,7 +249,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-c-var-${v}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { c: v })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono italic font-bold transition-all active:scale-95 ${
                   currentC === v
                     ? 'bg-violet-500/20 border-violet-400 text-violet-200 ring-2 ring-violet-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-violet-300 hover:border-slate-500'
@@ -265,7 +265,7 @@ export const BlockSubpalette: React.FC = () => {
                 type="button"
                 data-testid={`subpalette-op-c-num-${n}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { c: n })}
-                className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center min-w-[28px] h-[30px] md:min-w-[34px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
                   currentC === n
                     ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                     : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-200 hover:border-slate-500'
@@ -277,7 +277,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
-              className="w-14 h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
+              className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentC === 'number' ? currentC : ''}
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
@@ -301,7 +301,7 @@ export const BlockSubpalette: React.FC = () => {
   return (
     <div
       data-testid="block-subpalette"
-      className="flex flex-col gap-2 bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
+      className="flex flex-col gap-2 max-h-[160px] md:max-h-[220px] overflow-y-auto bg-slate-950/70 border border-slate-800/80 rounded-xl mx-1 p-2 transition-all duration-200 shadow-inner animate-in fade-in slide-in-from-top-1"
     >
       {paramDefs.map((paramDef) => {
         const currentValue =
@@ -332,7 +332,7 @@ export const BlockSubpalette: React.FC = () => {
                         [paramDef.id]: opt.value,
                       })
                     }
-                    className={`flex-shrink-0 flex flex-col items-center justify-center p-1.5 min-w-[42px] h-[46px] rounded-xl border text-xs font-semibold transition-all active:scale-95 touch-none ${
+                    className={`flex-shrink-0 flex flex-col items-center justify-center p-1 md:p-1.5 min-w-[34px] h-[38px] md:min-w-[42px] md:h-[46px] rounded-lg md:rounded-xl border text-xs font-semibold transition-all active:scale-95 touch-none ${
                       isSelected
                         ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40 shadow-sm'
                         : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-slate-300 hover:border-slate-500'

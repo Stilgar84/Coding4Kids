@@ -142,6 +142,9 @@ interface AppState {
   isSaveModalOpen: boolean;
   isLoadModalOpen: boolean;
   isSubpaletteCollapsed: boolean;
+  isMapHidden: boolean;
+  isFunctionBarOpen: boolean;
+  isMobileMenuOpen: boolean;
 
   // History state & actions
   past: HistorySnapshot[];
@@ -161,6 +164,12 @@ interface AppState {
   setSelectedBlockId: (id: string | null) => void;
   toggleSubpalette: () => void;
   setSubpaletteCollapsed: (collapsed: boolean) => void;
+  toggleMapHidden: () => void;
+  setMapHidden: (hidden: boolean) => void;
+  toggleFunctionBar: () => void;
+  setFunctionBarOpen: (open: boolean) => void;
+  toggleMobileMenu: () => void;
+  setMobileMenuOpen: (open: boolean) => void;
   setEditorTool: (tool: EditorTool) => void;
   setSpeed: (speed: SimulationSpeed | number) => void;
   runInstantIfActive: () => void;
@@ -539,6 +548,9 @@ export const useAppStore = create<AppState>((set, get) => {
     isSaveModalOpen: false,
     isLoadModalOpen: false,
     isSubpaletteCollapsed: false,
+    isMapHidden: false,
+    isFunctionBarOpen: false,
+    isMobileMenuOpen: false,
 
     past: [],
     future: [],
@@ -698,6 +710,18 @@ export const useAppStore = create<AppState>((set, get) => {
     toggleSubpalette: () => set((state) => ({ isSubpaletteCollapsed: !state.isSubpaletteCollapsed })),
 
     setSubpaletteCollapsed: (collapsed) => set({ isSubpaletteCollapsed: collapsed }),
+
+    toggleMapHidden: () => set((state) => ({ isMapHidden: !state.isMapHidden })),
+
+    setMapHidden: (hidden) => set({ isMapHidden: hidden }),
+
+    toggleFunctionBar: () => set((state) => ({ isFunctionBarOpen: !state.isFunctionBarOpen })),
+
+    setFunctionBarOpen: (open) => set({ isFunctionBarOpen: open }),
+
+    toggleMobileMenu: () => set((state) => ({ isMobileMenuOpen: !state.isMobileMenuOpen })),
+
+    setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
 
     setSolutionOpen: (open) => set({ isSolutionOpen: open }),
 

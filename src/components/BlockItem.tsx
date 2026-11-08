@@ -195,31 +195,31 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     switch (block.type) {
       case 'MOVE_FWD':
       case 'FORWARD':
-        return <ArrowUp className={`w-7 h-7 ${iconColor}`} />;
+        return <ArrowUp className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />;
 
       case 'MOVE_BACK':
       case 'BACKWARD':
-        return <ArrowDown className={`w-7 h-7 ${iconColor}`} />;
+        return <ArrowDown className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />;
 
       case 'TURN_LEFT':
         return activeSimId === 'turtle' ? (
-          <RotateCcw className={`w-7 h-7 ${iconColor}`} />
+          <RotateCcw className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />
         ) : (
-          <CornerUpLeft className={`w-7 h-7 ${iconColor}`} />
+          <CornerUpLeft className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />
         );
 
       case 'TURN_RIGHT':
         return activeSimId === 'turtle' ? (
-          <RotateCw className={`w-7 h-7 ${iconColor}`} />
+          <RotateCw className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />
         ) : (
-          <CornerUpRight className={`w-7 h-7 ${iconColor}`} />
+          <CornerUpRight className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />
         );
 
       case 'ARC_LEFT':
         return (
           <div className="flex flex-col items-center justify-center leading-none">
             <svg
-              className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
+              className={`w-4 h-4 md:w-5 md:h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
               viewBox="0 0 24 24"
               fill="none"
               strokeWidth="2.5"
@@ -228,7 +228,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               <polyline points="4 10 4 5 9 5" />
             </svg>
             <span
-              className={`text-[9px] font-black ${
+              className={`text-[8px] md:text-[9px] font-black ${
                 isActive ? 'text-slate-950' : 'text-indigo-200'
               }`}
             >
@@ -241,7 +241,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         return (
           <div className="flex flex-col items-center justify-center leading-none">
             <svg
-              className={`w-5 h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
+              className={`w-4 h-4 md:w-5 md:h-5 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
               viewBox="0 0 24 24"
               fill="none"
               strokeWidth="2.5"
@@ -250,7 +250,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               <polyline points="20 10 20 5 15 5" />
             </svg>
             <span
-              className={`text-[9px] font-black ${
+              className={`text-[8px] md:text-[9px] font-black ${
                 isActive ? 'text-slate-950' : 'text-indigo-200'
               }`}
             >
@@ -262,15 +262,15 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       case 'PEN_UP':
         return (
           <div className="relative flex items-center justify-center">
-            <PenTool className={`w-6 h-6 ${isActive ? 'text-slate-950' : 'text-teal-200'}`} />
-            <Slash className="w-7 h-7 text-red-400 stroke-[2.5] absolute -top-0.5 -left-0.5" />
+            <PenTool className={`w-4.5 h-4.5 md:w-6 md:h-6 ${isActive ? 'text-slate-950' : 'text-teal-200'}`} />
+            <Slash className="w-5 h-5 md:w-7 md:h-7 text-red-400 stroke-[2.5] absolute -top-0.5 -left-0.5" />
           </div>
         );
 
       case 'PEN_DOWN':
         return (
           <PenTool
-            className={`w-6 h-6 ${
+            className={`w-4.5 h-4.5 md:w-6 md:h-6 ${
               isActive ? 'text-slate-950 stroke-[2.5]' : 'text-teal-100 stroke-[2.5]'
             }`}
           />
@@ -279,7 +279,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       case 'SET_PEN_COLOR':
         return (
           <Palette
-            className={`w-6 h-6 stroke-[2.5] ${
+            className={`w-4.5 h-4.5 md:w-6 md:h-6 stroke-[2.5] ${
               isActive ? 'text-slate-950' : 'text-pink-300'
             }`}
           />
@@ -287,10 +287,10 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'SET_PEN_WIDTH':
         return (
-          <div className="flex flex-col items-center justify-center gap-1">
-            <div className={`w-6 h-1.5 rounded-full ${isActive ? 'bg-slate-950' : 'bg-white'}`} />
+          <div className="flex flex-col items-center justify-center gap-0.5 md:gap-1">
+            <div className={`w-4 md:w-6 h-1 md:h-1.5 rounded-full ${isActive ? 'bg-slate-950' : 'bg-white'}`} />
             <span
-              className={`text-[9px] font-bold ${
+              className={`text-[8px] md:text-[9px] font-bold ${
                 isActive ? 'text-slate-950' : 'text-slate-300'
               }`}
             >
@@ -300,12 +300,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         );
 
       case 'LOOP_START':
-        return <Repeat className={`w-7 h-7 ${iconColor}`} />;
+        return <Repeat className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />;
 
       case 'LOOP_END':
         return (
           <Undo2
-            className={`w-7 h-7 ${
+            className={`w-5 h-5 md:w-7 md:h-7 ${
               isActive ? 'text-slate-950 stroke-[3]' : 'text-purple-200 stroke-[3]'
             }`}
           />
@@ -313,12 +313,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'CALL_F1':
         return (
-          <div className="flex items-center justify-center gap-1">
+          <div className="flex items-center justify-center gap-0.5 md:gap-1">
             <PhoneCall
-              className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`w-4 h-4 md:w-6 md:h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
             <span
-              className={`text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`text-sm md:text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
             >
               1
             </span>
@@ -327,12 +327,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'CALL_F2':
         return (
-          <div className="flex items-center justify-center gap-1">
+          <div className="flex items-center justify-center gap-0.5 md:gap-1">
             <PhoneCall
-              className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`w-4 h-4 md:w-6 md:h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
             <span
-              className={`text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`text-sm md:text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
             >
               2
             </span>
@@ -341,12 +341,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'CALL_F3':
         return (
-          <div className="flex items-center justify-center gap-1">
+          <div className="flex items-center justify-center gap-0.5 md:gap-1">
             <PhoneCall
-              className={`w-6 h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`w-4 h-4 md:w-6 md:h-6 stroke-[2.5] ${isActive ? 'text-slate-950' : 'text-white'}`}
             />
             <span
-              className={`text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
+              className={`text-sm md:text-lg font-black ${isActive ? 'text-slate-950' : 'text-white'}`}
             >
               3
             </span>
@@ -355,7 +355,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'VAR_ASSIGN':
         return (
-          <div className="flex items-center gap-1 font-mono font-bold text-sm select-none px-1">
+          <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-xs md:text-sm select-none px-1">
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
               {block.params?.a ?? 'a'}
             </span>
@@ -368,7 +368,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'VAR_OP':
         return (
-          <div className="flex items-center gap-1 font-mono font-bold text-xs select-none px-1">
+          <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-[10px] md:text-xs select-none px-0.5 md:px-1">
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
               {block.params?.a ?? 'a'}
             </span>
@@ -521,7 +521,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       {/* Main Block Visual & Attached Parameter Badges */}
       <div
-        className={`flex items-center rounded-2xl transition-all ${
+        className={`flex items-center rounded-xl md:rounded-2xl transition-all ${
           isNumberHovered
             ? 'ring-4 ring-yellow-400'
             : isLoopError
@@ -531,7 +531,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             : ''
         }`}
       >
-        <div className={`${(block.type === 'VAR_ASSIGN' || block.type === 'VAR_OP') ? 'min-w-[56px] px-2' : 'w-[56px]'} h-[56px] flex items-center justify-center flex-shrink-0`}>
+        <div className={`${(block.type === 'VAR_ASSIGN' || block.type === 'VAR_OP') ? 'min-w-[40px] md:min-w-[56px] px-1 md:px-2' : 'w-[40px] md:w-[56px]'} h-[40px] md:h-[56px] flex items-center justify-center flex-shrink-0`}>
           {renderBlockContent()}
         </div>
 
@@ -539,7 +539,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         {hasParams && (
           <div
             data-testid={`block-params-container-${block.id}`}
-            className={`flex items-center gap-1.5 pl-1 pr-2 h-[56px] -ml-px rounded-r-2xl border-2 border-l-0 shadow-md transition-colors flex-shrink-0 ${
+            className={`flex items-center gap-1 md:gap-1.5 pl-0.5 md:pl-1 pr-1 md:pr-2 h-[40px] md:h-[56px] -ml-px rounded-r-xl md:rounded-r-2xl border-2 border-l-0 shadow-md transition-colors flex-shrink-0 ${
               isActive
                 ? 'bg-yellow-400 border-yellow-200'
                 : `${theme.bgClass} ${theme.borderClass}`
@@ -567,7 +567,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         <div
           data-testid={`badge-repeat-${block.id}`}
           data-iteration-badge="true"
-          className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center min-w-[28px] h-6 px-1.5 rounded-full border-2 border-yellow-300 bg-slate-900 shadow-lg text-xs"
+          className="absolute -bottom-1.5 -right-1.5 z-20 flex items-center justify-center min-w-[24px] md:min-w-[28px] h-5 md:h-6 px-1 rounded-full border-2 border-yellow-300 bg-slate-900 shadow-lg text-[10px] md:text-xs"
         >
           <span
             data-testid="iteration-current"
@@ -591,7 +591,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             e.stopPropagation();
             updateBlockRepeat(scope, block.id, undefined);
           }}
-          className="absolute -bottom-2 -right-1 z-20 flex items-center justify-center w-6 h-6 rounded-full border-2 border-yellow-200 bg-yellow-400 hover:bg-red-500 hover:border-red-300 hover:text-white text-slate-950 font-black text-xs shadow-md transition-colors cursor-pointer"
+          className="absolute -bottom-1.5 -right-1 z-20 flex items-center justify-center w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-yellow-200 bg-yellow-400 hover:bg-red-500 hover:border-red-300 hover:text-white text-slate-950 font-black text-[10px] md:text-xs shadow-md transition-colors cursor-pointer"
           title="Click to remove tag"
         >
           {typeof block.repeatCount === 'string' ? (

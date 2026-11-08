@@ -43,7 +43,7 @@ export const BlockParamBadge: React.FC<BlockParamBadgeProps> = ({
         data-testid={`block-param-badge-${paramDef.id}`}
         onClick={handleClick}
         title={`Click to edit ${paramDef.label}`}
-        className="flex items-center justify-center min-w-[36px] h-[48px] px-2 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-600/70 hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 group"
+        className="flex items-center justify-center min-w-[28px] md:min-w-[36px] h-[34px] md:h-[48px] px-1 md:px-2 rounded-lg md:rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-600/70 hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 group"
       >
         <ParamVisual paramDef={paramDef} value={effectiveValue} compact={true} actionType={actionType} />
       </button>

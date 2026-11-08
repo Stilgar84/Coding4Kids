@@ -41,6 +41,81 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
     return () => observer.disconnect();
   }, []);
 
+  const pinchStartRef = useRef<{
+    dist: number;
+    zoom: number;
+    centerX: number;
+    centerY: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const centerX = (t1.clientX + t2.clientX) / 2;
+        const centerY = (t1.clientY + t2.clientY) / 2;
+        pinchStartRef.current = {
+          dist,
+          zoom: state.zoom,
+          centerX,
+          centerY,
+          panX: state.pan.x,
+          panY: state.pan.y,
+        };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartRef.current) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const centerX = (t1.clientX + t2.clientX) / 2;
+        const centerY = (t1.clientY + t2.clientY) / 2;
+
+        const scaleChange = dist / pinchStartRef.current.dist;
+        const nextZoom = Math.min(5, Math.max(0.2, pinchStartRef.current.zoom * scaleChange));
+
+        const dx = centerX - pinchStartRef.current.centerX;
+        const dy = centerY - pinchStartRef.current.centerY;
+        updateTurtleViewport({
+          zoom: nextZoom,
+          pan: {
+            x: pinchStartRef.current.panX + dx,
+            y: pinchStartRef.current.panY + dy,
+          },
+          fitToView: false,
+        });
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchStartRef.current = null;
+      }
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [state.zoom, state.pan, updateTurtleViewport]);
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     setIsPanning(true);

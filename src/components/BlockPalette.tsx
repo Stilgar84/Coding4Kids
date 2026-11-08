@@ -6,11 +6,15 @@ import {
   Repeat,
   Undo2,
   PhoneCall,
+  Trash,
   Trash2,
   SlidersHorizontal,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
 import { BlockSubpalette } from './BlockSubpalette';
+import { ScopeType } from '../types';
 
 interface CoreControlItem {
   type: string;
@@ -26,7 +30,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   {
     type: 'LOOP_START',
     testId: 'palette-loop-start',
-    icon: <Repeat className="w-8 h-8 text-white stroke-[3]" />,
+    icon: <Repeat className="w-5 h-5 md:w-8 md:h-8 text-white stroke-[3]" />,
     bgClass: 'bg-purple-700 hover:bg-purple-600',
     borderClass: 'border-purple-400',
     supportsRepeat: true,
@@ -34,7 +38,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   {
     type: 'LOOP_END',
     testId: 'palette-loop-end',
-    icon: <Undo2 className="w-8 h-8 text-purple-200 stroke-[3]" />,
+    icon: <Undo2 className="w-5 h-5 md:w-8 md:h-8 text-purple-200 stroke-[3]" />,
     bgClass: 'bg-purple-900 hover:bg-purple-800',
     borderClass: 'border-purple-500',
     supportsRepeat: false,
@@ -43,7 +47,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'VAR_ASSIGN',
     testId: 'palette-var-assign',
     icon: (
-      <span className="font-mono font-bold text-sm text-white tracking-tight">a=b</span>
+      <span className="font-mono font-bold text-[11px] md:text-sm text-white tracking-tight">a=b</span>
     ),
     bgClass: 'bg-violet-700 hover:bg-violet-600',
     borderClass: 'border-violet-400',
@@ -54,7 +58,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'VAR_OP',
     testId: 'palette-var-op',
     icon: (
-      <span className="font-mono font-bold text-xs text-white tracking-tight">a=b*c</span>
+      <span className="font-mono font-bold text-[9px] md:text-xs text-white tracking-tight">a=b*c</span>
     ),
     bgClass: 'bg-indigo-700 hover:bg-indigo-600',
     borderClass: 'border-indigo-400',
@@ -65,9 +69,9 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'CALL_F1',
     testId: 'palette-call-f1',
     icon: (
-      <div className="flex items-center gap-1">
-        <PhoneCall className="w-6 h-6 text-white stroke-[2.5]" />
-        <span className="text-xl font-black text-white">1</span>
+      <div className="flex items-center gap-0.5 md:gap-1">
+        <PhoneCall className="w-3.5 h-3.5 md:w-6 md:h-6 text-white stroke-[2.5]" />
+        <span className="text-sm md:text-xl font-black text-white">1</span>
       </div>
     ),
     bgClass: 'bg-emerald-600 hover:bg-emerald-500',
@@ -78,9 +82,9 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'CALL_F2',
     testId: 'palette-call-f2',
     icon: (
-      <div className="flex items-center gap-1">
-        <PhoneCall className="w-6 h-6 text-white stroke-[2.5]" />
-        <span className="text-xl font-black text-white">2</span>
+      <div className="flex items-center gap-0.5 md:gap-1">
+        <PhoneCall className="w-3.5 h-3.5 md:w-6 md:h-6 text-white stroke-[2.5]" />
+        <span className="text-sm md:text-xl font-black text-white">2</span>
       </div>
     ),
     bgClass: 'bg-blue-600 hover:bg-blue-500',
@@ -91,9 +95,9 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'CALL_F3',
     testId: 'palette-call-f3',
     icon: (
-      <div className="flex items-center gap-1">
-        <PhoneCall className="w-6 h-6 text-white stroke-[2.5]" />
-        <span className="text-xl font-black text-white">3</span>
+      <div className="flex items-center gap-0.5 md:gap-1">
+        <PhoneCall className="w-3.5 h-3.5 md:w-6 md:h-6 text-white stroke-[2.5]" />
+        <span className="text-sm md:text-xl font-black text-white">3</span>
       </div>
     ),
     bgClass: 'bg-rose-600 hover:bg-rose-500',
@@ -103,6 +107,33 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
 ];
 
 const NUMBER_BADGES = [2, 3, 4, 5, 6, 7, 8, 9];
+
+const PALETTE_SCOPE_TABS = [
+  {
+    id: 'MAIN' as ScopeType,
+    label: 'Main',
+    icon: <Sparkles className="w-3.5 h-3.5 text-yellow-300" />,
+    activeColor: 'bg-indigo-600 border-indigo-400 text-white',
+  },
+  {
+    id: 'F1' as ScopeType,
+    label: '1',
+    icon: <span className="font-black text-xs">1</span>,
+    activeColor: 'bg-emerald-600 border-emerald-400 text-white',
+  },
+  {
+    id: 'F2' as ScopeType,
+    label: '2',
+    icon: <span className="font-black text-xs">2</span>,
+    activeColor: 'bg-blue-600 border-blue-400 text-white',
+  },
+  {
+    id: 'F3' as ScopeType,
+    label: '3',
+    icon: <span className="font-black text-xs">3</span>,
+    activeColor: 'bg-rose-600 border-rose-400 text-white',
+  },
+];
 
 interface PaletteScrollRowProps {
   children: React.ReactNode;
@@ -298,6 +329,7 @@ export const BlockPalette: React.FC = () => {
   const {
     activeSimId,
     activeScope,
+    setActiveScope,
     addBlock,
     workspace,
     updateBlockRepeat,
@@ -306,6 +338,8 @@ export const BlockPalette: React.FC = () => {
     removeBlock,
     isSubpaletteCollapsed,
     toggleSubpalette,
+    isFunctionBarOpen,
+    toggleFunctionBar,
   } = useAppStore();
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
@@ -497,15 +531,15 @@ export const BlockPalette: React.FC = () => {
               onDragStart={(e) => handlePaletteBlockDragStart(e, item)}
               onClick={() => handleAddSimBlock(item)}
               title={item.name}
-              className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[56px] min-h-[56px] ${item.bgClass} ${item.borderClass}`}
+              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass}`}
             >
-              {item.icon({ isActive: false })}
+              {item.icon({ isActive: false, className: 'w-5 h-5 md:w-8 md:h-8 text-white stroke-[3]' })}
             </button>
           );
         })}
 
         {/* Vertical divider */}
-        <div className="w-[1px] h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
+        <div className="w-[1px] h-6 md:h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
 
         {/* Core Control Structure Blocks (LOOP, Functions) */}
         {CORE_CONTROL_ITEMS.map((item) => (
@@ -515,7 +549,7 @@ export const BlockPalette: React.FC = () => {
             draggable
             onDragStart={(e) => handleCoreControlDragStart(e, item)}
             onClick={() => handleAddCoreBlock(item)}
-            className={`flex-shrink-0 flex items-center justify-center p-3 rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[56px] min-h-[56px] ${item.bgClass} ${item.borderClass}`}
+            className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass}`}
           >
             {item.icon}
           </button>
@@ -523,7 +557,7 @@ export const BlockPalette: React.FC = () => {
       </PaletteScrollRow>
 
       {/* Repeat Tags & Action Param Toggle Row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 md:gap-2">
         {/* Toggle icon for action parameters - always visible and on the left */}
         <button
           type="button"
@@ -536,7 +570,7 @@ export const BlockPalette: React.FC = () => {
                 : 'Show action parameters'
               : 'Action parameters'
           }
-          className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl border-2 transition-all active:scale-95 touch-none ${
+          className={`flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
             hasParams && !isSubpaletteCollapsed
               ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md ring-2 ring-amber-400/40'
               : hasParams
@@ -544,11 +578,50 @@ export const BlockPalette: React.FC = () => {
               : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-400 hover:text-slate-200'
           }`}
         >
-          <SlidersHorizontal className="w-5 h-5 stroke-[2.2]" />
+          <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
+        </button>
+
+        {/* Toggle Function Selection Bar Button (default hidden on phones) */}
+        <button
+          type="button"
+          data-testid="btn-toggle-function-bar"
+          onClick={toggleFunctionBar}
+          title={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
+          className={`flex-shrink-0 flex items-center justify-center gap-1 px-1.5 md:px-2 h-8 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
+            isFunctionBarOpen
+              ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-md ring-2 ring-indigo-400/40'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-300 stroke-[2.2]" />
+          <span className="font-bold text-[10px] md:text-xs tracking-tight">
+            {activeScope === 'MAIN' ? 'Main' : activeScope}
+          </span>
+        </button>
+
+        {/* Delete Single Block Button */}
+        <button
+          type="button"
+          data-testid="btn-palette-delete-block"
+          disabled={!selectedBlockId}
+          onClick={() => {
+            if (selectedBlockId) {
+              removeBlock(activeScope, selectedBlockId);
+            }
+          }}
+          title={selectedBlockId ? 'Delete selected block' : 'Select a block to delete'}
+          aria-label="Delete single block"
+          className={`flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all ${
+            selectedBlockId
+              ? 'bg-slate-800 hover:bg-rose-600 text-rose-400 hover:text-white border-slate-700 shadow-md cursor-pointer active:scale-95'
+              : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+          }`}
+        >
+          <Trash className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
         </button>
 
         {/* Divider between param toggle and repeat badges */}
-        <div className="w-[1px] h-8 bg-slate-700/60 flex-shrink-0" />
+        <div className="w-[1px] h-6 md:h-8 bg-slate-700/60 flex-shrink-0" />
 
         {/* Number Multipliers Row (Repeat tags) */}
         <PaletteScrollRow testId="palette-number-row" className="flex-1 min-w-0">
@@ -559,13 +632,13 @@ export const BlockPalette: React.FC = () => {
               draggable
               onDragStart={(e) => handleNumberDragStart(e, num)}
               onClick={() => handleNumberClick(num)}
-              className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+              className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs md:text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
               title={`Set repeat ${num}`}
             >
               {num}
             </button>
           ))}
-          <div className="w-[1px] h-6 bg-slate-700/60 mx-1 flex-shrink-0" />
+          <div className="w-[1px] h-5 md:h-6 bg-slate-700/60 mx-1 flex-shrink-0" />
           {(['a', 'b', 'c', 'n'] as const).map((v) => (
             <button
               key={v}
@@ -573,7 +646,7 @@ export const BlockPalette: React.FC = () => {
               draggable
               onDragStart={(e) => handleNumberDragStart(e, v)}
               onClick={() => handleNumberClick(v)}
-              className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+              className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-[11px] md:text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
               title={`Set repeat variable ${v}`}
             >
               {v}
@@ -581,6 +654,31 @@ export const BlockPalette: React.FC = () => {
           ))}
         </PaletteScrollRow>
       </div>
+
+      {/* Collapsible Function Selection Bar */}
+      {isFunctionBarOpen && (
+        <div
+          data-testid="palette-function-bar"
+          className="flex items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800 animate-in fade-in slide-in-from-top-1"
+        >
+          <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Scope:</span>
+          {PALETTE_SCOPE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              data-testid={`palette-tab-${tab.id.toLowerCase()}`}
+              onClick={() => setActiveScope(tab.id)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all active:scale-95 ${
+                activeScope === tab.id
+                  ? `${tab.activeColor} shadow-sm`
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Subpalette for Selected Block Parameters */}
       <BlockSubpalette />

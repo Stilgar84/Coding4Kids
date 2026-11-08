@@ -12,7 +12,7 @@ import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 
 export const App: React.FC = () => {
   useUndoRedoShortcuts();
-  const { activeSimId, grid, turtleState, runtime } = useAppStore();
+  const { activeSimId, grid, turtleState, runtime, isMapHidden } = useAppStore();
   const simEnv = getSimEnvironment(activeSimId);
   const Renderer = simEnv?.Renderer;
   const activeState = activeSimId === 'grid' ? grid : turtleState;
@@ -27,19 +27,25 @@ export const App: React.FC = () => {
         {/* Left Pane: Visual Block Programmer */}
         <section
           data-testid="pane-programming"
-          className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full border-b-2 md:border-b-0 md:border-r-2 border-slate-800 overflow-hidden"
+          className={`flex flex-col border-slate-800 ${
+            isMapHidden
+              ? 'w-full h-full overflow-hidden'
+              : 'w-full md:w-1/2 h-1/2 md:h-full border-b-2 md:border-b-0 md:border-r-2 overflow-y-auto md:overflow-hidden'
+          }`}
         >
           <BlockPalette />
           <WorkspaceCanvas />
         </section>
 
         {/* Right Pane: Active Simulation World (Grid or Turtle LOGO) */}
-        <section
-          data-testid="pane-simulation"
-          className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
-        >
-          {Renderer && <Renderer state={activeState} runtimeStatus={runtime?.status} />}
-        </section>
+        {!isMapHidden && (
+          <section
+            data-testid="pane-simulation"
+            className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
+          >
+            {Renderer && <Renderer state={activeState} runtimeStatus={runtime?.status} />}
+          </section>
+        )}
       </main>
 
       {/* Solution Viewer Modal */}
