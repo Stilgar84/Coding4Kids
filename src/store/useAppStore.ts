@@ -31,7 +31,7 @@ import {
 } from '../simulations/turtle/physics';
 import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { LESSONS } from '../data/lessons';
-import { exportToString, importFromString } from '../engine/serialization/codeSerializer';
+import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
 
@@ -179,7 +179,9 @@ interface AppState {
   setLoadModalOpen: (open: boolean) => void;
   loadSolution: (lessonId?: number) => void;
   exportCode: (includeMap?: boolean) => string;
-  importCode: (data: string) => { success: boolean; error?: string };
+  exportBinary: (includeMap?: boolean) => Uint8Array;
+  importCode: (data: string | Uint8Array) => { success: boolean; error?: string };
+  importBinary: (data: Uint8Array) => { success: boolean; error?: string };
 
   // Workspace actions
   addBlock: (scope: ScopeType, type: string, repeatCount?: number | VariableName, insertAtIndex?: number, params?: Record<string, any>) => void;
@@ -744,8 +746,25 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    importCode: (data: string) => {
-      const res = importFromString(data);
+    exportBinary: (includeMap = true) => {
+      const { activeSimId, workspace, grid, turtleState } = get();
+      if (activeSimId === 'grid') {
+        if (includeMap) {
+          return exportToBinary(workspace, 'grid', grid);
+        } else {
+          return exportToBinary(workspace, 'generic');
+        }
+      } else {
+        return exportToBinary(workspace, 'turtle', turtleState);
+      }
+    },
+
+    importBinary: (data: Uint8Array) => {
+      return get().importCode(data);
+    },
+
+    importCode: (data: string | Uint8Array) => {
+      const res = typeof data === 'string' ? importFromString(data) : importFromBinary(data);
       if (!res.success) {
         return { success: false, error: res.error || 'Failed to import code' };
       }

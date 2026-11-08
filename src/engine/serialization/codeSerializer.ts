@@ -1,8 +1,8 @@
 import { WorkspaceState, GridState, CodeBlock, ScopeType, VariableName, isVariableName, BinaryOp } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
 import { createInitialTurtleState } from '../../simulations/turtle/turtleEnvironment';
-import { BinaryReader } from './binaryReader';
-import { BinaryWriter } from './binaryWriter';
+import { BinaryReader, base64URLToUint8Array } from './binaryReader';
+import { BinaryWriter, uint8ArrayToBase64URL } from './binaryWriter';
 import {
   FORMAT_VERSION,
   ENV_VERSION_GRID,
@@ -98,13 +98,13 @@ function readOperandData(reader: BinaryReader, type: number): any {
 }
 
 /**
- * Exports a workspace and optional environment state to a Base64URL string.
+ * Exports a workspace and optional environment state to a raw Uint8Array.
  */
-export function exportToString(
+export function exportToBinary(
   workspace: WorkspaceState,
   envId: 'grid' | 'turtle' | 'generic',
   envState?: GridState | TurtleState
-): string {
+): Uint8Array {
   const writer = new BinaryWriter();
 
   // 1. File Header (3 Bytes)
@@ -307,19 +307,30 @@ export function exportToString(
     }
   }
 
-  return writer.toBase64URL();
+  return writer.getBytes();
 }
 
 /**
- * Imports a Base64URL string into an ImportResult.
+ * Exports a workspace and optional environment state to a Base64URL string.
  */
-export function importFromString(serialized: string): ImportResult {
-  if (!serialized || typeof serialized !== 'string' || !serialized.trim()) {
-    return { success: false, error: 'Empty serialized input' };
+export function exportToString(
+  workspace: WorkspaceState,
+  envId: 'grid' | 'turtle' | 'generic',
+  envState?: GridState | TurtleState
+): string {
+  return uint8ArrayToBase64URL(exportToBinary(workspace, envId, envState));
+}
+
+/**
+ * Imports a raw Uint8Array into an ImportResult.
+ */
+export function importFromBinary(bytes: Uint8Array): ImportResult {
+  if (!bytes || bytes.length === 0) {
+    return { success: false, error: 'Empty binary input' };
   }
 
   try {
-    const reader = BinaryReader.fromBase64URL(serialized.trim());
+    const reader = new BinaryReader(bytes);
     if (reader.remaining < 3) {
       return { success: false, error: 'Input too short: missing header' };
     }
@@ -501,6 +512,25 @@ export function importFromString(serialized: string): ImportResult {
     return {
       success: false,
       error: err?.message || 'Failed to deserialize code',
+    };
+  }
+}
+
+/**
+ * Imports a Base64URL string into an ImportResult.
+ */
+export function importFromString(serialized: string): ImportResult {
+  if (!serialized || typeof serialized !== 'string' || !serialized.trim()) {
+    return { success: false, error: 'Empty serialized input' };
+  }
+
+  try {
+    const bytes = base64URLToUint8Array(serialized.trim());
+    return importFromBinary(bytes);
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Failed to decode Base64URL string',
     };
   }
 }
