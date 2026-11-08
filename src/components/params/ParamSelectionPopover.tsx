@@ -19,13 +19,19 @@ export const computePopoverCoords = (
   const popoverHeight = popoverEl ? popoverEl.offsetHeight : 210;
 
   const margin = 8;
+  const paletteEl =
+    typeof document !== 'undefined'
+      ? document.querySelector('[data-testid="palette-container"]')
+      : null;
+  const paletteBottom = paletteEl ? paletteEl.getBoundingClientRect().bottom : 0;
+
   const spaceBelow = window.innerHeight - anchorRect.bottom - margin;
-  const spaceAbove = anchorRect.top - margin;
+  const safeSpaceAbove = anchorRect.top - paletteBottom - margin;
 
   // Prefer opening below the badge so it does not overlap/underlap the palette above.
-  // If there isn't enough room below and there is more room above, place above.
+  // Only open above if it safely fits above without overlapping the palette and there is not enough room below.
   let top: number;
-  if (spaceBelow >= popoverHeight || spaceBelow >= spaceAbove) {
+  if (spaceBelow >= popoverHeight || safeSpaceAbove < popoverHeight) {
     top = anchorRect.bottom + margin;
   } else {
     top = Math.max(margin, anchorRect.top - popoverHeight - margin);

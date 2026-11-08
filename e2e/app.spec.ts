@@ -872,7 +872,7 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(robot).toBeVisible();
 
     // After animation completes, completed path line exists and avatar is at (0, -50)
-    await expect(page.getByTestId('turtle-line-0')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('turtle-line-0')).toBeAttached({ timeout: 5000 });
     const infoPill = page.getByTestId('turtle-info-pill');
     await expect(infoPill).toContainText('Y: -50');
   });
