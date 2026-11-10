@@ -6,6 +6,7 @@ import { SolutionModal } from './components/SolutionModal';
 import { ExportImportModal } from './components/ExportImportModal';
 import { SaveProgramModal } from './components/SaveProgramModal';
 import { LoadProgramModal } from './components/LoadProgramModal';
+import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStore } from './store/useAppStore';
 import { getSimEnvironment } from './engine/simulation/registry';
 import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
@@ -57,6 +58,9 @@ export const App: React.FC = () => {
       {/* Local Save & Load Modals */}
       <SaveProgramModal />
       <LoadProgramModal />
+
+      {/* PWA Update Banner & Post-Update State Restore Toast */}
+      <PwaUpdatePrompt />
     </div>
   );
 };

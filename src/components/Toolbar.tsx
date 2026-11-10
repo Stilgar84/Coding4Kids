@@ -21,8 +21,10 @@ import {
   Menu,
   Eye,
   EyeOff,
+  RefreshCw,
 } from 'lucide-react';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
+import { usePwaUpdateStore, reopenUpdatePrompt } from '../services/pwaUpdateManager';
 
 export const Toolbar: React.FC = () => {
   const {
@@ -89,6 +91,7 @@ export const Toolbar: React.FC = () => {
 
   const ToolsComponent = currentSimEnv?.ToolsComponent;
   const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+  const { needRefresh, isPromptDismissed } = usePwaUpdateStore();
 
   return (
     <>
@@ -213,6 +216,19 @@ export const Toolbar: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-1 md:gap-2">
+          {/* Update Ready Indicator (shown when user snoozed the update prompt) */}
+          {needRefresh && isPromptDismissed && (
+            <button
+              data-testid="btn-toolbar-pwa-update"
+              onClick={reopenUpdatePrompt}
+              className="hidden md:flex items-center gap-1.5 px-3 h-12 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-black rounded-2xl border-2 border-sky-400/70 shadow-lg transition-transform active:scale-95"
+              title="App update available — click to update"
+            >
+              <RefreshCw className="w-4 h-4 text-sky-300" />
+              <span className="hidden lg:inline text-xs">Update</span>
+            </button>
+          )}
+
           {/* Solution Button (Desktop only) */}
           {activeSimId === 'grid' && (
             <button

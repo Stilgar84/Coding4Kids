@@ -6,49 +6,45 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt'],
+      registerType: 'prompt',
+      includeAssets: ['robot-icon.svg', 'apple-touch-icon.png'],
       manifest: {
+        id: '/Coding4Kids/',
         name: 'Robot Emulator',
         short_name: 'RobotEmu',
         description: 'Icon-based visual robot programming and 2D grid simulation',
-        theme_color: '#1e293b',
+        theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'any',
+        start_url: '/Coding4Kids/',
+        scope: '/Coding4Kids/',
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       },
       workbox: {
-        // Precache all assets (JS, CSS, images, icons) so they are served Cache-First
-        globPatterns: ['**/*.{js,css,ico,png,svg}'],
-        navigateFallback: null,
-        // Only index.html / document navigation requests use Network-First
-        runtimeCaching: [
-          {
-            urlPattern: ({ request, url }) =>
-              request.mode === 'navigate' ||
-              request.destination === 'document' ||
-              url.pathname.endsWith('/index.html'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'pwa-html-cache',
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ]
+        globPatterns: ['**/*.{js,css,html}'],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        navigateFallback: 'index.html'
       }
     })
   ],

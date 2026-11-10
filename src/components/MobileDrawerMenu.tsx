@@ -15,8 +15,10 @@ import {
   EyeOff,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { isFullscreenActive, toggleFullscreen } from '../utils/fullscreen';
+import { usePwaUpdateStore, applyAppUpdate } from '../services/pwaUpdateManager';
 
 export const MobileDrawerMenu: React.FC = () => {
   const {
@@ -40,6 +42,7 @@ export const MobileDrawerMenu: React.FC = () => {
   } = useAppStore();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const { needRefresh, isUpdating } = usePwaUpdateStore();
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -119,6 +122,22 @@ export const MobileDrawerMenu: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-5 py-4">
+          {/* Pending App Update Action (when update is available) */}
+          {needRefresh && (
+            <button
+              data-testid="drawer-btn-pwa-update"
+              disabled={isUpdating}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                void applyAppUpdate();
+              }}
+              className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs rounded-2xl border-2 border-sky-300 shadow-lg active:scale-95 transition-all disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 stroke-[2.5] ${isUpdating ? 'animate-spin' : ''}`} />
+              <span>{isUpdating ? 'Updating…' : 'Update App & Restore Workspace'}</span>
+            </button>
+          )}
+
           {/* Section: Environment Selector */}
           <div className="flex flex-col gap-2">
             <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">

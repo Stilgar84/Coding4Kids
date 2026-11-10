@@ -32,6 +32,10 @@ import {
 import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { LESSONS } from '../data/lessons';
 import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
+import {
+  saveStateBeforeUpdate,
+  consumeRestoredStateAfterUpdate,
+} from '../services/pwaStateRestoreService';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
 
@@ -145,6 +149,7 @@ interface AppState {
   isMapHidden: boolean;
   isFunctionBarOpen: boolean;
   isMobileMenuOpen: boolean;
+  wasRestoredAfterUpdate: boolean;
 
   // History state & actions
   past: HistorySnapshot[];
@@ -209,6 +214,11 @@ interface AppState {
   play: () => void;
   pause: () => void;
   reset: () => void;
+
+  // PWA update state persistence actions
+  dismissRestoredNotice: () => void;
+  prepareStateForUpdate: () => boolean;
+  hydrateFromUpdateIfPresent: () => boolean;
 }
 
 let timerId: NodeJS.Timeout | null = null;
@@ -553,6 +563,7 @@ export const useAppStore = create<AppState>((set, get) => {
     isMapHidden: false,
     isFunctionBarOpen: false,
     isMobileMenuOpen: false,
+    wasRestoredAfterUpdate: false,
 
     past: [],
     future: [],
@@ -1562,6 +1573,83 @@ export const useAppStore = create<AppState>((set, get) => {
         });
       }
     },
+
+    dismissRestoredNotice: () => set({ wasRestoredAfterUpdate: false }),
+
+    prepareStateForUpdate: () => {
+      // Stop timers / RAF and commit any in-flight turtle animation before snapshot
+      get().pause();
+      if (pendingTurtleCommit) {
+        const commit = pendingTurtleCommit;
+        pendingTurtleCommit = null;
+        set({
+          turtleState: {
+            ...commit.finalTurtleState,
+            activeAnimation: null,
+          },
+          runtime: commit.finalRuntime,
+        });
+      }
+
+      const s = get();
+      return saveStateBeforeUpdate({
+        activeSimId: s.activeSimId,
+        currentLevel: s.currentLevel,
+        workspace: s.workspace,
+        savedWorkspaces: s.savedWorkspaces,
+        grid: s.grid,
+        turtleState: s.turtleState,
+        runtime: s.runtime,
+        activeScope: s.activeScope,
+        selectedBlockId: s.selectedBlockId,
+        speed: s.speed,
+        editorTool: s.editorTool,
+        isSubpaletteCollapsed: s.isSubpaletteCollapsed,
+        isMapHidden: s.isMapHidden,
+        isFunctionBarOpen: s.isFunctionBarOpen,
+        past: s.past,
+        future: s.future,
+      });
+    },
+
+    hydrateFromUpdateIfPresent: () => {
+      const defaultGrid = createGridFromPreset(initialPreset);
+      const restored = consumeRestoredStateAfterUpdate(defaultGrid);
+      if (!restored) return false;
+
+      get().pause();
+      pendingTurtleCommit = null;
+      activeBatchSnapshot = null;
+
+      set({
+        activeSimId: restored.activeSimId,
+        currentLevel: restored.currentLevel,
+        workspace: restored.workspace,
+        savedWorkspaces: restored.savedWorkspaces,
+        grid: restored.grid,
+        turtleState: restored.turtleState,
+        runtime: restored.runtime,
+        isPlaying: false,
+        activeScope: restored.activeScope,
+        selectedBlockId: restored.selectedBlockId,
+        speed: restored.speed,
+        editorTool: restored.editorTool,
+        isSubpaletteCollapsed: restored.isSubpaletteCollapsed,
+        isMapHidden: restored.isMapHidden,
+        isFunctionBarOpen: restored.isFunctionBarOpen,
+        past: restored.past,
+        future: restored.future,
+        canUndo: restored.past.length > 0,
+        canRedo: restored.future.length > 0,
+        wasRestoredAfterUpdate: true,
+      });
+
+      get().runInstantIfActive();
+      return true;
+    },
   };
 });
+
+// Automatically restore workspace state if reloading immediately after a PWA update
+useAppStore.getState().hydrateFromUpdateIfPresent();
 
