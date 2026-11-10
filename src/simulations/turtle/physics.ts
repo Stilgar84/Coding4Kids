@@ -208,7 +208,7 @@ export function createTurtleAnimation(
   }
 
   // Straight movement: FORWARD / BACKWARD / MOVE_FWD / MOVE_BACK
-  const distance = params?.distance ?? Math.hypot(toPose.x - fromPose.x, toPose.y - fromPose.y);
+  const distance = params?.length ?? params?.distance ?? Math.hypot(toPose.x - fromPose.x, toPose.y - fromPose.y);
   const duration = calculateLinearDuration(distance, speed);
   return {
     type: 'LINE',

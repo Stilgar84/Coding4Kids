@@ -373,6 +373,117 @@ describe('Binary Serialization', () => {
         expect(res.workspace?.MAIN[0].params?.color).toBe(color);
       }
     });
+
+    it('roundtrips parameterized FORWARD/BACKWARD with explicit length', () => {
+      const workspace: WorkspaceState = {
+        MAIN: [
+          { id: 'f1', type: 'FORWARD', params: { length: 100 } },
+          { id: 'f2', type: 'BACKWARD', params: { length: 25 }, repeatCount: 3 },
+          { id: 'f3', type: 'FORWARD' },  // no length param => legacy opcode
+          { id: 'f4', type: 'FORWARD', params: { length: 200 } },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const encoded = exportToString(workspace, 'turtle');
+      const res = importFromString(encoded);
+
+      expect(res.success).toBe(true);
+      const main = res.workspace?.MAIN || [];
+      expect(main).toHaveLength(4);
+
+      expect(main[0].type).toBe('FORWARD');
+      expect(main[0].params?.length).toBe(100);
+
+      expect(main[1].type).toBe('BACKWARD');
+      expect(main[1].params?.length).toBe(25);
+      expect(main[1].repeatCount).toBe(3);
+
+      // Legacy FORWARD without length param - no params on deserialization
+      expect(main[2].type).toBe('FORWARD');
+      expect(main[2].params).toBeUndefined();
+
+      expect(main[3].type).toBe('FORWARD');
+      expect(main[3].params?.length).toBe(200);
+    });
+
+    it('legacy unparameterized FORWARD is backwards compatible with new parameterized one', () => {
+      // Encode a FORWARD without length (legacy opcode 0x10)
+      const legacyWorkspace: WorkspaceState = {
+        MAIN: [
+          { id: 'l1', type: 'FORWARD', repeatCount: 2 },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      const legacyEncoded = exportToString(legacyWorkspace, 'turtle');
+      const legacyRes = importFromString(legacyEncoded);
+      expect(legacyRes.success).toBe(true);
+      expect(legacyRes.workspace?.MAIN[0].type).toBe('FORWARD');
+      expect(legacyRes.workspace?.MAIN[0].repeatCount).toBe(2);
+      // Legacy blocks have no length param
+      expect(legacyRes.workspace?.MAIN[0].params).toBeUndefined();
+
+      // Encode a FORWARD with length (new opcode 0x1A)
+      const newWorkspace: WorkspaceState = {
+        MAIN: [
+          { id: 'n1', type: 'FORWARD', params: { length: 75 }, repeatCount: 2 },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      const newEncoded = exportToString(newWorkspace, 'turtle');
+      const newRes = importFromString(newEncoded);
+      expect(newRes.success).toBe(true);
+      expect(newRes.workspace?.MAIN[0].type).toBe('FORWARD');
+      expect(newRes.workspace?.MAIN[0].params?.length).toBe(75);
+      expect(newRes.workspace?.MAIN[0].repeatCount).toBe(2);
+
+      // The two encodings should be different (different opcodes) and keep envVersion = 1
+      expect(legacyEncoded).not.toBe(newEncoded);
+      expect(newRes.envVersion).toBe(1);
+      const newBytes = base64URLToUint8Array(newEncoded);
+      // Header (3B) + scopeCount (1B) + scopeId (1B) + blockCount (1B) + blockHeader (HasRep 0x40 | 0x1A = 0x5A)
+      expect(newBytes[2]).toBe(1);
+      expect(newBytes[6] & 0x1f).toBe(0x1a);
+    });
+
+    it('roundtrips variable length on FORWARD and BACKWARD blocks', () => {
+      const workspace: WorkspaceState = {
+        MAIN: [
+          { id: 'v1', type: 'FORWARD', params: { length: 'x' } },
+          { id: 'v2', type: 'BACKWARD', params: { length: 'd' }, repeatCount: 2 },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      const encoded = exportToString(workspace, 'turtle');
+      const rawBytes = base64URLToUint8Array(encoded);
+      expect(rawBytes[6] & 0x1f).toBe(0x1a);
+
+      const res = importFromString(encoded);
+      expect(res.success).toBe(true);
+      expect(res.envVersion).toBe(1);
+      expect(res.workspace?.MAIN[0].type).toBe('FORWARD');
+      expect(res.workspace?.MAIN[0].params?.length).toBe('x');
+      expect(res.workspace?.MAIN[1].type).toBe('BACKWARD');
+      expect(res.workspace?.MAIN[1].params?.length).toBe('d');
+      expect(res.workspace?.MAIN[1].repeatCount).toBe(2);
+    });
+
+    it('decodes existing real-world v1 turtle strings containing legacy FORWARD/BACKWARD opcodes', () => {
+      const legacy1 = importFromString('AQIBAQALUAIUZI4CUAIWEBJaERdQAxSWAY4CUAM');
+      expect(legacy1.success).toBe(true);
+      expect(legacy1.envId).toBe('turtle');
+      expect(legacy1.envVersion).toBe(1);
+      expect(legacy1.workspace?.MAIN.some((b) => b.type === 'FORWARD')).toBe(true);
+      expect(legacy1.workspace?.MAIN.some((b) => b.type === 'BACKWARD')).toBe(true);
+    });
   });
 
   describe('Universal Control Flow & Scopes', () => {

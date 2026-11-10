@@ -1,8 +1,5 @@
 # bugs
 
-sometime crash on export, and save not working. corruption? env switching
-
-
 --
 
 code can be edited will running, which is strange
@@ -13,14 +10,11 @@ maybe could have some kind of infinite mode when robot loop and drawing slowly f
 
 --
 
+chrome says app cannot be installed, also it should check for updated and propose to update (ideally restoring state)
 
 --
 
 time traveling debugger
-
----
-
-qr code sharing
 
 # 
 
@@ -33,13 +27,16 @@ should also have tabs for the action blocks. especially once we add more.
 * breakpoint block
 * newline block
 
+# copy/cut/pasting
+
+moving within a function, or between function. cloning, bulk delete
+
+
 # variables
 
-set variable (no need to define), operate on variable (like add), use variable as parameter value.
 
 current iteration count? what about nested? reserved letter?
 
-, and as repeat count
 
 if then else end
 
@@ -52,9 +49,6 @@ add a selector between basic and advanced mode
 Maybe add unary op
 With abs, trigonometry function,...
 
-# copy/cut/pasting
-
-moving within a function, or between function. cloning, bulk delete
 
 # conditional
 

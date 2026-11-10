@@ -131,6 +131,23 @@ export const TURTLE_PEN_WIDTH_PARAM_DEF: ActionParamDef = {
   ],
 };
 
+export const TURTLE_LENGTH_PARAM_DEF: ActionParamDef = {
+  id: 'length',
+  label: 'Length',
+  type: 'length',
+  defaultValue: 50,
+  unit: 'px',
+  options: [
+    { value: 10, label: '10' },
+    { value: 25, label: '25' },
+    { value: 50, label: '50' },
+    { value: 75, label: '75' },
+    { value: 100, label: '100' },
+    { value: 150, label: '150' },
+    { value: 200, label: '200' },
+  ],
+};
+
 const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
   // Movement
   {
@@ -138,6 +155,8 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     actionType: 'FORWARD',
     name: 'Move Forward',
     category: 'motion',
+    paramDefs: [TURTLE_LENGTH_PARAM_DEF],
+    params: { length: 50 },
     icon: ({ className, isActive }) => (
       <ArrowUp className={className || `w-7 h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]'}`} />
     ),
@@ -150,6 +169,8 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     actionType: 'BACKWARD',
     name: 'Move Backward',
     category: 'motion',
+    paramDefs: [TURTLE_LENGTH_PARAM_DEF],
+    params: { length: 50 },
     icon: ({ className, isActive }) => (
       <ArrowDown className={className || `w-7 h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]'}`} />
     ),
@@ -327,14 +348,14 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
     switch (actionType) {
       case 'FORWARD':
       case 'MOVE_FWD': {
-        const dist = options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
+        const dist = options?.params?.length ?? options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
         nextState = moveTurtleForward(nextState, dist);
         break;
       }
 
       case 'BACKWARD':
       case 'MOVE_BACK': {
-        const dist = options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
+        const dist = options?.params?.length ?? options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
         nextState = moveTurtleBackward(nextState, dist);
         break;
       }

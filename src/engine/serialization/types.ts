@@ -92,6 +92,8 @@ export const OP_TURTLE_PEN_UP = 0x16;
 export const OP_TURTLE_PEN_DOWN = 0x17;
 export const OP_TURTLE_SET_PEN_COLOR = 0x18;
 export const OP_TURTLE_SET_PEN_WIDTH = 0x19;
+export const OP_TURTLE_FORWARD_LEN = 0x1a;
+export const OP_TURTLE_BACKWARD_LEN = 0x1b;
 
 // Turtle Color Palette
 export const TURTLE_COLOR_PALETTE: readonly string[] = [

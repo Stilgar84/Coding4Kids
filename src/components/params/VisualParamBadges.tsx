@@ -331,7 +331,40 @@ export const PenWidthVisual: React.FC<PenWidthVisualProps> = ({
 };
 
 // ==========================================
-// 6. Generic Param Renderer
+// 6. Length Visual (Straight distance segment)
+// ==========================================
+interface LengthVisualProps {
+  length: number;
+  size?: number;
+  className?: string;
+  showText?: boolean;
+}
+
+export const LengthVisual: React.FC<LengthVisualProps> = ({
+  length,
+  size = 28,
+  className = '',
+  showText = true,
+}) => {
+  return (
+    <div className={`flex flex-col items-center justify-center leading-none ${className}`}>
+      <svg width={size} height={size * 0.75} viewBox="0 0 28 20" className="overflow-visible">
+        {/* Dimension line with end ticks */}
+        <line x1="4" y1="10" x2="24" y2="10" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="4" y1="6" x2="4" y2="14" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="24" y1="6" x2="24" y2="14" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+      {showText && (
+        <span className="text-[10px] font-black text-sky-200 mt-0.5 tracking-tighter">
+          {length}px
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 7. Generic Param Renderer
 // ==========================================
 interface ParamVisualProps {
   paramDef: ActionParamDef;
@@ -407,6 +440,13 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
           width={Number(effectiveValue)}
           boxWidth={compact ? 26 : 38}
           boxHeight={compact ? 16 : 22}
+        />
+      );
+    case 'length':
+      return (
+        <LengthVisual
+          length={Number(effectiveValue)}
+          size={compact ? 24 : 32}
         />
       );
     default:

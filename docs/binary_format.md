@@ -148,8 +148,8 @@ Governed by `formatVersion = 1` across all environments.
 
 | Opcode | Action Type | Parameters | Description |
 | :--- | :--- | :--- | :--- |
-| `0x10` | `FORWARD` | None | Step forward (supports repeat). |
-| `0x11` | `BACKWARD` | None | Step backward (supports repeat). |
+| `0x10` | `FORWARD` | None | Step forward default distance (legacy unparameterized, supports repeat). |
+| `0x11` | `BACKWARD` | None | Step backward default distance (legacy unparameterized, supports repeat). |
 | `0x12` | `TURN_LEFT` | `angle: VLE` | Turn left by degrees (e.g. 30, 45, 90 via VLE). |
 | `0x13` | `TURN_RIGHT` | `angle: VLE` | Turn right by degrees (e.g. 30, 45, 90 via VLE). |
 | `0x14` | `ARC_LEFT` | `radius: VLE`, `angle: VLE` | Arc left by radius and degrees (both VLE). |
@@ -157,6 +157,9 @@ Governed by `formatVersion = 1` across all environments.
 | `0x16` | `PEN_UP` | None | Lift pen up. |
 | `0x17` | `PEN_DOWN` | None | Lower pen down. |
 | `0x18` | `SET_PEN_COLOR` | `colorId: uint8` | 1-byte color index: `0` = `#0f172a` (Black), `1` = `#ef4444` (Red), `2` = `#3b82f6` (Blue), `3` = `#10b981` (Green), `4` = `#f59e0b` (Amber), `5` = `#8b5cf6` (Purple). |
+| `0x19` | `SET_PEN_WIDTH` | `width: VLE` | Line width via VLE. |
+| `0x1A` | `FORWARD` | `length: VLE` | Step forward with explicit length in pixels (supports repeat & variables). |
+| `0x1B` | `BACKWARD` | `length: VLE` | Step backward with explicit length in pixels (supports repeat & variables). |
 
 ---
 

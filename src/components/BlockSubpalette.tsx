@@ -307,7 +307,9 @@ export const BlockSubpalette: React.FC = () => {
         const currentValue =
           selectedBlock.params?.[paramDef.id] !== undefined
             ? selectedBlock.params[paramDef.id]
-            : paramDef.defaultValue;
+            : (paramDef.id === 'length' && selectedBlock.params?.distance !== undefined
+                ? selectedBlock.params.distance
+                : paramDef.defaultValue);
 
         return (
           <div key={paramDef.id} className="flex flex-col gap-1">

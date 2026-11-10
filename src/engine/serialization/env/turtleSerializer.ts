@@ -7,6 +7,8 @@ import {
   OP_TURTLE_ARC_RIGHT,
   OP_TURTLE_SET_PEN_COLOR,
   OP_TURTLE_SET_PEN_WIDTH,
+  OP_TURTLE_FORWARD_LEN,
+  OP_TURTLE_BACKWARD_LEN,
   TURTLE_COLOR_PALETTE,
   varNameToIndex,
   indexToVarName,
@@ -87,6 +89,18 @@ export function writeTurtleParams(
       break;
     }
 
+    case OP_TURTLE_FORWARD_LEN:
+    case OP_TURTLE_BACKWARD_LEN: {
+      const lenVal = params?.length ?? params?.distance;
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(lenVal));
+      } else {
+        const length = Math.round(Number(lenVal ?? 50));
+        writer.writeVLE(length);
+      }
+      break;
+    }
+
     default:
       // No parameters for other opcodes (FORWARD, BACKWARD, PEN_UP, PEN_DOWN)
       break;
@@ -131,6 +145,14 @@ export function readTurtleParams(
         ? indexToVarName(reader.readUint8())
         : reader.readVLE();
       return { width };
+    }
+
+    case OP_TURTLE_FORWARD_LEN:
+    case OP_TURTLE_BACKWARD_LEN: {
+      const length = (paramVarMask & 0x02) !== 0
+        ? indexToVarName(reader.readUint8())
+        : reader.readVLE();
+      return { length };
     }
 
     default:

@@ -1,7 +1,7 @@
 import React from 'react';
 import { SimulationStatus } from '../../types';
 
-export type ActionParamType = 'angle' | 'color' | 'penWidth' | 'radius' | 'number';
+export type ActionParamType = 'angle' | 'color' | 'penWidth' | 'radius' | 'number' | 'length';
 
 export interface ActionParamOption<T = any> {
   value: T;

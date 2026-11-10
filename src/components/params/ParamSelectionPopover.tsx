@@ -136,7 +136,8 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'angle' ||
     paramDef.type === 'radius' ||
     paramDef.type === 'penWidth' ||
-    paramDef.type === 'number';
+    paramDef.type === 'number' ||
+    paramDef.type === 'length';
 
   const content = (
     <div
@@ -192,7 +193,7 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
               }`}
             >
               <ParamVisual paramDef={paramDef} value={opt.value} compact={false} actionType={actionType} />
-              {opt.label && paramDef.type !== 'angle' && paramDef.type !== 'radius' && (
+              {opt.label && paramDef.type !== 'angle' && paramDef.type !== 'radius' && paramDef.type !== 'length' && (
                 <span className="text-[10px] mt-1 text-slate-400 truncate max-w-full">
                   {opt.label}
                 </span>

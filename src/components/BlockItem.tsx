@@ -549,7 +549,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               <BlockParamBadge
                 key={def.id}
                 paramDef={def}
-                value={block.params?.[def.id]}
+                value={def.id === 'length' ? (block.params?.length ?? block.params?.distance) : block.params?.[def.id]}
                 actionType={block.type}
                 disabled={runtime?.status === 'RUNNING'}
                 onChange={(newVal) =>

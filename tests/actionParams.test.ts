@@ -100,6 +100,19 @@ describe('Action Parameters & Subpalette System', () => {
     const sim = getSimEnvironment('turtle');
     expect(sim).toBeDefined();
 
+    const forward = sim?.paletteItems.find((p) => p.actionType === 'FORWARD');
+    expect(forward).toBeDefined();
+    expect(forward?.paramDefs).toHaveLength(1);
+    expect(forward?.paramDefs?.[0].id).toBe('length');
+    expect(forward?.paramDefs?.[0].type).toBe('length');
+    expect(forward?.paramDefs?.[0].defaultValue).toBe(50);
+
+    const backward = sim?.paletteItems.find((p) => p.actionType === 'BACKWARD');
+    expect(backward).toBeDefined();
+    expect(backward?.paramDefs).toHaveLength(1);
+    expect(backward?.paramDefs?.[0].id).toBe('length');
+    expect(backward?.paramDefs?.[0].defaultValue).toBe(50);
+
     const turnLeft = sim?.paletteItems.find((p) => p.actionType === 'TURN_LEFT');
     expect(turnLeft).toBeDefined();
     expect(turnLeft?.paramDefs).toHaveLength(1);
@@ -131,9 +144,15 @@ describe('Action Parameters & Subpalette System', () => {
     // Add forward then turn left
     store.addBlock('MAIN', 'FORWARD');
     store.addBlock('MAIN', 'TURN_LEFT'); // default 90
+    const fwdBlockId = useAppStore.getState().workspace.MAIN[0].id;
     const turnBlockId = useAppStore.getState().workspace.MAIN[1].id;
 
+    expect(useAppStore.getState().turtleState.robot.y).toBe(-50);
     expect(useAppStore.getState().turtleState.robot.heading).toBe(270);
+
+    // Update forward length to 150 -> y should be -150
+    store.updateBlockParams('MAIN', fwdBlockId, { length: 150 });
+    expect(useAppStore.getState().turtleState.robot.y).toBe(-150);
 
     // Update angle to 45 -> heading should be 315 (-45)
     store.updateBlockParams('MAIN', turnBlockId, { angle: 45 });
@@ -419,10 +438,10 @@ describe('Action Parameters & Subpalette System', () => {
       const store = useAppStore.getState();
       store.setSimEnvironment('turtle');
 
-      const fwdBlock = { id: 'fwd-1', type: 'FORWARD' as const };
+      const penUpBlock = { id: 'penup-1', type: 'PEN_UP' as const };
       const html = renderToStaticMarkup(
         React.createElement(BlockItem, {
-          block: fwdBlock,
+          block: penUpBlock,
           index: 0,
           scope: 'MAIN',
           isActive: false,
@@ -432,7 +451,7 @@ describe('Action Parameters & Subpalette System', () => {
       // Has rounded-2xl on left block, no param container
       expect(html).toContain('rounded-2xl border-2');
       expect(html).not.toContain('rounded-r-none');
-      expect(html).not.toContain('block-params-container-fwd-1');
+      expect(html).not.toContain('block-params-container-penup-1');
     });
 
     it('updates parameter container to yellow active theme when block is active', () => {

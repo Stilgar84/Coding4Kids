@@ -43,6 +43,8 @@ import {
   OP_TURTLE_PEN_DOWN,
   OP_TURTLE_SET_PEN_COLOR,
   OP_TURTLE_SET_PEN_WIDTH,
+  OP_TURTLE_FORWARD_LEN,
+  OP_TURTLE_BACKWARD_LEN,
   ImportResult,
   EnvIdName,
 } from './types';
@@ -203,10 +205,14 @@ export function exportToBinary(
       } else if (envByte === ENV_ID_TURTLE) {
         switch (block.type) {
           case 'FORWARD':
-            opcode = OP_TURTLE_FORWARD;
+            opcode = (block.params && (block.params.length !== undefined || block.params.distance !== undefined))
+              ? OP_TURTLE_FORWARD_LEN
+              : OP_TURTLE_FORWARD;
             break;
           case 'BACKWARD':
-            opcode = OP_TURTLE_BACKWARD;
+            opcode = (block.params && (block.params.length !== undefined || block.params.distance !== undefined))
+              ? OP_TURTLE_BACKWARD_LEN
+              : OP_TURTLE_BACKWARD;
             break;
           case 'TURN_LEFT':
             opcode = OP_TURTLE_TURN_LEFT;
@@ -265,7 +271,10 @@ export function exportToBinary(
       let param0IsVar = false;
       let param1IsVar = false;
       if (block.params) {
-        if (block.type === 'TURN_LEFT' || block.type === 'TURN_RIGHT') {
+        if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
+          const lenVal = block.params.length ?? block.params.distance;
+          param0IsVar = isVariableName(lenVal) || (typeof lenVal === 'string' && /^[a-z]$/.test(lenVal));
+        } else if (block.type === 'TURN_LEFT' || block.type === 'TURN_RIGHT') {
           param0IsVar = isVariableName(block.params.angle) || (typeof block.params.angle === 'string' && /^[a-z]$/.test(block.params.angle));
         } else if (block.type === 'ARC_LEFT' || block.type === 'ARC_RIGHT') {
           param0IsVar = isVariableName(block.params.radius) || (typeof block.params.radius === 'string' && /^[a-z]$/.test(block.params.radius));
@@ -433,9 +442,11 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
           } else if (envByte === ENV_ID_TURTLE) {
             switch (opcode) {
               case OP_TURTLE_FORWARD:
+              case OP_TURTLE_FORWARD_LEN:
                 type = 'FORWARD';
                 break;
               case OP_TURTLE_BACKWARD:
+              case OP_TURTLE_BACKWARD_LEN:
                 type = 'BACKWARD';
                 break;
               case OP_TURTLE_TURN_LEFT:
