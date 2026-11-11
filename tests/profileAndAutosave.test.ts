@@ -335,9 +335,11 @@ describe('Commit 3 (Wave 2): Kid-Friendly Multi-Profile, Lesson Auto-Save & Rese
       expect(useAppStore.getState().grid.status).toBe('SUCCESS');
       expect(isLessonCompleted('default', '1.3')).toBe(true);
 
+      const newlyEarnedFromM1: string[] = [];
       for (const act of CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'module-1')) {
         if (!isLessonCompleted('default', act.id)) {
-          markLessonCompleted('default', act.id, act.version);
+          const r = markLessonCompleted('default', act.id, act.version);
+          newlyEarnedFromM1.push(...r.newlyEarnedBadges);
         }
       }
 
@@ -345,11 +347,16 @@ describe('Commit 3 (Wave 2): Kid-Friendly Multi-Profile, Lesson Auto-Save & Rese
       expect(defaultProgress.unlockedModules).toContain('module-1');
       expect(defaultProgress.unlockedModules).toContain('module-2');
 
-      // Completing capstones 1A, 1B, 1C awards badge-module-1
-      markLessonCompleted('default', '1A', 1);
-      markLessonCompleted('default', '1B', 1);
-      const capRes = markLessonCompleted('default', '1C', 1);
-      expect(capRes.newlyEarnedBadges).toEqual(['badge-module-1']);
+      // Completing capstones 1A, 1B, 1C awards badge-module-1 exactly once
+      const capResA = markLessonCompleted('default', '1A', 1);
+      const capResB = markLessonCompleted('default', '1B', 1);
+      const capResC = markLessonCompleted('default', '1C', 1);
+      expect([
+        ...newlyEarnedFromM1,
+        ...capResA.newlyEarnedBadges,
+        ...capResB.newlyEarnedBadges,
+        ...capResC.newlyEarnedBadges,
+      ]).toEqual(['badge-module-1']);
       expect(getProfileProgress('default').earnedBadges).toContain('badge-module-1');
 
       // Secondary profile starts with zero completed lessons and only module-1 unlocked
