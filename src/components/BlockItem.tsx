@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CodeBlock, ScopeType } from '../types';
+import { CodeBlock, ScopeType, VariableName } from '../types';
 import {
   ArrowUp,
   ArrowDown,
@@ -24,6 +24,11 @@ import {
   getPlaceholderHintCategory,
   getPlaceholderHintLabel,
 } from '../engine/placeholderHelpers';
+import {
+  computeStagedPalettePolicy,
+  getAllowedParamDefs,
+  resolveActiveCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 
 interface BlockItemProps {
   block: CodeBlock;
@@ -58,18 +63,18 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   onDropAtSlot,
   onClearDropIndicator,
 }) => {
-  const { updateBlockRepeat, updateBlockParams, replacePlaceholderBlock, runtime } = useAppStore();
-  const subscribedSimId = useAppStore((state) => state.activeSimId);
-  const subscribedAppMode = useAppStore((state) => state.appMode);
-  const subscribedActivityId = useAppStore((state) => state.activeActivityId);
-  const subscribedActivityVersion = useAppStore((state) => state.activeActivityVersion);
-
-  const storeSnapshot = useAppStore.getState();
-  const activeSimId = storeSnapshot.activeSimId || subscribedSimId;
-  const appMode = storeSnapshot.appMode || subscribedAppMode;
-  const activeActivityId = storeSnapshot.activeActivityId || subscribedActivityId;
-  const activeActivityVersion = storeSnapshot.activeActivityVersion || subscribedActivityVersion;
-
+  useAppStore();
+  const {
+    updateBlockRepeat,
+    updateBlockParams,
+    replacePlaceholderBlock,
+    runtime,
+    setSelectedBlockId,
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    activeSimId,
+  } = useAppStore.getState();
   const [isNumberHovered, setIsNumberHovered] = useState(false);
   const [isReplaceHovered, setIsReplaceHovered] = useState(false);
 
@@ -85,14 +90,23 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     appMode !== 'curriculum' || activeCurriculumActivity?.palette?.allowActionParams !== false;
 
   const currentSimEnv = getSimEnvironment(activeSimId);
+  const simPaletteItems = currentSimEnv?.paletteItems || [];
   const lookupActionType =
     activeSimId === 'turtle' && block.type === 'MOVE_FWD'
       ? 'FORWARD'
       : activeSimId === 'turtle' && block.type === 'MOVE_BACK'
       ? 'BACKWARD'
       : block.type;
-  const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === lookupActionType);
-  const paramDefs = paletteItem?.paramDefs || [];
+  const paletteItem = simPaletteItems.find((p) => p.actionType === lookupActionType);
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const paramDefs = isPlaceholder
+    ? []
+    : getAllowedParamDefs(lookupActionType, paletteItem?.paramDefs, appMode, policy.palette);
   const hasParams = !isPlaceholder && paramDefs.length > 0 && allowActionParams;
 
   // Check if block type supports repeat multipliers
@@ -522,9 +536,12 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     }
   };
 
+  const canAcceptMultiplierDrop =
+    supportsMultiplier && (policy.allowRepeatBadges || policy.paletteVariableBadges.length > 0);
+
   const handleDragOverOnBlock = (e: React.DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer.types.includes('application/x-robotemu-number') && supportsMultiplier) {
+    if (e.dataTransfer.types.includes('application/x-robotemu-number') && canAcceptMultiplierDrop) {
       e.dataTransfer.dropEffect = 'copy';
       setIsNumberHovered(true);
       setIsReplaceHovered(false);
@@ -576,6 +593,16 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     try {
       const data = JSON.parse(dataStr);
       if (data.type === 'PALETTE_NUMBER' && supportsMultiplier) {
+        if (typeof data.number === 'number' && !policy.allowRepeatBadges) {
+          return;
+        }
+        if (
+          typeof data.number === 'string' &&
+          (!policy.allowVariables ||
+            !policy.paletteVariableBadges.includes(data.number as VariableName))
+        ) {
+          return;
+        }
         updateBlockRepeat(scope, block.id, data.number);
         return;
       }
@@ -604,8 +631,20 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       e.preventDefault();
       e.stopPropagation();
       if (onSelect) onSelect();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setSelectedBlockId(null);
     }
   };
+
+  const blockLabelName = paletteItem?.name || block.type.replace(/_/g, ' ');
+  const blockAriaLabel = isPlaceholder
+    ? `Placeholder ? block (${getPlaceholderHintLabel(
+        placeholderHintCategory
+      )} hint), slot ${index + 1}. Select and choose a palette block to replace.`
+    : `${blockLabelName}, slot ${index + 1}${
+        showRepeatBadge ? `, repeat ${block.repeatCount}` : ''
+      }`;
 
   return (
     <div
@@ -616,13 +655,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       data-selected={isSelected ? 'true' : 'false'}
       tabIndex={0}
       role={isPlaceholder ? 'button' : undefined}
-      aria-label={
-        isPlaceholder
-          ? `Placeholder ? block (${getPlaceholderHintLabel(
-              placeholderHintCategory
-            )} hint). Select and choose a palette block to replace.`
-          : undefined
-      }
+      aria-label={blockAriaLabel}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -634,7 +667,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         e.stopPropagation();
         if (onSelect) onSelect();
       }}
-      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded-xl md:rounded-2xl ${
+      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 touch-none rounded-xl md:rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
         isDragging ? 'opacity-40' : ''
       } ${
         isNumberHovered || isReplaceHovered

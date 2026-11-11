@@ -1,9 +1,16 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionParamDef } from '../../engine/simulation/types';
-import { ALL_VARIABLE_NAMES } from '../../types';
 import { ParamVisual } from './VisualParamBadges';
 import { X } from 'lucide-react';
+import { useAppStore } from '../../store/useAppStore';
+import {
+  computeStagedPalettePolicy,
+  resolveActiveCurriculumActivity,
+} from '../../utils/curriculumStagePolicy';
+
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export interface Coords {
   top: number;
@@ -68,6 +75,15 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   anchorRef,
   actionType,
 }) => {
+  useAppStore();
+  const { appMode, activeActivityId, activeActivityVersion } = useAppStore.getState();
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const policy = computeStagedPalettePolicy(appMode, activeActivity, []);
+
   const popoverRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<Coords | null>(() => {
     if (typeof window !== 'undefined' && anchorRef?.current) {
@@ -76,7 +92,7 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     return null;
   });
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!anchorRef?.current) return;
 
     const updatePosition = () => {
@@ -204,13 +220,13 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
       </div>
 
       {/* Variables Section for Numerical Parameters */}
-      {isNumerical && (
+      {isNumerical && policy.allowVariables && policy.subpaletteVariableNames.length > 0 && (
         <div className="flex flex-col gap-1 border-t border-slate-800 pt-1.5">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
             Variables
           </span>
           <div className="grid grid-cols-6 gap-1 max-h-28 overflow-y-auto p-0.5">
-            {ALL_VARIABLE_NAMES.map((v) => {
+            {policy.subpaletteVariableNames.map((v) => {
               const isSelected = effectiveValue === v;
               return (
                 <button

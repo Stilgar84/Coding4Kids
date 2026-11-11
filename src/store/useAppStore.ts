@@ -46,6 +46,11 @@ import {
   getPlaceholderHintLabel,
   resolveActivityScaffoldWorkspace,
 } from '../engine/placeholderHelpers';
+import {
+  computeSlotBudget,
+  formatSlotCapFullAnnouncement,
+  resolveActiveCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
 import {
   saveStateBeforeUpdate,
@@ -197,6 +202,8 @@ interface AppState {
   sandboxSnapshot: SandboxModeSnapshot | null;
   statusAnnouncement: string;
   ghostPreview: GhostPreviewState | null;
+  slotCapRejectionCount: number;
+  lastSlotCapRejectedAt: number | null;
 
   // Environment selection
   activeSimId: 'grid' | 'turtle';
@@ -810,6 +817,8 @@ export const useAppStore = create<AppState>((set, get) => {
     sandboxSnapshot: null,
     statusAnnouncement: '',
     ghostPreview: null,
+    slotCapRejectionCount: 0,
+    lastSlotCapRejectedAt: null,
 
     activeSimId: bootSimId,
     currentLevel: 1,
@@ -877,6 +886,7 @@ export const useAppStore = create<AppState>((set, get) => {
               },
             }),
         runtime: null,
+        lastSlotCapRejectedAt: null,
         past: newPast,
         future: newFuture,
         canUndo: newPast.length > 0,
@@ -931,6 +941,7 @@ export const useAppStore = create<AppState>((set, get) => {
               },
             }),
         runtime: null,
+        lastSlotCapRejectedAt: null,
         past: newPast,
         future: newFuture,
         canUndo: true,
@@ -1193,6 +1204,12 @@ export const useAppStore = create<AppState>((set, get) => {
           ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
           : createEmptyWorkspace();
 
+        const allowedScopes: ScopeType[] =
+          activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+            ? activity.palette.allowedScopes
+            : ['MAIN'];
+        const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
+
         set({
           appMode: 'curriculum',
           activeActivityId: activity.id,
@@ -1208,9 +1225,11 @@ export const useAppStore = create<AppState>((set, get) => {
           sandboxSnapshot: nextSandboxSnapshot,
           editorTool: 'NONE',
           selectedBlockId: null,
-          activeScope: 'MAIN',
+          activeScope: initialScope,
           runtime: null,
           ghostPreview: null,
+          slotCapRejectionCount: 0,
+          lastSlotCapRejectedAt: null,
           statusAnnouncement: `Learn mode: Activity ${activity.id} ${activity.title}. Map is read-only.`,
         });
 
@@ -1267,6 +1286,8 @@ export const useAppStore = create<AppState>((set, get) => {
           activeScope: 'MAIN',
           runtime: null,
           ghostPreview: null,
+          slotCapRejectionCount: 0,
+          lastSlotCapRejectedAt: null,
           statusAnnouncement: 'Sandbox mode: map and blocks are editable.',
         });
 
@@ -1310,6 +1331,11 @@ export const useAppStore = create<AppState>((set, get) => {
         : createEmptyWorkspace();
 
       nextCurriculumWorkspaces[activity.id] = cloneWorkspace(targetWs);
+      const allowedScopes: ScopeType[] =
+        activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+          ? activity.palette.allowedScopes
+          : ['MAIN'];
+      const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
 
       set({
         appMode: 'curriculum',
@@ -1323,9 +1349,11 @@ export const useAppStore = create<AppState>((set, get) => {
         sandboxSnapshot: nextSandboxSnapshot,
         editorTool: 'NONE',
         selectedBlockId: null,
-        activeScope: 'MAIN',
+        activeScope: initialScope,
         runtime: null,
         ghostPreview: null,
+        slotCapRejectionCount: 0,
+        lastSlotCapRejectedAt: null,
         statusAnnouncement: `Activity ${activity.id}: ${activity.title}`,
       });
 
@@ -1385,6 +1413,8 @@ export const useAppStore = create<AppState>((set, get) => {
         runtime: null,
         ghostPreview: null,
         isMobileMenuOpen: false,
+        slotCapRejectionCount: 0,
+        lastSlotCapRejectedAt: null,
         statusAnnouncement: `Opened editable copy of Activity ${state.activeActivityId} in Sandbox mode.`,
       });
 
@@ -1847,7 +1877,26 @@ export const useAppStore = create<AppState>((set, get) => {
       get().runInstantIfActive();
     },
 
-    setActiveScope: (scope) => set({ activeScope: scope, selectedBlockId: null }),
+    setActiveScope: (scope) => {
+      const s = get();
+      if (s.appMode === 'curriculum') {
+        const activity = resolveActiveCurriculumActivity(
+          s.appMode,
+          s.activeActivityId,
+          s.activeActivityVersion
+        );
+        if (activity) {
+          const allowedScopes: ScopeType[] =
+            activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+              ? activity.palette.allowedScopes
+              : ['MAIN'];
+          if (!allowedScopes.includes(scope)) {
+            return;
+          }
+        }
+      }
+      set({ activeScope: scope, selectedBlockId: null, lastSlotCapRejectedAt: null });
+    },
     setSelectedBlockId: (id) => set({ selectedBlockId: id }),
     setEditorTool: (tool) => {
       if (get().appMode === 'curriculum' && tool !== 'NONE') return;
@@ -1963,6 +2012,42 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
+      const stateBefore = get();
+      if (stateBefore.appMode === 'curriculum') {
+        const activity = resolveActiveCurriculumActivity(
+          stateBefore.appMode,
+          stateBefore.activeActivityId,
+          stateBefore.activeActivityVersion
+        );
+        if (activity) {
+          const allowedScopes: ScopeType[] =
+            activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+              ? activity.palette.allowedScopes
+              : ['MAIN'];
+          if (!allowedScopes.includes(scope)) {
+            return;
+          }
+          const budget = computeSlotBudget(
+            stateBefore.workspace,
+            scope,
+            stateBefore.appMode,
+            activity.slotCap
+          );
+          if (budget.isCapped && budget.isFull) {
+            const nextCount = stateBefore.slotCapRejectionCount + 1;
+            const baseMsg = formatSlotCapFullAnnouncement(budget, scope, allowedScopes);
+            const nextAnnouncement =
+              stateBefore.statusAnnouncement === baseMsg ? `${baseMsg} ` : baseMsg;
+            set({
+              slotCapRejectionCount: nextCount,
+              lastSlotCapRejectedAt: Date.now(),
+              statusAnnouncement: nextAnnouncement,
+            });
+            return;
+          }
+        }
+      }
+
       recordMutation('Add block');
       const currentState = get();
       const activeActivity =
@@ -2007,6 +2092,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
         return {
           workspace: nextWorkspace,
+          lastSlotCapRejectedAt: null,
           ...(state.appMode === 'curriculum'
             ? {
                 curriculumWorkspaces: {
@@ -2080,6 +2166,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
         return {
           workspace: nextWorkspace,
+          lastSlotCapRejectedAt: null,
           ...(state.appMode === 'curriculum'
             ? {
                 curriculumWorkspaces: {
@@ -2176,6 +2263,7 @@ export const useAppStore = create<AppState>((set, get) => {
           const newWorkspace = { ...state.workspace, [scope]: [] };
           return {
             workspace: newWorkspace,
+            lastSlotCapRejectedAt: null,
             ...(state.appMode === 'curriculum'
               ? {
                   curriculumWorkspaces: {
@@ -2195,6 +2283,7 @@ export const useAppStore = create<AppState>((set, get) => {
         const emptyWorkspace = createEmptyWorkspace();
         set((state) => ({
           workspace: emptyWorkspace,
+          lastSlotCapRejectedAt: null,
           ...(state.appMode === 'curriculum'
             ? {
                 curriculumWorkspaces: {

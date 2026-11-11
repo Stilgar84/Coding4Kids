@@ -14,14 +14,20 @@ import {
 } from 'lucide-react';
 import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
 import { BlockSubpalette } from './BlockSubpalette';
-import { CodeBlock, ScopeType } from '../types';
+import { CodeBlock, ScopeType, VariableName } from '../types';
 import {
   doesBlockMatchHintCategory,
   getPlaceholderHintCategory,
 } from '../engine/placeholderHelpers';
+import {
+  computeStagedPalettePolicy,
+  getAllowedParamDefs,
+  resolveActiveCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 
 interface CoreControlItem {
   type: string;
+  name: string;
   testId: string;
   icon: React.ReactNode;
   bgClass: string;
@@ -33,6 +39,7 @@ interface CoreControlItem {
 const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   {
     type: 'LOOP_START',
+    name: 'Loop Start',
     testId: 'palette-loop-start',
     icon: <Repeat className="w-5 h-5 md:w-8 md:h-8 text-white stroke-[3]" />,
     bgClass: 'bg-purple-700 hover:bg-purple-600',
@@ -41,6 +48,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'LOOP_END',
+    name: 'Loop End',
     testId: 'palette-loop-end',
     icon: <Undo2 className="w-5 h-5 md:w-8 md:h-8 text-purple-200 stroke-[3]" />,
     bgClass: 'bg-purple-900 hover:bg-purple-800',
@@ -49,6 +57,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'VAR_ASSIGN',
+    name: 'Set Variable',
     testId: 'palette-var-assign',
     icon: (
       <span className="font-mono font-bold text-[11px] md:text-sm text-white tracking-tight">a=b</span>
@@ -60,6 +69,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'VAR_OP',
+    name: 'Variable Math',
     testId: 'palette-var-op',
     icon: (
       <span className="font-mono font-bold text-[9px] md:text-xs text-white tracking-tight">a=b*c</span>
@@ -71,6 +81,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'CALL_F1',
+    name: 'Call Function 1',
     testId: 'palette-call-f1',
     icon: (
       <div className="flex items-center gap-0.5 md:gap-1">
@@ -84,6 +95,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'CALL_F2',
+    name: 'Call Function 2',
     testId: 'palette-call-f2',
     icon: (
       <div className="flex items-center gap-0.5 md:gap-1">
@@ -97,6 +109,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
   },
   {
     type: 'CALL_F3',
+    name: 'Call Function 3',
     testId: 'palette-call-f3',
     icon: (
       <div className="flex items-center gap-0.5 md:gap-1">
@@ -330,8 +343,11 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
 };
 
 export const BlockPalette: React.FC = () => {
-  const subscribedStore = useAppStore();
+  useAppStore();
   const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
     activeSimId,
     activeScope,
     setActiveScope,
@@ -347,12 +363,45 @@ export const BlockPalette: React.FC = () => {
     toggleSubpalette,
     isFunctionBarOpen,
     toggleFunctionBar,
-  } = typeof window === 'undefined' ? useAppStore.getState() : subscribedStore;
+  } = useAppStore.getState();
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const simPaletteItems: SimPaletteItem[] = currentSimEnv?.paletteItems || [];
+
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const visibleSimItems = policy.visibleSimItems;
+  const visibleControlItems = CORE_CONTROL_ITEMS.filter((item) =>
+    policy.allowedControlTypes.has(item.type)
+  );
+  const visibleScopeTabs = PALETTE_SCOPE_TABS.filter((tab) =>
+    policy.allowedScopes.includes(tab.id)
+  );
+  const showBadgeRow = policy.allowRepeatBadges || policy.paletteVariableBadges.length > 0;
+
+  const resolveControlItemParams = (item: CoreControlItem): Record<string, any> | undefined => {
+    if (!item.params) return undefined;
+    if (
+      policy.isCurriculum &&
+      policy.subpaletteVariableNames.length > 0 &&
+      !policy.subpaletteVariableNames.includes('a' as VariableName)
+    ) {
+      const firstVar = policy.subpaletteVariableNames[0];
+      if (item.type === 'VAR_ASSIGN') {
+        return { ...item.params, a: firstVar };
+      }
+      if (item.type === 'VAR_OP') {
+        return { ...item.params, a: firstVar, b: firstVar };
+      }
+    }
+    return item.params;
+  };
 
   const blocks = workspace[activeScope] || [];
   const explicitlySelectedBlock = selectedBlockId
@@ -385,7 +434,13 @@ export const BlockPalette: React.FC = () => {
   if (!targetBlock && blocks.length > 0) {
     const last = blocks[blocks.length - 1];
     const lastPaletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === last.type);
-    if (lastPaletteItem?.paramDefs && lastPaletteItem.paramDefs.length > 0) {
+    const allowedLastParams = getAllowedParamDefs(
+      last.type,
+      lastPaletteItem?.paramDefs,
+      appMode,
+      policy.palette
+    );
+    if (allowedLastParams.length > 0) {
       targetBlock = last;
     }
   }
@@ -393,10 +448,20 @@ export const BlockPalette: React.FC = () => {
   const targetPaletteItem = currentSimEnv?.paletteItems.find(
     (p) => p.actionType === targetBlock?.type
   );
-  const isVarBlock = targetBlock?.type === 'VAR_ASSIGN' || targetBlock?.type === 'VAR_OP';
-  const hasParams = Boolean(
-    (targetPaletteItem?.paramDefs && targetPaletteItem.paramDefs.length > 0) || isVarBlock
-  );
+  const allowedTargetParamDefs = targetBlock
+    ? getAllowedParamDefs(
+        targetBlock.type,
+        targetPaletteItem?.paramDefs,
+        appMode,
+        policy.palette
+      )
+    : [];
+  const isVarBlock =
+    (targetBlock?.type === 'VAR_ASSIGN' || targetBlock?.type === 'VAR_OP') &&
+    (!policy.isCurriculum ||
+      policy.allowVariables ||
+      policy.allowedControlTypes.has(targetBlock.type));
+  const hasParams = Boolean(allowedTargetParamDefs.length > 0 || isVarBlock);
 
   const handleToggleParams = () => {
     if (!selectedBlockId && targetBlock) {
@@ -432,12 +497,13 @@ export const BlockPalette: React.FC = () => {
   };
 
   const handleAddCoreBlock = (item: CoreControlItem) => {
+    const resolvedParams = resolveControlItemParams(item);
     if (activePlaceholderTarget) {
       replacePlaceholderBlock(
         activePlaceholderTarget.scope,
         activePlaceholderTarget.block.id,
         item.type,
-        item.params
+        resolvedParams
       );
       return;
     }
@@ -445,14 +511,22 @@ export const BlockPalette: React.FC = () => {
     if (selectedBlockId) {
       const idx = blocks.findIndex((b) => b.id === selectedBlockId);
       if (idx !== -1) {
-        addBlock(activeScope, item.type, undefined, idx + 1, item.params);
+        addBlock(activeScope, item.type, undefined, idx + 1, resolvedParams);
         return;
       }
     }
-    addBlock(activeScope, item.type, undefined, blocks.length, item.params);
+    addBlock(activeScope, item.type, undefined, blocks.length, resolvedParams);
   };
 
   const handleNumberClick = (num: number | string) => {
+    if (typeof num === 'number' && !policy.allowRepeatBadges) return;
+    if (
+      typeof num === 'string' &&
+      (!policy.allowVariables || !policy.paletteVariableBadges.includes(num as VariableName))
+    ) {
+      return;
+    }
+
     const blocks = workspace[activeScope] || [];
     if (blocks.length === 0) return;
 
@@ -498,12 +572,13 @@ export const BlockPalette: React.FC = () => {
   };
 
   const handleCoreControlDragStart = (e: React.DragEvent, item: CoreControlItem) => {
+    const resolvedParams = resolveControlItemParams(item);
     e.dataTransfer.setData(
       'application/json',
       JSON.stringify({
         type: 'PALETTE_BLOCK',
         blockType: item.type,
-        params: item.params,
+        params: resolvedParams,
       })
     );
     e.dataTransfer.setData('application/x-robotemu-block', item.type);
@@ -574,7 +649,7 @@ export const BlockPalette: React.FC = () => {
       {/* Draggable/Tappable Action & Control Blocks */}
       <PaletteScrollRow testId="palette-action-row" className="pt-1 px-0.5">
         {/* Dynamic Simulation Palette Blocks */}
-        {simPaletteItems.map((item) => {
+        {visibleSimItems.map((item) => {
           const testId = `palette-${item.id}`;
           const isHintHighlighted =
             activeHintCategory !== null &&
@@ -582,12 +657,14 @@ export const BlockPalette: React.FC = () => {
           return (
             <button
               key={item.id}
+              type="button"
               data-testid={testId}
               data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
               draggable
               onDragStart={(e) => handlePaletteBlockDragStart(e, item)}
               onClick={() => handleAddSimBlock(item)}
               title={item.name}
+              aria-label={item.name}
               className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-all active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
                 isHintHighlighted
                   ? 'ring-3 ring-amber-300 shadow-[0_0_16px_rgba(34,211,238,0.75)] scale-[1.03]'
@@ -599,22 +676,27 @@ export const BlockPalette: React.FC = () => {
           );
         })}
 
-        {/* Vertical divider */}
-        <div className="w-[1px] h-6 md:h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
+        {/* Vertical divider (only when both sim and control groups are non-empty) */}
+        {visibleSimItems.length > 0 && visibleControlItems.length > 0 && (
+          <div className="w-[1px] h-6 md:h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
+        )}
 
-        {/* Core Control Structure Blocks (LOOP, Functions) */}
-        {CORE_CONTROL_ITEMS.map((item) => {
+        {/* Core Control Structure Blocks (LOOP, Variables, Functions) */}
+        {visibleControlItems.map((item) => {
           const isHintHighlighted =
             activeHintCategory !== null &&
             doesBlockMatchHintCategory(item.type, undefined, activeHintCategory);
           return (
             <button
               key={item.type}
+              type="button"
               data-testid={item.testId}
               data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
               draggable
               onDragStart={(e) => handleCoreControlDragStart(e, item)}
               onClick={() => handleAddCoreBlock(item)}
+              title={item.name}
+              aria-label={item.name}
               className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-all active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
                 isHintHighlighted
                   ? 'ring-3 ring-amber-300 shadow-[0_0_16px_rgba(34,211,238,0.75)] scale-[1.03]'
@@ -629,46 +711,60 @@ export const BlockPalette: React.FC = () => {
 
       {/* Repeat Tags & Action Param Toggle Row */}
       <div className="flex items-center gap-1.5 md:gap-2">
-        {/* Toggle icon for action parameters - always visible and on the left */}
-        <button
-          type="button"
-          data-testid="palette-param-toggle-btn"
-          onClick={handleToggleParams}
-          title={
-            hasParams
-              ? !isSubpaletteCollapsed
-                ? 'Hide action parameters'
-                : 'Show action parameters'
-              : 'Action parameters'
-          }
-          className={`flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
-            hasParams && !isSubpaletteCollapsed
-              ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md ring-2 ring-amber-400/40'
-              : hasParams
-              ? 'bg-slate-800 hover:bg-slate-700 border-amber-500/50 text-amber-400/90 shadow-sm'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
-        </button>
+        {/* Toggle icon for action parameters */}
+        {policy.canUseSubpaletteParams && (
+          <button
+            type="button"
+            data-testid="palette-param-toggle-btn"
+            onClick={handleToggleParams}
+            aria-expanded={!isSubpaletteCollapsed}
+            aria-label={
+              hasParams
+                ? !isSubpaletteCollapsed
+                  ? 'Hide action parameters'
+                  : 'Show action parameters'
+                : 'Action parameters'
+            }
+            title={
+              hasParams
+                ? !isSubpaletteCollapsed
+                  ? 'Hide action parameters'
+                  : 'Show action parameters'
+                : 'Action parameters'
+            }
+            className={`flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
+              hasParams && !isSubpaletteCollapsed
+                ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md ring-2 ring-amber-400/40'
+                : hasParams
+                ? 'bg-slate-800 hover:bg-slate-700 border-amber-500/50 text-amber-400/90 shadow-sm'
+                : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
+          </button>
+        )}
 
-        {/* Toggle Function Selection Bar Button (default hidden on phones) */}
-        <button
-          type="button"
-          data-testid="btn-toggle-function-bar"
-          onClick={toggleFunctionBar}
-          title={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
-          className={`flex-shrink-0 flex items-center justify-center gap-1 px-1.5 md:px-2 h-8 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
-            isFunctionBarOpen
-              ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-md ring-2 ring-indigo-400/40'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-300 stroke-[2.2]" />
-          <span className="font-bold text-[10px] md:text-xs tracking-tight">
-            {activeScope === 'MAIN' ? 'Main' : activeScope}
-          </span>
-        </button>
+        {/* Toggle Function Selection Bar Button (hidden in Curriculum mode when only MAIN is allowed) */}
+        {policy.showScopeSelector && (
+          <button
+            type="button"
+            data-testid="btn-toggle-function-bar"
+            onClick={toggleFunctionBar}
+            aria-expanded={isFunctionBarOpen}
+            aria-label={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
+            title={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
+            className={`flex-shrink-0 flex items-center justify-center gap-1 px-1.5 md:px-2 h-8 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
+              isFunctionBarOpen
+                ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-md ring-2 ring-indigo-400/40'
+                : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-300 stroke-[2.2]" />
+            <span className="font-bold text-[10px] md:text-xs tracking-tight">
+              {activeScope === 'MAIN' ? 'Main' : activeScope}
+            </span>
+          </button>
+        )}
 
         {/* Delete Single Block Button */}
         <button
@@ -691,53 +787,65 @@ export const BlockPalette: React.FC = () => {
           <Trash className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
         </button>
 
-        {/* Divider between param toggle and repeat badges */}
-        <div className="w-[1px] h-6 md:h-8 bg-slate-700/60 flex-shrink-0" />
+        {/* Divider & Number/Variable Multipliers Row */}
+        {showBadgeRow && (
+          <>
+            <div className="w-[1px] h-6 md:h-8 bg-slate-700/60 flex-shrink-0" />
 
-        {/* Number Multipliers Row (Repeat tags) */}
-        <PaletteScrollRow testId="palette-number-row" className="flex-1 min-w-0">
-          {NUMBER_BADGES.map((num) => (
-            <button
-              key={num}
-              data-testid={`palette-number-${num}`}
-              draggable
-              onDragStart={(e) => handleNumberDragStart(e, num)}
-              onClick={() => handleNumberClick(num)}
-              className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs md:text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
-              title={`Set repeat ${num}`}
-            >
-              {num}
-            </button>
-          ))}
-          <div className="w-[1px] h-5 md:h-6 bg-slate-700/60 mx-1 flex-shrink-0" />
-          {(['a', 'b', 'c', 'n'] as const).map((v) => (
-            <button
-              key={v}
-              data-testid={`palette-number-var-${v}`}
-              draggable
-              onDragStart={(e) => handleNumberDragStart(e, v)}
-              onClick={() => handleNumberClick(v)}
-              className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-[11px] md:text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
-              title={`Set repeat variable ${v}`}
-            >
-              {v}
-            </button>
-          ))}
-        </PaletteScrollRow>
+            <PaletteScrollRow testId="palette-number-row" className="flex-1 min-w-0">
+              {policy.allowRepeatBadges &&
+                NUMBER_BADGES.map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    data-testid={`palette-number-${num}`}
+                    draggable
+                    onDragStart={(e) => handleNumberDragStart(e, num)}
+                    onClick={() => handleNumberClick(num)}
+                    className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs md:text-lg border-2 border-yellow-200 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+                    title={`Set repeat ${num}`}
+                    aria-label={`Set repeat ${num}`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              {policy.allowRepeatBadges && policy.paletteVariableBadges.length > 0 && (
+                <div className="w-[1px] h-5 md:h-6 bg-slate-700/60 mx-1 flex-shrink-0" />
+              )}
+              {policy.paletteVariableBadges.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  data-testid={`palette-number-var-${v}`}
+                  draggable
+                  onDragStart={(e) => handleNumberDragStart(e, v)}
+                  onClick={() => handleNumberClick(v)}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-[11px] md:text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
+                  title={`Set repeat variable ${v}`}
+                  aria-label={`Set repeat variable ${v}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </PaletteScrollRow>
+          </>
+        )}
       </div>
 
       {/* Collapsible Function Selection Bar */}
-      {isFunctionBarOpen && (
+      {isFunctionBarOpen && policy.showScopeSelector && (
         <div
           data-testid="palette-function-bar"
           className="flex items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800 animate-in fade-in slide-in-from-top-1"
         >
           <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Scope:</span>
-          {PALETTE_SCOPE_TABS.map((tab) => (
+          {visibleScopeTabs.map((tab) => (
             <button
               key={tab.id}
+              type="button"
               data-testid={`palette-tab-${tab.id.toLowerCase()}`}
               onClick={() => setActiveScope(tab.id)}
+              aria-pressed={activeScope === tab.id}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all active:scale-95 ${
                 activeScope === tab.id
                   ? `${tab.activeColor} shadow-sm`

@@ -2,20 +2,29 @@ import React from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { ParamVisual } from './params/VisualParamBadges';
-import { ALL_VARIABLE_NAMES, BinaryOp } from '../types';
+import { BinaryOp } from '../types';
+import {
+  computeStagedPalettePolicy,
+  getAllowedParamDefs,
+  resolveActiveCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 
 const COMMON_NUMBERS = [0, 1, 2, 3, 5, 10, 45, 90, 180];
 const ALL_OPS: BinaryOp[] = ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'];
 
 export const BlockSubpalette: React.FC = () => {
+  useAppStore();
   const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
     activeSimId,
     activeScope,
     workspace,
     selectedBlockId,
     updateBlockParams,
     isSubpaletteCollapsed,
-  } = useAppStore();
+  } = useAppStore.getState();
 
   if (isSubpaletteCollapsed) {
     return null;
@@ -28,8 +37,28 @@ export const BlockSubpalette: React.FC = () => {
     return null;
   }
 
+  const currentSimEnv = getSimEnvironment(activeSimId);
+  const simPaletteItems = currentSimEnv?.paletteItems || [];
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const targetVarNames = policy.subpaletteVariableNames;
+  const operandVarNames =
+    policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
+
   // Handle VAR_ASSIGN
   if (selectedBlock.type === 'VAR_ASSIGN') {
+    if (
+      policy.isCurriculum &&
+      !policy.allowVariables &&
+      !policy.allowedControlTypes.has('VAR_ASSIGN')
+    ) {
+      return null;
+    }
+
     const currentA = selectedBlock.params?.a ?? 'a';
     const currentB = selectedBlock.params?.b ?? 1;
 
@@ -45,7 +74,7 @@ export const BlockSubpalette: React.FC = () => {
             <span className="text-amber-300 font-mono font-bold italic">{currentA}</span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_VARIABLE_NAMES.map((v) => (
+            {targetVarNames.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -72,7 +101,7 @@ export const BlockSubpalette: React.FC = () => {
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_VARIABLE_NAMES.slice(0, 8).map((v) => (
+            {operandVarNames.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -87,7 +116,9 @@ export const BlockSubpalette: React.FC = () => {
                 {v}
               </button>
             ))}
-            <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            {operandVarNames.length > 0 && (
+              <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            )}
             {COMMON_NUMBERS.map((n) => (
               <button
                 key={n}
@@ -106,6 +137,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
+              aria-label="Numeric value for b"
               className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentB === 'number' ? currentB : ''}
               onChange={(e) => {
@@ -121,6 +153,14 @@ export const BlockSubpalette: React.FC = () => {
 
   // Handle VAR_OP
   if (selectedBlock.type === 'VAR_OP') {
+    if (
+      policy.isCurriculum &&
+      !policy.allowVariables &&
+      !policy.allowedControlTypes.has('VAR_OP')
+    ) {
+      return null;
+    }
+
     const currentA = selectedBlock.params?.a ?? 'a';
     const currentB = selectedBlock.params?.b ?? 'a';
     const currentOp = (selectedBlock.params?.op ?? '+') as BinaryOp;
@@ -138,7 +178,7 @@ export const BlockSubpalette: React.FC = () => {
             <span className="text-amber-300 font-mono font-bold italic">{currentA}</span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_VARIABLE_NAMES.map((v) => (
+            {targetVarNames.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -165,7 +205,7 @@ export const BlockSubpalette: React.FC = () => {
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_VARIABLE_NAMES.slice(0, 8).map((v) => (
+            {operandVarNames.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -180,7 +220,9 @@ export const BlockSubpalette: React.FC = () => {
                 {v}
               </button>
             ))}
-            <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            {operandVarNames.length > 0 && (
+              <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            )}
             {COMMON_NUMBERS.map((n) => (
               <button
                 key={n}
@@ -199,6 +241,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
+              aria-label="Numeric value for b"
               className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentB === 'number' ? currentB : ''}
               onChange={(e) => {
@@ -243,7 +286,7 @@ export const BlockSubpalette: React.FC = () => {
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_VARIABLE_NAMES.slice(0, 8).map((v) => (
+            {operandVarNames.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -258,7 +301,9 @@ export const BlockSubpalette: React.FC = () => {
                 {v}
               </button>
             ))}
-            <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            {operandVarNames.length > 0 && (
+              <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
+            )}
             {COMMON_NUMBERS.map((n) => (
               <button
                 key={n}
@@ -277,6 +322,7 @@ export const BlockSubpalette: React.FC = () => {
             <input
               type="number"
               placeholder="#"
+              aria-label="Numeric value for c"
               className="w-12 md:w-14 h-[30px] md:h-[34px] px-1 text-center bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-mono flex-shrink-0"
               value={typeof currentC === 'number' ? currentC : ''}
               onChange={(e) => {
@@ -290,9 +336,13 @@ export const BlockSubpalette: React.FC = () => {
     );
   }
 
-  const currentSimEnv = getSimEnvironment(activeSimId);
-  const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === selectedBlock.type);
-  const paramDefs = paletteItem?.paramDefs || [];
+  const paletteItem = simPaletteItems.find((p) => p.actionType === selectedBlock.type);
+  const paramDefs = getAllowedParamDefs(
+    selectedBlock.type,
+    paletteItem?.paramDefs,
+    appMode,
+    policy.palette
+  );
 
   if (paramDefs.length === 0) {
     return null;
