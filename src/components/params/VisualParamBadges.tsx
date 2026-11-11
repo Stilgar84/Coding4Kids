@@ -1,5 +1,7 @@
 import React from 'react';
 import { ActionParamDef } from '../../engine/simulation/types';
+import { BEAT_GRID_SIZE, BEAT_LED_PALETTE } from '../../simulations/beat/types';
+import { getPresetDef } from '../../simulations/beat/presets';
 import { isVariableName } from '../../types';
 
 // ==========================================
@@ -264,8 +266,45 @@ export const RadiusVisual: React.FC<RadiusVisualProps> = ({
 };
 
 // ==========================================
-// 4. Color Visual (Visual Swatch)
+// 4. Color Visual (Visual Swatch + Color-Blind Safe Shape Cue)
 // ==========================================
+export const COLOR_SWATCH_SHAPE_CUES: Record<string, { cue: string; darkInk?: boolean }> = {
+  // Beat & Light RGB LED swatches (BEAT_LED_PALETTE)
+  '#06b6d4': { cue: '●', darkInk: true }, // Cyan (shared with Turtle)
+  '#f43f5e': { cue: '▲' }, // Rose
+  '#fbbf24': { cue: '★', darkInk: true }, // Amber
+  '#10b981': { cue: '■', darkInk: true }, // Emerald / Green (shared with Turtle)
+  '#a855f7': { cue: '◆' }, // Purple
+  '#3b82f6': { cue: '⬟' }, // Blue (shared with Turtle)
+  '#f97316': { cue: '⬢', darkInk: true }, // Orange
+  '#ec4899': { cue: '✦' }, // Pink (shared with Turtle)
+
+  // Additional Turtle LOGO pen color swatches (TURTLE_COLOR_PARAM_DEF)
+  '#0f172a': { cue: '⬢' }, // Black
+  '#ef4444': { cue: '▲' }, // Red
+  '#f59e0b': { cue: '★', darkInk: true }, // Turtle Amber
+  '#8b5cf6': { cue: '◆' }, // Turtle Purple
+};
+
+const FALLBACK_SHAPE_CUES = ['●', '▲', '★', '■', '◆', '⬟', '⬢', '✦'] as const;
+
+export function getColorShapeCue(color?: string): { cue: string; darkInk: boolean } {
+  const normalized = (color || '#0f172a').trim().toLowerCase();
+  const exact = COLOR_SWATCH_SHAPE_CUES[normalized];
+  if (exact) {
+    return { cue: exact.cue, darkInk: Boolean(exact.darkInk) };
+  }
+  const beatSwatch = BEAT_LED_PALETTE.find((s) => s.hex.toLowerCase() === normalized);
+  if (beatSwatch) {
+    return { cue: beatSwatch.shapeCue, darkInk: false };
+  }
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return { cue: FALLBACK_SHAPE_CUES[hash % FALLBACK_SHAPE_CUES.length], darkInk: false };
+}
+
 interface ColorVisualProps {
   color: string;
   size?: number;
@@ -277,16 +316,32 @@ export const ColorVisual: React.FC<ColorVisualProps> = ({
   size = 20,
   className = '',
 }) => {
+  const effectiveColor = color || '#0f172a';
+  const { cue, darkInk } = getColorShapeCue(effectiveColor);
+  const glyphSize = Math.max(9, Math.round(size * 0.5));
+
   return (
     <div
-      className={`rounded-full border-2 border-white/90 shadow-sm transition-transform ${className}`}
+      data-testid="color-swatch-visual"
+      data-shape-cue={cue}
+      className={`inline-flex items-center justify-center rounded-full border-2 border-white/90 shadow-sm transition-transform select-none ${className}`}
       style={{
-        backgroundColor: color || '#0f172a',
+        backgroundColor: effectiveColor,
         width: `${size}px`,
         height: `${size}px`,
       }}
-      title={`Color: ${color}`}
-    />
+      title={`Color: ${effectiveColor} (${cue})`}
+    >
+      <span
+        aria-hidden="true"
+        className={`font-black leading-none ${
+          darkInk ? 'text-slate-950/90' : 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]'
+        }`}
+        style={{ fontSize: `${glyphSize}px` }}
+      >
+        {cue}
+      </span>
+    </div>
   );
 };
 
@@ -357,6 +412,285 @@ export const LengthVisual: React.FC<LengthVisualProps> = ({
       {showText && (
         <span className="text-[10px] font-black text-sky-200 mt-0.5 tracking-tighter">
           {length}px
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 6b. Pitch Scale Bar Visual (Ascending 1..8 Stepped Scale Bars)
+// ==========================================
+interface PitchVisualProps {
+  pitch: number;
+  compact?: boolean;
+  className?: string;
+  showText?: boolean;
+}
+
+export const PitchVisual: React.FC<PitchVisualProps> = ({
+  pitch,
+  compact = true,
+  className = '',
+  showText = true,
+}) => {
+  const clamped = Math.max(1, Math.min(8, Math.round(Number(pitch) || 1)));
+  const svgWidth = compact ? 30 : 38;
+  const svgHeight = compact ? 15 : 20;
+
+  return (
+    <div
+      data-testid={`pitch-visual-${clamped}`}
+      className={`flex flex-col items-center justify-center leading-none ${className}`}
+    >
+      <svg
+        width={svgWidth}
+        height={svgHeight}
+        viewBox="0 0 32 18"
+        className="overflow-visible"
+        aria-hidden="true"
+      >
+        {Array.from({ length: 8 }, (_, idx) => {
+          const step = idx + 1;
+          const barHeight = 3.5 + idx * 1.8; // Ascending stepped heights 3.5..16.1
+          const x = idx * 4 + 0.5;
+          const y = 17 - barHeight;
+          const isTarget = step === clamped;
+          const isLit = step <= clamped;
+          const fill = isTarget
+            ? '#fbbf24'
+            : isLit
+            ? '#38bdf8'
+            : 'rgba(148, 163, 184, 0.28)';
+          return (
+            <rect
+              key={step}
+              x={x.toFixed(1)}
+              y={y.toFixed(1)}
+              width="2.8"
+              height={barHeight.toFixed(1)}
+              rx="1"
+              fill={fill}
+            />
+          );
+        })}
+      </svg>
+      {showText && (
+        <span className="text-[10px] font-black text-amber-200 mt-0.5 tracking-tighter">
+          ♪{clamped}
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 6c. Beat Duration Visual (½ | 1 | 2 Beat Bar Width Badges)
+// ==========================================
+interface BeatDurationVisualProps {
+  duration: number;
+  compact?: boolean;
+  className?: string;
+  showText?: boolean;
+}
+
+export function formatBeatDurationLabel(duration: number): string {
+  if (duration <= 0.5) return '½';
+  if (duration >= 2) return '2';
+  return '1';
+}
+
+export const BeatDurationVisual: React.FC<BeatDurationVisualProps> = ({
+  duration,
+  compact = true,
+  className = '',
+  showText = true,
+}) => {
+  const num = Number(duration) || 1;
+  const normalized = num <= 0.5 ? 0.5 : num >= 2 ? 2 : 1;
+  const label = formatBeatDurationLabel(normalized);
+  // Fill fraction out of a 2-beat ruler: 0.5 -> 25%, 1 -> 50%, 2 -> 100%
+  const fillFraction = normalized / 2;
+  const trackW = compact ? 26 : 36;
+  const fillW = Math.max(5, Math.round((trackW - 2) * fillFraction));
+
+  return (
+    <div
+      data-testid={`duration-visual-${normalized}`}
+      className={`flex flex-col items-center justify-center leading-none ${className}`}
+    >
+      <svg
+        width={trackW}
+        height={compact ? 12 : 16}
+        viewBox={`0 0 ${trackW} 12`}
+        aria-hidden="true"
+      >
+        {/* 2-beat ruler track */}
+        <rect
+          x="0.5"
+          y="2"
+          width={trackW - 1}
+          height="8"
+          rx="3"
+          fill="rgba(15, 23, 42, 0.85)"
+          stroke="rgba(148, 163, 184, 0.45)"
+          strokeWidth="1"
+        />
+        {/* Mid-point 1-beat divider tick */}
+        <line
+          x1={trackW / 2}
+          y1="2.5"
+          x2={trackW / 2}
+          y2="9.5"
+          stroke="rgba(148, 163, 184, 0.45)"
+          strokeWidth="1"
+        />
+        {/* Active duration bar */}
+        <rect
+          x="1"
+          y="2.5"
+          width={fillW}
+          height="7"
+          rx="2.5"
+          fill={normalized === 0.5 ? '#38bdf8' : normalized === 1 ? '#34d399' : '#fbbf24'}
+        />
+      </svg>
+      {showText && (
+        <span className="text-[10px] font-black text-emerald-200 mt-0.5 tracking-tight">
+          {label}
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// 6d. Stamp Preset 8x8 Pixel Matrix Visual
+// ==========================================
+interface StampPresetVisualProps {
+  preset: string;
+  size?: number;
+  className?: string;
+}
+
+export const StampPresetVisual: React.FC<StampPresetVisualProps> = ({
+  preset,
+  size = 24,
+  className = '',
+}) => {
+  const def = getPresetDef(preset);
+
+  return (
+    <div
+      data-testid={`stamp-preset-visual-${def.name}`}
+      className={`inline-flex items-center justify-center rounded-md bg-slate-950/90 border border-slate-700/80 p-0.5 ${className}`}
+      title={def.label}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        {def.pattern.map((rowStr, r) =>
+          Array.from({ length: BEAT_GRID_SIZE }, (_, c) => {
+            const lit = rowStr[c] === '#';
+            return (
+              <rect
+                key={`${r}-${c}`}
+                x={c * 2 + 0.2}
+                y={r * 2 + 0.2}
+                width="1.6"
+                height="1.6"
+                rx="0.35"
+                fill={lit ? def.defaultColor : 'rgba(51, 65, 85, 0.35)'}
+              />
+            );
+          })
+        )}
+      </svg>
+    </div>
+  );
+};
+
+// ==========================================
+// 6e. LED Grid Coordinate Visual (Row y / Col x / Pixel x,y)
+// ==========================================
+interface GridCoordVisualProps {
+  coord: number;
+  variant?: 'row' | 'col' | 'pixelX' | 'pixelY';
+  compact?: boolean;
+  className?: string;
+  showText?: boolean;
+}
+
+export const GridCoordVisual: React.FC<GridCoordVisualProps> = ({
+  coord,
+  variant = 'row',
+  compact = true,
+  className = '',
+  showText = true,
+}) => {
+  const clamped = Math.max(1, Math.min(8, Math.round(Number(coord) || 1)));
+  const idx = clamped - 1;
+  const svgSize = compact ? 16 : 22;
+  const isRowLike = variant === 'row' || variant === 'pixelY';
+  const axisArrow =
+    variant === 'pixelX' ? '→' : variant === 'pixelY' ? '↓' : '';
+
+  return (
+    <div
+      data-testid={`grid-coord-visual-${variant}-${clamped}`}
+      className={`flex flex-col items-center justify-center leading-none ${className}`}
+    >
+      <svg
+        width={svgSize}
+        height={svgSize}
+        viewBox="0 0 18 18"
+        aria-hidden="true"
+      >
+        <rect
+          x="0.5"
+          y="0.5"
+          width="17"
+          height="17"
+          rx="2.5"
+          fill="rgba(15, 23, 42, 0.9)"
+          stroke="rgba(148, 163, 184, 0.4)"
+          strokeWidth="1"
+        />
+        {Array.from({ length: 8 }, (_, lineIdx) => {
+          const isLit = lineIdx === idx;
+          if (isRowLike) {
+            return (
+              <rect
+                key={lineIdx}
+                x="2"
+                y={1.8 + lineIdx * 1.85}
+                width="14"
+                height="1.35"
+                rx="0.6"
+                fill={isLit ? '#22d3ee' : 'rgba(71, 85, 105, 0.4)'}
+              />
+            );
+          }
+          return (
+            <rect
+              key={lineIdx}
+              x={1.8 + lineIdx * 1.85}
+              y="2"
+              width="1.35"
+              height="14"
+              rx="0.6"
+              fill={isLit ? '#22d3ee' : 'rgba(71, 85, 105, 0.4)'}
+            />
+          );
+        })}
+      </svg>
+      {showText && (
+        <span className="text-[10px] font-black text-cyan-200 mt-0.5 tracking-tighter">
+          {axisArrow}
+          {clamped}
         </span>
       )}
     </div>
@@ -449,6 +783,33 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
           size={compact ? 24 : 32}
         />
       );
+    case 'pitch':
+      return <PitchVisual pitch={Number(effectiveValue)} compact={compact} />;
+    case 'duration':
+      return <BeatDurationVisual duration={Number(effectiveValue)} compact={compact} />;
+    case 'preset':
+      return <StampPresetVisual preset={String(effectiveValue)} size={compact ? 22 : 28} />;
+    case 'gridCoord': {
+      const coordVariant =
+        paramDef.visualVariant === 'col' ||
+        paramDef.visualVariant === 'pixelX' ||
+        paramDef.visualVariant === 'pixelY'
+          ? paramDef.visualVariant
+          : actionType === 'LIGHT_COL'
+          ? 'col'
+          : actionType === 'LIGHT_PIXEL'
+          ? paramDef.id === 'x'
+            ? 'pixelX'
+            : 'pixelY'
+          : 'row';
+      return (
+        <GridCoordVisual
+          coord={Number(effectiveValue)}
+          variant={coordVariant}
+          compact={compact}
+        />
+      );
+    }
     default:
       return (
         <span className="text-xs font-bold text-white">

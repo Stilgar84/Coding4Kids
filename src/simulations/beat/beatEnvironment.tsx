@@ -3,11 +3,15 @@ import {
   Eraser,
   Heart,
   Hourglass,
+  Music,
+  Palette,
   Smile,
   Sparkles,
+  Stamp,
   Star,
 } from 'lucide-react';
 import {
+  ActionParamDef,
   SimActionResult,
   SimPaletteItem,
   SimulationEnvironment,
@@ -21,6 +25,7 @@ import {
   DEFAULT_BEAT_LED_COLOR,
 } from './types';
 import {
+  BEAT_STAMP_PRESETS,
   cloneLedGrid,
   createEmptyLedGrid,
   createPresetLedGrid,
@@ -51,6 +56,108 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
 export function resetBeatState(state?: BeatState): BeatState {
   return createInitialBeatState(Boolean(state?.isMuted));
 }
+
+export const BEAT_PITCH_PARAM_DEF: ActionParamDef = {
+  id: 'pitch',
+  label: 'Pitch',
+  type: 'pitch',
+  visualVariant: 'pitch',
+  defaultValue: 1,
+  options: [
+    { value: 1, label: '1' },
+    { value: 2, label: '2' },
+    { value: 3, label: '3' },
+    { value: 4, label: '4' },
+    { value: 5, label: '5' },
+    { value: 6, label: '6' },
+    { value: 7, label: '7' },
+    { value: 8, label: '8' },
+  ],
+};
+
+export const BEAT_DURATION_PARAM_DEF: ActionParamDef = {
+  id: 'duration',
+  label: 'Beats',
+  type: 'duration',
+  visualVariant: 'duration',
+  defaultValue: 1,
+  options: [
+    { value: 0.5, label: '½' },
+    { value: 1, label: '1' },
+    { value: 2, label: '2' },
+  ],
+};
+
+export const BEAT_COLOR_PARAM_DEF: ActionParamDef = {
+  id: 'color',
+  label: 'LED Color',
+  type: 'color',
+  defaultValue: DEFAULT_BEAT_LED_COLOR,
+  options: BEAT_LED_PALETTE.map((swatch) => ({
+    value: swatch.hex,
+    label: swatch.label,
+  })),
+};
+
+export const BEAT_ROW_PARAM_DEF: ActionParamDef = {
+  id: 'y',
+  label: 'Row',
+  type: 'gridCoord',
+  visualVariant: 'row',
+  defaultValue: 1,
+  options: Array.from({ length: BEAT_GRID_SIZE }, (_, idx) => ({
+    value: idx + 1,
+    label: `${idx + 1}`,
+  })),
+};
+
+export const BEAT_COL_PARAM_DEF: ActionParamDef = {
+  id: 'x',
+  label: 'Column',
+  type: 'gridCoord',
+  visualVariant: 'col',
+  defaultValue: 1,
+  options: Array.from({ length: BEAT_GRID_SIZE }, (_, idx) => ({
+    value: idx + 1,
+    label: `${idx + 1}`,
+  })),
+};
+
+export const BEAT_PIXEL_X_PARAM_DEF: ActionParamDef = {
+  id: 'x',
+  label: 'Column',
+  type: 'gridCoord',
+  visualVariant: 'pixelX',
+  defaultValue: 1,
+  options: Array.from({ length: BEAT_GRID_SIZE }, (_, idx) => ({
+    value: idx + 1,
+    label: `${idx + 1}`,
+  })),
+};
+
+export const BEAT_PIXEL_Y_PARAM_DEF: ActionParamDef = {
+  id: 'y',
+  label: 'Row',
+  type: 'gridCoord',
+  visualVariant: 'pixelY',
+  defaultValue: 1,
+  options: Array.from({ length: BEAT_GRID_SIZE }, (_, idx) => ({
+    value: idx + 1,
+    label: `${idx + 1}`,
+  })),
+};
+
+export const BEAT_STAMP_PRESET_PARAM_DEF: ActionParamDef = {
+  id: 'preset',
+  label: 'Stamp Icon',
+  type: 'preset',
+  visualVariant: 'preset',
+  defaultValue: 'HEART',
+  options: BEAT_STAMP_PRESETS.map((preset) => ({
+    value: preset.name,
+    label: preset.label,
+  })),
+};
 
 export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
@@ -238,11 +345,229 @@ export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
     borderClass: 'border-slate-500',
     supportsRepeat: false,
   },
+  // Tier 2 (Module 2+): Parameterized Synth & LED Matrix Blocks
+  {
+    id: 'beat-play-note',
+    actionType: 'PLAY_NOTE',
+    name: 'Play Note',
+    category: 'action',
+    params: { pitch: 1, duration: 1 },
+    paramDefs: [BEAT_PITCH_PARAM_DEF, BEAT_DURATION_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <Music
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-white'
+        }`}
+      />
+    ),
+    bgClass: 'bg-violet-600 hover:bg-violet-500',
+    borderClass: 'border-violet-300',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-set-led-color',
+    actionType: 'SET_LED_COLOR',
+    name: 'Set LED Color',
+    category: 'pen',
+    params: { color: DEFAULT_BEAT_LED_COLOR },
+    paramDefs: [BEAT_COLOR_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <Palette
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-white'
+        }`}
+      />
+    ),
+    bgClass: 'bg-emerald-600 hover:bg-emerald-500',
+    borderClass: 'border-emerald-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-light-row',
+    actionType: 'LIGHT_ROW',
+    name: 'Light LED Row',
+    category: 'action',
+    params: { y: 1 },
+    paramDefs: [BEAT_ROW_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <svg
+        className="w-6 h-6 md:w-7 md:h-7"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <rect
+          x="3"
+          y="3"
+          width="18"
+          height="18"
+          rx="3"
+          stroke={isActive ? '#020617' : 'rgba(255,255,255,0.55)'}
+          strokeWidth="2"
+        />
+        <rect
+          x="5.5"
+          y="6.5"
+          width="13"
+          height="2.5"
+          rx="1"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+        <rect
+          x="5.5"
+          y="10.75"
+          width="13"
+          height="2.8"
+          rx="1"
+          fill={isActive ? '#020617' : '#fef08a'}
+        />
+        <rect
+          x="5.5"
+          y="15.25"
+          width="13"
+          height="2.5"
+          rx="1"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+      </svg>
+    ),
+    bgClass: 'bg-sky-600 hover:bg-sky-500',
+    borderClass: 'border-sky-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-light-col',
+    actionType: 'LIGHT_COL',
+    name: 'Light LED Column',
+    category: 'action',
+    params: { x: 1 },
+    paramDefs: [BEAT_COL_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <svg
+        className="w-6 h-6 md:w-7 md:h-7"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <rect
+          x="3"
+          y="3"
+          width="18"
+          height="18"
+          rx="3"
+          stroke={isActive ? '#020617' : 'rgba(255,255,255,0.55)'}
+          strokeWidth="2"
+        />
+        <rect
+          x="6.5"
+          y="5.5"
+          width="2.5"
+          height="13"
+          rx="1"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+        <rect
+          x="10.75"
+          y="5.5"
+          width="2.8"
+          height="13"
+          rx="1"
+          fill={isActive ? '#020617' : '#fef08a'}
+        />
+        <rect
+          x="15.25"
+          y="5.5"
+          width="2.5"
+          height="13"
+          rx="1"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+      </svg>
+    ),
+    bgClass: 'bg-teal-600 hover:bg-teal-500',
+    borderClass: 'border-teal-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-light-pixel',
+    actionType: 'LIGHT_PIXEL',
+    name: 'Light LED Pixel',
+    category: 'action',
+    params: { x: 1, y: 1 },
+    paramDefs: [BEAT_PIXEL_X_PARAM_DEF, BEAT_PIXEL_Y_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <svg
+        className="w-6 h-6 md:w-7 md:h-7"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <rect
+          x="3"
+          y="3"
+          width="18"
+          height="18"
+          rx="3"
+          stroke={isActive ? '#020617' : 'rgba(255,255,255,0.55)'}
+          strokeWidth="2"
+        />
+        <circle
+          cx="8.5"
+          cy="8.5"
+          r="1.8"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+        <circle
+          cx="15.5"
+          cy="8.5"
+          r="1.8"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+        <circle
+          cx="8.5"
+          cy="15.5"
+          r="1.8"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(255,255,255,0.3)'}
+        />
+        <rect
+          x="12.5"
+          y="12.5"
+          width="5.5"
+          height="5.5"
+          rx="1.4"
+          fill={isActive ? '#020617' : '#fef08a'}
+        />
+      </svg>
+    ),
+    bgClass: 'bg-blue-600 hover:bg-blue-500',
+    borderClass: 'border-blue-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-stamp-preset',
+    actionType: 'STAMP_PRESET',
+    name: 'Stamp Icon',
+    category: 'action',
+    params: { preset: 'HEART' },
+    paramDefs: [BEAT_STAMP_PRESET_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <Stamp
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-white'
+        }`}
+      />
+    ),
+    bgClass: 'bg-pink-600 hover:bg-pink-500',
+    borderClass: 'border-pink-300',
+    supportsRepeat: false,
+  },
 ];
 
 function resolveLedColor(rawColor: unknown, fallback: string): string {
   if (typeof rawColor === 'number') {
-    const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(rawColor)));
+    // 1..8 variable index (Module 6+) or 0 fallback to first swatch
+    const normalized = rawColor >= 1 ? Math.round(rawColor) - 1 : 0;
+    const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, normalized));
     return BEAT_LED_PALETTE[idx].hex;
   }
   if (typeof rawColor === 'string' && rawColor.trim()) {

@@ -5,12 +5,14 @@ import { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 import { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 import { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 import { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
+import { MODULE_2_PARAMS_ACTIVITIES } from './module2Params';
 import { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 
 export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 export { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 export { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
+export { MODULE_2_PARAMS_ACTIVITIES, MODULE_2_BEAT_ALLOWED_BLOCKS } from './module2Params';
 export { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 
 /**
@@ -145,6 +147,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...MODULE_1_ROBOT_ACTIVITIES,
   ...MODULE_1_LOGO_ACTIVITIES,
   ...MODULE_1_BEAT_ACTIVITIES,
+  ...MODULE_2_PARAMS_ACTIVITIES,
   ...MODULE_2_OBJECTS_ACTIVITIES,
 ]);
 

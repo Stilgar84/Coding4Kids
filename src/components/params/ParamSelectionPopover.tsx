@@ -153,14 +153,33 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'radius' ||
     paramDef.type === 'penWidth' ||
     paramDef.type === 'number' ||
-    paramDef.type === 'length';
+    paramDef.type === 'length' ||
+    paramDef.type === 'pitch' ||
+    paramDef.type === 'gridCoord';
+
+  const hideOptionSubLabel =
+    paramDef.type === 'angle' ||
+    paramDef.type === 'radius' ||
+    paramDef.type === 'length' ||
+    paramDef.type === 'pitch' ||
+    paramDef.type === 'duration' ||
+    paramDef.type === 'gridCoord';
 
   const content = (
     <div
       ref={popoverRef}
+      role="dialog"
+      aria-label={paramDef.label}
       data-testid={`param-popover-${paramDef.id}`}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
       style={
         coords
           ? {
@@ -181,15 +200,16 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
         </span>
         <button
           type="button"
+          aria-label="Close parameter picker"
           onClick={onClose}
-          className="text-slate-400 hover:text-white p-0.5 rounded transition-colors"
+          className="text-slate-400 hover:text-white p-1 min-w-[28px] min-h-[28px] inline-flex items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Options Grid / Row */}
-      <div className="grid grid-cols-4 gap-1.5 max-h-52 overflow-y-auto p-0.5">
+      <div className="grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto p-0.5">
         {paramDef.options.map((opt) => {
           const isSelected = opt.value === effectiveValue;
           return (
@@ -197,19 +217,33 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
               key={String(opt.value)}
               type="button"
               data-testid={`param-option-${opt.value}`}
+              aria-pressed={isSelected}
+              aria-label={`${paramDef.label}: ${opt.label ?? opt.value}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(opt.value);
                 onClose();
               }}
-              className={`flex flex-col items-center justify-center p-2 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSelect(opt.value);
+                  onClose();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }
+              }}
+              className={`flex flex-col items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] p-2 rounded-lg border text-xs font-semibold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
                 isSelected
                   ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
                   : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-200 hover:border-slate-500'
               }`}
             >
               <ParamVisual paramDef={paramDef} value={opt.value} compact={false} actionType={actionType} />
-              {opt.label && paramDef.type !== 'angle' && paramDef.type !== 'radius' && paramDef.type !== 'length' && (
+              {opt.label && !hideOptionSubLabel && (
                 <span className="text-[10px] mt-1 text-slate-400 truncate max-w-full">
                   {opt.label}
                 </span>
@@ -233,12 +267,26 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
                   key={v}
                   type="button"
                   data-testid={`param-option-var-${v}`}
+                  aria-pressed={isSelected}
+                  aria-label={`Variable ${v}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect(v);
                     onClose();
                   }}
-                  className={`flex items-center justify-center py-1 rounded border text-xs font-mono italic font-bold transition-all active:scale-95 ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelect(v);
+                      onClose();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onClose();
+                    }
+                  }}
+                  className={`flex items-center justify-center min-w-[36px] min-h-[36px] py-1 rounded border text-xs font-mono italic font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
                     isSelected
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300 ring-2 ring-amber-400/40'
                       : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-amber-200 hover:border-slate-500'

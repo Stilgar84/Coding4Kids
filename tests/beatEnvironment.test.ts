@@ -240,9 +240,9 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
       expect(initial.status).toBe('IDLE');
     });
 
-    it('registers all 9 zero-param Tier 1 blocks in BEAT_PALETTE_ITEMS', () => {
+    it('registers all 9 zero-param Tier 1 blocks and 6 parameterized Tier 2 blocks in BEAT_PALETTE_ITEMS', () => {
       const actionTypes = BEAT_PALETTE_ITEMS.map((item) => item.actionType);
-      expect(actionTypes).toEqual([
+      expect(actionTypes.slice(0, 9)).toEqual([
         'DRUM_KICK',
         'DRUM_SNARE',
         'DRUM_CLAP',
@@ -253,12 +253,23 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
         'WAIT_BEAT',
         'CLEAR_LEDS',
       ]);
+      expect(actionTypes.slice(9)).toEqual([
+        'PLAY_NOTE',
+        'SET_LED_COLOR',
+        'LIGHT_ROW',
+        'LIGHT_COL',
+        'LIGHT_PIXEL',
+        'STAMP_PRESET',
+      ]);
 
-      // Repeatable rhythm blocks vs non-repeatable stamp/clear blocks
+      // Repeatable rhythm/melody blocks vs non-repeatable stamp/clear/LED state blocks
       expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'DRUM_KICK')?.supportsRepeat).toBe(true);
       expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'WAIT_BEAT')?.supportsRepeat).toBe(true);
+      expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'PLAY_NOTE')?.supportsRepeat).toBe(true);
       expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'STAMP_HEART')?.supportsRepeat).toBe(false);
       expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'CLEAR_LEDS')?.supportsRepeat).toBe(false);
+      expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'SET_LED_COLOR')?.supportsRepeat).toBe(false);
+      expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'STAMP_PRESET')?.supportsRepeat).toBe(false);
     });
 
     it('executes DRUM_KICK, DRUM_SNARE, DRUM_CLAP, and PLAY_CHIME with distinct BeatTriggerEvents', () => {

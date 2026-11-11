@@ -35,15 +35,33 @@ export const BlockParamBadge: React.FC<BlockParamBadgeProps> = ({
     setIsOpen((prev) => !prev);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (disabled) return;
+      setIsOpen((prev) => !prev);
+    } else if (e.key === 'Escape' && isOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsOpen(false);
+    }
+  };
+
   return (
     <div className="relative inline-flex items-center">
       <button
         ref={buttonRef}
         type="button"
         data-testid={`block-param-badge-${paramDef.id}`}
+        disabled={disabled}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label={`${paramDef.label}: ${effectiveValue}${paramDef.unit || ''}`}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         title={`Click to edit ${paramDef.label}`}
-        className="flex items-center justify-center min-w-[28px] md:min-w-[36px] h-[34px] md:h-[48px] px-1 md:px-2 rounded-lg md:rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-600/70 hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 group"
+        className="flex items-center justify-center min-w-[36px] min-h-[36px] h-[36px] md:min-w-[44px] md:h-[48px] px-1.5 md:px-2 rounded-lg md:rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-600/70 hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-default disabled:opacity-75 group"
       >
         <ParamVisual paramDef={paramDef} value={effectiveValue} compact={true} actionType={actionType} />
       </button>

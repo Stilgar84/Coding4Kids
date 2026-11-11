@@ -1,7 +1,17 @@
 import React from 'react';
 import { SimulationStatus } from '../../types';
 
-export type ActionParamType = 'angle' | 'color' | 'penWidth' | 'radius' | 'number' | 'length';
+export type ActionParamType =
+  | 'angle'
+  | 'color'
+  | 'penWidth'
+  | 'radius'
+  | 'number'
+  | 'length'
+  | 'pitch'
+  | 'duration'
+  | 'preset'
+  | 'gridCoord';
 
 export interface ActionParamOption<T = any> {
   value: T;
@@ -10,13 +20,23 @@ export interface ActionParamOption<T = any> {
 }
 
 export interface ActionParamDef {
-  id: string; // e.g. 'angle' | 'color' | 'width' | 'radius'
+  id: string; // e.g. 'angle' | 'color' | 'width' | 'radius' | 'pitch' | 'duration' | 'preset' | 'x' | 'y'
   label: string;
   type: ActionParamType;
   defaultValue: any;
   unit?: string;
   options: ActionParamOption[];
-  visualVariant?: 'rotation' | 'arcAngle' | 'radius';
+  visualVariant?:
+    | 'rotation'
+    | 'arcAngle'
+    | 'radius'
+    | 'pitch'
+    | 'duration'
+    | 'preset'
+    | 'row'
+    | 'col'
+    | 'pixelX'
+    | 'pixelY';
 }
 
 export function getDefaultParams(paramDefs?: ActionParamDef[]): Record<string, any> | undefined {
