@@ -6,6 +6,7 @@ import { BeatState } from '../../simulations/beat/types';
 // Format versions
 export const FORMAT_VERSION = 1;
 export const ENV_VERSION_GRID = 1;
+export const ENV_VERSION_GRID_V2 = 2;
 export const ENV_VERSION_TURTLE = 1;
 export const ENV_VERSION_BEAT = 1;
 
@@ -138,11 +139,13 @@ export function indexToVarName(idx: number): VariableName {
   return toVariableName(String.fromCharCode(97 + safeIdx));
 }
 
-// Grid World Opcodes (envId = 0x01, envVersion = 1)
+// Grid World Opcodes (envId = 0x01, envVersion = 1..2)
 export const OP_GRID_MOVE_FWD = 0x10;
 export const OP_GRID_MOVE_BACK = 0x11;
 export const OP_GRID_TURN_LEFT = 0x12;
 export const OP_GRID_TURN_RIGHT = 0x13;
+export const OP_GRID_PICK_UP = 0x14;
+export const OP_GRID_USE_DROP = 0x15;
 
 // Turtle World Opcodes (envId = 0x02, envVersion = 1)
 export const OP_TURTLE_FORWARD = 0x10;

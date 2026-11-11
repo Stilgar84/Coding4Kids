@@ -66,20 +66,27 @@ export function detectPadlockTransition(
     return { newlyUnlockedFlags: [], steppedLockedFlag: null, announcement: null };
   }
 
-  // Detect flags that unlocked because a prerequisite non-goal flag was collected
+  // Detect flags/goal that unlocked because a prerequisite non-goal flag was collected
+  // OR because a goal-required floor switch became active
   const prerequisiteCollected = nextGrid.flags.some(
     (nf, idx) => !nf.isGoal && !prevGrid.flags[idx].collected && nf.collected
   );
+  const goalSwitchNewlySatisfied = Boolean(
+    nextGrid.floorSwitches?.some((ns) => {
+      const ps = prevGrid.floorSwitches?.find((s) => s.id === ns.id || (s.x === ns.x && s.y === ns.y));
+      return !ps?.active && ns.active;
+    })
+  );
 
   const newlyUnlockedFlags: FlagObjective[] = [];
-  if (prerequisiteCollected) {
+  if (prerequisiteCollected || goalSwitchNewlySatisfied) {
     for (let i = 0; i < nextGrid.flags.length; i++) {
       const prevFlag = prevGrid.flags[i];
       const nextFlag = nextGrid.flags[i];
       if (
         !nextFlag.collected &&
-        isFlagPadlocked(prevFlag, prevGrid.flags) &&
-        !isFlagPadlocked(nextFlag, nextGrid.flags)
+        isFlagPadlocked(prevFlag, prevGrid.flags, prevGrid.floorSwitches, prevGrid.lockedGates) &&
+        !isFlagPadlocked(nextFlag, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates)
       ) {
         newlyUnlockedFlags.push(nextFlag);
       }
@@ -102,7 +109,7 @@ export function detectPadlockTransition(
       (f) =>
         f.x === nextGrid.robot.x &&
         f.y === nextGrid.robot.y &&
-        isFlagPadlocked(f, nextGrid.flags)
+        isFlagPadlocked(f, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates)
     );
     if (lockedHere) {
       steppedLockedFlag = lockedHere;
@@ -117,7 +124,12 @@ export function detectPadlockTransition(
   if (steppedLockedFlag) {
     const nextOrder = getNextRequiredWaypointOrder(nextGrid.flags);
     const targetLabel = formatFlagLabel(steppedLockedFlag);
-    const prereqHint = nextOrder !== null ? ` Collect flag ${nextOrder} first.` : '';
+    const prereqHint =
+      nextOrder !== null
+        ? ` Collect flag ${nextOrder} first.`
+        : steppedLockedFlag.isGoal && (nextGrid.floorSwitches?.length ?? 0) > 0
+        ? ' Activate floor switch with a crate first.'
+        : '';
     parts.push(`${targetLabel} is padlocked.${prereqHint}`);
   }
 
@@ -234,7 +246,7 @@ export const FlagPadlockOverlay: React.FC<FlagPadlockOverlayProps> = ({
     return null;
   }
 
-  const lockedIds = getPadlockedFlagIds(flags);
+  const lockedIds = getPadlockedFlagIds(flags, grid.floorSwitches, grid.lockedGates);
   const hasAnyUnlockAnim =
     (unlockedFlagIds ? unlockedFlagIds.size > 0 : false) || animatingIds.size > 0;
 

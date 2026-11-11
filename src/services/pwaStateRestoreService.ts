@@ -133,7 +133,20 @@ export function clearPendingUpdateState(): void {
 
 const VALID_SCOPES: readonly ScopeType[] = ['MAIN', 'F1', 'F2', 'F3'];
 const VALID_DIRECTIONS: readonly Direction[] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
-const VALID_TOOLS: readonly EditorTool[] = ['NONE', 'ROBOT', 'WALL', 'FLAG', 'GOAL', 'ERASE'];
+const VALID_TOOLS: readonly EditorTool[] = [
+  'NONE',
+  'ROBOT',
+  'WALL',
+  'FLAG',
+  'GOAL',
+  'WATER',
+  'PLANK',
+  'KEY',
+  'GATE',
+  'CRATE',
+  'SWITCH',
+  'ERASE',
+];
 const VALID_STATUSES: readonly SimulationStatus[] = ['IDLE', 'RUNNING', 'PAUSED', 'SUCCESS', 'COLLISION'];
 
 function sanitizeBlockList(raw: unknown): CodeBlock[] {
@@ -216,12 +229,53 @@ function sanitizeGridState(raw: unknown, fallbackGrid: GridState): GridState {
 
   const status: SimulationStatus = VALID_STATUSES.includes(g.status) ? g.status : 'IDLE';
 
+  const sanitizeCoordList = (arr: any) =>
+    Array.isArray(arr)
+      ? arr
+          .filter((c: any) => c && typeof c.x === 'number' && typeof c.y === 'number')
+          .map((c: any) => ({ x: c.x, y: c.y }))
+      : undefined;
+
   return {
     width,
     height,
-    robot: { x, y, dir, initialX, initialY, initialDir },
+    robot: {
+      x,
+      y,
+      dir,
+      initialX,
+      initialY,
+      initialDir,
+      ...(rawRobot.carriedItem !== undefined
+        ? {
+            carriedItem:
+              rawRobot.carriedItem && typeof rawRobot.carriedItem === 'object'
+                ? JSON.parse(JSON.stringify(rawRobot.carriedItem))
+                : null,
+          }
+        : {}),
+    },
     barriers,
     flags,
+    ...(Array.isArray(g.waterCells) ? { waterCells: sanitizeCoordList(g.waterCells) } : {}),
+    ...(Array.isArray(g.bridgedWaterCells)
+      ? { bridgedWaterCells: sanitizeCoordList(g.bridgedWaterCells) }
+      : {}),
+    ...(Array.isArray(g.lockedGates)
+      ? { lockedGates: JSON.parse(JSON.stringify(g.lockedGates)) }
+      : {}),
+    ...(Array.isArray(g.initialLockedGates)
+      ? { initialLockedGates: JSON.parse(JSON.stringify(g.initialLockedGates)) }
+      : {}),
+    ...(Array.isArray(g.floorSwitches)
+      ? { floorSwitches: JSON.parse(JSON.stringify(g.floorSwitches)) }
+      : {}),
+    ...(Array.isArray(g.worldItems)
+      ? { worldItems: JSON.parse(JSON.stringify(g.worldItems)) }
+      : {}),
+    ...(Array.isArray(g.initialWorldItems)
+      ? { initialWorldItems: JSON.parse(JSON.stringify(g.initialWorldItems)) }
+      : {}),
     trace,
     status: status === 'RUNNING' ? 'PAUSED' : status,
     showTrace: typeof g.showTrace === 'boolean' ? g.showTrace : fallbackGrid.showTrace,

@@ -612,8 +612,6 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
     });
 
     it('verifies M2 interactive world-item canonicalization, PICK_UP/USE_DROP, and maxActionExecutions', () => {
-      const mockM2Env = createMockM2GridEnvironment();
-
       // Single 1×6 corridor: Start(0,0,E) -> Key(1,0) -> Gate(2,0) -> Plank(3,0) -> Water(4,0) -> Goal(5,0)
       const corridor: CellCoord[] = [
         { x: 0, y: 0 },
@@ -647,9 +645,9 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
           barriers: buildSealedCorridorBarriers(6, 1, corridor),
           flags: [{ id: 'goal', x: 5, y: 0, isGoal: true, order: 1, collected: false }],
           waterCells: [{ x: 4, y: 0 }],
-          lockedGates: [{ id: 'gate_1', x: 2, y: 0, keyId: 'gold' }],
+          lockedGates: [{ id: 'gate_1', x: 2, y: 0, shape: 'circle', color: 'amber', unlocked: false }],
           worldItems: [
-            { id: 'item_key', type: 'key', keyId: 'gold', x: 1, y: 0 },
+            { id: 'item_key', type: 'key', shape: 'circle', color: 'amber', x: 1, y: 0 },
             { id: 'item_plank', type: 'plank', x: 3, y: 0 },
           ],
         },
@@ -686,7 +684,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
         ],
       };
 
-      const report = verifyActivityConstraints(supplyCourierPuzzle, { simEnv: mockM2Env });
+      const report = verifyActivityConstraints(supplyCourierPuzzle);
       expect(report.passed).toBe(true);
       expect(report.elapsedMs).toBeLessThan(200);
       expect(report.ruleResults[0].passed).toBe(true);
@@ -695,6 +693,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       expect(report.ruleResults[2].minWinningBlocks).toBe(9);
 
       // Verify state canonicalization distinguishes carried item, gate state, and bridged water
+      const mockM2Env = createMockM2GridEnvironment();
       const s0 = mockM2Env.resetState(
         {
           width: 6,
@@ -726,8 +725,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
           description: '2 USE_DROP executions CAN solve',
           maxActionExecutions: { USE_DROP: 2 },
         },
-        0,
-        { simEnv: mockM2Env }
+        0
       );
       expect(allowTwoRule.passed).toBe(false);
       expect(allowTwoRule.minWinningBlocks).toBe(7);

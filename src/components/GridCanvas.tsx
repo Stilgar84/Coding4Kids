@@ -6,6 +6,7 @@ import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLaye
 import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOverlay';
 import { GhostStepOverlay } from '../simulations/grid/components/GhostStepOverlay';
 import { DemoSpotlightOverlay } from '../simulations/grid/components/DemoSpotlightOverlay';
+import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/WorldItemsLayer';
 
 const CELL_SIZE = 72; // pixels per cell
 
@@ -322,6 +323,9 @@ export const GridCanvas: React.FC = () => {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none">
+      {/* 1-Slot Backpack HUD Indicator (when interactive elements exist or carrying an item) */}
+      <BackpackHud grid={grid} />
+
       {/* Simulation status banner if collision or victory */}
       {status === 'COLLISION' && (
         <div
@@ -539,6 +543,13 @@ export const GridCanvas: React.FC = () => {
             isInstant={isInstant}
             isReadOnly={isReadOnly}
             layer="under-robot"
+            worldItemsSlot={
+              <WorldItemsLayer
+                grid={grid}
+                cellSize={CELL_SIZE}
+                isInstant={isInstant}
+              />
+            }
           />
 
           {/* Trace Path Line */}

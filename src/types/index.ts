@@ -62,6 +62,8 @@ export type BlockType =
   | 'MOVE_BACK'
   | 'TURN_LEFT'
   | 'TURN_RIGHT'
+  | 'PICK_UP'
+  | 'USE_DROP'
   | 'LOOP_START'
   | 'LOOP_END'
   | 'CALL_F1'
@@ -110,6 +112,58 @@ export interface FlagObjective {
   collected: boolean;
 }
 
+export type KeyGateShape = 'circle' | 'triangle' | 'diamond';
+
+export type KeyGateColor = 'amber' | 'emerald' | 'purple';
+
+export type WorldItemType = 'key' | 'plank' | 'crate';
+
+export interface WorldItem {
+  id: string;
+  type: WorldItemType;
+  x: number;
+  y: number;
+  /** Distinct emblem/bow shape for color-blind safe matching ('circle' ● | 'triangle' ▲ | 'diamond' ◆) */
+  shape?: KeyGateShape;
+  /** Color paired with shape for keys ('amber' | 'emerald' | 'purple') */
+  color?: KeyGateColor;
+}
+
+export interface LockedGate {
+  id: string;
+  x: number;
+  y: number;
+  shape: KeyGateShape;
+  color: KeyGateColor;
+  /** True when currently open/passable (unlocked by key or held open by a linked FloorSwitch) */
+  unlocked?: boolean;
+  /** True when permanently unlocked by a matching key */
+  unlockedByKey?: boolean;
+  /** Optional ID of a FloorSwitch that opens this gate while active */
+  linkedSwitchId?: string;
+}
+
+export interface FloorSwitch {
+  id: string;
+  x: number;
+  y: number;
+  /** Optional ID of a LockedGate opened while a crate rests on this switch */
+  linkedGateId?: string;
+  /**
+   * Whether this switch must be active (depressed by a crate) for the Goal to unlock/succeed.
+   * Defaults to true when unlinked, or false when linked to a gate.
+   */
+  requiredForGoal?: boolean;
+  /** Runtime active state: true while a crate sits on (x, y) */
+  active?: boolean;
+}
+
+export interface WorldInteractionFeedback {
+  kind: 'noop-empty' | 'noop-full' | 'wrong-key' | 'invalid-use' | 'occupied';
+  message: string;
+  seq: number;
+}
+
 export interface RobotState {
   x: number;
   y: number;
@@ -117,6 +171,8 @@ export interface RobotState {
   initialX: number;
   initialY: number;
   initialDir: Direction;
+  /** 1-slot backpack carried item (null/undefined when empty) */
+  carriedItem?: WorldItem | null;
 }
 
 export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION';
@@ -129,6 +185,22 @@ export interface GridState {
   robot: RobotState;
   barriers: WallEdge[];
   flags: FlagObjective[];
+  /** Impassable water channel tiles (walkable only once bridged by a plank) */
+  waterCells?: CellCoord[];
+  /** Runtime subset of waterCells that currently have a wooden plank bridge placed */
+  bridgedWaterCells?: CellCoord[];
+  /** Shape+color coded locked gate tiles (impassable until unlocked) */
+  lockedGates?: LockedGate[];
+  /** Initial authored gate definitions for clean Reset & Serialization */
+  initialLockedGates?: LockedGate[];
+  /** Recessed floor switches depressed when a crate sits on them */
+  floorSwitches?: FloorSwitch[];
+  /** Active pickup items currently sitting on the grid floor */
+  worldItems?: WorldItem[];
+  /** Initial authored pickup items for clean Reset & Serialization */
+  initialWorldItems?: WorldItem[];
+  /** Non-fatal contextual feedback (e.g. backpack full, empty cell, wrong key) for visual shake + aria-live */
+  lastInteractionFeedback?: WorldInteractionFeedback | null;
   trace: CellCoord[];
   status: SimulationStatus;
   showTrace: boolean;

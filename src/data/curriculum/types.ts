@@ -3,12 +3,20 @@ import {
   CodeBlock,
   Direction,
   FlagObjective,
+  FloorSwitch,
   GridState,
+  LockedGate,
   ScopeType,
   VariableName,
   WallEdge,
+  WorldItem,
   WorkspaceState,
 } from '../../types';
+import {
+  cloneLockedGates,
+  cloneWorldItems,
+  syncWorldSwitchesAndGates,
+} from '../../engine/physics';
 
 export type AppMode = 'curriculum' | 'sandbox';
 
@@ -118,11 +126,11 @@ export interface CurriculumGridDefinition {
   robot: { x: number; y: number; dir: Direction };
   barriers: WallEdge[];
   flags: FlagObjective[];
-  // Forward-compatible hooks for Commit 14 (Module 2 interactive world items)
+  // Module 2+ interactive world items (Commit 14)
   waterCells?: CellCoord[];
-  lockedGates?: Array<Record<string, unknown>>;
-  floorSwitches?: Array<Record<string, unknown>>;
-  worldItems?: Array<Record<string, unknown>>;
+  lockedGates?: LockedGate[];
+  floorSwitches?: FloorSwitch[];
+  worldItems?: WorldItem[];
 }
 
 export interface GhostStepPreview {
@@ -257,6 +265,37 @@ export function createCurriculumGridState(
   def: CurriculumGridDefinition,
   fitToView = false
 ): GridState {
+  const hasWorld =
+    (def.waterCells?.length ?? 0) > 0 ||
+    (def.lockedGates?.length ?? 0) > 0 ||
+    (def.floorSwitches?.length ?? 0) > 0 ||
+    (def.worldItems?.length ?? 0) > 0;
+
+  if (!hasWorld) {
+    return {
+      width: def.width,
+      height: def.height,
+      robot: {
+        x: def.robot.x,
+        y: def.robot.y,
+        dir: def.robot.dir,
+        initialX: def.robot.x,
+        initialY: def.robot.y,
+        initialDir: def.robot.dir,
+      },
+      barriers: def.barriers.map((b) => ({ ...b })),
+      flags: def.flags.map((f) => ({ ...f, collected: false })),
+      trace: [{ x: def.robot.x, y: def.robot.y }],
+      status: 'IDLE',
+      showTrace: true,
+      fitToView,
+    };
+  }
+
+  const baseItems = cloneWorldItems(def.worldItems);
+  const baseGates = cloneLockedGates(def.lockedGates, true);
+  const synced = syncWorldSwitchesAndGates(def.floorSwitches, baseGates, baseItems);
+
   return {
     width: def.width,
     height: def.height,
@@ -267,9 +306,18 @@ export function createCurriculumGridState(
       initialX: def.robot.x,
       initialY: def.robot.y,
       initialDir: def.robot.dir,
+      carriedItem: null,
     },
     barriers: def.barriers.map((b) => ({ ...b })),
     flags: def.flags.map((f) => ({ ...f, collected: false })),
+    waterCells: (def.waterCells ?? []).map((w) => ({ ...w })),
+    bridgedWaterCells: [],
+    lockedGates: synced.lockedGates ?? [],
+    initialLockedGates: cloneLockedGates(baseGates, true),
+    floorSwitches: synced.floorSwitches ?? [],
+    worldItems: baseItems,
+    initialWorldItems: cloneWorldItems(baseItems),
+    lastInteractionFeedback: null,
     trace: [{ x: def.robot.x, y: def.robot.y }],
     status: 'IDLE',
     showTrace: true,

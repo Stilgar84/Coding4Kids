@@ -41,6 +41,8 @@ import {
   OP_GRID_MOVE_BACK,
   OP_GRID_TURN_LEFT,
   OP_GRID_TURN_RIGHT,
+  OP_GRID_PICK_UP,
+  OP_GRID_USE_DROP,
   OP_TURTLE_FORWARD,
   OP_TURTLE_BACKWARD,
   OP_TURTLE_TURN_LEFT,
@@ -57,7 +59,11 @@ import {
   EnvIdName,
   InnerLessonEnvIdName,
 } from './types';
-import { writeGridState, readGridState } from './env/gridSerializer';
+import {
+  getGridSerializationVersion,
+  writeGridState,
+  readGridState,
+} from './env/gridSerializer';
 import { writeTurtleParams, readTurtleParams } from './env/turtleSerializer';
 import {
   getBeatOpcodeForBlock,
@@ -273,6 +279,12 @@ export function writeCodeScopes(
             break;
           case 'TURN_RIGHT':
             opcode = OP_GRID_TURN_RIGHT;
+            break;
+          case 'PICK_UP':
+            opcode = OP_GRID_PICK_UP;
+            break;
+          case 'USE_DROP':
+            opcode = OP_GRID_USE_DROP;
             break;
           default:
             throw new Error(`Unsupported Grid block type: ${block.type}`);
@@ -501,6 +513,12 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
           case OP_GRID_TURN_RIGHT:
             type = 'TURN_RIGHT';
             break;
+          case OP_GRID_PICK_UP:
+            type = 'PICK_UP';
+            break;
+          case OP_GRID_USE_DROP:
+            type = 'USE_DROP';
+            break;
           default:
             throw new Error(`Unknown Grid opcode: 0x${opcode.toString(16)}`);
         }
@@ -546,7 +564,9 @@ export function exportToBinary(
 
   const envVersion =
     envId === 'grid'
-      ? ENV_VERSION_GRID
+      ? envState && 'width' in envState
+        ? getGridSerializationVersion(envState as GridState)
+        : ENV_VERSION_GRID
       : envId === 'beat'
       ? ENV_VERSION_BEAT
       : ENV_VERSION_TURTLE;
@@ -554,7 +574,7 @@ export function exportToBinary(
 
   // 2. Environment State (if Grid)
   if (envByte === ENV_ID_GRID && envState && 'width' in envState) {
-    writeGridState(writer, envState as GridState);
+    writeGridState(writer, envState as GridState, envVersion);
   }
 
   // 3. Code Payload
@@ -730,7 +750,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     let beatState: BeatState | undefined;
 
     if (envByte === ENV_ID_GRID) {
-      gridState = readGridState(reader);
+      gridState = readGridState(reader, envVersion);
     } else if (envByte === ENV_ID_TURTLE) {
       turtleState = createInitialTurtleState();
     } else if (envByte === ENV_ID_BEAT) {

@@ -15,6 +15,12 @@ import {
   ENV_ID_BEAT,
   ENV_ID_LESSON,
   ENV_ID_GENERIC,
+  ENV_VERSION_GRID,
+  ENV_VERSION_GRID_V2,
+  OP_GRID_PICK_UP,
+  OP_GRID_USE_DROP,
+  MASK_HAS_REP,
+  MASK_HAS_VAR_PARAM,
   TURTLE_COLOR_PALETTE,
 } from '../src/engine/serialization/types';
 import {
@@ -22,7 +28,14 @@ import {
   getProgramById,
   clearAllSavedPrograms,
 } from '../src/services/localSaveService';
-import { GridState, WorkspaceState, Direction, WallEdge, FlagObjective } from '../src/types';
+import {
+  GridState,
+  WorkspaceState,
+  Direction,
+  WallEdge,
+  FlagObjective,
+  toVariableName,
+} from '../src/types';
 import { useAppStore } from '../src/store/useAppStore';
 
 describe('Binary Serialization', () => {
@@ -868,6 +881,274 @@ describe('Binary Serialization', () => {
       const zeroVerRes = importFromString(wZeroVer.toBase64URL());
       expect(zeroVerRes.success).toBe(false);
       expect(zeroVerRes.error).toMatch(/Invalid lessonVersion/);
+    });
+  });
+
+  describe('Grid envVersion=1 Backward Compatibility & envVersion=2 World Items (C14)', () => {
+    it('preserves TODO.md share strings and classic envVersion=1 maps byte-for-byte', () => {
+      const todoExamples = [
+        'AQIBAQALUAIUZI4CUAIWEBJaERdQAxSWAY4CUAM',
+        'AQIBAQATAUEGVAQyWhIeAgIYA0EEQQYWUAMXVAQyWhZRAxIPAgIX',
+      ];
+
+      for (const shareStr of todoExamples) {
+        const imported = importFromString(shareStr);
+        expect(imported.success).toBe(true);
+        expect(imported.workspace).toBeDefined();
+
+        const reExported = exportToString(
+          imported.workspace!,
+          imported.envId! as any,
+          imported.envId === 'grid'
+            ? imported.gridState
+            : imported.envId === 'turtle'
+            ? imported.turtleState
+            : undefined
+        );
+        expect(reExported).toBe(shareStr);
+      }
+
+      // Classic grid with empty interactive arrays must still emit envVersion=1 byte-for-byte
+      const classicBase: GridState = {
+        width: 5,
+        height: 5,
+        robot: { x: 0, y: 2, dir: 'EAST', initialX: 0, initialY: 2, initialDir: 'EAST' },
+        barriers: [{ orientation: 'V', x: 2, y: 2 }],
+        flags: [{ id: 'goal', x: 4, y: 2, isGoal: true, order: 1, collected: false }],
+        trace: [{ x: 0, y: 2 }],
+        status: 'IDLE',
+        showTrace: true,
+      };
+      const classicWithEmptyArrays: GridState = {
+        ...classicBase,
+        waterCells: [],
+        bridgedWaterCells: [],
+        lockedGates: [],
+        initialLockedGates: [],
+        floorSwitches: [],
+        worldItems: [],
+        initialWorldItems: [],
+      };
+      const ws: WorkspaceState = {
+        MAIN: [{ id: '1', type: 'MOVE_FWD', repeatCount: 4 }],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const encodedBase = exportToString(ws, 'grid', classicBase);
+      const encodedEmpty = exportToString(ws, 'grid', classicWithEmptyArrays);
+      expect(encodedEmpty).toBe(encodedBase);
+
+      const bytes = base64URLToUint8Array(encodedEmpty);
+      expect(bytes[1]).toBe(ENV_ID_GRID);
+      expect(bytes[2]).toBe(ENV_VERSION_GRID);
+    });
+
+    it('encodes PICK_UP (0x14) and USE_DROP (0x15) with single, numeric repeat, and variable repeat', () => {
+      const ws: WorkspaceState = {
+        MAIN: [
+          { id: '1', type: 'PICK_UP' },
+          { id: '2', type: 'USE_DROP' },
+          { id: '3', type: 'PICK_UP', repeatCount: 3 },
+          { id: '4', type: 'USE_DROP', repeatCount: toVariableName('n') },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const encoded = exportToString(ws, 'generic');
+      const raw = base64URLToUint8Array(encoded);
+      // Header (3) + scopeCount(1) + scopeId(1) + blockCount(1) = offset 6
+      expect(raw[6]).toBe(OP_GRID_PICK_UP);
+      expect(raw[7]).toBe(OP_GRID_USE_DROP);
+      expect(raw[8]).toBe(OP_GRID_PICK_UP | MASK_HAS_REP);
+      expect(raw[9]).toBe(3);
+      expect(raw[10]).toBe(OP_GRID_USE_DROP | MASK_HAS_REP | MASK_HAS_VAR_PARAM);
+
+      const decoded = importFromString(encoded);
+      expect(decoded.success).toBe(true);
+      const main = decoded.workspace!.MAIN;
+      expect(main).toHaveLength(4);
+      expect(main[0].type).toBe('PICK_UP');
+      expect(main[0].repeatCount).toBeUndefined();
+      expect(main[1].type).toBe('USE_DROP');
+      expect(main[1].repeatCount).toBeUndefined();
+      expect(main[2].type).toBe('PICK_UP');
+      expect(main[2].repeatCount).toBe(3);
+      expect(main[3].type).toBe('USE_DROP');
+      expect(main[3].repeatCount).toBe('n');
+    });
+
+    it('roundtrips envVersion=2 Grid maps with water, gates, linked switches, and world items (small & >16x16)', () => {
+      const v2Grid: GridState = {
+        width: 6,
+        height: 5,
+        robot: {
+          x: 4, // moved at runtime
+          y: 2,
+          dir: 'SOUTH',
+          initialX: 0,
+          initialY: 2,
+          initialDir: 'EAST',
+          carriedItem: { id: 'k-temp', type: 'plank', x: 1, y: 2 },
+        },
+        barriers: [{ orientation: 'H', x: 2, y: 1 }],
+        flags: [{ id: 'goal', x: 5, y: 2, isGoal: true, order: 1, collected: true }],
+        waterCells: [
+          { x: 2, y: 2 },
+          { x: 2, y: 3 },
+        ],
+        bridgedWaterCells: [{ x: 2, y: 2 }], // runtime bridge should not pollute authored water
+        lockedGates: [
+          {
+            id: 'gate_a',
+            x: 3,
+            y: 2,
+            shape: 'triangle',
+            color: 'emerald',
+            unlocked: true,
+            unlockedByKey: true,
+          },
+          {
+            id: 'gate_b',
+            x: 4,
+            y: 2,
+            shape: 'diamond',
+            color: 'purple',
+            unlocked: true,
+            linkedSwitchId: 'sw_1',
+          },
+        ],
+        initialLockedGates: [
+          { id: 'gate_a', x: 3, y: 2, shape: 'triangle', color: 'emerald', unlocked: false },
+          {
+            id: 'gate_b',
+            x: 4,
+            y: 2,
+            shape: 'diamond',
+            color: 'purple',
+            unlocked: false,
+            linkedSwitchId: 'sw_1',
+          },
+        ],
+        floorSwitches: [
+          { id: 'sw_1', x: 1, y: 4, linkedGateId: 'gate_b', requiredForGoal: false, active: true },
+          { id: 'sw_goal', x: 3, y: 4, requiredForGoal: true, active: false },
+        ],
+        worldItems: [], // consumed at runtime!
+        initialWorldItems: [
+          { id: 'item_k', type: 'key', x: 1, y: 1, shape: 'triangle', color: 'emerald' },
+          { id: 'item_p', type: 'plank', x: 1, y: 2 },
+          { id: 'item_c', type: 'crate', x: 1, y: 3 },
+        ],
+        trace: [
+          { x: 0, y: 2 },
+          { x: 4, y: 2 },
+        ],
+        status: 'SUCCESS',
+        showTrace: true,
+      };
+
+      const ws: WorkspaceState = {
+        MAIN: [
+          { id: 'b1', type: 'PICK_UP' },
+          { id: 'b2', type: 'MOVE_FWD' },
+          { id: 'b3', type: 'USE_DROP' },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const encoded = exportToString(ws, 'grid', v2Grid);
+      const rawBytes = base64URLToUint8Array(encoded);
+      expect(rawBytes[1]).toBe(ENV_ID_GRID);
+      expect(rawBytes[2]).toBe(ENV_VERSION_GRID_V2);
+
+      const imported = importFromString(encoded);
+      expect(imported.success).toBe(true);
+      expect(imported.envVersion).toBe(ENV_VERSION_GRID_V2);
+
+      const g = imported.gridState!;
+      // Restored to clean initial authored pose & unconsumed items
+      expect(g.robot.x).toBe(0);
+      expect(g.robot.y).toBe(2);
+      expect(g.robot.dir).toBe('EAST');
+      expect(g.robot.carriedItem).toBeNull();
+      expect(g.waterCells).toEqual([
+        { x: 2, y: 2 },
+        { x: 2, y: 3 },
+      ]);
+      expect(g.bridgedWaterCells).toEqual([]);
+      expect(g.lockedGates).toHaveLength(2);
+      expect(g.lockedGates![0]).toMatchObject({
+        x: 3,
+        y: 2,
+        shape: 'triangle',
+        color: 'emerald',
+        unlocked: false,
+      });
+      expect(g.lockedGates![1]).toMatchObject({
+        x: 4,
+        y: 2,
+        shape: 'diamond',
+        color: 'purple',
+        unlocked: false,
+      });
+      expect(g.floorSwitches).toHaveLength(2);
+      expect(g.floorSwitches![0].linkedGateId).toBe(g.lockedGates![1].id);
+      expect(g.floorSwitches![0].requiredForGoal).toBe(false);
+      expect(g.floorSwitches![1].requiredForGoal).toBe(true);
+      expect(g.worldItems).toHaveLength(3);
+      expect(g.worldItems![0]).toMatchObject({
+        type: 'key',
+        x: 1,
+        y: 1,
+        shape: 'triangle',
+        color: 'emerald',
+      });
+      expect(g.worldItems![1]).toMatchObject({ type: 'plank', x: 1, y: 2 });
+      expect(g.worldItems![2]).toMatchObject({ type: 'crate', x: 1, y: 3 });
+
+      // Large (>16x16) v2 grid roundtrip
+      const largeV2: GridState = {
+        width: 22,
+        height: 20,
+        robot: { x: 2, y: 18, dir: 'NORTH', initialX: 2, initialY: 18, initialDir: 'NORTH' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 20, y: 19, isGoal: true, order: 1, collected: false }],
+        waterCells: [{ x: 18, y: 19 }],
+        lockedGates: [{ id: 'lg', x: 19, y: 19, shape: 'circle', color: 'amber', unlocked: false }],
+        floorSwitches: [{ id: 'ls', x: 17, y: 18, requiredForGoal: true }],
+        worldItems: [{ id: 'lk', type: 'key', x: 16, y: 18, shape: 'circle', color: 'amber' }],
+        trace: [{ x: 2, y: 18 }],
+        status: 'IDLE',
+        showTrace: true,
+      };
+      const largeEncoded = exportToString(ws, 'grid', largeV2);
+      const largeImported = importFromString(largeEncoded);
+      expect(largeImported.success).toBe(true);
+      expect(largeImported.gridState?.waterCells).toEqual([{ x: 18, y: 19 }]);
+      expect(largeImported.gridState?.lockedGates?.[0]).toMatchObject({
+        x: 19,
+        y: 19,
+        shape: 'circle',
+        color: 'amber',
+      });
+      expect(largeImported.gridState?.floorSwitches?.[0]).toMatchObject({
+        x: 17,
+        y: 18,
+        requiredForGoal: true,
+      });
+      expect(largeImported.gridState?.worldItems?.[0]).toMatchObject({
+        type: 'key',
+        x: 16,
+        y: 18,
+        shape: 'circle',
+        color: 'amber',
+      });
     });
   });
 });

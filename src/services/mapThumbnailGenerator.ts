@@ -1,10 +1,41 @@
-import { GridState, Direction } from '../types';
-import { isFlagPadlocked } from '../engine/physics';
+import { GridState, Direction, KeyGateColor, KeyGateShape } from '../types';
+import {
+  isFlagPadlocked,
+  isWaterBridged,
+  resolveKeyGateColor,
+  resolveKeyGateShape,
+} from '../engine/physics';
 import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
 import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 
 const CELL_SIZE = 40;
+
+const THUMB_KEY_COLORS: Record<KeyGateColor, { fill: string; stroke: string }> = {
+  amber: { fill: '#f59e0b', stroke: '#fde68a' },
+  emerald: { fill: '#10b981', stroke: '#a7f3d0' },
+  purple: { fill: '#a855f7', stroke: '#e9d5ff' },
+};
+
+function renderThumbShapeSvg(
+  shape: KeyGateShape,
+  r: number,
+  fill: string,
+  stroke: string,
+  sw = 1.2
+): string {
+  if (shape === 'triangle') {
+    const ty = (-r * 1.05).toFixed(1);
+    const by = (r * 0.85).toFixed(1);
+    const hx = (r * 1.02).toFixed(1);
+    return `<polygon points="0,${ty} ${hx},${by} -${hx},${by}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`;
+  }
+  if (shape === 'diamond') {
+    const dr = (r * 1.08).toFixed(1);
+    return `<polygon points="0,-${dr} ${dr},0 0,${dr} -${dr},0" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`;
+  }
+  return `<circle r="${(r * 0.92).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`;
+}
 
 function getDirectionAngle(dir: Direction): number {
   switch (dir) {
@@ -57,6 +88,114 @@ export function renderGridMapSvg(grid: GridState): string {
   elements.push(
     `<rect x="0" y="0" width="${boardWidth}" height="${boardHeight}" fill="none" stroke="#475569" stroke-width="2" rx="4" />`
   );
+
+  // Interactive World Layer: Water & Bridges
+  if (grid.waterCells && grid.waterCells.length > 0) {
+    for (const w of grid.waterCells) {
+      const x0 = w.x * CELL_SIZE;
+      const y0 = w.y * CELL_SIZE;
+      const cx = x0 + CELL_SIZE / 2;
+      const cy = y0 + CELL_SIZE / 2;
+      const bridged = isWaterBridged(w.x, w.y, grid.bridgedWaterCells);
+      elements.push(
+        `<g data-thumb-water="${w.x}-${w.y}" data-bridged="${bridged}">
+          <rect x="${x0 + 1.5}" y="${y0 + 1.5}" width="${CELL_SIZE - 3}" height="${CELL_SIZE - 3}" rx="3.5" fill="#0369a1" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1" />
+          <path d="M ${cx - 11} ${cy - 5} Q ${cx - 6} ${cy - 8} ${cx - 1} ${cy - 5} T ${cx + 11} ${cy - 5}" fill="none" stroke="#bae6fd" stroke-width="1.3" stroke-linecap="round" opacity="${bridged ? '0.45' : '0.85'}" />
+          <path d="M ${cx - 11} ${cy + 5} Q ${cx - 6} ${cy + 2} ${cx - 1} ${cy + 5} T ${cx + 11} ${cy + 5}" fill="none" stroke="#bae6fd" stroke-width="1.3" stroke-linecap="round" opacity="${bridged ? '0.45' : '0.85'}" />
+          ${
+            bridged
+              ? `<g data-thumb-bridge="${w.x}-${w.y}" transform="translate(${cx}, ${cy})">
+                  <rect x="-15" y="-13" width="30" height="5.5" rx="1.5" fill="#d97706" stroke="#451a03" stroke-width="0.8" />
+                  <rect x="-15" y="-3" width="30" height="5.5" rx="1.5" fill="#b45309" stroke="#451a03" stroke-width="0.8" />
+                  <rect x="-15" y="7" width="30" height="5.5" rx="1.5" fill="#d97706" stroke="#451a03" stroke-width="0.8" />
+                </g>`
+              : ''
+          }
+        </g>`
+      );
+    }
+  }
+
+  // Interactive World Layer: Floor Switches
+  if (grid.floorSwitches && grid.floorSwitches.length > 0) {
+    for (const sw of grid.floorSwitches) {
+      const cx = sw.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = sw.y * CELL_SIZE + CELL_SIZE / 2;
+      const active = Boolean(sw.active);
+      elements.push(
+        `<g data-thumb-switch="${sw.x}-${sw.y}" data-active="${active}" transform="translate(${cx}, ${cy})">
+          <rect x="-14" y="-14" width="28" height="28" rx="4.5" fill="#0f172a" stroke="${active ? '#34d399' : '#64748b'}" stroke-width="1.5" />
+          <rect x="-10" y="-10" width="20" height="20" rx="3" fill="${active ? '#059669' : '#1e293b'}" stroke="${active ? '#a7f3d0' : '#94a3b8'}" stroke-width="1" />
+        </g>`
+      );
+    }
+  }
+
+  // Interactive World Layer: Locked Gates
+  if (grid.lockedGates && grid.lockedGates.length > 0) {
+    for (const gate of grid.lockedGates) {
+      const cx = gate.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = gate.y * CELL_SIZE + CELL_SIZE / 2;
+      const unlocked = Boolean(gate.unlocked);
+      const shape = resolveKeyGateShape(gate.shape);
+      const color = resolveKeyGateColor(gate.color, shape);
+      const vis = THUMB_KEY_COLORS[color];
+      if (unlocked) {
+        elements.push(
+          `<g data-thumb-gate="${gate.x}-${gate.y}" data-shape="${shape}" data-unlocked="true" transform="translate(${cx}, ${cy})" opacity="0.8">
+            <rect x="-17" y="-15" width="5" height="30" rx="1.5" fill="#334155" stroke="${vis.fill}" stroke-width="1" />
+            <rect x="12" y="-15" width="5" height="30" rx="1.5" fill="#334155" stroke="${vis.fill}" stroke-width="1" />
+          </g>`
+        );
+      } else {
+        elements.push(
+          `<g data-thumb-gate="${gate.x}-${gate.y}" data-shape="${shape}" data-unlocked="false" transform="translate(${cx}, ${cy})">
+            <rect x="-16.5" y="-16.5" width="33" height="33" rx="4.5" fill="#0f172a" fill-opacity="0.88" stroke="${vis.fill}" stroke-width="2" />
+            <line x1="-8" y1="-15" x2="-8" y2="15" stroke="#475569" stroke-width="2.2" />
+            <line x1="8" y1="-15" x2="8" y2="15" stroke="#475569" stroke-width="2.2" />
+            ${renderThumbShapeSvg(shape, 6.8, vis.fill, vis.stroke, 1.3)}
+          </g>`
+        );
+      }
+    }
+  }
+
+  // Interactive World Layer: World Items (Keys, Planks, Crates)
+  if (grid.worldItems && grid.worldItems.length > 0) {
+    for (const item of grid.worldItems) {
+      const cx = item.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = item.y * CELL_SIZE + CELL_SIZE / 2;
+      if (item.type === 'key') {
+        const shape = resolveKeyGateShape(item.shape);
+        const color = resolveKeyGateColor(item.color, shape);
+        const vis = THUMB_KEY_COLORS[color];
+        elements.push(
+          `<g data-thumb-item="key-${item.x}-${item.y}" data-shape="${shape}" transform="translate(${cx}, ${cy})">
+            <g transform="rotate(-35)">
+              <rect x="1" y="-1.8" width="11.5" height="3.6" rx="1" fill="${vis.fill}" stroke="${vis.stroke}" stroke-width="0.9" />
+              <g transform="translate(-4.5, 0) rotate(35)">
+                ${renderThumbShapeSvg(shape, 6, vis.fill, vis.stroke, 1.2)}
+              </g>
+            </g>
+          </g>`
+        );
+      } else if (item.type === 'plank') {
+        elements.push(
+          `<g data-thumb-item="plank-${item.x}-${item.y}" transform="translate(${cx}, ${cy}) rotate(-24)">
+            <rect x="-12" y="-5" width="24" height="10" rx="2" fill="#d97706" stroke="#fef3c7" stroke-width="1" />
+          </g>`
+        );
+      } else {
+        elements.push(
+          `<g data-thumb-item="crate-${item.x}-${item.y}" transform="translate(${cx}, ${cy})">
+            <rect x="-9" y="-9" width="18" height="18" rx="2.5" fill="#b45309" stroke="#fde68a" stroke-width="1.2" />
+            <line x1="-6" y1="-6" x2="6" y2="6" stroke="#78350f" stroke-width="1.5" />
+            <line x1="6" y1="-6" x2="-6" y2="6" stroke="#78350f" stroke-width="1.5" />
+          </g>`
+        );
+      }
+    }
+  }
 
   // Trace path
   if (grid.trace && grid.trace.length > 1) {
@@ -141,7 +280,7 @@ export function renderGridMapSvg(grid: GridState): string {
   // Padlock rings & lock badges on locked ordered flags (2+, Goal when prerequisites exist)
   if (grid.flags) {
     for (const flag of grid.flags) {
-      if (!isFlagPadlocked(flag, grid.flags)) continue;
+      if (!isFlagPadlocked(flag, grid.flags, grid.floorSwitches, grid.lockedGates)) continue;
       const cx = flag.x * CELL_SIZE + CELL_SIZE / 2;
       const cy = flag.y * CELL_SIZE + CELL_SIZE / 2;
       const isRobotHere =

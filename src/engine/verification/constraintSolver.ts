@@ -176,6 +176,7 @@ export function buildSolverInitialGridState(
 
   for (const extraKey of [
     'waterCells',
+    'bridgedWaterCells',
     'lockedGates',
     'floorSwitches',
     'worldItems',
@@ -242,7 +243,9 @@ export function canonicalizeGridState(
   // 2. Water cells / bridged water bitmask & state
   const waterCells = raw.waterCells as Array<Record<string, unknown>> | undefined;
   const initWaterCells = rawInit?.waterCells as Array<Record<string, unknown>> | undefined;
-  const bridgedWater = raw.bridgedWater as Array<Record<string, unknown>> | undefined;
+  const bridgedWater = (raw.bridgedWaterCells ?? raw.bridgedWater) as
+    | Array<Record<string, unknown>>
+    | undefined;
   if (waterCells !== undefined || initWaterCells !== undefined || bridgedWater !== undefined) {
     if (initWaterCells && initWaterCells.length > 0 && initWaterCells.length <= 30) {
       let bridgedMask = 0;
@@ -265,7 +268,12 @@ export function canonicalizeGridState(
       key += `|w:${bridgedMask.toString(36)}`;
     } else if (waterCells && waterCells.length > 0) {
       const wSig = waterCells
-        .map((w) => `${w.x},${w.y}:${w.bridged || w.isBridged ? 1 : 0}`)
+        .map((w) => {
+          const isBridged =
+            Boolean(w.bridged || w.isBridged) ||
+            Boolean(bridgedWater?.some((bw) => bw.x === w.x && bw.y === w.y));
+          return `${w.x},${w.y}:${isBridged ? 1 : 0}`;
+        })
         .join(';');
       key += `|w:${wSig}`;
     } else {
@@ -355,7 +363,8 @@ export function canonicalizeGridState(
       }
       const kind = String(it.type ?? it.kind ?? 'item');
       const variant = String(
-        it.keyId ?? it.color ?? it.colorId ?? it.shape ?? it.size ?? ''
+        it.keyId ??
+          (it.color || it.shape ? `${it.color ?? ''}-${it.shape ?? ''}` : (it.colorId ?? it.size ?? ''))
       );
       activeEntries.push(`${kind}:${variant}@${it.x},${it.y}`);
     }
@@ -376,7 +385,8 @@ export function canonicalizeGridState(
       const ci = carried as Record<string, unknown>;
       const kind = String(ci.type ?? ci.kind ?? 'item');
       const variant = String(
-        ci.keyId ?? ci.color ?? ci.colorId ?? ci.shape ?? ci.size ?? ''
+        ci.keyId ??
+          (ci.color || ci.shape ? `${ci.color ?? ''}-${ci.shape ?? ''}` : (ci.colorId ?? ci.size ?? ''))
       );
       key += `|c:${kind}:${variant}`;
     }

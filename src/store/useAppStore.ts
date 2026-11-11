@@ -9,7 +9,19 @@ import {
   CodeBlock,
   SimulationSpeed,
   VariableName,
+  KeyGateShape,
+  LockedGate,
+  FloorSwitch,
+  WorldItem,
 } from '../types';
+import {
+  DEFAULT_COLOR_FOR_SHAPE,
+  cloneLockedGates,
+  cloneWorldItems,
+  resetGridInteractiveState,
+  syncWorldSwitchesAndGates,
+} from '../engine/physics';
+import { detectWorldItemTransition } from '../simulations/grid/components/WorldItemsLayer';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState, turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
 import { BeatState } from '../simulations/beat/types';
@@ -98,20 +110,22 @@ import {
   setActiveProfileId,
 } from '../services/profileService';
 
-export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
+export type EditorTool =
+  | 'NONE'
+  | 'ROBOT'
+  | 'WALL'
+  | 'FLAG'
+  | 'GOAL'
+  | 'WATER'
+  | 'PLANK'
+  | 'KEY'
+  | 'GATE'
+  | 'CRATE'
+  | 'SWITCH'
+  | 'ERASE';
 
-export const getInitialGridState = (grid: GridState): GridState => ({
-  ...grid,
-  robot: {
-    ...grid.robot,
-    x: grid.robot.initialX,
-    y: grid.robot.initialY,
-    dir: grid.robot.initialDir,
-  },
-  flags: grid.flags.map((f) => ({ ...f, collected: false })),
-  trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
-  status: 'IDLE',
-});
+export const getInitialGridState = (grid: GridState): GridState =>
+  resetGridInteractiveState(grid);
 
 export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => ({
   ...turtleState,
@@ -270,6 +284,7 @@ interface AppState {
   isPlaying: boolean;
   speed: SimulationSpeed; // ms per tick: 400 (1x), 100 (4x), 25 (16x), or 'instant'
   editorTool: EditorTool;
+  editorKeyGateVariant: KeyGateShape;
   isSolutionOpen: boolean;
   isExportImportOpen: boolean;
   isSaveModalOpen: boolean;
@@ -332,6 +347,7 @@ interface AppState {
   toggleMobileMenu: () => void;
   setMobileMenuOpen: (open: boolean) => void;
   setEditorTool: (tool: EditorTool) => void;
+  setEditorKeyGateVariant: (variant: KeyGateShape) => void;
   setSpeed: (speed: SimulationSpeed | number) => void;
   runInstantIfActive: () => void;
   setSolutionOpen: (open: boolean) => void;
@@ -1059,6 +1075,7 @@ export const useAppStore = create<AppState>((set, get) => {
     isPlaying: false,
     speed: 400,
     editorTool: 'NONE',
+    editorKeyGateVariant: 'circle',
     isSolutionOpen: false,
     isExportImportOpen: false,
     isSaveModalOpen: false,
@@ -2612,6 +2629,10 @@ export const useAppStore = create<AppState>((set, get) => {
       if (get().appMode === 'curriculum' && tool !== 'NONE') return;
       set({ editorTool: tool });
     },
+    setEditorKeyGateVariant: (variant) => {
+      if (get().appMode === 'curriculum') return;
+      set({ editorKeyGateVariant: variant });
+    },
     setSpeed: (speed) => {
       const prevSpeed = get().speed;
       const wasInstant = prevSpeed === 'instant' || (prevSpeed as any) === 0;
@@ -3082,6 +3103,38 @@ export const useAppStore = create<AppState>((set, get) => {
       const minSize = 3;
       const maxSize = 16;
       const { width, height, robot, flags, barriers } = grid;
+      const water = grid.waterCells ?? [];
+      const gates = grid.initialLockedGates ?? grid.lockedGates ?? [];
+      const switches = grid.floorSwitches ?? [];
+      const items = grid.initialWorldItems ?? grid.worldItems ?? [];
+
+      const hasEntityAtOrBeyondX = (limitX: number) =>
+        water.some((w) => w.x >= limitX) ||
+        gates.some((g) => g.x >= limitX) ||
+        switches.some((s) => s.x >= limitX) ||
+        items.some((it) => it.x >= limitX) ||
+        (grid.worldItems ?? []).some((it) => it.x >= limitX);
+
+      const hasEntityAtOrBeyondY = (limitY: number) =>
+        water.some((w) => w.y >= limitY) ||
+        gates.some((g) => g.y >= limitY) ||
+        switches.some((s) => s.y >= limitY) ||
+        items.some((it) => it.y >= limitY) ||
+        (grid.worldItems ?? []).some((it) => it.y >= limitY);
+
+      const hasEntityAtXZero = () =>
+        water.some((w) => w.x === 0) ||
+        gates.some((g) => g.x === 0) ||
+        switches.some((s) => s.x === 0) ||
+        items.some((it) => it.x === 0) ||
+        (grid.worldItems ?? []).some((it) => it.x === 0);
+
+      const hasEntityAtYZero = () =>
+        water.some((w) => w.y === 0) ||
+        gates.some((g) => g.y === 0) ||
+        switches.some((s) => s.y === 0) ||
+        items.some((it) => it.y === 0) ||
+        (grid.worldItems ?? []).some((it) => it.y === 0);
 
       if (direction === 'RIGHT') {
         const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
@@ -3091,7 +3144,8 @@ export const useAppStore = create<AppState>((set, get) => {
             robot.x >= newWidth ||
             robot.initialX >= newWidth ||
             flags.some((f) => f.x >= newWidth) ||
-            barriers.some((b) => b.x >= newWidth);
+            barriers.some((b) => b.x >= newWidth) ||
+            hasEntityAtOrBeyondX(newWidth);
           if (hasBlocked) return;
         }
       } else if (direction === 'BOTTOM') {
@@ -3102,7 +3156,8 @@ export const useAppStore = create<AppState>((set, get) => {
             robot.y >= newHeight ||
             robot.initialY >= newHeight ||
             flags.some((f) => f.y >= newHeight) ||
-            barriers.some((b) => b.y >= newHeight);
+            barriers.some((b) => b.y >= newHeight) ||
+            hasEntityAtOrBeyondY(newHeight);
           if (hasBlocked) return;
         }
       } else if (direction === 'LEFT') {
@@ -3113,7 +3168,8 @@ export const useAppStore = create<AppState>((set, get) => {
             robot.x === 0 ||
             robot.initialX === 0 ||
             flags.some((f) => f.x === 0) ||
-            barriers.some((b) => (b.orientation === 'H' ? b.x === 0 : b.x <= 1));
+            barriers.some((b) => (b.orientation === 'H' ? b.x === 0 : b.x <= 1)) ||
+            hasEntityAtXZero();
           if (hasBlocked) return;
         }
       } else if (direction === 'TOP') {
@@ -3124,7 +3180,8 @@ export const useAppStore = create<AppState>((set, get) => {
             robot.y === 0 ||
             robot.initialY === 0 ||
             flags.some((f) => f.y === 0) ||
-            barriers.some((b) => (b.orientation === 'V' ? b.y === 0 : b.y <= 1));
+            barriers.some((b) => (b.orientation === 'V' ? b.y === 0 : b.y <= 1)) ||
+            hasEntityAtYZero();
           if (hasBlocked) return;
         }
       }
@@ -3138,42 +3195,18 @@ export const useAppStore = create<AppState>((set, get) => {
         if (direction === 'RIGHT') {
           const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
           if (newWidth === width) return state;
-          if (delta < 0) {
-            const hasBlocked =
-              robot.x >= newWidth ||
-              robot.initialX >= newWidth ||
-              flags.some((f) => f.x >= newWidth) ||
-              barriers.some((b) => b.x >= newWidth);
-            if (hasBlocked) return state;
-          }
           return { grid: { ...grid, width: newWidth } };
         }
 
         if (direction === 'BOTTOM') {
           const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
           if (newHeight === height) return state;
-          if (delta < 0) {
-            const hasBlocked =
-              robot.y >= newHeight ||
-              robot.initialY >= newHeight ||
-              flags.some((f) => f.y >= newHeight) ||
-              barriers.some((b) => b.y >= newHeight);
-            if (hasBlocked) return state;
-          }
           return { grid: { ...grid, height: newHeight } };
         }
 
         if (direction === 'LEFT') {
           const newWidth = Math.max(minSize, Math.min(maxSize, width + delta));
           if (newWidth === width) return state;
-          if (delta < 0) {
-            const hasBlocked =
-              robot.x === 0 ||
-              robot.initialX === 0 ||
-              flags.some((f) => f.x === 0) ||
-              barriers.some((b) => (b.orientation === 'H' ? b.x === 0 : b.x <= 1));
-            if (hasBlocked) return state;
-          }
 
           const shiftX = delta;
           const nextRobot = {
@@ -3193,6 +3226,37 @@ export const useAppStore = create<AppState>((set, get) => {
               flags: nextFlags,
               barriers: nextBarriers,
               trace: nextTrace,
+              ...(grid.waterCells
+                ? { waterCells: grid.waterCells.map((w) => ({ ...w, x: w.x + shiftX })) }
+                : {}),
+              ...(grid.bridgedWaterCells
+                ? { bridgedWaterCells: grid.bridgedWaterCells.map((w) => ({ ...w, x: w.x + shiftX })) }
+                : {}),
+              ...(grid.lockedGates
+                ? { lockedGates: grid.lockedGates.map((g) => ({ ...g, x: g.x + shiftX })) }
+                : {}),
+              ...(grid.initialLockedGates
+                ? {
+                    initialLockedGates: grid.initialLockedGates.map((g) => ({
+                      ...g,
+                      x: g.x + shiftX,
+                    })),
+                  }
+                : {}),
+              ...(grid.floorSwitches
+                ? { floorSwitches: grid.floorSwitches.map((s) => ({ ...s, x: s.x + shiftX })) }
+                : {}),
+              ...(grid.worldItems
+                ? { worldItems: grid.worldItems.map((it) => ({ ...it, x: it.x + shiftX })) }
+                : {}),
+              ...(grid.initialWorldItems
+                ? {
+                    initialWorldItems: grid.initialWorldItems.map((it) => ({
+                      ...it,
+                      x: it.x + shiftX,
+                    })),
+                  }
+                : {}),
             },
           };
         }
@@ -3200,14 +3264,6 @@ export const useAppStore = create<AppState>((set, get) => {
         if (direction === 'TOP') {
           const newHeight = Math.max(minSize, Math.min(maxSize, height + delta));
           if (newHeight === height) return state;
-          if (delta < 0) {
-            const hasBlocked =
-              robot.y === 0 ||
-              robot.initialY === 0 ||
-              flags.some((f) => f.y === 0) ||
-              barriers.some((b) => (b.orientation === 'V' ? b.y === 0 : b.y <= 1));
-            if (hasBlocked) return state;
-          }
 
           const shiftY = delta;
           const nextRobot = {
@@ -3227,6 +3283,37 @@ export const useAppStore = create<AppState>((set, get) => {
               flags: nextFlags,
               barriers: nextBarriers,
               trace: nextTrace,
+              ...(grid.waterCells
+                ? { waterCells: grid.waterCells.map((w) => ({ ...w, y: w.y + shiftY })) }
+                : {}),
+              ...(grid.bridgedWaterCells
+                ? { bridgedWaterCells: grid.bridgedWaterCells.map((w) => ({ ...w, y: w.y + shiftY })) }
+                : {}),
+              ...(grid.lockedGates
+                ? { lockedGates: grid.lockedGates.map((g) => ({ ...g, y: g.y + shiftY })) }
+                : {}),
+              ...(grid.initialLockedGates
+                ? {
+                    initialLockedGates: grid.initialLockedGates.map((g) => ({
+                      ...g,
+                      y: g.y + shiftY,
+                    })),
+                  }
+                : {}),
+              ...(grid.floorSwitches
+                ? { floorSwitches: grid.floorSwitches.map((s) => ({ ...s, y: s.y + shiftY })) }
+                : {}),
+              ...(grid.worldItems
+                ? { worldItems: grid.worldItems.map((it) => ({ ...it, y: it.y + shiftY })) }
+                : {}),
+              ...(grid.initialWorldItems
+                ? {
+                    initialWorldItems: grid.initialWorldItems.map((it) => ({
+                      ...it,
+                      y: it.y + shiftY,
+                    })),
+                  }
+                : {}),
             },
           };
         }
@@ -3238,7 +3325,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     setCellContent: (x, y) => {
       if (get().appMode === 'curriculum') return;
-      const { editorTool, grid } = get();
+      const { editorTool, editorKeyGateVariant, grid } = get();
       if (editorTool === 'ROBOT') {
         recordMutation('Place/rotate robot');
         const nextDir: Direction =
@@ -3251,6 +3338,10 @@ export const useAppStore = create<AppState>((set, get) => {
               ? 'WEST'
               : 'NORTH'
             : grid.robot.dir;
+        const nextWater = grid.waterCells?.filter((w) => !(w.x === x && w.y === y));
+        const nextGates = (grid.initialLockedGates ?? grid.lockedGates)?.filter(
+          (g) => !(g.x === x && g.y === y)
+        );
         set({
           grid: {
             ...grid,
@@ -3263,6 +3354,13 @@ export const useAppStore = create<AppState>((set, get) => {
               initialY: y,
               initialDir: nextDir,
             },
+            ...(nextWater !== undefined ? { waterCells: nextWater } : {}),
+            ...(nextGates !== undefined
+              ? {
+                  lockedGates: cloneLockedGates(nextGates, true),
+                  initialLockedGates: cloneLockedGates(nextGates, true),
+                }
+              : {}),
             trace: [{ x, y }],
           },
         });
@@ -3291,12 +3389,222 @@ export const useAppStore = create<AppState>((set, get) => {
           collected: false,
         });
         set({ grid: { ...grid, flags: nextFlags } });
+      } else if (editorTool === 'WATER') {
+        const currentWater = grid.waterCells ?? [];
+        const exists = currentWater.some((w) => w.x === x && w.y === y);
+        if (!exists && grid.robot.initialX === x && grid.robot.initialY === y) {
+          return;
+        }
+        recordMutation(exists ? 'Remove water' : 'Place water');
+        const nextWater = exists
+          ? currentWater.filter((w) => !(w.x === x && w.y === y))
+          : [...currentWater, { x, y }];
+        const baseGates = (grid.initialLockedGates ?? grid.lockedGates ?? []).filter(
+          (g) => exists || !(g.x === x && g.y === y)
+        );
+        const baseSwitches = (grid.floorSwitches ?? []).filter(
+          (s) => exists || !(s.x === x && s.y === y)
+        );
+        const baseItems = (grid.initialWorldItems ?? grid.worldItems ?? []).filter(
+          (it) => exists || !(it.x === x && it.y === y)
+        );
+        const synced = syncWorldSwitchesAndGates(baseSwitches, baseGates, baseItems);
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            waterCells: nextWater,
+            bridgedWaterCells: [],
+            ...(grid.lockedGates !== undefined || baseGates.length > 0
+              ? {
+                  lockedGates: synced.lockedGates ?? [],
+                  initialLockedGates: cloneLockedGates(baseGates, true),
+                }
+              : {}),
+            ...(grid.floorSwitches !== undefined || baseSwitches.length > 0
+              ? { floorSwitches: synced.floorSwitches ?? [] }
+              : {}),
+            ...(grid.worldItems !== undefined || baseItems.length > 0
+              ? {
+                  worldItems: cloneWorldItems(baseItems),
+                  initialWorldItems: cloneWorldItems(baseItems),
+                }
+              : {}),
+          }),
+        });
+      } else if (editorTool === 'GATE') {
+        if (grid.robot.initialX === x && grid.robot.initialY === y) {
+          return;
+        }
+        const shape = editorKeyGateVariant;
+        const color = DEFAULT_COLOR_FOR_SHAPE[shape];
+        const currentGates = cloneLockedGates(grid.initialLockedGates ?? grid.lockedGates ?? [], true);
+        const existingAtCell = currentGates.find((g) => g.x === x && g.y === y);
+        const isSameVariant =
+          existingAtCell && existingAtCell.shape === shape && existingAtCell.color === color;
+
+        recordMutation(isSameVariant ? 'Remove gate' : 'Place gate');
+        const nextGates: LockedGate[] = currentGates.filter((g) => !(g.x === x && g.y === y));
+        if (!isSameVariant) {
+          nextGates.push({
+            id: existingAtCell?.id ?? `gate_${Date.now()}_${x}_${y}`,
+            x,
+            y,
+            shape,
+            color,
+            unlocked: false,
+            unlockedByKey: false,
+          });
+        }
+        const nextWater = (grid.waterCells ?? []).filter((w) => !(w.x === x && w.y === y));
+        const nextSwitches = (grid.floorSwitches ?? []).filter((s) => !(s.x === x && s.y === y));
+        const nextItems = (grid.initialWorldItems ?? grid.worldItems ?? []).filter(
+          (it) => !(it.x === x && it.y === y)
+        );
+        const synced = syncWorldSwitchesAndGates(nextSwitches, nextGates, nextItems);
+
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            ...(grid.waterCells !== undefined ? { waterCells: nextWater } : {}),
+            lockedGates: synced.lockedGates ?? [],
+            initialLockedGates: cloneLockedGates(nextGates, true),
+            ...(grid.floorSwitches !== undefined ? { floorSwitches: synced.floorSwitches ?? [] } : {}),
+            ...(grid.worldItems !== undefined || grid.initialWorldItems !== undefined
+              ? {
+                  worldItems: cloneWorldItems(nextItems),
+                  initialWorldItems: cloneWorldItems(nextItems),
+                }
+              : {}),
+          }),
+        });
+      } else if (editorTool === 'SWITCH') {
+        const currentSwitches = grid.floorSwitches ?? [];
+        const existingSwitch = currentSwitches.find((s) => s.x === x && s.y === y);
+        recordMutation(existingSwitch ? 'Remove floor switch' : 'Place floor switch');
+
+        const nextSwitches: FloorSwitch[] = existingSwitch
+          ? currentSwitches.filter((s) => !(s.x === x && s.y === y))
+          : [
+              ...currentSwitches,
+              {
+                id: `switch_${Date.now()}_${x}_${y}`,
+                x,
+                y,
+                requiredForGoal: true,
+                active: false,
+              },
+            ];
+        const nextWater = (grid.waterCells ?? []).filter((w) => !(w.x === x && w.y === y));
+        const nextGates = cloneLockedGates(
+          (grid.initialLockedGates ?? grid.lockedGates ?? []).filter((g) => !(g.x === x && g.y === y)),
+          true
+        );
+        const baseItems = cloneWorldItems(grid.initialWorldItems ?? grid.worldItems ?? []);
+        const synced = syncWorldSwitchesAndGates(nextSwitches, nextGates, baseItems);
+
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            ...(grid.waterCells !== undefined ? { waterCells: nextWater } : {}),
+            ...(grid.lockedGates !== undefined
+              ? {
+                  lockedGates: synced.lockedGates ?? [],
+                  initialLockedGates: cloneLockedGates(nextGates, true),
+                }
+              : {}),
+            floorSwitches: synced.floorSwitches ?? [],
+          }),
+        });
+      } else if (editorTool === 'KEY' || editorTool === 'PLANK' || editorTool === 'CRATE') {
+        const targetType =
+          editorTool === 'KEY' ? 'key' : editorTool === 'PLANK' ? 'plank' : 'crate';
+        const shape = editorKeyGateVariant;
+        const color = DEFAULT_COLOR_FOR_SHAPE[shape];
+        const currentItems = cloneWorldItems(grid.initialWorldItems ?? grid.worldItems ?? []);
+        const existingItem = currentItems.find((it) => it.x === x && it.y === y);
+        const isSameItem =
+          existingItem &&
+          existingItem.type === targetType &&
+          (targetType !== 'key' ||
+            (existingItem.shape === shape && existingItem.color === color));
+
+        recordMutation(isSameItem ? `Remove ${targetType}` : `Place ${targetType}`);
+        const nextItems: WorldItem[] = currentItems.filter((it) => !(it.x === x && it.y === y));
+        if (!isSameItem) {
+          nextItems.push({
+            id: existingItem?.id ?? `${targetType}_${Date.now()}_${x}_${y}`,
+            type: targetType,
+            x,
+            y,
+            ...(targetType === 'key' ? { shape, color } : {}),
+          });
+        }
+        const nextWater = (grid.waterCells ?? []).filter((w) => !(w.x === x && w.y === y));
+        const nextGates = cloneLockedGates(
+          (grid.initialLockedGates ?? grid.lockedGates ?? []).filter((g) => !(g.x === x && g.y === y)),
+          true
+        );
+        const synced = syncWorldSwitchesAndGates(grid.floorSwitches, nextGates, nextItems);
+
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            ...(grid.waterCells !== undefined ? { waterCells: nextWater } : {}),
+            ...(grid.lockedGates !== undefined
+              ? {
+                  lockedGates: synced.lockedGates ?? [],
+                  initialLockedGates: cloneLockedGates(nextGates, true),
+                }
+              : {}),
+            ...(grid.floorSwitches !== undefined ? { floorSwitches: synced.floorSwitches ?? [] } : {}),
+            worldItems: cloneWorldItems(nextItems),
+            initialWorldItems: cloneWorldItems(nextItems),
+          }),
+        });
       } else if (editorTool === 'ERASE') {
         const hasFlag = grid.flags.some((f) => f.x === x && f.y === y);
-        if (!hasFlag) return;
+        const hasWater = Boolean(grid.waterCells?.some((w) => w.x === x && w.y === y));
+        const baseGates = grid.initialLockedGates ?? grid.lockedGates ?? [];
+        const hasGate = baseGates.some((g) => g.x === x && g.y === y);
+        const hasSwitch = Boolean(grid.floorSwitches?.some((s) => s.x === x && s.y === y));
+        const baseItems = grid.initialWorldItems ?? grid.worldItems ?? [];
+        const hasItem =
+          baseItems.some((it) => it.x === x && it.y === y) ||
+          Boolean(grid.worldItems?.some((it) => it.x === x && it.y === y));
+
+        if (!hasFlag && !hasWater && !hasGate && !hasSwitch && !hasItem) return;
+
         recordMutation('Erase cell');
         const nextFlags = grid.flags.filter((f) => !(f.x === x && f.y === y));
-        set({ grid: { ...grid, flags: nextFlags } });
+        const nextWater = grid.waterCells?.filter((w) => !(w.x === x && w.y === y));
+        const nextGates = cloneLockedGates(
+          baseGates.filter((g) => !(g.x === x && g.y === y)),
+          true
+        );
+        const nextSwitches = grid.floorSwitches?.filter((s) => !(s.x === x && s.y === y));
+        const nextItems = cloneWorldItems(baseItems.filter((it) => !(it.x === x && it.y === y)));
+        const synced = syncWorldSwitchesAndGates(nextSwitches, nextGates, nextItems);
+
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            flags: nextFlags,
+            ...(nextWater !== undefined ? { waterCells: nextWater, bridgedWaterCells: [] } : {}),
+            ...(grid.lockedGates !== undefined || grid.initialLockedGates !== undefined
+              ? {
+                  lockedGates: synced.lockedGates ?? [],
+                  initialLockedGates: cloneLockedGates(nextGates, true),
+                }
+              : {}),
+            ...(nextSwitches !== undefined ? { floorSwitches: synced.floorSwitches ?? [] } : {}),
+            ...(grid.worldItems !== undefined || grid.initialWorldItems !== undefined
+              ? {
+                  worldItems: cloneWorldItems(nextItems),
+                  initialWorldItems: cloneWorldItems(nextItems),
+                }
+              : {}),
+          }),
+        });
       }
       get().runInstantIfActive();
     },
@@ -3405,19 +3713,30 @@ export const useAppStore = create<AppState>((set, get) => {
           : get().activeScope;
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
+        const nextGridState = res.nextGrid as GridState;
+        const worldTransition = !isPausedOnPlaceholder
+          ? detectWorldItemTransition(grid, nextGridState)
+          : null;
 
-        set({
+        set((prev) => ({
           runtime: res.nextRuntime,
-          grid: res.nextGrid as GridState,
+          grid: nextGridState,
           activeScope,
-          isPlaying: !res.done && !isPausedOnPlaceholder && get().isPlaying,
+          isPlaying: !res.done && !isPausedOnPlaceholder && prev.isPlaying,
           ...(isPausedOnPlaceholder
             ? {
                 selectedBlockId: res.nextRuntime.activeBlockId,
                 statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
               }
+            : worldTransition?.announcement
+            ? {
+                statusAnnouncement:
+                  prev.statusAnnouncement === worldTransition.announcement
+                    ? `${worldTransition.announcement}\u00A0`
+                    : worldTransition.announcement,
+              }
             : {}),
-        });
+        }));
 
         if (
           (res.nextGrid as GridState).status === 'SUCCESS' ||
