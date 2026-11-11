@@ -10,6 +10,8 @@ import {
 } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState } from '../simulations/turtle/turtleEnvironment';
+import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
+import { createInitialBeatState } from '../simulations/beat/beatEnvironment';
 import type { EditorTool, HistorySnapshot, SandboxModeSnapshot } from '../store/useAppStore';
 import type { AppMode } from '../data/curriculum/types';
 
@@ -25,12 +27,13 @@ export interface AppUpdateStateInput {
   activeActivityVersion?: number;
   curriculumWorkspaces?: Record<string, WorkspaceState>;
   sandboxSnapshot?: SandboxModeSnapshot | null;
-  activeSimId: 'grid' | 'turtle';
+  activeSimId: 'grid' | 'turtle' | 'beat';
   currentLevel: number;
   workspace: WorkspaceState;
   savedWorkspaces: Record<string, WorkspaceState>;
   grid: GridState;
   turtleState: TurtleState;
+  beatState?: BeatState;
   runtime: InterpreterRuntimeState | null;
   activeScope: ScopeType;
   selectedBlockId: string | null;
@@ -276,6 +279,69 @@ function sanitizeTurtleState(raw: unknown): TurtleState {
   };
 }
 
+function sanitizeBeatState(raw: unknown): BeatState {
+  const defaults = createInitialBeatState(false);
+  if (!raw || typeof raw !== 'object') {
+    return defaults;
+  }
+  const b = raw as Record<string, any>;
+  const leds: (string | null)[][] = [];
+  for (let r = 0; r < BEAT_GRID_SIZE; r++) {
+    const row: (string | null)[] = [];
+    const srcRow = Array.isArray(b.leds) && Array.isArray(b.leds[r]) ? b.leds[r] : null;
+    for (let c = 0; c < BEAT_GRID_SIZE; c++) {
+      const cell = srcRow ? srcRow[c] : null;
+      row.push(typeof cell === 'string' && cell ? cell : null);
+    }
+    leds.push(row);
+  }
+
+  const rawCursor = b.cursor && typeof b.cursor === 'object' ? b.cursor : defaults.cursor;
+  const cursorDir: Direction = VALID_DIRECTIONS.includes(rawCursor.dir)
+    ? rawCursor.dir
+    : defaults.cursor.dir;
+  const status: SimulationStatus = VALID_STATUSES.includes(b.status) ? b.status : 'IDLE';
+
+  return {
+    leds,
+    activeColor:
+      typeof b.activeColor === 'string' && b.activeColor ? b.activeColor : defaults.activeColor,
+    isColorCustomized: Boolean(b.isColorCustomized),
+    beatIndex:
+      typeof b.beatIndex === 'number' && Number.isFinite(b.beatIndex) && b.beatIndex >= 0
+        ? Math.floor(b.beatIndex)
+        : 0,
+    stepCount:
+      typeof b.stepCount === 'number' && Number.isFinite(b.stepCount) && b.stepCount >= 0
+        ? Math.floor(b.stepCount)
+        : 0,
+    lastTriggeredEvent:
+      b.lastTriggeredEvent && typeof b.lastTriggeredEvent === 'object'
+        ? JSON.parse(JSON.stringify(b.lastTriggeredEvent))
+        : null,
+    cursor: {
+      x:
+        typeof rawCursor.x === 'number' && rawCursor.x >= 1 && rawCursor.x <= BEAT_GRID_SIZE
+          ? Math.floor(rawCursor.x)
+          : defaults.cursor.x,
+      y:
+        typeof rawCursor.y === 'number' && rawCursor.y >= 1 && rawCursor.y <= BEAT_GRID_SIZE
+          ? Math.floor(rawCursor.y)
+          : defaults.cursor.y,
+      dir: cursorDir,
+      visible: Boolean(rawCursor.visible),
+    },
+    isMuted: Boolean(b.isMuted),
+    status: status === 'RUNNING' ? 'PAUSED' : status,
+  };
+}
+
+function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' {
+  if (raw === 'turtle') return 'turtle';
+  if (raw === 'beat') return 'beat';
+  return 'grid';
+}
+
 function sanitizeSpeed(raw: unknown): SimulationSpeed {
   if (raw === 'instant' || raw === 0) return 'instant';
   if (raw === 400 || raw === 100 || raw === 25) return raw;
@@ -292,9 +358,10 @@ function sanitizeHistoryList(raw: unknown, fallbackGrid: GridState): HistorySnap
       workspace: sanitizeWorkspace(s.workspace),
       grid: sanitizeGridState(s.grid, fallbackGrid),
       turtleState: s.turtleState ? sanitizeTurtleState(s.turtleState) : undefined,
+      beatState: s.beatState ? sanitizeBeatState(s.beatState) : undefined,
       activeScope: VALID_SCOPES.includes(s.activeScope) ? s.activeScope : 'MAIN',
       selectedBlockId: typeof s.selectedBlockId === 'string' ? s.selectedBlockId : null,
-      activeSimId: s.activeSimId === 'turtle' ? 'turtle' : 'grid',
+      activeSimId: sanitizeSimId(s.activeSimId),
       description: typeof s.description === 'string' ? s.description : undefined,
     });
   }
@@ -331,6 +398,9 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     ...JSON.parse(JSON.stringify(state.turtleState)),
     activeAnimation: null,
   };
+  const cleanBeat: BeatState = state.beatState
+    ? JSON.parse(JSON.stringify(state.beatState))
+    : createInitialBeatState(false);
 
   const payload: PersistedUpdatePayload = {
     version: UPDATE_SNAPSHOT_VERSION,
@@ -348,6 +418,7 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     savedWorkspaces: JSON.parse(JSON.stringify(state.savedWorkspaces || {})),
     grid: JSON.parse(JSON.stringify(state.grid)),
     turtleState: cleanTurtle,
+    beatState: cleanBeat,
     runtime: state.runtime ? JSON.parse(JSON.stringify(state.runtime)) : null,
     activeScope: state.activeScope,
     selectedBlockId: state.selectedBlockId,
@@ -427,7 +498,7 @@ export function consumeRestoredStateAfterUpdate(
       }
     }
 
-    const activeSimId: 'grid' | 'turtle' = parsed.activeSimId === 'turtle' ? 'turtle' : 'grid';
+    const activeSimId: 'grid' | 'turtle' | 'beat' = sanitizeSimId(parsed.activeSimId);
     const currentLevel =
       typeof parsed.currentLevel === 'number' && Number.isInteger(parsed.currentLevel) && parsed.currentLevel >= 1
         ? parsed.currentLevel
@@ -451,13 +522,14 @@ export function consumeRestoredStateAfterUpdate(
         }
       }
       sandboxSnapshot = {
-        activeSimId: snap.activeSimId === 'turtle' ? 'turtle' : 'grid',
+        activeSimId: sanitizeSimId(snap.activeSimId),
         currentLevel:
           typeof snap.currentLevel === 'number' && Number.isInteger(snap.currentLevel) && snap.currentLevel >= 1
             ? snap.currentLevel
             : 1,
         grid: sanitizeGridState(snap.grid, fallbackGrid),
         turtleState: sanitizeTurtleState(snap.turtleState),
+        beatState: sanitizeBeatState(snap.beatState),
         workspace: sanitizeWorkspace(snap.workspace),
         savedWorkspaces: snapSaved,
       };
@@ -465,6 +537,7 @@ export function consumeRestoredStateAfterUpdate(
 
     const grid = sanitizeGridState(parsed.grid, fallbackGrid);
     const turtleState = sanitizeTurtleState(parsed.turtleState);
+    const beatState = sanitizeBeatState(parsed.beatState);
     const runtime = sanitizeRuntime(parsed.runtime);
     const activeScope: ScopeType = VALID_SCOPES.includes(parsed.activeScope) ? parsed.activeScope : 'MAIN';
     const selectedBlockId = typeof parsed.selectedBlockId === 'string' ? parsed.selectedBlockId : null;
@@ -489,6 +562,7 @@ export function consumeRestoredStateAfterUpdate(
       savedWorkspaces,
       grid,
       turtleState,
+      beatState,
       runtime,
       activeScope,
       selectedBlockId,

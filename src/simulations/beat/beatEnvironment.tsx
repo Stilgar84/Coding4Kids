@@ -1,0 +1,478 @@
+import {
+  Bell,
+  Eraser,
+  Heart,
+  Hourglass,
+  Smile,
+  Sparkles,
+  Star,
+} from 'lucide-react';
+import {
+  SimActionResult,
+  SimPaletteItem,
+  SimulationEnvironment,
+} from '../../engine/simulation/types';
+import { registerSimulation } from '../../engine/simulation/registry';
+import {
+  BEAT_GRID_SIZE,
+  BEAT_LED_PALETTE,
+  BeatPresetName,
+  BeatState,
+  DEFAULT_BEAT_LED_COLOR,
+} from './types';
+import {
+  cloneLedGrid,
+  createEmptyLedGrid,
+  createPresetLedGrid,
+  getPresetDef,
+} from './presets';
+import { BeatCanvas } from './components/BeatCanvas';
+import { BeatToolbarTools } from './components/BeatToolbarTools';
+
+export function createInitialBeatState(isMuted: boolean = false): BeatState {
+  return {
+    leds: createEmptyLedGrid(),
+    activeColor: DEFAULT_BEAT_LED_COLOR,
+    isColorCustomized: false,
+    beatIndex: 0,
+    stepCount: 0,
+    lastTriggeredEvent: null,
+    cursor: {
+      x: 1,
+      y: 1,
+      dir: 'EAST',
+      visible: false,
+    },
+    isMuted,
+    status: 'IDLE',
+  };
+}
+
+export function resetBeatState(state?: BeatState): BeatState {
+  return createInitialBeatState(Boolean(state?.isMuted));
+}
+
+export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
+  {
+    id: 'beat-drum-kick',
+    actionType: 'DRUM_KICK',
+    name: 'Kick Drum',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <svg
+        className={`w-6 h-6 md:w-7 md:h-7 ${
+          isActive ? 'stroke-slate-950 text-slate-950' : 'stroke-white text-rose-200'
+        }`}
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="13" r="8" />
+        <circle cx="12" cy="13" r="3" fill="currentColor" stroke="none" />
+        <line x1="6" y1="3" x2="10" y2="6" />
+        <line x1="18" y1="3" x2="14" y2="6" />
+      </svg>
+    ),
+    bgClass: 'bg-rose-600 hover:bg-rose-500',
+    borderClass: 'border-rose-400',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-drum-snare',
+    actionType: 'DRUM_SNARE',
+    name: 'Snare Drum',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <svg
+        className={`w-6 h-6 md:w-7 md:h-7 ${
+          isActive ? 'stroke-slate-950' : 'stroke-white'
+        }`}
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <line x1="4" y1="3" x2="15" y2="10" />
+        <line x1="20" y1="3" x2="9" y2="10" />
+        <rect x="4" y="12" width="16" height="8" rx="2" />
+        <polyline points="6 12 9 20 12 12 15 20 18 12" strokeWidth="1.6" />
+      </svg>
+    ),
+    bgClass: 'bg-orange-600 hover:bg-orange-500',
+    borderClass: 'border-orange-400',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-drum-clap',
+    actionType: 'DRUM_CLAP',
+    name: 'Handclap',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <svg
+        className={`w-6 h-6 md:w-7 md:h-7 ${
+          isActive ? 'stroke-slate-950 text-slate-950' : 'stroke-white text-fuchsia-200'
+        }`}
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {/* Starburst accent rays */}
+        <line x1="12" y1="2" x2="12" y2="5" />
+        <line x1="5" y1="5" x2="7.2" y2="7.2" />
+        <line x1="19" y1="5" x2="16.8" y2="7.2" />
+        {/* Clapping hands silhouette */}
+        <path d="M8 14l-2.5-2.5a1.5 1.5 0 0 1 2.1-2.1L11 12.8" />
+        <path d="M16 14l2.5-2.5a1.5 1.5 0 0 0-2.1-2.1L13 12.8" />
+        <path d="M7.5 14.5L11 19h2l3.5-4.5" />
+      </svg>
+    ),
+    bgClass: 'bg-fuchsia-600 hover:bg-fuchsia-500',
+    borderClass: 'border-fuchsia-400',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-play-chime',
+    actionType: 'PLAY_CHIME',
+    name: 'Play Chime',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <div className="relative flex items-center justify-center">
+        <Bell
+          className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+            isActive ? 'text-slate-950 fill-slate-950/20' : 'text-white fill-white/20'
+          }`}
+        />
+        <Sparkles
+          className={`w-3.5 h-3.5 absolute -top-1.5 -right-1.5 stroke-[2.5] ${
+            isActive ? 'text-slate-950' : 'text-yellow-100'
+          }`}
+        />
+      </div>
+    ),
+    bgClass: 'bg-amber-500 hover:bg-amber-400',
+    borderClass: 'border-amber-300',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-stamp-heart',
+    actionType: 'STAMP_HEART',
+    name: 'Stamp Heart',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <Heart
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950 fill-slate-950' : 'text-white fill-pink-200/80'
+        }`}
+      />
+    ),
+    bgClass: 'bg-pink-600 hover:bg-pink-500',
+    borderClass: 'border-pink-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-stamp-star',
+    actionType: 'STAMP_STAR',
+    name: 'Stamp Star',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <Star
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950 fill-slate-950' : 'text-amber-200 fill-amber-300/85'
+        }`}
+      />
+    ),
+    bgClass: 'bg-indigo-600 hover:bg-indigo-500',
+    borderClass: 'border-indigo-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-stamp-smile',
+    actionType: 'STAMP_SMILE',
+    name: 'Stamp Smile',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <Smile
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-white'
+        }`}
+      />
+    ),
+    bgClass: 'bg-cyan-600 hover:bg-cyan-500',
+    borderClass: 'border-cyan-300',
+    supportsRepeat: false,
+  },
+  {
+    id: 'beat-wait-beat',
+    actionType: 'WAIT_BEAT',
+    name: 'Wait 1 Beat',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <Hourglass
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-sky-200'
+        }`}
+      />
+    ),
+    bgClass: 'bg-slate-600 hover:bg-slate-500',
+    borderClass: 'border-slate-400',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-clear-leds',
+    actionType: 'CLEAR_LEDS',
+    name: 'Clear LEDs',
+    category: 'action',
+    icon: ({ isActive }) => (
+      <Eraser
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-rose-300'
+        }`}
+      />
+    ),
+    bgClass: 'bg-slate-800 hover:bg-slate-700',
+    borderClass: 'border-slate-500',
+    supportsRepeat: false,
+  },
+];
+
+function resolveLedColor(rawColor: unknown, fallback: string): string {
+  if (typeof rawColor === 'number') {
+    const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(rawColor)));
+    return BEAT_LED_PALETTE[idx].hex;
+  }
+  if (typeof rawColor === 'string' && rawColor.trim()) {
+    const trimmed = rawColor.trim();
+    if (trimmed.startsWith('#')) return trimmed;
+    const byNum = Number(trimmed);
+    if (Number.isFinite(byNum)) {
+      // 1..8 variable index or 0..7 colorId
+      const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(byNum) - 1));
+      return BEAT_LED_PALETTE[idx].hex;
+    }
+  }
+  return fallback;
+}
+
+export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
+  id: 'beat',
+  name: 'Beat & Light Matrix',
+  icon: <span className="text-xl">🎵</span>,
+
+  paletteItems: BEAT_PALETTE_ITEMS,
+
+  createInitialState: () => createInitialBeatState(false),
+
+  resetState: (state: BeatState): BeatState => resetBeatState(state),
+
+  executeAction: (
+    actionType: string,
+    state: BeatState,
+    options?: { repeatCount?: number; params?: Record<string, any> }
+  ): SimActionResult<BeatState> => {
+    const nextBeatIndex = (state.beatIndex || 0) + 1;
+    const nextStepCount = (state.stepCount || 0) + 1;
+    let nextLeds = state.leds;
+    let nextActiveColor = state.activeColor || DEFAULT_BEAT_LED_COLOR;
+    let nextIsColorCustomized = Boolean(state.isColorCustomized);
+    let nextCursor = state.cursor || { x: 1, y: 1, dir: 'EAST' as const, visible: false };
+    let lastTriggeredEvent: BeatState['lastTriggeredEvent'] = state.lastTriggeredEvent;
+
+    switch (actionType) {
+      case 'DRUM_KICK': {
+        lastTriggeredEvent = {
+          kind: 'DRUM_KICK',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      case 'DRUM_SNARE': {
+        lastTriggeredEvent = {
+          kind: 'DRUM_SNARE',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      case 'DRUM_CLAP': {
+        lastTriggeredEvent = {
+          kind: 'DRUM_CLAP',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      case 'PLAY_CHIME': {
+        lastTriggeredEvent = {
+          kind: 'PLAY_CHIME',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      case 'STAMP_HEART':
+      case 'STAMP_STAR':
+      case 'STAMP_SMILE':
+      case 'STAMP_PRESET': {
+        const requestedPreset: BeatPresetName | number | string =
+          actionType === 'STAMP_HEART'
+            ? 'HEART'
+            : actionType === 'STAMP_STAR'
+            ? 'STAR'
+            : actionType === 'STAMP_SMILE'
+            ? 'SMILE'
+            : options?.params?.preset ?? options?.params?.presetId ?? 'HEART';
+        const presetDef = getPresetDef(requestedPreset);
+        const stampColor = nextIsColorCustomized ? nextActiveColor : presetDef.defaultColor;
+        nextLeds = createPresetLedGrid(presetDef.name, stampColor);
+        lastTriggeredEvent = {
+          kind: 'STAMP',
+          actionType,
+          beatIndex: nextBeatIndex,
+          preset: presetDef.name,
+          color: stampColor,
+        };
+        break;
+      }
+
+      case 'WAIT_BEAT': {
+        lastTriggeredEvent = {
+          kind: 'WAIT_BEAT',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      case 'CLEAR_LEDS': {
+        nextLeds = createEmptyLedGrid();
+        lastTriggeredEvent = {
+          kind: 'CLEAR_LEDS',
+          actionType,
+          beatIndex: nextBeatIndex,
+        };
+        break;
+      }
+
+      // Forward-compatible hooks for Commit 13 (Tier 2) & Commit 17 (Tier 3 Cursor)
+      case 'SET_LED_COLOR': {
+        nextActiveColor = resolveLedColor(options?.params?.color, nextActiveColor);
+        nextIsColorCustomized = true;
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      case 'PLAY_NOTE': {
+        const pitch = Math.max(1, Math.min(8, Math.round(Number(options?.params?.pitch ?? 1))));
+        const durationBeats = Number(options?.params?.duration ?? 1) || 1;
+        lastTriggeredEvent = {
+          kind: 'PLAY_NOTE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          pitch,
+          durationBeats,
+        };
+        break;
+      }
+
+      case 'LIGHT_ROW': {
+        const rowIdx = Math.max(
+          0,
+          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
+        );
+        nextLeds = cloneLedGrid(state.leds);
+        for (let c = 0; c < BEAT_GRID_SIZE; c++) {
+          nextLeds[rowIdx][c] = nextActiveColor;
+        }
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      case 'LIGHT_COL': {
+        const colIdx = Math.max(
+          0,
+          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.x ?? 1)) - 1)
+        );
+        nextLeds = cloneLedGrid(state.leds);
+        for (let r = 0; r < BEAT_GRID_SIZE; r++) {
+          nextLeds[r][colIdx] = nextActiveColor;
+        }
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      case 'LIGHT_PIXEL': {
+        const colIdx = Math.max(
+          0,
+          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.x ?? 1)) - 1)
+        );
+        const rowIdx = Math.max(
+          0,
+          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
+        );
+        nextLeds = cloneLedGrid(state.leds);
+        nextLeds[rowIdx][colIdx] = nextActiveColor;
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      default:
+        break;
+    }
+
+    const nextState: BeatState = {
+      ...state,
+      leds: nextLeds,
+      activeColor: nextActiveColor,
+      isColorCustomized: nextIsColorCustomized,
+      beatIndex: nextBeatIndex,
+      stepCount: nextStepCount,
+      lastTriggeredEvent,
+      cursor: nextCursor,
+      status: 'RUNNING',
+    };
+
+    return {
+      nextState,
+      status: 'RUNNING',
+    };
+  },
+
+  evaluateCompletion: () => 'IDLE',
+
+  Renderer: BeatCanvas,
+
+  ToolsComponent: BeatToolbarTools,
+};
+
+// Self-register so getSimEnvironment('beat') is always populated regardless of import order
+registerSimulation(beatSimulationEnvironment);

@@ -61,6 +61,7 @@ export const MobileDrawerMenu: React.FC = () => {
     toggleMapHidden,
     grid,
     turtleState,
+    beatState,
     runtime,
   } = useAppStore();
 
@@ -104,7 +105,8 @@ export const MobileDrawerMenu: React.FC = () => {
     : undefined;
   const ToolsComponent = currentSimEnv?.ToolsComponent;
   const showToolsSection = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
-  const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+  const currentSimState =
+    activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
   const activeAvatar = getProfileAvatar(activeProfile?.avatarId ?? 'robot');
@@ -421,11 +423,11 @@ export const MobileDrawerMenu: React.FC = () => {
                 <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
                   Environment
                 </span>
-                <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
                   <button
                     data-testid="drawer-tab-grid"
                     onClick={() => setSimEnvironment('grid')}
-                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
+                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
                       activeSimId === 'grid'
                         ? 'bg-sky-600 text-white shadow-md'
                         : 'text-slate-400 hover:text-slate-200'
@@ -437,7 +439,7 @@ export const MobileDrawerMenu: React.FC = () => {
                   <button
                     data-testid="drawer-tab-turtle"
                     onClick={() => setSimEnvironment('turtle')}
-                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
+                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
                       activeSimId === 'turtle'
                         ? 'bg-emerald-600 text-white shadow-md'
                         : 'text-slate-400 hover:text-slate-200'
@@ -445,6 +447,18 @@ export const MobileDrawerMenu: React.FC = () => {
                   >
                     <span>🐢</span>
                     <span>Turtle</span>
+                  </button>
+                  <button
+                    data-testid="drawer-tab-beat"
+                    onClick={() => setSimEnvironment('beat')}
+                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
+                      activeSimId === 'beat'
+                        ? 'bg-fuchsia-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>🎵</span>
+                    <span>Beat</span>
                   </button>
                 </div>
               </div>
@@ -613,7 +627,11 @@ export const MobileDrawerMenu: React.FC = () => {
           {showToolsSection && ToolsComponent && (
             <div className="flex flex-col gap-2">
               <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                {activeSimId === 'grid' ? 'Map Editor Tools' : 'Canvas Tools'}
+                {activeSimId === 'grid'
+                  ? 'Map Editor Tools'
+                  : activeSimId === 'beat'
+                  ? 'Beat Pad Tools'
+                  : 'Canvas Tools'}
               </span>
               <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-center">
                 <ToolsComponent state={currentSimState} />

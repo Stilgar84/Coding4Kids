@@ -12,12 +12,20 @@ import {
 } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState, turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
+import { BeatState } from '../simulations/beat/types';
+import {
+  beatSimulationEnvironment,
+  createInitialBeatState,
+  resetBeatState,
+} from '../simulations/beat/beatEnvironment';
+import { beatSynth } from '../simulations/beat/beatSynth';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { getSimEnvironment, registerSimulation } from '../engine/simulation/registry';
 
 // Register environments
 registerSimulation(gridSimulationEnvironment);
 registerSimulation(turtleSimulationEnvironment);
+registerSimulation(beatSimulationEnvironment);
 import {
   createInitialInterpreterState,
   tickInterpreter,
@@ -99,6 +107,9 @@ export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => 
   activeAnimation: null,
 });
 
+export const getInitialBeatState = (beatState?: BeatState): BeatState =>
+  resetBeatState(beatState);
+
 export const createEmptyWorkspace = (): WorkspaceState => ({
   MAIN: [],
   F1: [],
@@ -141,21 +152,28 @@ export const cloneWorkspaceWithFreshIds = (ws: WorkspaceState): WorkspaceState =
 };
 
 export interface SandboxModeSnapshot {
-  activeSimId: 'grid' | 'turtle';
+  activeSimId: 'grid' | 'turtle' | 'beat';
   currentLevel: number;
   grid: GridState;
   turtleState: TurtleState;
+  beatState?: BeatState;
   workspace: WorkspaceState;
   savedWorkspaces: Record<string, WorkspaceState>;
 }
 
 export function computeInstantSimulation(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle',
+  simId: 'grid' | 'turtle' | 'beat',
   grid: GridState,
-  turtleState: TurtleState
+  turtleState: TurtleState,
+  beatState?: BeatState
 ) {
-  const initialState = simId === 'grid' ? getInitialGridState(grid) : getInitialTurtleState(turtleState);
+  const initialState =
+    simId === 'grid'
+      ? getInitialGridState(grid)
+      : simId === 'beat'
+      ? getInitialBeatState(beatState)
+      : getInitialTurtleState(turtleState);
   return runHeadlessSimulation(workspace, simId, initialState, MAX_INSTANT_SIMULATION_STEPS);
 }
 
@@ -172,9 +190,10 @@ export interface HistorySnapshot {
   workspace: WorkspaceState;
   grid: GridState;
   turtleState?: TurtleState;
+  beatState?: BeatState;
   activeScope: ScopeType;
   selectedBlockId: string | null;
-  activeSimId: 'grid' | 'turtle';
+  activeSimId: 'grid' | 'turtle' | 'beat';
   description?: string;
 }
 
@@ -206,10 +225,11 @@ interface AppState {
   lastSlotCapRejectedAt: number | null;
 
   // Environment selection
-  activeSimId: 'grid' | 'turtle';
+  activeSimId: 'grid' | 'turtle' | 'beat';
   currentLevel: number;
   grid: GridState;
   turtleState: TurtleState;
+  beatState: BeatState;
   workspace: WorkspaceState;
   savedWorkspaces: Record<string, WorkspaceState>;
   activeScope: ScopeType;
@@ -254,7 +274,7 @@ interface AppState {
   resetActivityToStarter: () => void;
 
   // Actions
-  setSimEnvironment: (simId: 'grid' | 'turtle') => void;
+  setSimEnvironment: (simId: 'grid' | 'turtle' | 'beat') => void;
   setLevel: (levelId: number) => void;
   setActiveScope: (scope: ScopeType) => void;
   setSelectedBlockId: (id: string | null) => void;
@@ -310,6 +330,12 @@ interface AppState {
   updateTurtleViewport: (updates: Partial<{ pan: { x: number; y: number }; zoom: number; fitToView: boolean }>) => void;
   clearTurtleCanvas: () => void;
 
+  // Beat & Light Matrix environment actions
+  setBeatMuted: (muted: boolean) => void;
+  toggleBeatMuted: () => void;
+  unlockBeatAudio: () => void;
+  clearBeatMatrix: () => void;
+
   // Execution actions
   step: () => void;
   play: () => void;
@@ -340,6 +366,7 @@ const takeSnapshot = (state: AppState, desc?: string): HistorySnapshot => ({
   workspace: cloneWorkspace(state.workspace),
   grid: JSON.parse(JSON.stringify(state.grid)),
   turtleState: JSON.parse(JSON.stringify(state.turtleState)),
+  beatState: JSON.parse(JSON.stringify(state.beatState)),
   activeScope: state.activeScope,
   selectedBlockId: state.selectedBlockId,
   activeSimId: state.activeSimId,
@@ -656,6 +683,9 @@ export const useAppStore = create<AppState>((set, get) => {
     fitToView: prevFitToView,
   });
 
+  const resolveCurriculumSimId = (simId?: string): 'grid' | 'turtle' | 'beat' =>
+    simId === 'turtle' ? 'turtle' : simId === 'beat' ? 'beat' : 'grid';
+
   const buildSandboxSnapshot = (state: AppState): SandboxModeSnapshot => {
     const snapSaved: Record<string, WorkspaceState> = {};
     for (const [k, ws] of Object.entries(state.savedWorkspaces)) {
@@ -667,6 +697,7 @@ export const useAppStore = create<AppState>((set, get) => {
       currentLevel: state.currentLevel,
       grid: JSON.parse(JSON.stringify(getInitialGridState(state.grid))),
       turtleState: JSON.parse(JSON.stringify(getInitialTurtleState(state.turtleState))),
+      beatState: JSON.parse(JSON.stringify(getInitialBeatState(state.beatState))),
       workspace: cloneWorkspace(state.workspace),
       savedWorkspaces: snapSaved,
     };
@@ -702,8 +733,8 @@ export const useAppStore = create<AppState>((set, get) => {
   const bootActiveProfileId = bootProfilesState.activeProfileId;
   const bootCurriculumAutosaves = getProfileLessonWorkspaces(bootActiveProfileId);
   const bootSandboxAutosaves = getProfileSandboxWorkspaces(bootActiveProfileId);
-  const bootSimId: 'grid' | 'turtle' =
-    bootMode === 'curriculum' && bootActivity?.simId === 'turtle' ? 'turtle' : 'grid';
+  const bootSimId: 'grid' | 'turtle' | 'beat' =
+    bootMode === 'curriculum' ? resolveCurriculumSimId(bootActivity?.simId) : 'grid';
 
   const buildCompletedMap = (profileId: string): Record<string, boolean> => {
     const prog = getProfileProgress(profileId);
@@ -732,7 +763,7 @@ export const useAppStore = create<AppState>((set, get) => {
       profileId?: string;
       activityId?: string;
       activityVersion?: number;
-      simId?: 'grid' | 'turtle';
+      simId?: 'grid' | 'turtle' | 'beat';
     }
   ) => {
     const s = get();
@@ -824,6 +855,7 @@ export const useAppStore = create<AppState>((set, get) => {
     currentLevel: 1,
     grid: initialGrid,
     turtleState: createInitialTurtleState(),
+    beatState: createInitialBeatState(beatSynth.isMuted()),
     workspace: initialWorkspace,
     savedWorkspaces: bootSandboxAutosaves,
     activeScope: 'MAIN',
@@ -868,6 +900,14 @@ export const useAppStore = create<AppState>((set, get) => {
         grid: JSON.parse(JSON.stringify(previousSnapshot.grid)),
         ...(previousSnapshot.turtleState
           ? { turtleState: JSON.parse(JSON.stringify(previousSnapshot.turtleState)) }
+          : {}),
+        ...(previousSnapshot.beatState
+          ? {
+              beatState: {
+                ...JSON.parse(JSON.stringify(previousSnapshot.beatState)),
+                isMuted: get().beatState.isMuted,
+              },
+            }
           : {}),
         activeScope: previousSnapshot.activeScope,
         selectedBlockId: previousSnapshot.selectedBlockId,
@@ -924,6 +964,14 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(nextSnapshot.turtleState
           ? { turtleState: JSON.parse(JSON.stringify(nextSnapshot.turtleState)) }
           : {}),
+        ...(nextSnapshot.beatState
+          ? {
+              beatState: {
+                ...JSON.parse(JSON.stringify(nextSnapshot.beatState)),
+                isMuted: get().beatState.isMuted,
+              },
+            }
+          : {}),
         activeScope: nextSnapshot.activeScope,
         selectedBlockId: nextSnapshot.selectedBlockId,
         activeSimId: nextSnapshot.activeSimId,
@@ -971,13 +1019,16 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentWorkspace = get().workspace;
       const currentGrid = get().grid;
       const currentTurtle = get().turtleState;
+      const currentBeat = get().beatState;
 
       const hasWorkspaceChanged = JSON.stringify(initial.workspace) !== JSON.stringify(currentWorkspace);
       const hasGridChanged = JSON.stringify(initial.grid) !== JSON.stringify(currentGrid);
       const hasTurtleChanged =
         initial.turtleState && JSON.stringify(initial.turtleState) !== JSON.stringify(currentTurtle);
+      const hasBeatChanged =
+        initial.beatState && JSON.stringify(initial.beatState) !== JSON.stringify(currentBeat);
 
-      if (hasWorkspaceChanged || hasGridChanged || hasTurtleChanged) {
+      if (hasWorkspaceChanged || hasGridChanged || hasTurtleChanged || hasBeatChanged) {
         const currentPast = get().past;
         const newPast = [...currentPast.slice(Math.max(0, currentPast.length - (MAX_HISTORY - 1))), initial];
         set({
@@ -1020,7 +1071,7 @@ export const useAppStore = create<AppState>((set, get) => {
           CURRICULUM_ACTIVITIES[0];
         if (!activity) return;
 
-        const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+        const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
         const targetGrid = activity.grid
           ? createCurriculumGridState(activity.grid, prevFitToView)
           : getInitialGridState(state.grid);
@@ -1040,6 +1091,7 @@ export const useAppStore = create<AppState>((set, get) => {
           activeSimId: targetSimId,
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
+          beatState: resetBeatState(state.beatState),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...nextCurriculumWorkspaces,
@@ -1051,6 +1103,9 @@ export const useAppStore = create<AppState>((set, get) => {
           activeScope: 'MAIN',
           editorTool: 'NONE',
           runtime: null,
+          ghostPreview: null,
+          slotCapRejectionCount: 0,
+          lastSlotCapRejectedAt: null,
         });
       } else {
         const fallbackPreset =
@@ -1068,11 +1123,15 @@ export const useAppStore = create<AppState>((set, get) => {
           sandboxSnapshot: null,
           grid: createGridFromPreset(fallbackPreset, prevFitToView),
           turtleState: createInitialTurtleState(),
+          beatState: resetBeatState(state.beatState),
           workspace: targetWs,
           selectedBlockId: null,
           activeScope: 'MAIN',
           editorTool: 'NONE',
           runtime: null,
+          ghostPreview: null,
+          slotCapRejectionCount: 0,
+          lastSlotCapRejectedAt: null,
         });
       }
 
@@ -1192,7 +1251,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
         if (!activity) return;
 
-        const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+        const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
         const prevFitToView = state.grid.fitToView ?? false;
         const targetGrid = activity.grid
           ? createCurriculumGridState(activity.grid, prevFitToView)
@@ -1217,6 +1276,7 @@ export const useAppStore = create<AppState>((set, get) => {
           activeSimId: targetSimId,
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
+          beatState: resetBeatState(state.beatState),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...state.curriculumWorkspaces,
@@ -1242,7 +1302,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
 
         const snap = state.sandboxSnapshot;
-        const restoredSimId: 'grid' | 'turtle' = snap?.activeSimId ?? 'grid';
+        const restoredSimId: 'grid' | 'turtle' | 'beat' = snap?.activeSimId ?? 'grid';
         const restoredLevel = snap?.currentLevel ?? state.currentLevel;
         const prevFitToView = state.grid.fitToView ?? false;
         const fallbackPreset =
@@ -1256,6 +1316,12 @@ export const useAppStore = create<AppState>((set, get) => {
         const restoredTurtle = snap
           ? getInitialTurtleState(JSON.parse(JSON.stringify(snap.turtleState)))
           : createInitialTurtleState();
+        const restoredBeat = snap?.beatState
+          ? getInitialBeatState({
+              ...JSON.parse(JSON.stringify(snap.beatState)),
+              isMuted: state.beatState.isMuted,
+            })
+          : resetBeatState(state.beatState);
         const restoredWs = snap
           ? cloneWorkspace(snap.workspace)
           : state.savedWorkspaces[restoredSimId]
@@ -1278,6 +1344,7 @@ export const useAppStore = create<AppState>((set, get) => {
           currentLevel: restoredLevel,
           grid: restoredGrid,
           turtleState: restoredTurtle,
+          beatState: restoredBeat,
           workspace: restoredWs,
           savedWorkspaces: restoredSaved,
           curriculumWorkspaces: nextCurriculumWorkspaces,
@@ -1318,7 +1385,7 @@ export const useAppStore = create<AppState>((set, get) => {
             }
           : { ...state.curriculumWorkspaces };
 
-      const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+      const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
       const prevFitToView = state.grid.fitToView ?? false;
       const targetGrid = activity.grid
         ? createCurriculumGridState(activity.grid, prevFitToView)
@@ -1344,6 +1411,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeSimId: targetSimId,
         grid: targetGrid,
         turtleState: createInitialTurtleState(),
+        beatState: resetBeatState(state.beatState),
         workspace: targetWs,
         curriculumWorkspaces: nextCurriculumWorkspaces,
         sandboxSnapshot: nextSandboxSnapshot,
@@ -1383,6 +1451,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const clonedWs = cloneWorkspaceWithFreshIds(state.workspace);
       const clonedGrid = getInitialGridState(JSON.parse(JSON.stringify(state.grid)));
       const clonedTurtle = getInitialTurtleState(JSON.parse(JSON.stringify(state.turtleState)));
+      const clonedBeat = getInitialBeatState(JSON.parse(JSON.stringify(state.beatState)));
 
       const baseSaved = state.sandboxSnapshot?.savedWorkspaces ?? state.savedWorkspaces;
       const nextSavedWorkspaces: Record<string, WorkspaceState> = {};
@@ -1396,6 +1465,7 @@ export const useAppStore = create<AppState>((set, get) => {
         appMode: 'sandbox',
         grid: clonedGrid,
         turtleState: clonedTurtle,
+        beatState: clonedBeat,
         workspace: clonedWs,
         savedWorkspaces: nextSavedWorkspaces,
         curriculumWorkspaces: nextCurriculumWorkspaces,
@@ -1404,6 +1474,7 @@ export const useAppStore = create<AppState>((set, get) => {
           currentLevel: state.currentLevel,
           grid: JSON.parse(JSON.stringify(clonedGrid)),
           turtleState: JSON.parse(JSON.stringify(clonedTurtle)),
+          beatState: JSON.parse(JSON.stringify(clonedBeat)),
           workspace: cloneWorkspace(clonedWs),
           savedWorkspaces: nextSavedWorkspaces,
         },
@@ -1516,26 +1587,30 @@ export const useAppStore = create<AppState>((set, get) => {
     setLoadModalOpen: (open) => set({ isLoadModalOpen: open }),
 
     exportCode: (includeMap = true) => {
-      const { activeSimId, workspace, grid, turtleState } = get();
+      const { activeSimId, workspace, grid, turtleState, beatState } = get();
       if (activeSimId === 'grid') {
         if (includeMap) {
           return exportToString(workspace, 'grid', grid);
         } else {
           return exportToString(workspace, 'generic');
         }
+      } else if (activeSimId === 'beat') {
+        return exportToString(workspace, 'beat', beatState);
       } else {
         return exportToString(workspace, 'turtle', turtleState);
       }
     },
 
     exportBinary: (includeMap = true) => {
-      const { activeSimId, workspace, grid, turtleState } = get();
+      const { activeSimId, workspace, grid, turtleState, beatState } = get();
       if (activeSimId === 'grid') {
         if (includeMap) {
           return exportToBinary(workspace, 'grid', grid);
         } else {
           return exportToBinary(workspace, 'generic');
         }
+      } else if (activeSimId === 'beat') {
+        return exportToBinary(workspace, 'beat', beatState);
       } else {
         return exportToBinary(workspace, 'turtle', turtleState);
       }
@@ -1551,11 +1626,13 @@ export const useAppStore = create<AppState>((set, get) => {
         return { success: false, error: res.error || 'Failed to import code' };
       }
 
-      // Importing a full environment snapshot (custom Grid map or Turtle drawing) while in
-      // Curriculum mode switches cleanly to Sandbox so read-only lesson maps are never mutated.
+      // Importing a full environment snapshot (custom Grid map, Turtle drawing, or Beat program)
+      // while in Curriculum mode switches cleanly to Sandbox so read-only lesson maps are never mutated.
       if (
         get().appMode === 'curriculum' &&
-        (res.envId === 'turtle' || (res.envId === 'grid' && Boolean(res.gridState)))
+        (res.envId === 'turtle' ||
+          res.envId === 'beat' ||
+          (res.envId === 'grid' && Boolean(res.gridState)))
       ) {
         get().setAppMode('sandbox');
       }
@@ -1591,6 +1668,24 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           activeSimId: 'turtle',
           turtleState: createInitialTurtleState(),
+          workspace: newWorkspace,
+          savedWorkspaces: updatedSavedWorkspaces,
+          runtime: null,
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+        });
+      } else if (res.envId === 'beat') {
+        const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
+        if (activeSimId !== 'beat') {
+          updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
+          saveSandboxAutosave(get().activeProfileId, activeSimId, workspace);
+        }
+        updatedSavedWorkspaces['beat'] = cloneWorkspace(newWorkspace);
+        saveSandboxAutosave(get().activeProfileId, 'beat', newWorkspace);
+
+        set({
+          activeSimId: 'beat',
+          beatState: resetBeatState(get().beatState),
           workspace: newWorkspace,
           savedWorkspaces: updatedSavedWorkspaces,
           runtime: null,
@@ -1927,13 +2022,14 @@ export const useAppStore = create<AppState>((set, get) => {
           });
           pendingTurtleCommit = null;
         }
+        beatSynth.stopAll();
         set({ speed: 'instant', isPlaying: false });
         get().runInstantIfActive();
       } else {
         set({ speed: normalizedSpeed });
         if (wasInstant) {
           get().reset();
-        } else if (get().activeSimId === 'grid') {
+        } else if (get().activeSimId === 'grid' || get().activeSimId === 'beat') {
           if (get().isPlaying && timerId) {
             clearInterval(timerId);
             timerId = setInterval(() => {
@@ -1970,10 +2066,16 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     runInstantIfActive: () => {
-      const { speed, workspace, activeSimId, grid, turtleState } = get();
+      const { speed, workspace, activeSimId, grid, turtleState, beatState } = get();
       if (speed !== 'instant' && (speed as any) !== 0) return;
 
-      const result = computeInstantSimulation(workspace, activeSimId, grid, turtleState);
+      const result = computeInstantSimulation(
+        workspace,
+        activeSimId,
+        grid,
+        turtleState,
+        beatState
+      );
       const isPausedOnPlaceholder = result.status === 'PAUSED';
       const nextRuntime: InterpreterRuntimeState = {
         ...result.finalRuntime,
@@ -1991,6 +2093,17 @@ export const useAppStore = create<AppState>((set, get) => {
       if (activeSimId === 'grid') {
         set({
           grid: result.finalState as GridState,
+          runtime: nextRuntime,
+          isPlaying: false,
+          ghostPreview: null,
+          ...pauseUpdates,
+        });
+      } else if (activeSimId === 'beat') {
+        set({
+          beatState: {
+            ...(result.finalState as BeatState),
+            isMuted: beatState.isMuted,
+          },
           runtime: nextRuntime,
           isPlaying: false,
           ghostPreview: null,
@@ -2606,6 +2719,37 @@ export const useAppStore = create<AppState>((set, get) => {
       get().runInstantIfActive();
     },
 
+    setBeatMuted: (muted) => {
+      beatSynth.setMuted(muted);
+      if (!muted) {
+        beatSynth.unlockFromGesture();
+      }
+      set((state) => ({
+        beatState: {
+          ...state.beatState,
+          isMuted: muted,
+        },
+      }));
+    },
+
+    toggleBeatMuted: () => {
+      const nextMuted = !get().beatState.isMuted;
+      get().setBeatMuted(nextMuted);
+    },
+
+    unlockBeatAudio: () => {
+      beatSynth.unlockFromGesture();
+    },
+
+    clearBeatMatrix: () => {
+      recordMutation('Clear Beat LED matrix');
+      get().reset();
+      set((state) => ({
+        beatState: resetBeatState(state.beatState),
+      }));
+      get().runInstantIfActive();
+    },
+
     step: () => {
       const { speed, activeSimId } = get();
       if (speed === 'instant' || (speed as any) === 0) return;
@@ -2665,6 +2809,62 @@ export const useAppStore = create<AppState>((set, get) => {
           timerId = null;
           set({ isPlaying: false });
         }
+      } else if (activeSimId === 'beat') {
+        if (!get().isPlaying) {
+          beatSynth.unlockFromGesture();
+        }
+        const { runtime, workspace, beatState } = get();
+
+        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+          if (workspace[sc]?.length > 0) {
+            const val = validateLoopStructure(workspace[sc]);
+            if (val.hasError) {
+              return;
+            }
+          }
+        }
+
+        const currentRuntime = runtime || createInitialInterpreterState();
+        const simEnv = getSimEnvironment('beat');
+        if (!simEnv) return;
+
+        const prevBeatIndex = beatState.beatIndex;
+        const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv);
+        const nextBeat = res.nextGrid as BeatState;
+
+        if (nextBeat.beatIndex !== prevBeatIndex && !nextBeat.isMuted) {
+          beatSynth.playEvent(nextBeat.lastTriggeredEvent, speed);
+        }
+
+        const activeScope =
+          res.nextRuntime.callStack.length > 0
+            ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
+            : get().activeScope;
+
+        const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
+
+        set({
+          runtime: res.nextRuntime,
+          beatState: nextBeat,
+          activeScope,
+          isPlaying: !res.done && !isPausedOnPlaceholder && get().isPlaying,
+          ...(isPausedOnPlaceholder
+            ? {
+                selectedBlockId: res.nextRuntime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
+              }
+            : {}),
+        });
+
+        if (nextBeat.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
+
+        if ((res.done || isPausedOnPlaceholder) && timerId) {
+          clearInterval(timerId);
+          timerId = null;
+          set({ isPlaying: false });
+        }
       } else {
         // Turtle mode
         // If an animation is currently active, snap-commit it first
@@ -2712,6 +2912,7 @@ export const useAppStore = create<AppState>((set, get) => {
           cancelFrame(turtleRafId);
           turtleRafId = null;
         }
+        beatSynth.stopAll();
         for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
           if (workspace[sc]?.length > 0) {
             const val = validateLoopStructure(workspace[sc]);
@@ -2724,10 +2925,15 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
+      if (activeSimId === 'beat') {
+        beatSynth.unlockFromGesture();
+      }
+
       if (get().isPlaying) return;
 
-      const { grid, turtleState, runtime } = get();
-      const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+      const { grid, turtleState, beatState, runtime } = get();
+      const currentSimState =
+        activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
       const hasEndedOrFail =
         currentSimState.status === 'SUCCESS' ||
         currentSimState.status === 'COLLISION' ||
@@ -2747,7 +2953,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
       }
 
-      if (activeSimId === 'grid') {
+      if (activeSimId === 'grid' || activeSimId === 'beat') {
         if (timerId) clearInterval(timerId);
         set({ isPlaying: true });
 
@@ -2784,6 +2990,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (pendingTurtleCommit) {
         pendingTurtleCommit.isSingleStep = false;
       }
+      beatSynth.stopAll();
       set({ isPlaying: false });
     },
 
@@ -2797,8 +3004,9 @@ export const useAppStore = create<AppState>((set, get) => {
         turtleRafId = null;
       }
       pendingTurtleCommit = null;
+      beatSynth.stopAll();
 
-      const { grid, turtleState, activeSimId } = get();
+      const { grid, turtleState, beatState, activeSimId } = get();
 
       if (activeSimId === 'grid') {
         set({
@@ -2806,6 +3014,12 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: null,
           ghostPreview: null,
           grid: getInitialGridState(grid),
+        });
+      } else if (activeSimId === 'beat') {
+        set({
+          isPlaying: false,
+          runtime: null,
+          beatState: getInitialBeatState(beatState),
         });
       } else {
         set({
@@ -2848,6 +3062,7 @@ export const useAppStore = create<AppState>((set, get) => {
         savedWorkspaces: s.savedWorkspaces,
         grid: s.grid,
         turtleState: s.turtleState,
+        beatState: s.beatState,
         runtime: s.runtime,
         activeScope: s.activeScope,
         selectedBlockId: s.selectedBlockId,
@@ -2874,9 +3089,12 @@ export const useAppStore = create<AppState>((set, get) => {
         setActiveProfileId(restored.activeProfileId);
       }
       const profilesState = ensureProfilesInitialized();
-      const resolvedProfileId = restored.activeProfileId && profilesState.profiles.some((p) => p.id === restored.activeProfileId)
-        ? restored.activeProfileId
-        : profilesState.activeProfileId;
+      const resolvedProfileId =
+        restored.activeProfileId && profilesState.profiles.some((p) => p.id === restored.activeProfileId)
+          ? restored.activeProfileId
+          : profilesState.activeProfileId;
+      const restoredBeat = restored.beatState ?? createInitialBeatState(false);
+      beatSynth.setMuted(Boolean(restoredBeat.isMuted));
 
       set({
         profiles: profilesState.profiles,
@@ -2893,6 +3111,7 @@ export const useAppStore = create<AppState>((set, get) => {
         savedWorkspaces: restored.savedWorkspaces,
         grid: restored.grid,
         turtleState: restored.turtleState,
+        beatState: restoredBeat,
         runtime: restored.runtime,
         isPlaying: false,
         activeScope: restored.activeScope,

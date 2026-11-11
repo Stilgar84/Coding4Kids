@@ -70,6 +70,7 @@ export const Toolbar: React.FC = () => {
     setLoadModalOpen,
     grid,
     turtleState,
+    beatState,
     runtime,
     undo,
     redo,
@@ -135,7 +136,8 @@ export const Toolbar: React.FC = () => {
   };
 
   const ToolsComponent = currentSimEnv?.ToolsComponent;
-  const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+  const currentSimState =
+    activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
   const showDesktopTools = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
   const showMobileLessonNav = appMode === 'curriculum' || activeSimId === 'grid';
   const handleMobilePrev = appMode === 'curriculum' ? handlePrevActivity : handlePrevLevel;
@@ -215,8 +217,16 @@ export const Toolbar: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <span>{activeSimId === 'grid' ? '🤖' : '🐢'}</span>
-                  <span>{activeSimId === 'grid' ? `L${currentLevel}` : 'LOGO'}</span>
+                  <span>
+                    {activeSimId === 'grid' ? '🤖' : activeSimId === 'beat' ? '🎵' : '🐢'}
+                  </span>
+                  <span>
+                    {activeSimId === 'grid'
+                      ? `L${currentLevel}`
+                      : activeSimId === 'beat'
+                      ? 'Beat'
+                      : 'LOGO'}
+                  </span>
                 </>
               )}
             </button>
@@ -437,6 +447,18 @@ export const Toolbar: React.FC = () => {
                   <span>🐢</span>
                   <span>Turtle</span>
                 </button>
+                <button
+                  data-testid="sim-tab-beat"
+                  onClick={() => setSimEnvironment('beat')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeSimId === 'beat'
+                      ? 'bg-fuchsia-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>🎵</span>
+                  <span>Beat</span>
+                </button>
               </div>
 
               {/* If Grid is active, show Lesson Navigation & Selection */}
@@ -496,6 +518,11 @@ export const Toolbar: React.FC = () => {
                       </button>
                     ))}
                   </div>
+                </div>
+              ) : activeSimId === 'beat' ? (
+                /* Beat & Light Matrix mode badge */
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-semibold text-fuchsia-300">
+                  <span>8×8 Beat &amp; Light Pad</span>
                 </div>
               ) : (
                 /* Turtle mode badge */

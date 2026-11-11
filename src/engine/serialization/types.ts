@@ -1,18 +1,21 @@
 import { WorkspaceState, GridState, VariableName, toVariableName, BinaryOp, CodeBlock } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
 import { PlaceholderHintCategory } from '../../data/curriculum/types';
+import { BeatState } from '../../simulations/beat/types';
 
 // Format versions
 export const FORMAT_VERSION = 1;
 export const ENV_VERSION_GRID = 1;
 export const ENV_VERSION_TURTLE = 1;
+export const ENV_VERSION_BEAT = 1;
 
 // Environment IDs
 export const ENV_ID_GENERIC = 0x00;
 export const ENV_ID_GRID = 0x01;
 export const ENV_ID_TURTLE = 0x02;
+export const ENV_ID_BEAT = 0x03;
 
-export type EnvIdName = 'generic' | 'grid' | 'turtle';
+export type EnvIdName = 'generic' | 'grid' | 'turtle' | 'beat';
 
 // Scope IDs
 export const SCOPE_ID_MAIN = 0x00;
@@ -165,6 +168,24 @@ export const TURTLE_COLOR_PALETTE: readonly string[] = [
   '#06b6d4', // 7: Cyan
 ];
 
+// Beat & Light Matrix Opcodes (envId = 0x03, envVersion = 1)
+// Tier 1 (Commit 10)
+export const OP_BEAT_DRUM_KICK = 0x10;
+export const OP_BEAT_DRUM_SNARE = 0x11;
+export const OP_BEAT_DRUM_CLAP = 0x12;
+export const OP_BEAT_PLAY_CHIME = 0x13;
+export const OP_BEAT_STAMP_PRESET = 0x14;
+export const OP_BEAT_WAIT_BEAT = 0x15;
+export const OP_BEAT_CLEAR_LEDS = 0x16;
+// Tier 2 & Tier 3 reserved opcodes (Commits 13 & 17)
+export const OP_BEAT_PLAY_NOTE = 0x17;
+export const OP_BEAT_SET_LED_COLOR = 0x18;
+export const OP_BEAT_LIGHT_ROW = 0x19;
+export const OP_BEAT_LIGHT_COL = 0x1a;
+export const OP_BEAT_LIGHT_PIXEL = 0x1b;
+export const OP_BEAT_CURSOR_STEP = 0x1c;
+export const OP_BEAT_CURSOR_TURN = 0x1d;
+
 export interface ImportResult {
   success: boolean;
   formatVersion?: number;
@@ -173,5 +194,6 @@ export interface ImportResult {
   workspace?: WorkspaceState;
   gridState?: GridState;
   turtleState?: TurtleState;
+  beatState?: BeatState;
   error?: string;
 }

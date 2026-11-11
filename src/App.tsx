@@ -15,10 +15,11 @@ import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 
 export const App: React.FC = () => {
   useUndoRedoShortcuts();
-  const { activeSimId, grid, turtleState, runtime, isMapHidden } = useAppStore();
+  const { activeSimId, grid, turtleState, beatState, runtime, isMapHidden } = useAppStore();
   const simEnv = getSimEnvironment(activeSimId);
   const Renderer = simEnv?.Renderer;
-  const activeState = activeSimId === 'grid' ? grid : turtleState;
+  const activeState =
+    activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
 
   return (
     <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">

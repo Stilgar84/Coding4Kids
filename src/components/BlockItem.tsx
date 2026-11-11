@@ -123,7 +123,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     'VAR_ASSIGN',
     'VAR_OP',
   ];
-  const supportsMultiplier = !nonRepeatableTypes.includes(block.type);
+  const supportsMultiplier = paletteItem
+    ? paletteItem.supportsRepeat !== false
+    : !nonRepeatableTypes.includes(block.type);
 
   const isVarRepeat = typeof block.repeatCount === 'string' && /^[a-z]$/.test(block.repeatCount);
   const showRepeatBadge =
@@ -247,10 +249,17 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         borderClass = 'border-indigo-400';
         break;
 
-      default:
-        bgClass = 'bg-slate-700';
-        borderClass = 'border-slate-500';
+      default: {
+        if (paletteItem) {
+          const baseBg = paletteItem.bgClass.split(' ').find((cls) => cls.startsWith('bg-'));
+          bgClass = baseBg || 'bg-slate-700';
+          borderClass = paletteItem.borderClass || 'border-slate-500';
+        } else {
+          bgClass = 'bg-slate-700';
+          borderClass = 'border-slate-500';
+        }
         break;
+      }
     }
 
     return {
@@ -491,6 +500,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       }
 
       default:
+        if (paletteItem?.icon) {
+          return paletteItem.icon({ isActive });
+        }
         return <span className="text-xs font-bold text-white truncate">{block.type}</span>;
     }
   };

@@ -135,7 +135,7 @@ export const LoadProgramModal: React.FC = () => {
                 >
                   {/* Screenshot Thumbnail */}
                   <div className={`relative w-full h-36 p-2 flex items-center justify-center border-b border-slate-800 overflow-hidden ${
-                    entry.simId === 'grid' ? 'bg-slate-950' : 'bg-white'
+                    entry.simId === 'grid' || entry.simId === 'beat' ? 'bg-slate-950' : 'bg-white'
                   }`}>
                     {entry.screenshot ? (
                       <img
@@ -151,7 +151,11 @@ export const LoadProgramModal: React.FC = () => {
 
                     {/* Environment Badge */}
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/90 text-slate-200 backdrop-blur-sm border border-slate-700">
-                      {entry.simId === 'turtle' ? '🐢 Turtle' : '🤖 Grid'}
+                      {entry.simId === 'turtle'
+                        ? '🐢 Turtle'
+                        : entry.simId === 'beat'
+                        ? '🎵 Beat'
+                        : '🤖 Grid'}
                     </div>
 
                     {/* Outcome Badge */}

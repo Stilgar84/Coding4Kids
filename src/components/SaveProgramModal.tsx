@@ -6,6 +6,7 @@ import { generateSimulationThumbnail } from '../services/mapThumbnailGenerator';
 import { saveProgram } from '../services/localSaveService';
 import { GridState } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
+import { resetBeatState } from '../simulations/beat/beatEnvironment';
 import {
   X,
   Save,
@@ -27,6 +28,7 @@ export const SaveProgramModal: React.FC = () => {
     workspace,
     grid,
     turtleState,
+    beatState,
     currentLevel,
     exportCode,
   } = useAppStore();
@@ -69,6 +71,21 @@ export const SaveProgramModal: React.FC = () => {
         stepCount: result.stepCount,
         screenshot,
       };
+    } else if (activeSimId === 'beat') {
+      const initialState = resetBeatState(beatState);
+      const result = runHeadlessSimulation(
+        workspace,
+        'beat',
+        initialState,
+        MAX_SAVE_SIMULATION_STEPS
+      );
+      const screenshot = generateSimulationThumbnail('beat', result.finalState);
+
+      return {
+        status: result.status,
+        stepCount: result.stepCount,
+        screenshot,
+      };
     } else {
       const initialState: TurtleState = {
         ...turtleState,
@@ -92,7 +109,7 @@ export const SaveProgramModal: React.FC = () => {
         screenshot,
       };
     }
-  }, [isSaveModalOpen, activeSimId, grid, turtleState, workspace]);
+  }, [isSaveModalOpen, activeSimId, grid, turtleState, beatState, workspace]);
 
   useEffect(() => {
     if (isSaveModalOpen) {
@@ -102,6 +119,8 @@ export const SaveProgramModal: React.FC = () => {
         setTitle(`Activity ${activeActivityId} (${timeStr})`);
       } else if (activeSimId === 'grid') {
         setTitle(`Lesson ${currentLevel} Solution (${timeStr})`);
+      } else if (activeSimId === 'beat') {
+        setTitle(`Beat & Light Mix (${timeStr})`);
       } else {
         setTitle(`Turtle Drawing (${timeStr})`);
       }
@@ -183,11 +202,15 @@ export const SaveProgramModal: React.FC = () => {
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
               <span>Resulting Map Preview</span>
               <span className="text-[11px] text-slate-500">
-                {activeSimId === 'grid' ? 'Grid World' : 'Turtle LOGO'}
+                {activeSimId === 'grid'
+                  ? 'Grid World'
+                  : activeSimId === 'beat'
+                  ? 'Beat & Light Matrix'
+                  : 'Turtle LOGO'}
               </span>
             </div>
             <div className={`relative w-full h-48 rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner group ${
-              activeSimId === 'grid' ? 'bg-slate-950' : 'bg-white'
+              activeSimId === 'grid' || activeSimId === 'beat' ? 'bg-slate-950' : 'bg-white'
             }`}>
               <img
                 data-testid="save-map-preview"

@@ -1,15 +1,19 @@
 import { WorkspaceState, GridState, CodeBlock, ScopeType, VariableName, isVariableName, BinaryOp } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
+import { BeatState } from '../../simulations/beat/types';
 import { createInitialTurtleState } from '../../simulations/turtle/turtleEnvironment';
+import { createInitialBeatState } from '../../simulations/beat/beatEnvironment';
 import { BinaryReader, base64URLToUint8Array } from './binaryReader';
 import { BinaryWriter, uint8ArrayToBase64URL } from './binaryWriter';
 import {
   FORMAT_VERSION,
   ENV_VERSION_GRID,
   ENV_VERSION_TURTLE,
+  ENV_VERSION_BEAT,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
   ENV_ID_TURTLE,
+  ENV_ID_BEAT,
   SCOPE_ID_MAIN,
   SCOPE_ID_F1,
   SCOPE_ID_F2,
@@ -53,6 +57,12 @@ import {
 } from './types';
 import { writeGridState, readGridState } from './env/gridSerializer';
 import { writeTurtleParams, readTurtleParams } from './env/turtleSerializer';
+import {
+  getBeatOpcodeForBlock,
+  getBeatParamVarFlags,
+  writeBeatParams,
+  readBeatBlock,
+} from './env/beatSerializer';
 
 let blockIdCounter = 0;
 
@@ -107,8 +117,8 @@ function readOperandData(reader: BinaryReader, type: number): any {
  */
 export function exportToBinary(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'generic',
-  envState?: GridState | TurtleState
+  envId: 'grid' | 'turtle' | 'beat' | 'generic',
+  envState?: GridState | TurtleState | BeatState
 ): Uint8Array {
   const writer = new BinaryWriter();
 
@@ -116,10 +126,21 @@ export function exportToBinary(
   writer.writeUint8(FORMAT_VERSION);
 
   const envByte =
-    envId === 'grid' ? ENV_ID_GRID : envId === 'turtle' ? ENV_ID_TURTLE : ENV_ID_GENERIC;
+    envId === 'grid'
+      ? ENV_ID_GRID
+      : envId === 'turtle'
+      ? ENV_ID_TURTLE
+      : envId === 'beat'
+      ? ENV_ID_BEAT
+      : ENV_ID_GENERIC;
   writer.writeUint8(envByte);
 
-  const envVersion = envId === 'grid' ? ENV_VERSION_GRID : ENV_VERSION_TURTLE;
+  const envVersion =
+    envId === 'grid'
+      ? ENV_VERSION_GRID
+      : envId === 'beat'
+      ? ENV_VERSION_BEAT
+      : ENV_VERSION_TURTLE;
   writer.writeUint8(envVersion);
 
   // 2. Environment State (if Grid)
@@ -254,6 +275,8 @@ export function exportToBinary(
           default:
             throw new Error(`Unsupported Turtle block type: ${block.type}`);
         }
+      } else if (envByte === ENV_ID_BEAT) {
+        opcode = getBeatOpcodeForBlock(block);
       } else {
         // Grid or generic
         switch (block.type) {
@@ -284,7 +307,11 @@ export function exportToBinary(
       let param0IsVar = false;
       let param1IsVar = false;
       if (block.params) {
-        if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
+        if (envByte === ENV_ID_BEAT) {
+          const flags = getBeatParamVarFlags(opcode, block.params);
+          param0IsVar = flags.param0IsVar;
+          param1IsVar = flags.param1IsVar;
+        } else if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
           const lenVal = block.params.length ?? block.params.distance;
           param0IsVar = isVariableName(lenVal) || (typeof lenVal === 'string' && /^[a-z]$/.test(lenVal));
         } else if (block.type === 'TURN_LEFT' || block.type === 'TURN_RIGHT') {
@@ -325,6 +352,8 @@ export function exportToBinary(
         writer.writeUint8(fnIndex);
       } else if (envByte === ENV_ID_TURTLE) {
         writeTurtleParams(writer, opcode, block.params, paramVarMask);
+      } else if (envByte === ENV_ID_BEAT) {
+        writeBeatParams(writer, opcode, block.type, block.params, paramVarMask);
       }
     }
   }
@@ -337,8 +366,8 @@ export function exportToBinary(
  */
 export function exportToString(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'generic',
-  envState?: GridState | TurtleState
+  envId: 'grid' | 'turtle' | 'beat' | 'generic',
+  envState?: GridState | TurtleState | BeatState
 ): string {
   return uint8ArrayToBase64URL(exportToBinary(workspace, envId, envState));
 }
@@ -369,15 +398,19 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     let envId: EnvIdName = 'generic';
     if (envByte === ENV_ID_GRID) envId = 'grid';
     else if (envByte === ENV_ID_TURTLE) envId = 'turtle';
+    else if (envByte === ENV_ID_BEAT) envId = 'beat';
 
     // 2. Environment State
     let gridState: GridState | undefined;
     let turtleState: TurtleState | undefined;
+    let beatState: BeatState | undefined;
 
     if (envByte === ENV_ID_GRID) {
       gridState = readGridState(reader);
     } else if (envByte === ENV_ID_TURTLE) {
       turtleState = createInitialTurtleState();
+    } else if (envByte === ENV_ID_BEAT) {
+      beatState = createInitialBeatState();
     }
 
     // 3. Code Payload
@@ -501,6 +534,10 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
                 throw new Error(`Unknown Turtle opcode: 0x${opcode.toString(16)}`);
             }
             params = readTurtleParams(reader, opcode, paramVarMask);
+          } else if (envByte === ENV_ID_BEAT) {
+            const decodedBeat = readBeatBlock(reader, opcode, paramVarMask);
+            type = decodedBeat.type;
+            params = decodedBeat.params;
           } else {
             // Grid or generic
             switch (opcode) {
@@ -542,6 +579,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       workspace,
       gridState,
       turtleState,
+      beatState,
     };
   } catch (err: any) {
     return {

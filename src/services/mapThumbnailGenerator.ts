@@ -2,6 +2,7 @@ import { GridState, Direction } from '../types';
 import { isFlagPadlocked } from '../engine/physics';
 import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
+import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 
 const CELL_SIZE = 40;
 
@@ -256,6 +257,57 @@ export function renderTurtleMapSvg(turtle: TurtleState): string {
 }
 
 /**
+ * Generates an SVG string representation of the 8x8 Beat & Light Matrix pad.
+ */
+export function renderBeatMapSvg(beat: BeatState): string {
+  const padSize = 24;
+  const gap = 4;
+  const boardSpan = BEAT_GRID_SIZE * padSize + (BEAT_GRID_SIZE - 1) * gap;
+  const padding = 16;
+  const totalWidth = boardSpan + padding * 2;
+  const totalHeight = boardSpan + padding * 2;
+
+  const ringStroke = beat?.beatIndex && beat.beatIndex > 0 ? beat.activeColor || '#06b6d4' : '#334155';
+  const elements: string[] = [];
+
+  // Dark chassis frame
+  elements.push(
+    `<rect width="${totalWidth}" height="${totalHeight}" fill="#020617" rx="14" />`
+  );
+  elements.push(
+    `<rect x="4" y="4" width="${totalWidth - 8}" height="${totalHeight - 8}" fill="#0f172a" rx="11" stroke="${ringStroke}" stroke-width="2" />`
+  );
+
+  elements.push(`<g transform="translate(${padding}, ${padding})">`);
+
+  for (let row = 0; row < BEAT_GRID_SIZE; row++) {
+    for (let col = 0; col < BEAT_GRID_SIZE; col++) {
+      const cellColor = beat?.leds?.[row]?.[col] ?? null;
+      const x = col * (padSize + gap);
+      const y = row * (padSize + gap);
+      if (cellColor) {
+        elements.push(
+          `<rect x="${x}" y="${y}" width="${padSize}" height="${padSize}" rx="5" fill="${cellColor}" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1" />`
+        );
+        elements.push(
+          `<rect x="${x + 4}" y="${y + 4}" width="${padSize - 8}" height="${padSize - 8}" rx="3" fill="#ffffff" fill-opacity="0.28" />`
+        );
+      } else {
+        elements.push(
+          `<rect x="${x}" y="${y}" width="${padSize}" height="${padSize}" rx="5" fill="#1e293b" stroke="#334155" stroke-width="1" />`
+        );
+      }
+    }
+  }
+
+  elements.push(`</g>`);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">${elements.join(
+    ''
+  )}</svg>`;
+}
+
+/**
  * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a Grid state.
  */
 export function generateGridMapThumbnail(gridState: GridState): string {
@@ -272,13 +324,25 @@ export function generateTurtleMapThumbnail(turtleState: TurtleState): string {
 }
 
 /**
+ * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a Beat & Light Matrix state.
+ */
+export function generateBeatMapThumbnail(beatState: BeatState): string {
+  const svg = renderBeatMapSvg(beatState);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/**
  * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a given simulation state.
  */
 export function generateSimulationThumbnail(
-  simId: 'grid' | 'turtle',
+  simId: 'grid' | 'turtle' | 'beat',
   state: any
 ): string {
-  return simId === 'turtle'
-    ? generateTurtleMapThumbnail(state as TurtleState)
-    : generateGridMapThumbnail(state as GridState);
+  if (simId === 'turtle') {
+    return generateTurtleMapThumbnail(state as TurtleState);
+  }
+  if (simId === 'beat') {
+    return generateBeatMapThumbnail(state as BeatState);
+  }
+  return generateGridMapThumbnail(state as GridState);
 }
