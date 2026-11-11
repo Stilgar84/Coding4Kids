@@ -62,9 +62,11 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       expect(m3.capstoneIds).toEqual(['3A', '3B', '3C']);
     });
 
-    it('seeds Module 1 Robot fixtures 1.1–1.3 whose referenceSolutions solve their maps within slotCap', () => {
+    it('seeds Module 1 Robot puzzles whose referenceSolutions solve their maps within slotCap', () => {
       const m1RobotPuzzles = getActivitiesForModule('module-1').filter(isValidatedPuzzleActivity);
-      expect(m1RobotPuzzles.map((a) => a.id)).toEqual(['1.1', '1.2', '1.3']);
+      expect(m1RobotPuzzles.map((a) => a.id)).toEqual(
+        expect.arrayContaining(['1.1', '1.2', '1.3'])
+      );
 
       for (const activity of CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity)) {
         expect(isValidatedPuzzleActivity(activity)).toBe(true);

@@ -54,17 +54,99 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
   },
 ];
 
+interface ParsedCurriculumActivityId {
+  moduleNum: number;
+  /** 0 = numbered lesson (e.g. '1.0', '2.7'), 1 = module capstone (e.g. '1A', '3C'), 2 = other/challenge */
+  kindRank: number;
+  lessonNum: number;
+  suffix: string;
+}
+
+function parseCurriculumActivityId(id: string, moduleId?: string): ParsedCurriculumActivityId {
+  const lessonMatch = /^(\d+)\.(\d+)(.*)$/.exec(id);
+  if (lessonMatch) {
+    return {
+      moduleNum: Number(lessonMatch[1]),
+      kindRank: 0,
+      lessonNum: Number(lessonMatch[2]),
+      suffix: lessonMatch[3] ?? '',
+    };
+  }
+
+  const capstoneMatch = /^(\d+)([A-Za-z]+)(.*)$/.exec(id);
+  if (capstoneMatch) {
+    return {
+      moduleNum: Number(capstoneMatch[1]),
+      kindRank: 1,
+      lessonNum: 0,
+      suffix: `${capstoneMatch[2].toUpperCase()}${capstoneMatch[3] ?? ''}`,
+    };
+  }
+
+  const modMatch = moduleId ? /^module-(\d+)$/.exec(moduleId) : null;
+  return {
+    moduleNum: modMatch ? Number(modMatch[1]) : Number.MAX_SAFE_INTEGER,
+    kindRank: 2,
+    lessonNum: 0,
+    suffix: id,
+  };
+}
+
 /**
- * Aggregated curriculum activities across Modules 1–3.
- * Downstream curriculum slices spread into this list in canonical pedagogical order.
+ * Compares two curriculum activity IDs (e.g. '1.0', '1.8', '1A', '2.7', '2B', '3.0', '3C')
+ * in canonical pedagogical order: numbered lessons ascending first, followed by capstones A..Z.
  */
-export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = [
+export function compareCurriculumActivityIds(
+  idA: string,
+  idB: string,
+  moduleIdA?: string,
+  moduleIdB?: string
+): number {
+  const a = parseCurriculumActivityId(idA, moduleIdA);
+  const b = parseCurriculumActivityId(idB, moduleIdB);
+
+  if (a.moduleNum !== b.moduleNum) {
+    return a.moduleNum - b.moduleNum;
+  }
+  if (a.kindRank !== b.kindRank) {
+    return a.kindRank - b.kindRank;
+  }
+  if (a.lessonNum !== b.lessonNum) {
+    return a.lessonNum - b.lessonNum;
+  }
+  return a.suffix.localeCompare(b.suffix);
+}
+
+/**
+ * Returns a canonically ordered shallow copy of `activities` across all modules
+ * (`1.0`..`1.8`, `1A`..`1C`, `2.1`..`2.7`, `2A`..`2B`, `3.0`..`3.7`, `3A`..`3C`),
+ * keeping optional Mastery Challenges (`format === 'challenge'`) after core module tracks.
+ */
+export function sortCurriculumActivities(
+  activities: readonly CurriculumActivity[]
+): CurriculumActivity[] {
+  return [...activities].sort((a, b) => {
+    const challengeDiff =
+      (a.format === 'challenge' ? 1 : 0) - (b.format === 'challenge' ? 1 : 0);
+    if (challengeDiff !== 0) {
+      return challengeDiff;
+    }
+    return compareCurriculumActivityIds(a.id, b.id, a.moduleId, b.moduleId);
+  });
+}
+
+/**
+ * Aggregated curriculum activities across Modules 1–3 in canonical curriculum order.
+ * Downstream curriculum slices spread into this list and are ordered automatically via
+ * `sortCurriculumActivities` regardless of slice file grouping.
+ */
+export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivities([
   ...MODULE_1_DEMO_ACTIVITIES,
   ...MODULE_1_ROBOT_ACTIVITIES,
   ...MODULE_1_LOGO_ACTIVITIES,
   ...MODULE_1_BEAT_ACTIVITIES,
   ...MODULE_2_OBJECTS_ACTIVITIES,
-];
+]);
 
 export function getCurriculumModules(): CurriculumModule[] {
   return CURRICULUM_MODULES;
@@ -79,7 +161,9 @@ export function getCurriculumActivities(): CurriculumActivity[] {
 }
 
 export function getActivitiesForModule(moduleId: string): CurriculumActivity[] {
-  return CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === moduleId);
+  return sortCurriculumActivities(
+    CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === moduleId)
+  );
 }
 
 /**
