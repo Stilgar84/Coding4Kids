@@ -2,6 +2,7 @@ import { SimulationSpeed } from '../../types';
 import { BeatTriggerEvent } from './types';
 
 export type BeatAudioStatus = 'uninitialized' | 'running' | 'suspended' | 'unavailable';
+export type BeatSynthSource = 'main' | 'preview';
 
 // C4..C5 Major Scale frequencies (Hz) for Tier 2 PLAY_NOTE (1..8)
 export const BEAT_SCALE_FREQUENCIES: readonly number[] = [
@@ -33,7 +34,14 @@ export class BeatSynthEngine {
   private muted: boolean = false;
   private blockedByAutoplay: boolean = false;
   private unavailable: boolean = false;
-  private activeNodes = new Set<StoppableNode>();
+  private isResuming: boolean = false;
+  private currentSource: BeatSynthSource = 'main';
+  private activeNodes = new Map<StoppableNode, BeatSynthSource>();
+  private pendingGestureQueue: Array<{
+    fn: () => void;
+    source: BeatSynthSource;
+    queuedAt: number;
+  }> = [];
   private listeners = new Set<() => void>();
 
   private notify(): void {
@@ -107,35 +115,56 @@ export class BeatSynthEngine {
           created.addEventListener('statechange', () => {
             if (this.ctx?.state === 'running') {
               this.blockedByAutoplay = false;
+              this.isResuming = false;
+              this.flushPendingGestureQueue();
             }
             this.notify();
           });
         }
       }
 
-      if (this.ctx.state === 'suspended' && typeof this.ctx.resume === 'function') {
+      const currentState = this.ctx.state as string;
+      if (
+        currentState !== 'running' &&
+        currentState !== 'closed' &&
+        typeof this.ctx.resume === 'function'
+      ) {
+        this.isResuming = true;
         const maybePromise = this.ctx.resume();
         if (maybePromise && typeof maybePromise.then === 'function') {
           maybePromise
             .then(() => {
+              this.isResuming = false;
               if (this.ctx?.state === 'running') {
                 this.blockedByAutoplay = false;
+                this.flushPendingGestureQueue();
+              } else {
+                this.pendingGestureQueue = [];
+                this.blockedByAutoplay = true;
               }
               this.notify();
             })
             .catch(() => {
+              this.isResuming = false;
+              this.pendingGestureQueue = [];
               this.blockedByAutoplay = true;
               this.notify();
             });
+        } else if ((this.ctx.state as string) !== 'running') {
+          this.isResuming = false;
         }
       }
 
       if (this.ctx.state === 'running') {
+        this.isResuming = false;
         this.blockedByAutoplay = false;
+        this.flushPendingGestureQueue();
       }
       this.notify();
       return this.ctx.state === 'running';
     } catch {
+      this.isResuming = false;
+      this.pendingGestureQueue = [];
       this.unavailable = true;
       this.ctx = null;
       this.notify();
@@ -143,7 +172,35 @@ export class BeatSynthEngine {
     }
   }
 
-  private getReadyContext(): AudioContext | null {
+  /**
+   * Executes `fn` while tagging any scheduled audio nodes with `source` (`'main'` or `'preview'`),
+   * ensuring preview-card cleanup can never cut off main simulation playback.
+   */
+  withSource<T>(source: BeatSynthSource, fn: () => T): T {
+    const prev = this.currentSource;
+    this.currentSource = source;
+    try {
+      return fn();
+    } finally {
+      this.currentSource = prev;
+    }
+  }
+
+  private flushPendingGestureQueue(): void {
+    if (this.pendingGestureQueue.length === 0) return;
+    const pending = this.pendingGestureQueue.splice(0);
+    if (this.muted || this.unavailable || !this.ctx || this.ctx.state !== 'running') {
+      return;
+    }
+    const nowMs = Date.now();
+    for (const item of pending) {
+      if (nowMs - item.queuedAt <= 600) {
+        this.withSource(item.source, item.fn);
+      }
+    }
+  }
+
+  private getReadyContext(replayWhenReady?: () => void): AudioContext | null {
     if (this.muted || this.unavailable) return null;
     if (!this.ctx) {
       // Do NOT instantiate AudioContext outside a gesture handler; mark unlock needed if supported
@@ -154,11 +211,30 @@ export class BeatSynthEngine {
       return null;
     }
     if (this.ctx.state !== 'running') {
+      if (this.isResuming && replayWhenReady) {
+        if (this.pendingGestureQueue.length < 8) {
+          this.pendingGestureQueue.push({
+            fn: replayWhenReady,
+            source: this.currentSource,
+            queuedAt: Date.now(),
+          });
+        }
+        return null;
+      }
       this.blockedByAutoplay = true;
       this.notify();
       return null;
     }
     return this.ctx;
+  }
+
+  /**
+   * Adds a tiny lookahead so initial transients (0..5ms attack ramps) are never clipped
+   * by the Web Audio render quantum or freshly awakened OS audio hardware stream.
+   */
+  private getScheduleStartTime(ctx: AudioContext): number {
+    const t = ctx.currentTime;
+    return t + (t < 0.05 ? 0.015 : 0.005);
   }
 
   private getNoiseBuffer(ctx: AudioContext): AudioBuffer | null {
@@ -182,11 +258,12 @@ export class BeatSynthEngine {
   }
 
   private trackSource(node: AudioScheduledSourceNode | StoppableNode): void {
-    this.activeNodes.add(node as StoppableNode);
+    const stoppable = node as StoppableNode;
+    this.activeNodes.set(stoppable, this.currentSource);
     const anyNode = node as any;
     if ('onended' in anyNode) {
       anyNode.onended = () => {
-        this.activeNodes.delete(node as StoppableNode);
+        this.activeNodes.delete(stoppable);
         try {
           node.disconnect();
         } catch {
@@ -197,10 +274,34 @@ export class BeatSynthEngine {
   }
 
   /**
-   * Immediately stops any active synth oscillators or noise bursts.
+   * Stops only synth oscillators/noise bursts belonging to a specific playback source (`'main'` or `'preview'`).
+   */
+  stopSource(source: BeatSynthSource): void {
+    if (this.pendingGestureQueue.length > 0) {
+      this.pendingGestureQueue = this.pendingGestureQueue.filter((item) => item.source !== source);
+    }
+    for (const [node, nodeSource] of Array.from(this.activeNodes.entries())) {
+      if (nodeSource !== source) continue;
+      this.activeNodes.delete(node);
+      try {
+        node.stop();
+      } catch {
+        // Ignore already-stopped nodes
+      }
+      try {
+        node.disconnect();
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
+  /**
+   * Immediately stops any active synth oscillators or noise bursts across all sources.
    */
   stopAll(): void {
-    for (const node of Array.from(this.activeNodes)) {
+    this.pendingGestureQueue = [];
+    for (const node of Array.from(this.activeNodes.keys())) {
       try {
         node.stop();
       } catch {
@@ -219,11 +320,11 @@ export class BeatSynthEngine {
    * Punchy 808-style kick drum: sine pitch-drop (155 Hz -> 42 Hz) + soft click transient.
    */
   playKick(): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playKick());
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
 
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -267,11 +368,11 @@ export class BeatSynthEngine {
    * Crisp snare drum: highpass-filtered noise wires + triangle drum body.
    */
   playSnare(): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playSnare());
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
       const noiseBuf = this.getNoiseBuffer(ctx);
 
       if (noiseBuf) {
@@ -319,11 +420,11 @@ export class BeatSynthEngine {
    * Multi-burst bandpass-filtered handclap accent.
    */
   playClap(): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playClap());
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
       const noiseBuf = this.getNoiseBuffer(ctx);
       if (!noiseBuf) return;
 
@@ -361,11 +462,11 @@ export class BeatSynthEngine {
    * Bright celebratory bell chime arpeggio (C6 - E6 - G6).
    */
   playChime(): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playChime());
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
       const notes = [1046.5, 1318.51, 1567.98]; // C6, E6, G6
 
       notes.forEach((freq, idx) => {
@@ -397,11 +498,11 @@ export class BeatSynthEngine {
    * Respects mute & Web Audio autoplay state; never throws or blocks.
    */
   playVictoryFanfare(isGrand: boolean = false): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playVictoryFanfare(isGrand));
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
       const notes = isGrand
         ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98] // C5..G6 grand trophy fanfare
         : [523.25, 659.25, 783.99, 1046.5]; // C5..C6 puzzle win arpeggio
@@ -437,11 +538,11 @@ export class BeatSynthEngine {
    * Plays a scale note (1..8 => C4..C5) for Tier 2 PLAY_NOTE.
    */
   playNote(pitch: number = 1, durationSec: number = 0.28): void {
-    const ctx = this.getReadyContext();
+    const ctx = this.getReadyContext(() => this.playNote(pitch, durationSec));
     if (!ctx) return;
 
     try {
-      const now = ctx.currentTime;
+      const now = this.getScheduleStartTime(ctx);
       const clampedIdx = Math.max(0, Math.min(BEAT_SCALE_FREQUENCIES.length - 1, Math.round(pitch) - 1));
       const freq = BEAT_SCALE_FREQUENCIES[clampedIdx];
       const safeDur = Math.max(0.06, Math.min(2.0, durationSec));
@@ -504,6 +605,8 @@ export class BeatSynthEngine {
    * Test helper to reset internal singleton state between Vitest runs.
    */
   resetForTests(): void {
+    this.isResuming = false;
+    this.currentSource = 'main';
     this.stopAll();
     if (this.ctx && typeof this.ctx.close === 'function') {
       try {

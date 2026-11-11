@@ -35,7 +35,7 @@ Every commit in this plan (`Commits 19–33`) MUST satisfy all six invariants in
    - **Non-Overlapping `pane-simulation` HUD Slots:** Stack `BackpackHud` (`🎒` / `🎒 ×N`) and `VariableWatchOverlay` (`toolbar-variables`) inside the shared **Top-Left Stack** (`absolute top-3 left-3 flex flex-col items-start gap-1.5`), and render multi-map / multi-stream status pips (`[1 ✓] [2 ✗] [3 ·]`) inside the **Top-Center Pill** (`absolute top-3 left-1/2 -translate-x-1/2`).
    - **One Icon = One Meaning & 2-Tap Destructive Safety:** Structural closers (`LOOP_END`, `END_IF`, `END_WHILE`) use `CornerDownLeft` / closing-bracket glyphs (**never** `Undo2` or `RotateCcw`); preserve single smart 2-tap `btn-trash` and universal 1-tap Undo protection.
    - **Victory Celebration Multi-Run Spam Guards & Zustand v5 SSR:** `VictoryCelebrationModal` opens synchronously **only** when *all* variants in a multi-map/multi-stream run transition to `'SUCCESS'` (never on partial variant pass, `explanation` demos, `loadSolution()`, `importCode()`, or `undo()`/`redo()`), and all store-connected components follow the Zustand v5 SSR-safe read pattern (`useAppStore(); const { ... } = useAppStore.getState();`).
-   - **Keyboard & Color-Blind Safety:** Logical `Tab` / `Enter` / `Space` / `Escape` navigation, `aria-live="polite"` status cues (variant pass/fail, dial read into box, challenge medal unlocked), and redundant shape+color coding (`● / ▲ / ■ / ◆`) on all beacons, keys/gates, Switchyard cargo, variable boxes, and conditional/loop brackets.
+   - **Keyboard & Screen-Reader Accessibility:** Logical `Tab` / `Enter` / `Space` / `Escape` navigation and `aria-live="polite"` status cues (variant pass/fail, dial read into box, challenge medal unlocked).
 
 ---
 
@@ -344,7 +344,7 @@ flowchart TD
 
 ### Commit 21: Conditional & `While` Control Blocks (`IF`, `ELSE_IF`, `ELSE`, `END_IF`, `WHILE`, `END_WHILE`), Boolean Combinators & Binary Serialization
 - **Wave:** 2 · **Depends On:** `C19` · **Concurrent With:** `C20`, `C22`, `C23`, `C24`
-- **Goal:** Implement universal structured branching and conditional loops (`0x04..0x06`, `0x0A..0x0C`) with color-blind safe visual brackets, zero-reading sensor/combinator badges (`NOT`, `AND`, `OR`), structural block validation, and same-commit `docs/binary_format.md` updates.
+- **Goal:** Implement universal structured branching and conditional loops (`0x04..0x06`, `0x0A..0x0C`) with visual brackets, zero-reading sensor/combinator badges (`NOT`, `AND`, `OR`), structural block validation, and same-commit `docs/binary_format.md` updates.
 - **Changes:**
   - **[NEW] `src/engine/serialization/conditionSerializer.ts`** & **[MODIFY] `src/engine/serialization/codeSerializer.ts`, `docs/binary_format.md`**:
     - Encode/decode `OP_IF (0x04)`, `OP_ELSE (0x05)`, `OP_END_IF (0x06)`, `OP_ELSE_IF (0x0A)`, `OP_WHILE (0x0B)`, `OP_END_WHILE (0x0C)` and prefix-tree `ConditionExpr` (§3.1.2).

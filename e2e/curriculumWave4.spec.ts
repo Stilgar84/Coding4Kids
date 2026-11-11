@@ -83,7 +83,7 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('5 × 5');
   });
 
-  test('C16: renders live loop iteration spotlight in 3.0 and color-blind safe nested loop brackets in 3.3', async ({
+  test('C16: renders live loop iteration spotlight in 3.0 and solid color-coded nested loop brackets in 3.3', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -104,9 +104,15 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await expect(loadButtons).toHaveCount(3);
     await loadButtons.nth(2).click();
 
-    // Verify both solid depth-1 and dashed depth-2 loop bracket rails render
+    // Verify both depth-1 and depth-2 loop bracket rails render as solid lines without marker symbols
     await expect(page.getByTestId('workspace-sequence')).toHaveAttribute('data-max-loop-depth', '2');
-    await expect(page.locator('[data-loop-stroke="solid"]').first()).toBeVisible();
-    await expect(page.locator('[data-loop-stroke="dashed"]').first()).toBeVisible();
+    await expect(
+      page.locator('[data-testid="loop-bracket-segment"][data-loop-depth="1"][data-loop-stroke="solid"]').first()
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="loop-bracket-segment"][data-loop-depth="2"][data-loop-stroke="solid"]').first()
+    ).toBeVisible();
+    await expect(page.locator('[data-loop-stroke="dashed"]')).toHaveCount(0);
+    await expect(page.locator('[data-loop-marker]')).toHaveCount(0);
   });
 });

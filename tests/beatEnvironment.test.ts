@@ -456,6 +456,73 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
       expect(log.oscillatorsCreated).toBe(prevOscCount);
     });
 
+    it('queues and plays the first block sound when AudioContext.resume() resolves asynchronously on first user gesture', async () => {
+      let resolveResume!: () => void;
+      const base = createMockAudioContextFactory('suspended', false);
+
+      class AsyncResumeAudioContext extends base.MockAudioContext {
+        override resume() {
+          base.log.resumesCalled++;
+          return new Promise<void>((resolve) => {
+            resolveResume = () => {
+              this.state = 'running';
+              resolve();
+            };
+          });
+        }
+      }
+
+      (globalThis as any).AudioContext = AsyncResumeAudioContext;
+      const engine = new BeatSynthEngine();
+
+      // Simulate first click: unlockFromGesture() + immediate playKick() before resume() settles
+      expect(engine.unlockFromGesture()).toBe(false);
+      engine.playKick();
+      expect(base.log.oscillatorsCreated).toBe(0);
+
+      // Once browser resolves AudioContext.resume(), queued first-block kick plays immediately!
+      resolveResume();
+      await Promise.resolve();
+      expect(engine.getAudioStatus()).toBe('running');
+      expect(engine.needsSoundUnlock()).toBe(false);
+      expect(base.log.oscillatorsCreated).toBe(2);
+    });
+
+    it('does not cut off main playback first block sound when BeatVariationPreviewPlayer stops on mainIsPlaying', async () => {
+      const { beatVariationPreviewPlayer } = await import('../src/components/VariationCardsPanel');
+      const { MockAudioContext, log } = createMockAudioContextFactory('running', true);
+      (globalThis as any).AudioContext = MockAudioContext;
+
+      const store = useAppStore.getState();
+      store.setSimEnvironment('beat');
+      store.setSpeed(400);
+      store.setBeatMuted(false);
+      useAppStore.setState({
+        workspace: {
+          MAIN: [
+            { id: 'first_kick', type: 'DRUM_KICK' },
+            { id: 'second_snare', type: 'DRUM_SNARE' },
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+      });
+
+      store.play();
+      expect(log.oscillatorsCreated).toBe(2);
+      const stopsAfterStart = log.oscillatorsStopped; // 2 scheduled envelope stop(when) calls
+      expect(stopsAfterStart).toBe(2);
+
+      // Simulate VariationCardsPanel useEffect firing when mainIsPlaying becomes true
+      beatVariationPreviewPlayer.stop('silent');
+      expect(log.oscillatorsStopped).toBe(stopsAfterStart);
+
+      // Explicit user pause DOES stop active main oscillators
+      store.pause();
+      expect(log.oscillatorsStopped).toBe(stopsAfterStart + 2);
+    });
+
     it('remains 100% silent during runHeadlessSimulation, instant mode, and thumbnail generation', () => {
       const { MockAudioContext, log } = createMockAudioContextFactory('running', true);
       (globalThis as any).AudioContext = MockAudioContext;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActionParamDef } from '../../engine/simulation/types';
-import { BEAT_GRID_SIZE, BEAT_LED_PALETTE } from '../../simulations/beat/types';
+import { BEAT_GRID_SIZE } from '../../simulations/beat/types';
 import { getPresetDef } from '../../simulations/beat/presets';
 import { isVariableName } from '../../types';
 
@@ -266,45 +266,8 @@ export const RadiusVisual: React.FC<RadiusVisualProps> = ({
 };
 
 // ==========================================
-// 4. Color Visual (Visual Swatch + Color-Blind Safe Shape Cue)
+// 4. Color Visual (Clean Color Swatch)
 // ==========================================
-export const COLOR_SWATCH_SHAPE_CUES: Record<string, { cue: string; darkInk?: boolean }> = {
-  // Beat & Light RGB LED swatches (BEAT_LED_PALETTE)
-  '#06b6d4': { cue: '●', darkInk: true }, // Cyan (shared with Turtle)
-  '#f43f5e': { cue: '▲' }, // Rose
-  '#fbbf24': { cue: '★', darkInk: true }, // Amber
-  '#10b981': { cue: '■', darkInk: true }, // Emerald / Green (shared with Turtle)
-  '#a855f7': { cue: '◆' }, // Purple
-  '#3b82f6': { cue: '⬟' }, // Blue (shared with Turtle)
-  '#f97316': { cue: '⬢', darkInk: true }, // Orange
-  '#ec4899': { cue: '✦' }, // Pink (shared with Turtle)
-
-  // Additional Turtle LOGO pen color swatches (TURTLE_COLOR_PARAM_DEF)
-  '#0f172a': { cue: '⬢' }, // Black
-  '#ef4444': { cue: '▲' }, // Red
-  '#f59e0b': { cue: '★', darkInk: true }, // Turtle Amber
-  '#8b5cf6': { cue: '◆' }, // Turtle Purple
-};
-
-const FALLBACK_SHAPE_CUES = ['●', '▲', '★', '■', '◆', '⬟', '⬢', '✦'] as const;
-
-export function getColorShapeCue(color?: string): { cue: string; darkInk: boolean } {
-  const normalized = (color || '#0f172a').trim().toLowerCase();
-  const exact = COLOR_SWATCH_SHAPE_CUES[normalized];
-  if (exact) {
-    return { cue: exact.cue, darkInk: Boolean(exact.darkInk) };
-  }
-  const beatSwatch = BEAT_LED_PALETTE.find((s) => s.hex.toLowerCase() === normalized);
-  if (beatSwatch) {
-    return { cue: beatSwatch.shapeCue, darkInk: false };
-  }
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
-  }
-  return { cue: FALLBACK_SHAPE_CUES[hash % FALLBACK_SHAPE_CUES.length], darkInk: false };
-}
-
 interface ColorVisualProps {
   color: string;
   size?: number;
@@ -317,31 +280,18 @@ export const ColorVisual: React.FC<ColorVisualProps> = ({
   className = '',
 }) => {
   const effectiveColor = color || '#0f172a';
-  const { cue, darkInk } = getColorShapeCue(effectiveColor);
-  const glyphSize = Math.max(9, Math.round(size * 0.5));
 
   return (
     <div
       data-testid="color-swatch-visual"
-      data-shape-cue={cue}
       className={`inline-flex items-center justify-center rounded-full border-2 border-white/90 shadow-sm transition-transform select-none ${className}`}
       style={{
         backgroundColor: effectiveColor,
         width: `${size}px`,
         height: `${size}px`,
       }}
-      title={`Color: ${effectiveColor} (${cue})`}
-    >
-      <span
-        aria-hidden="true"
-        className={`font-black leading-none ${
-          darkInk ? 'text-slate-950/90' : 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]'
-        }`}
-        style={{ fontSize: `${glyphSize}px` }}
-      >
-        {cue}
-      </span>
-    </div>
+      title={`Color: ${effectiveColor}`}
+    />
   );
 };
 
@@ -635,8 +585,6 @@ export const GridCoordVisual: React.FC<GridCoordVisualProps> = ({
   const idx = clamped - 1;
   const svgSize = compact ? 16 : 22;
   const isRowLike = variant === 'row' || variant === 'pixelY';
-  const axisArrow =
-    variant === 'pixelX' ? '→' : variant === 'pixelY' ? '↓' : '';
 
   return (
     <div
@@ -689,7 +637,6 @@ export const GridCoordVisual: React.FC<GridCoordVisualProps> = ({
       </svg>
       {showText && (
         <span className="text-[10px] font-black text-cyan-200 mt-0.5 tracking-tighter">
-          {axisArrow}
           {clamped}
         </span>
       )}

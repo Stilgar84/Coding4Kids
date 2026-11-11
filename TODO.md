@@ -1,8 +1,11 @@
 # bugs
 
-slot counter should not require a new row of button, in fact why was the row with function selection and co resurected? it was removed previously
 
-cleanup ui, too many buttons
+
+
+profile save is too large
+
+french translation
 
 --
 

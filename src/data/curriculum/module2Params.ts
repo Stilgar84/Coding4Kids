@@ -604,20 +604,32 @@ export const MODULE_2_PARAMS_ACTIVITIES: CurriculumActivity[] = [
         icon: '😉',
         workspace: buildModule2Workspace(
           [
+            // Outer face circle centered at (100, 0), radius 100
             { type: 'SET_PEN_COLOR', params: { color: '#f59e0b' } },
-            { type: 'SET_PEN_WIDTH', params: { width: 8 } },
-            { type: 'ARC_RIGHT', params: { radius: 75, angle: 360 } },
+            { type: 'SET_PEN_WIDTH', params: { width: 12 } },
+            { type: 'ARC_RIGHT', params: { radius: 100, angle: 360 } },
+            // Reposition to (25, 0) facing South (180°) and draw smile arc to (175, 0)
             { type: 'PEN_UP' },
-            { type: 'TURN_RIGHT', params: { angle: 120 } },
-            { type: 'FORWARD', params: { length: 50 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'FORWARD', params: { length: 25 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
             { type: 'SET_PEN_COLOR', params: { color: '#0f172a' } },
+            { type: 'SET_PEN_WIDTH', params: { width: 8 } },
             { type: 'PEN_DOWN' },
-            { type: 'ARC_LEFT', params: { radius: 50, angle: 60 } },
+            { type: 'ARC_LEFT', params: { radius: 75, angle: 180 } },
+            // Step up to (175, -25) facing North (0°) and draw right winking eye arch (175,-25)->(125,-25)
             { type: 'PEN_UP' },
-            { type: 'TURN_LEFT', params: { angle: 60 } },
-            { type: 'FORWARD', params: { length: 50 } },
+            { type: 'FORWARD', params: { length: 25 } },
             { type: 'PEN_DOWN' },
             { type: 'ARC_LEFT', params: { radius: 25, angle: 180 } },
+            // Reposition across to (50, -25) facing North (0°) and draw bold left open eye
+            { type: 'PEN_UP' },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'FORWARD', params: { length: 75 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'SET_PEN_WIDTH', params: { width: 16 } },
+            { type: 'PEN_DOWN' },
+            { type: 'FORWARD', params: { length: 25 } },
           ],
           'm2_2b_emoji'
         ),
@@ -652,18 +664,25 @@ export const MODULE_2_PARAMS_ACTIVITIES: CurriculumActivity[] = [
         icon: '🛡️',
         workspace: buildModule2Workspace(
           [
-            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            // Outer blue ring (R=75) centered at (75, 0)
             { type: 'SET_PEN_WIDTH', params: { width: 12 } },
             { type: 'SET_PEN_COLOR', params: { color: '#3b82f6' } },
             { type: 'ARC_RIGHT', params: { radius: 75, angle: 360 } },
+            // Step 25px inward to (25, 0) facing North and draw concentric middle red ring (R=50, center (75, 0))
             { type: 'PEN_UP' },
             { type: 'TURN_RIGHT', params: { angle: 90 } },
             { type: 'FORWARD', params: { length: 25 } },
             { type: 'TURN_LEFT', params: { angle: 90 } },
-            { type: 'PEN_DOWN' },
             { type: 'SET_PEN_COLOR', params: { color: '#ef4444' } },
+            { type: 'PEN_DOWN' },
             { type: 'ARC_RIGHT', params: { radius: 50, angle: 360 } },
+            // Step 25px inward to (50, 0) facing North and draw concentric inner gold bullseye (R=25, center (75, 0))
+            { type: 'PEN_UP' },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'FORWARD', params: { length: 25 } },
+            { type: 'TURN_LEFT', params: { angle: 90 } },
             { type: 'SET_PEN_COLOR', params: { color: '#f59e0b' } },
+            { type: 'PEN_DOWN' },
             { type: 'ARC_RIGHT', params: { radius: 25, angle: 360 } },
           ],
           'm2_2b_shield'

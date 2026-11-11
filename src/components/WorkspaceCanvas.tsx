@@ -4,7 +4,6 @@ import {
   BlockItem,
   computeLoopNestingMetadata,
   type LoopStrokeStyle,
-  type LoopDepthMarker,
   type MatchedLoopSpan,
   type BlockLoopRoleSpan,
   type BlockLoopMetadata,
@@ -20,7 +19,6 @@ import {
 export {
   computeLoopNestingMetadata,
   type LoopStrokeStyle,
-  type LoopDepthMarker,
   type MatchedLoopSpan,
   type BlockLoopRoleSpan,
   type BlockLoopMetadata,

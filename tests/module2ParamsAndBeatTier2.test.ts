@@ -41,7 +41,6 @@ import {
   ParamVisual,
   PitchVisual,
   StampPresetVisual,
-  getColorShapeCue,
 } from '../src/components/params/VisualParamBadges';
 import { BlockParamBadge } from '../src/components/params/BlockParamBadge';
 import { ParamSelectionPopover } from '../src/components/params/ParamSelectionPopover';
@@ -505,36 +504,38 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
       );
       expect(rowHtml).toContain('data-testid="grid-coord-visual-row-3"');
       expect(colHtml).toContain('data-testid="grid-coord-visual-col-6"');
-      expect(pxXHtml).toContain('→2');
-      expect(pxYHtml).toContain('↓7');
+      expect(pxXHtml).toContain('>2<');
+      expect(pxXHtml).not.toContain('→');
+      expect(pxYHtml).toContain('>7<');
+      expect(pxYHtml).not.toContain('↓');
       expect(
         renderToStaticMarkup(React.createElement(GridCoordVisual, { coord: 4, variant: 'row' }))
       ).toContain('4');
     });
 
-    it('renders distinct non-hue shape cues (● ▲ ★ ■ ◆ ⬟ ⬢ ✦) on all Beat and Turtle color swatches', () => {
-      const beatCues = new Set<string>();
+    it('renders clean symbol-free color swatches on all Beat and Turtle color pickers', () => {
+      const forbiddenSymbols = ['●', '▲', '★', '■', '◆', '⬟', '⬢', '✦'];
       for (const swatch of BEAT_LED_PALETTE) {
         const html = renderToStaticMarkup(
           React.createElement(ColorVisual, { color: swatch.hex, size: 24 })
         );
-        expect(html).toContain(`data-shape-cue="${swatch.shapeCue}"`);
-        expect(html).toContain(swatch.shapeCue);
-        beatCues.add(swatch.shapeCue);
+        expect(html).toContain('data-testid="color-swatch-visual"');
+        expect(html).not.toContain('data-shape-cue');
+        for (const sym of forbiddenSymbols) {
+          expect(html).not.toContain(sym);
+        }
       }
-      expect(beatCues.size).toBe(8);
 
-      const turtleCues = new Set<string>();
       for (const opt of TURTLE_COLOR_PARAM_DEF.options) {
-        const { cue } = getColorShapeCue(String(opt.value));
         const html = renderToStaticMarkup(
           React.createElement(ColorVisual, { color: String(opt.value), size: 24 })
         );
-        expect(html).toContain(`data-shape-cue="${cue}"`);
-        turtleCues.add(cue);
+        expect(html).toContain('data-testid="color-swatch-visual"');
+        expect(html).not.toContain('data-shape-cue');
+        for (const sym of forbiddenSymbols) {
+          expect(html).not.toContain(sym);
+        }
       }
-      // All 8 Turtle swatches also map to distinct shape cues
-      expect(turtleCues.size).toBe(8);
     });
 
     it('enforces >= 36px/44px touch targets, ARIA dialog/pressed attributes, and staged variable gating on BlockParamBadge & ParamSelectionPopover', () => {
@@ -678,7 +679,7 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
         expect(act.palette.allowVariables).toBe(false);
         expect(act.palette.allowedControlBlocks).toEqual([]);
 
-        const maxBudget = id === '2B' ? 14 : 12;
+        const maxBudget = id === '2B' ? 24 : 12;
         const minBudget = id === '2B' ? 10 : 4;
         expect(act.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(minBudget);
         expect(act.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(maxBudget);
@@ -701,6 +702,74 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
           cardSvgs.add(preview.svgMarkup);
         }
         expect(cardSvgs.size).toBe(3);
+      }
+
+      // Verify Capstone 2B Winking Emoji & Bullseye Shield geometry
+      const getArcCenter = (arc: {
+        fromX: number;
+        fromY: number;
+        startHeading: number;
+        radius: number;
+        sweepAngle: number;
+      }) => {
+        const rad = (arc.startHeading * Math.PI) / 180;
+        const sign = arc.sweepAngle >= 0 ? 1 : -1;
+        return {
+          cx: arc.fromX + sign * arc.radius * Math.cos(rad),
+          cy: arc.fromY + sign * arc.radius * Math.sin(rad),
+        };
+      };
+
+      const cap2B = getActivityLatest('2B')!;
+      const emojiCard = cap2B.variations!.find((v) => v.id === '2B-winking-emoji')!;
+      const emojiState = renderTurtleVariationPreview(emojiCard.workspace).finalState;
+      expect(emojiState.paths).toHaveLength(4);
+      const [faceArc, smileArc, winkArc, openEyeLine] = emojiState.paths;
+      expect(faceArc.type).toBe('ARC');
+      if (faceArc.type === 'ARC') {
+        expect(faceArc.radius).toBe(100);
+        expect(faceArc.sweepAngle).toBe(360);
+        const c = getArcCenter(faceArc);
+        expect(c.cx).toBeCloseTo(100, 3);
+        expect(c.cy).toBeCloseTo(0, 3);
+      }
+      expect(smileArc.type).toBe('ARC');
+      if (smileArc.type === 'ARC') {
+        expect(smileArc.radius).toBe(75);
+        expect(smileArc.sweepAngle).toBe(-180);
+        const c = getArcCenter(smileArc);
+        expect(c.cx).toBeCloseTo(100, 3);
+        expect(c.cy).toBeCloseTo(0, 3);
+      }
+      expect(winkArc.type).toBe('ARC');
+      if (winkArc.type === 'ARC') {
+        expect(winkArc.radius).toBe(25);
+        expect(winkArc.sweepAngle).toBe(-180);
+        const c = getArcCenter(winkArc);
+        expect(c.cx).toBeCloseTo(150, 3);
+        expect(c.cy).toBeCloseTo(-25, 3);
+      }
+      expect(openEyeLine.type).toBe('LINE');
+      if (openEyeLine.type === 'LINE') {
+        expect(openEyeLine.fromX).toBeCloseTo(50, 3);
+        expect(openEyeLine.toX).toBeCloseTo(50, 3);
+        expect(openEyeLine.fromY).toBeCloseTo(-25, 3);
+        expect(openEyeLine.toY).toBeCloseTo(-50, 3);
+      }
+
+      const shieldCard = cap2B.variations!.find((v) => v.id === '2B-bullseye-shield')!;
+      const shieldState = renderTurtleVariationPreview(shieldCard.workspace).finalState;
+      expect(shieldState.paths).toHaveLength(3);
+      const radii = shieldState.paths.map((p) => (p.type === 'ARC' ? p.radius : 0));
+      expect(radii).toEqual([75, 50, 25]);
+      for (const ring of shieldState.paths) {
+        expect(ring.type).toBe('ARC');
+        if (ring.type === 'ARC') {
+          const c = getArcCenter(ring);
+          expect(c.cx).toBeCloseTo(75, 3);
+          expect(c.cy).toBeCloseTo(0, 3);
+          expect(ring.sweepAngle).toBe(360);
+        }
       }
     });
 

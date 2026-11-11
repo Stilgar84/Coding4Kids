@@ -61,6 +61,8 @@ export const Toolbar: React.FC = () => {
     undo,
     canUndo,
     toggleMobileMenu,
+    beatState,
+    unlockBeatAudio,
   } = useAppStore.getState();
 
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
@@ -361,6 +363,11 @@ export const Toolbar: React.FC = () => {
             type="button"
             data-testid="btn-step"
             disabled={hasLoopError || isInstant}
+            onPointerDown={() => {
+              if (!beatState.isMuted) {
+                unlockBeatAudio();
+              }
+            }}
             onClick={step}
             className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 lg:w-11 lg:h-11 rounded-xl shadow-sm border-2 transition-transform shrink-0 ${
               hasLoopError || isInstant
@@ -396,6 +403,11 @@ export const Toolbar: React.FC = () => {
               type="button"
               data-testid="btn-play"
               disabled={hasLoopError}
+              onPointerDown={() => {
+                if (!beatState.isMuted) {
+                  unlockBeatAudio();
+                }
+              }}
               onClick={play}
               className={`flex items-center justify-center w-9 h-9 sm:w-10 md:w-11 md:h-10 lg:w-12 lg:h-11 rounded-xl shadow-md border-2 transition-transform shrink-0 ${
                 hasLoopError

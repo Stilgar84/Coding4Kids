@@ -74,7 +74,7 @@ Never reuse the same arrow or trash glyph for unrelated concepts:
   - Opens synchronously in store state (`isVictoryModalOpen: true`, using CSS entrance delay on animated runs rather than async store timers) when `step()` / `play()` or a direct user block edit in `instant` mode transitions `prevStatus !== 'SUCCESS'` → `'SUCCESS'`, or when a Capstone / Module Badge (`🏅`) is earned.
   - **Spam Guards:** Never trigger on `loadSolution()`, `format === 'explanation'` demo tabs, map edits, mode/lesson/world switches, hydration, `importCode()`, or `undo()`/`redo()`.
   - **Click Anywhere to Dismiss:** Clicking/tapping anywhere on the overlay (or pressing `Escape` / `Enter` / `Space`) dismisses the modal while keeping the canvas `status-success` pill visible underneath; `Next ▶` (`btn-victory-next`, `e.stopPropagation()`) advances in Curriculum mode.
-- **Touch Targets & Color-Blind Safety:** Interactive controls must be `≥ 36×36px` on narrow mobile (`<640px`) and `≥ 44×44px` on tablet/desktop (`≥768px`). Always pair color state cues with redundant shapes/icons (`●`, `▲`, `◆`, `★`, `✓`, `🔒`).
+- **Touch Targets:** Interactive controls must be `≥ 36×36px` on narrow mobile (`<640px`) and `≥ 44×44px` on tablet/desktop (`≥768px`).
 - **Zustand v5 SSR Compatibility (`renderToStaticMarkup`):** Components reading `useAppStore` must subscribe and read live state via the SSR-safe pattern:
   ```ts
   useAppStore();

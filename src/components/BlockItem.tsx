@@ -30,8 +30,7 @@ import {
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
 
-export type LoopStrokeStyle = 'solid' | 'dashed' | 'double';
-export type LoopDepthMarker = 'circle' | 'diamond' | 'triangle';
+export type LoopStrokeStyle = 'solid';
 
 export interface MatchedLoopSpan {
   loopId: string;
@@ -42,7 +41,6 @@ export interface MatchedLoopSpan {
   /** 0-based bottom-up rail tier (0 = innermost bracket closest to blocks, higher = outer cradles below) */
   tier: number;
   strokeStyle: LoopStrokeStyle;
-  marker: LoopDepthMarker;
   isActiveLoop: boolean;
 }
 
@@ -51,7 +49,6 @@ export interface BlockLoopRoleSpan {
   depth: number;
   tier: number;
   strokeStyle: LoopStrokeStyle;
-  marker: LoopDepthMarker;
   role: 'start' | 'body' | 'end';
   isActiveLoop: boolean;
 }
@@ -61,10 +58,8 @@ export interface BlockLoopMetadata {
   enclosingSpans: BlockLoopRoleSpan[];
   /** Nesting depth of the innermost matched loop enclosing this block (0 if outside matched loops) */
   innermostDepth: number;
-  /** Color-blind safe stroke pattern of the innermost matched loop */
+  /** Stroke style of the innermost matched loop */
   innermostStroke?: LoopStrokeStyle;
-  /** Color-blind safe marker shape of the innermost matched loop */
-  innermostMarker?: LoopDepthMarker;
   /** Structural role of this block within its innermost enclosing loop */
   primaryRole: 'start' | 'body' | 'end' | 'none';
 }
@@ -78,8 +73,6 @@ export interface ScopeLoopNestingAnalysis {
 
 export function getLoopDepthVisualSpec(depth: number): {
   strokeStyle: LoopStrokeStyle;
-  marker: LoopDepthMarker;
-  markerGlyph: string;
   startBgClass: string;
   startBorderClass: string;
   endBgClass: string;
@@ -87,15 +80,11 @@ export function getLoopDepthVisualSpec(depth: number): {
   endIconColorClass: string;
   railBorderColorClass: string;
   railActiveBorderColorClass: string;
-  railBadgeBgClass: string;
-  railBadgeTextClass: string;
   borderStyleClass: string;
 } {
   if (depth <= 1) {
     return {
       strokeStyle: 'solid',
-      marker: 'circle',
-      markerGlyph: '●',
       startBgClass: 'bg-purple-700',
       startBorderClass: 'border-purple-400 border-solid',
       endBgClass: 'bg-purple-900',
@@ -103,42 +92,32 @@ export function getLoopDepthVisualSpec(depth: number): {
       endIconColorClass: 'text-purple-200',
       railBorderColorClass: 'border-purple-400/90',
       railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(250,204,21,0.55)]',
-      railBadgeBgClass: 'bg-purple-950 border-purple-400',
-      railBadgeTextClass: 'text-purple-200',
       borderStyleClass: 'border-solid',
     };
   }
   if (depth === 2) {
     return {
-      strokeStyle: 'dashed',
-      marker: 'diamond',
-      markerGlyph: '◆',
+      strokeStyle: 'solid',
       startBgClass: 'bg-cyan-700',
-      startBorderClass: 'border-cyan-300 border-dashed',
+      startBorderClass: 'border-cyan-300 border-solid',
       endBgClass: 'bg-cyan-900',
-      endBorderClass: 'border-cyan-400 border-dashed',
+      endBorderClass: 'border-cyan-400 border-solid',
       endIconColorClass: 'text-cyan-200',
       railBorderColorClass: 'border-cyan-400/95',
       railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(34,211,238,0.6)]',
-      railBadgeBgClass: 'bg-cyan-950 border-cyan-300',
-      railBadgeTextClass: 'text-cyan-200',
-      borderStyleClass: 'border-dashed',
+      borderStyleClass: 'border-solid',
     };
   }
   return {
-    strokeStyle: 'double',
-    marker: 'triangle',
-    markerGlyph: '▲',
+    strokeStyle: 'solid',
     startBgClass: 'bg-emerald-700',
-    startBorderClass: 'border-emerald-300 border-double',
+    startBorderClass: 'border-emerald-300 border-solid',
     endBgClass: 'bg-emerald-900',
-    endBorderClass: 'border-emerald-400 border-double',
+    endBorderClass: 'border-emerald-400 border-solid',
     endIconColorClass: 'text-emerald-200',
     railBorderColorClass: 'border-emerald-400/95',
     railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(52,211,153,0.6)]',
-    railBadgeBgClass: 'bg-emerald-950 border-emerald-300',
-    railBadgeTextClass: 'text-emerald-200',
-    borderStyleClass: 'border-double',
+    borderStyleClass: 'border-solid',
   };
 }
 
@@ -223,7 +202,6 @@ export function computeLoopNestingMetadata(
       depth,
       tier,
       strokeStyle: spec.strokeStyle,
-      marker: spec.marker,
       isActiveLoop: Boolean(activeLoopStartPcs?.has(pair.startIndex)),
     };
   });
@@ -243,7 +221,6 @@ export function computeLoopNestingMetadata(
           depth: span.depth,
           tier: span.tier,
           strokeStyle: span.strokeStyle,
-          marker: span.marker,
           role,
           isActiveLoop: span.isActiveLoop,
         });
@@ -258,7 +235,6 @@ export function computeLoopNestingMetadata(
       enclosingSpans,
       innermostDepth: innermost ? innermost.depth : 0,
       innermostStroke: innermost?.strokeStyle,
-      innermostMarker: innermost?.marker,
       primaryRole: innermost ? innermost.role : 'none',
     };
   });
@@ -808,16 +784,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   // Block visual container: left side has flat right edge when parameters are present
   const renderBlockContent = () => {
     const roundedClass = hasParams ? 'rounded-l-2xl rounded-r-none' : 'rounded-2xl';
-    const usesDoubleBorder =
-      effectiveLoopMeta.innermostDepth >= 3 &&
-      (block.type === 'LOOP_START' || block.type === 'LOOP_END');
-    const borderEdgesClass = usesDoubleBorder
-      ? hasParams
-        ? 'border-[3px] border-r-0'
-        : 'border-[3px]'
-      : hasParams
-      ? 'border-2 border-r-0'
-      : 'border-2';
+    const borderEdgesClass = hasParams ? 'border-2 border-r-0' : 'border-2';
 
     return (
       <div
@@ -999,7 +966,6 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       data-selected={isSelected ? 'true' : 'false'}
       data-loop-depth={loopDepth > 0 ? String(loopDepth) : undefined}
       data-loop-stroke={effectiveLoopMeta.innermostStroke}
-      data-loop-marker={effectiveLoopMeta.innermostMarker}
       data-loop-role={loopDepth > 0 ? effectiveLoopMeta.primaryRole : undefined}
       tabIndex={0}
       role={isPlaceholder ? 'button' : undefined}
@@ -1106,13 +1072,11 @@ export const BlockItem: React.FC<BlockItemProps> = ({
         )}
       </div>
 
-      {/* Visual Loop Nesting Bracket / Under-Bar Connectors (Color + Stroke + Shape Redundant) */}
+      {/* Visual Loop Nesting Bracket / Under-Bar Connectors (Color-Coded by Depth) */}
       {effectiveLoopMeta.enclosingSpans.map((span) => {
         const spec = getLoopDepthVisualSpec(span.depth);
-        const isDouble = span.strokeStyle === 'double';
         const bottomPx = -(8 + span.tier * 8);
-        const hookHeightPx =
-          span.role === 'body' ? (isDouble ? 5 : 4) : 7 + span.tier * 6;
+        const hookHeightPx = span.role === 'body' ? 4 : 7 + span.tier * 6;
         const horizontalClass =
           span.role === 'start'
             ? 'left-1.5 -right-1.5'
@@ -1121,15 +1085,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             : '-left-1.5 -right-1.5';
         const borderThicknessClass =
           span.role === 'start'
-            ? isDouble
-              ? 'border-b-[4px] border-l-[4px] rounded-bl-lg'
-              : 'border-b-[3px] border-l-[3px] rounded-bl-md'
+            ? 'border-b-[3px] border-l-[3px] rounded-bl-md'
             : span.role === 'end'
-            ? isDouble
-              ? 'border-b-[4px] border-r-[4px] rounded-br-lg'
-              : 'border-b-[3px] border-r-[3px] rounded-br-md'
-            : isDouble
-            ? 'border-b-[4px]'
+            ? 'border-b-[3px] border-r-[3px] rounded-br-md'
             : 'border-b-[3px]';
         const colorClass = span.isActiveLoop
           ? spec.railActiveBorderColorClass
@@ -1143,7 +1101,6 @@ export const BlockItem: React.FC<BlockItemProps> = ({
             data-loop-depth={span.depth}
             data-loop-tier={span.tier}
             data-loop-stroke={span.strokeStyle}
-            data-loop-marker={span.marker}
             data-loop-role={span.role}
             data-loop-active={span.isActiveLoop ? 'true' : 'false'}
             aria-hidden="true"
@@ -1152,15 +1109,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
               height: `${hookHeightPx}px`,
             }}
             className={`absolute ${horizontalClass} ${borderThicknessClass} ${spec.borderStyleClass} ${colorClass} pointer-events-none z-10 transition-colors`}
-          >
-            {span.role === 'start' && (
-              <span
-                className={`absolute -bottom-1.5 left-1.5 px-0.5 rounded border text-[7px] leading-none font-black ${spec.railBadgeBgClass} ${spec.railBadgeTextClass}`}
-              >
-                {spec.markerGlyph}
-              </span>
-            )}
-          </div>
+          />
         );
       })}
 

@@ -26,10 +26,9 @@ Every commit in this plan MUST satisfy all six invariants before merging/advanci
    - Every validated puzzle and puzzle capstone MUST pass automated **Anti-Bypass Constraint Checks** (within a `< 200 ms` CI performance budget per puzzle) proving two facts:
      1. The reference solution (and any filled partial `?` scaffold) solves the activity within all slot/palette limits.
      2. **Attempting to solve the activity *without* applying the lesson's target concept** (e.g., skipping `MOVE_BACK` by turning `180°`, spamming `3× Turn Right` instead of `Turn Left`, omitting `×N` badges, bypassing keys/planks, unrolling instead of using `Loop`, putting everything inside a single loop with no pre/post steps, or using flat sequential loops instead of nested loops) **yields zero valid solutions** within the lesson's palette and physical slot budget.
-6. **Accessibility & Color-Blind Inclusive Zero-Reading UX:**
+6. **Accessibility & Zero-Reading UX:**
    - **Keyboard Navigation:** All interactive elements (slot trays, `?` placeholder blocks, avatar profile cards, variation cards, modals, and demo tabs) maintain logical focus order and `Enter` / `Space` / `Escape` keyboard operation.
    - **Screen-Reader Announcements (`aria-live="polite"`):** Visual-only feedback events (padlock unlocked, slot tray full/capped, execution paused on `?`, badge unlocked) emit concise `aria-live` status updates without adding visual text clutter.
-   - **Color-Blind Safe Redundancy:** Never rely on hue alone—pair colors with distinct shapes, icons, or stroke styles (e.g., Keys & Locked Gates pair color with distinct key-bow shapes `● / ▲ / ◆`; nested loop brackets alternate solid vs. dashed/double borders alongside color; color swatches carry subtle index/shape cues).
 
 ---
 
@@ -463,7 +462,7 @@ flowchart TD
 - **Goal:** Unlock visual action parameter badges across Robot (`×N`), Turtle LOGO (`Length`, `Angle`, `Pen Color`, `Pen Width`, `Arc`), and Beat & Light Tier 2 (`Pitch`, `Duration`, `LED Color`, `Row/Col/Pixel`).
 - **Changes:**
   - **[MODIFY] `src/simulations/beat/` & `beatSerializer.ts`**: Add `PLAY_NOTE(pitch 1..8, duration ½|1|2)`, `SET_LED_COLOR`, `LIGHT_ROW(y)`, `LIGHT_COL(x)`, `LIGHT_PIXEL(x, y)`, grouped `STAMP_PRESET` badge, and `×N` repeat support (`0x17..0x1B` with `MASK_HAS_VAR_PARAM` support).
-  - **[MODIFY] `src/components/params/VisualParamBadges.tsx`**: Visual Pitch Scale bar, Beat Duration badges, and color-blind safe swatch indices/icons.
+  - **[MODIFY] `src/components/params/VisualParamBadges.tsx`**: Visual Pitch Scale bar, Beat Duration badges, and clean color swatches.
   - **[NEW] `src/data/curriculum/module2Params.ts`**: Author `2.1` (`×2..×9` in 5-slot tray — proven unsolvable without `×N` by `constraintSolver`!), `2.2`–`2.4` (LOGO params), `2.5` (Beat Tier 2 with playable variation cards), and Capstone `2B` (*Emblem & Emoji Studio*).
 - **Save & Test Compatibility:** Appends opcodes `0x17..0x1B` to `beatSerializer.ts`; all Tier 1 Beat saves decode identically.
 - **Human Verification:**
@@ -503,9 +502,9 @@ flowchart TD
 
 ### Commit 16: Visual Loop Nesting Brackets & Module 3 Core Loop Lessons (`3.0`–`3.3`)
 - **Wave:** 4 · **Depends On:** `C2`, `C5`, `C7`, `C8a`, `C9` *(needs `C9` for `3.3`'s LOGO `VariationCardsPanel`)* · **Concurrent With:** `C8b`, `C12`, `C13`, `C15`
-- **Goal:** Make single and nested `Loop Start ... Loop End` scopes visually unmistakable (with color-blind safe solid/dashed stroke patterns) and deliver `3.0`–`3.3` with anti-bypass loop proofs.
+- **Goal:** Make single and nested `Loop Start ... Loop End` scopes visually unmistakable (with distinct color-coded solid brackets by nesting depth) and deliver `3.0`–`3.3` with anti-bypass loop proofs.
 - **Changes:**
-  - **[MODIFY] `src/components/WorkspaceCanvas.tsx` & `src/components/BlockItem.tsx`**: Render loop group connectors/under-bars spanning `LOOP_START` to `LOOP_END` across nesting depths (pairing hue with distinct solid/dashed/double border styles), plus `1/4..4/4` iteration counter spotlights for `3.0`.
+  - **[MODIFY] `src/components/WorkspaceCanvas.tsx` & `src/components/BlockItem.tsx`**: Render loop group connectors/under-bars spanning `LOOP_START` to `LOOP_END` across nesting depths (differentiated by solid color per depth), plus `1/4..4/4` iteration counter spotlights for `3.0`.
   - **[NEW] `src/data/curriculum/module3Part1.ts`**:
     - `3.0` [📖 Demo]: 8 unrolled blocks vs. `Loop ×4 [2 blocks]`.
     - `3.1` [🤖]: *Simple Multi-Block Loops* (`5-slot` tray — proven unsolvable with `maxLoopNestingDepth: 0` even when `×2..×9` badges are enabled!).

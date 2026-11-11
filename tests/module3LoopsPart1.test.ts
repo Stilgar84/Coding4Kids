@@ -117,8 +117,8 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
     });
   });
 
-  describe('Visual Loop Nesting Brackets, Color-Blind Stroke Redundancy & ARIA Depth Labels', () => {
-    it('renders flat loop (depth 1, solid purple) brackets and ARIA loop level 1 labels via SSR', () => {
+  describe('Visual Loop Nesting Brackets, Depth Colors & ARIA Depth Labels', () => {
+    it('renders flat loop (depth 1, solid purple) brackets without marker symbols and ARIA loop level 1 labels via SSR', () => {
       const blocks: CodeBlock[] = [
         createCurriculumBlock('LOOP_START', 3, undefined, 'flat_1'),
         createCurriculumBlock('MOVE_FWD', 2, undefined, 'flat_2'),
@@ -135,7 +135,6 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         depth: 1,
         tier: 0,
         strokeStyle: 'solid',
-        marker: 'circle',
       });
 
       useAppStore.setState({ workspace: emptyWorkspace(blocks) });
@@ -146,7 +145,8 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       expect(html).toContain('data-testid="loop-bracket-segment"');
       expect(html).toContain('data-loop-depth="1"');
       expect(html).toContain('data-loop-stroke="solid"');
-      expect(html).toContain('data-loop-marker="circle"');
+      expect(html).not.toContain('data-loop-marker');
+      expect(html).not.toContain('●');
 
       // Screen-reader ARIA loop labels
       expect(html).toContain('Loop Start, slot 1, repeat 3, Loop level 1');
@@ -155,7 +155,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       expect(html).toContain('Loop End, slot 4, Loop level 1');
     });
 
-    it('renders nested loops (depth 1 solid + depth 2 dashed + depth 3 double) with non-crossing tiers', () => {
+    it('renders nested loops (depth 1 purple + depth 2 cyan + depth 3 emerald) with uniform solid borders and non-crossing tiers', () => {
       const nested2Blocks: CodeBlock[] = [
         createCurriculumBlock('LOOP_START', 4, undefined, 'nest_1'),
         createCurriculumBlock('MOVE_FWD', undefined, undefined, 'nest_2'),
@@ -181,7 +181,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         endIndex: 4,
         depth: 2,
         tier: 0,
-        strokeStyle: 'dashed',
+        strokeStyle: 'solid',
       });
 
       useAppStore.setState({ workspace: emptyWorkspace(nested2Blocks) });
@@ -189,13 +189,17 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
 
       expect(html2).toContain('data-max-loop-depth="2"');
       expect(html2).toContain('data-loop-stroke="solid"');
-      expect(html2).toContain('data-loop-stroke="dashed"');
-      expect(html2).toContain('border-dashed');
+      expect(html2).toContain('bg-purple-700');
+      expect(html2).toContain('bg-cyan-700');
+      expect(html2).toContain('border-cyan-400/95');
+      expect(html2).not.toContain('border-dashed');
+      expect(html2).not.toContain('data-loop-marker');
+      expect(html2).not.toContain('◆');
       expect(html2).toContain('Loop Start, slot 3, repeat 2, Loop level 2 (nested)');
       expect(html2).toContain('Turn Left, slot 4, Inside loop level 2 (nested)');
       expect(html2).toContain('Loop End, slot 5, Loop level 2 (nested)');
 
-      // Verify depth 3+ renders double-stroke emerald redundancy cleanly
+      // Verify depth 3+ renders solid emerald color without double borders or marker symbols
       const nested3Blocks: CodeBlock[] = [
         createCurriculumBlock('LOOP_START', 2, undefined, 'd3_1'),
         createCurriculumBlock('LOOP_START', 2, undefined, 'd3_2'),
@@ -208,8 +212,11 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       useAppStore.setState({ workspace: emptyWorkspace(nested3Blocks) });
       const html3 = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(html3).toContain('data-max-loop-depth="3"');
-      expect(html3).toContain('data-loop-stroke="double"');
-      expect(html3).toContain('border-double');
+      expect(html3).toContain('data-loop-stroke="solid"');
+      expect(html3).toContain('bg-emerald-700');
+      expect(html3).toContain('border-emerald-400/95');
+      expect(html3).not.toContain('border-double');
+      expect(html3).not.toContain('▲');
       expect(html3).toContain('Inside loop level 3 (nested)');
     });
 

@@ -217,14 +217,18 @@ export class BeatVariationPreviewPlayer {
   };
 
   private clearActiveRun(): void {
+    const wasRunning =
+      this.snapshot.isPlaying || this.timerId !== null || this.runtime !== null;
     if (this.timerId !== null) {
       clearInterval(this.timerId);
       this.timerId = null;
     }
-    try {
-      beatSynth.stopAll();
-    } catch {
-      // Never block cleanup
+    if (wasRunning) {
+      try {
+        beatSynth.stopSource('preview');
+      } catch {
+        // Never block cleanup
+      }
     }
     this.runtime = null;
     this.beatState = null;
@@ -283,7 +287,9 @@ export class BeatVariationPreviewPlayer {
 
       if (!mutedNow) {
         try {
-          beatSynth.playEvent(frameState.lastTriggeredEvent, 400 as SimulationSpeed);
+          beatSynth.withSource('preview', () => {
+            beatSynth.playEvent(frameState.lastTriggeredEvent, 400 as SimulationSpeed);
+          });
         } catch {
           // Never block preview frames if Web Audio fails or is suspended
         }
@@ -838,6 +844,11 @@ export const VariationCardsPanel: React.FC = () => {
                             ? `Stop preview (${card.title})`
                             : `Play preview (${card.title})`
                         }
+                        onPointerDown={() => {
+                          if (!useAppStore.getState().beatState.isMuted) {
+                            beatSynth.unlockFromGesture();
+                          }
+                        }}
                         onClick={() => handleToggleCardPreview(card)}
                         onKeyDown={(e) =>
                           handleButtonKeyboardActivation(e, () => handleToggleCardPreview(card))

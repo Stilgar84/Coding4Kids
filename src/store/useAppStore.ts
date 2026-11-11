@@ -4061,7 +4061,8 @@ export const useAppStore = create<AppState>((set, get) => {
         }
         markDemoTabExploredInternal(true);
       } else if (activeSimId === 'beat') {
-        if (!get().isPlaying) {
+        beatSynth.stopSource('preview');
+        if (!get().isPlaying && !get().beatState.isMuted) {
           beatSynth.unlockFromGesture();
         }
         const { runtime, workspace, beatState } = get();
@@ -4210,6 +4211,7 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
+      beatSynth.stopSource('preview');
       if (!get().beatState.isMuted) {
         beatSynth.unlockFromGesture();
       }

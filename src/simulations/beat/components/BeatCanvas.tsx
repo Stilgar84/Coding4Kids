@@ -232,10 +232,8 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
                 backgroundColor: activeColor,
                 boxShadow: `0 0 8px ${activeColor}99`,
               }}
-              className="flex items-center justify-center w-5 h-5 rounded-md border border-white/60 text-[10px] font-black text-slate-950 leading-none"
-            >
-              {swatchMeta?.shapeCue || '●'}
-            </span>
+              className="block w-5 h-5 rounded-md border border-white/60"
+            />
           </div>
 
           {synthNeedsUnlock && !isMuted && (

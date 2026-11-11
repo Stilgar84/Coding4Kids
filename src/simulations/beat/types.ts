@@ -8,19 +8,17 @@ export interface BeatColorSwatch {
   id: number;
   hex: string;
   label: string;
-  /** Non-verbal shape cue for color-blind accessibility */
-  shapeCue: string;
 }
 
 export const BEAT_LED_PALETTE: readonly BeatColorSwatch[] = [
-  { id: 0, hex: '#06b6d4', label: 'Cyan', shapeCue: '●' },
-  { id: 1, hex: '#f43f5e', label: 'Rose', shapeCue: '▲' },
-  { id: 2, hex: '#fbbf24', label: 'Amber', shapeCue: '★' },
-  { id: 3, hex: '#10b981', label: 'Emerald', shapeCue: '■' },
-  { id: 4, hex: '#a855f7', label: 'Purple', shapeCue: '◆' },
-  { id: 5, hex: '#3b82f6', label: 'Blue', shapeCue: '⬟' },
-  { id: 6, hex: '#f97316', label: 'Orange', shapeCue: '⬢' },
-  { id: 7, hex: '#ec4899', label: 'Pink', shapeCue: '✦' },
+  { id: 0, hex: '#06b6d4', label: 'Cyan' },
+  { id: 1, hex: '#f43f5e', label: 'Rose' },
+  { id: 2, hex: '#fbbf24', label: 'Amber' },
+  { id: 3, hex: '#10b981', label: 'Emerald' },
+  { id: 4, hex: '#a855f7', label: 'Purple' },
+  { id: 5, hex: '#3b82f6', label: 'Blue' },
+  { id: 6, hex: '#f97316', label: 'Orange' },
+  { id: 7, hex: '#ec4899', label: 'Pink' },
 ];
 
 export type BeatPresetName =
