@@ -49,12 +49,12 @@ For high-level specifications of the simulation environments, shared language bl
 
 ### Solution Length & Map Size Guardrails
 
-To prevent scrolling fatigue on tablets and keep every exercise focused on its core idea, all reference solutions must obey strict block-count caps:
+To prevent scrolling fatigue on tablets and keep every exercise focused on its core idea, all reference solutions must obey strict physical block-card caps (counting every placed workspace card `1:1` with physical `[■]` slots, including structural delimiter cards such as `Loop End`, `Else`, `End If`, and `End While`):
 
 | Tier | Total Reference Blocks (All Tabs) | Max Blocks in Any Single Tab | Pacing Guardrail |
 | :--- | :---: | :---: | :--- |
 | **Modules 1–2 Lessons** | **3 – 8 blocks** | **8 blocks** | Keep Module 1 maps compact (`3×3` to `4×4`) before `×N` repeat badges exist so learners never chain 8+ duplicate moves. |
-| **Modules 3–9 Lessons** | **4 – 10 blocks** | **7 blocks** | If a draft puzzle needs >10 blocks, trim map busywork or factor setup clutter. |
+| **Modules 3–9 Lessons** | **4 – 11 blocks** | **8 blocks** *(up to **11** on 3-way `Else If`)* | If a draft puzzle exceeds its cap, trim map busywork or factor setup clutter into a helper tab. |
 | **Sandbox Examples & Variations** | **4 – 12 blocks** | **8 blocks** | Entire program should fit visibly without scrolling (up to **15** in Capstones). |
 | **Module Capstones (🏆)** | **8 – 14 blocks** | **8 blocks** | Difficulty comes from *combining* concepts across tabs, never tedious length. |
 | **Mastery Challenges (🔥 Module 6+)** | **12 – 24 blocks** | **10 blocks** | Multi-tab depth (`Main` + `F1`–`F3`) allowed for optional algorithmic challenges. |
@@ -188,21 +188,21 @@ flowchart TD
 ---
 
 ### Module 5: Sensors & Conditionals — Adapting to an Unknown World
-*Cognitive Goal: Write adaptive rules (`If`, `If/Else`, `While`, boolean combinators) verified simultaneously against **3–4 visible variant maps/streams** so hardcoded sequences fail. Switchyard onboarding and `If/Else` branching are introduced in separate dedicated lessons. Puzzle solutions `4–9 blocks`; Capstones `≤ 13 blocks`.*
+*Cognitive Goal: Write adaptive rules (`If`, `If/Else`, `While`, boolean combinators) verified simultaneously against **3–4 visible variant maps/streams** so hardcoded sequences fail. Switchyard onboarding and `If/Else` branching are introduced in separate dedicated lessons. Puzzle solutions `6–11 blocks` (including `End If` / `Loop End` / `End While` delimiter cards); Capstones `≤ 13 blocks`.*
 
 - **Lesson 5.0 [📖 Explanation — 🤖 Robot] Sensors, `If`, and Multi-Map Runs:** Interactive demo showing the sensor beam inspecting tiles across **3 simultaneous hallways**—illustrating why `If (itemHere) { Pick Up }` passes all 3 while fixed sequences fail.
-- **Lesson 5.1 [🤖 Robot] Sensing & Simple `If`:** Collecting randomly placed items along corridors using `Loop` + `If (itemHere)` (`≤ 5 blocks`).
+- **Lesson 5.1 [🤖 Robot] Sensing & Simple `If`:** Collecting randomly placed items along corridors using `Loop` + `If (itemHere)` (`≤ 6 blocks`).
 - **Lesson 5.2 [📖 Explanation — 🚂 Switchyard] Meet the Switchyard (Scanner, Docks & Scrap Chute):** Pure environment tour using only already-familiar `Loop` and single-branch `If`: watches items roll under the scanner, `SEND_NEXT` deliver intact crates to a painted dock, and `If (itemDamaged) { SCRAP_ITEM }` drop cracked items into the scrap chute.
-- **Lesson 5.3 [🚂 Switchyard] Switchyard Warmup — Hazard Filtering (`If`):** Practicing Switchyard controls using only `Loop` + `If (itemDamaged)` before `If / Else` is introduced (`≤ 5 blocks`).
+- **Lesson 5.3 [🚂 Switchyard] Switchyard Warmup — Hazard Filtering (`If`):** Practicing Switchyard controls using only `Loop` + `If (itemDamaged)` before `If / Else` is introduced (`≤ 6 blocks`).
 - **Lesson 5.4 [📖 Explanation — 🚂 Switchyard] Two-Way Decisions (`If / Else`):** Dedicated control-flow demo on the now-familiar Switchyard: watches Red crates execute the `If` branch (`Switch Left`) and skip `Else`, while Blue crates jump directly to `Else` (`Switch Right`).
-- **Lesson 5.5 [🚂 Switchyard] Binary `If / Else` Sorting:** Routing randomized streams of Red vs. Blue crates into painted twin docks (`≤ 6 blocks`).
+- **Lesson 5.5 [🚂 Switchyard] Binary `If / Else` Sorting:** Routing randomized streams of Red vs. Blue crates into painted twin docks (`≤ 8 blocks`).
 - **Lesson 5.6 [🤖 Robot] Spatial `If / Else` & Directional Sensors (`tileColor`, `pathLeft`, `pathRight`):** Reacting to floor beacon colors and side-corridor openings across 3 map variants (`≤ 7 blocks`).
 - **Lesson 5.7 [📖 Explanation — 🤖 Robot] `While` Loops vs. Fixed Repeat Counts:** Side-by-side demo showing `While (pathAhead)` stopping cleanly at walls in both 2-tile and 7-tile halls.
 - **Lesson 5.8 [🤖 Robot] Conditional Loops (`While`):** Navigating variable-length corridors and tunnels using `While (NOT atGoal)` / `While (pathAhead)` (`≤ 6 blocks`).
 - **Lesson 5.9 [🤖 Robot] Boolean Combinators (`NOT`, `AND`, `OR`):** Expressing compound rules like `If (itemHere AND NOT carryingItem)` (`≤ 7 blocks`).
-- **Lesson 5.10 [🚂 Switchyard] Chained Multi-Way Routing (`If / Else If / Else`):** Sorting 3 cargo types across two track switches into matching painted docks (`≤ 9 blocks`).
-- **🏆 Capstone 5A [🤖 Robot Multi-Map Puzzle] — *The Autonomous Maze Rover*:** Solve **4 simultaneous maze layouts** in `8–12 blocks` using `While (NOT atGoal)` + front/side wall or beacon sensors.
-- **🏆 Capstone 5B [🚂 Switchyard Multi-Stream Puzzle] — *Hazard & Priority Router*:** Divert damaged items (`itemDamaged`) to the scrap chute while routing valid Red/Blue/Green crates cleanly (`9–12 blocks`).
+- **Lesson 5.10 [🚂 Switchyard] Chained Multi-Way Routing (`If / Else If / Else`):** Sorting 3 cargo types across two track switches into matching painted docks (`≤ 11 blocks`).
+- **🏆 Capstone 5A [🤖 Robot Multi-Map Puzzle] — *The Autonomous Maze Rover*:** Solve **4 simultaneous maze layouts** in `9–12 blocks` using `While (NOT atGoal)` + front/side wall or beacon sensors.
+- **🏆 Capstone 5B [🚂 Switchyard Multi-Stream Puzzle] — *Hazard & Priority Router*:** Divert damaged items (`itemDamaged`) to the scrap chute while routing valid Red/Blue/Green crates cleanly (`10–13 blocks`).
 
 ---
 

@@ -1,6 +1,6 @@
 # Shared Language, Lesson Mechanics & Platform Requirements (High-Level)
 
-This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum.md): shared language/block extensions, zero-reading pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards.
+This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum.md): shared language/block extensions, zero-reading pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards. For concrete layout budgets, HUD slots, iconography, and kid-UX rules, see [Kid-Friendly UI Principles & Guidelines (`ui_guidelines.md`)](./ui_guidelines.md).
 
 ---
 

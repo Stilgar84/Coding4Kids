@@ -2,76 +2,105 @@
 
 ## 1. Overview
 
-This document specifies the compact binary format for serializing RobotEmu programs (code workspace) and environment state (such as Grid world layouts).
+This document specifies the compact binary format (`FORMAT_VERSION = 1`) for serializing RobotEmu programs (code workspace), environment states (such as Grid world layouts), and standalone curriculum lesson attempts.
 
-The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §5, characters `A-Z`, `a-z`, `0-9`, `-`, `_`, no padding `=`). No external text prefixes (like `rb1:`) are used; format versioning is resolved internally by the first byte of the binary payload.
+The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §5, characters `A-Z`, `a-z`, `0-9`, `-`, `_`, no padding `=`). No external text prefixes (like `rb1:`) are used; format versioning and payload deduction are resolved internally by the first three bytes of the binary payload.
+
+> **Spec Maintenance Rule:** Any commit that adds or activates an opcode, bitmask, or environment version MUST update this document in the same commit.
 
 ---
 
-## 2. High-Level Stream Layout
+## 2. High-Level Stream Layouts
+
+### 2.1 Standard Environment / Code Stream (`envId = 0x00..0x03`)
 
 ```
-+-----------------------------------------------------------------------------------------+
-| formatVersion (1B) | envId (1B) | envVersion (1B) | [Env Payload (Grid)] | Code Payload |
-+-----------------------------------------------------------------------------------------+
++-----------------------------------------------------------------------------------------------+
+| formatVersion (1B) | envId (1B) | envVersion (1B) | [Optional Env State Payload] | Code Scopes |
++-----------------------------------------------------------------------------------------------+
 ```
-
-### 2.1 File Header (3 Bytes)
 
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation Environment ID:<br>• `0x00`: Generic / Code-only (no env state)<br>• `0x01`: `grid` (includes grid map payload)<br>• `0x02`: `turtle` (canvas, no map payload)<br>• `0x03`+: Future environments |
-| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`). Governs env-specific opcode mapping, parameter types, and env state layout. |
+| `0x01` | `envId` | `uint8` | Simulation Environment ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`+: Reserved for future environments (e.g., `0x05` = `switchyard` in Module 5) |
+| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1` or `2` for `grid`; `1` for `turtle` and `beat`). Governs env-specific opcode mapping and env state layout. |
 
-> **Environment State Deduction**:
-> The `envId` determines whether an environment state payload is present. For `envId = 0x01` (`grid`), the map payload immediately follows byte 2. For `envId = 0x00` or `0x02` (`turtle`), there is no map payload, and the code payload starts immediately at byte 3.
+> **Environment State Deduction:**
+> For `envId = 0x01` (`grid`), the Grid map payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
+
+### 2.2 Standalone Curriculum Lesson Envelope (`envId = 0x04`)
+
+Used when exporting/sharing a curriculum attempt as a self-contained Base64URL string or QR code without duplicating read-only lesson map geometry:
+
+```
++----------------------------------------------------------------------------------------------------------+
+| formatVersion=1 (1B) | envId=0x04 (1B) | innerEnvByte (1B) | lessonIdLen (VLE) | lessonId (UTF-8)        |
+| lessonVersion (VLE)  | ... Code Scopes (decoded using innerEnvByte) ...                                  |
++----------------------------------------------------------------------------------------------------------+
+```
+
+- `innerEnvByte` (`uint8` at offset `0x02`): Governs the domain opcode table used inside Code Scopes (`0x00` or `0x01` = Grid, `0x02` = Turtle, `0x03` = Beat).
+- `lessonIdLen` (`VLE`, `> 0`) + `lessonId` (`UTF-8` bytes): Canonical activity ID (e.g., `"1.2"`, `"2A"`).
+- `lessonVersion` (`VLE`, `≥ 1`): Integer version of the curriculum activity definition against which the attempt was authored.
+-*(Note: Local storage `SavedProgramEntry` objects store `{ lessonId, lessonVersion, simId, code }` in JSON where `code` uses §2.1 code-only mode with the exact same inner `writeCodeScopes` / `readCodeScopes` payload.)*
 
 ---
 
-## 3. Variable-Length Encoding (VLE / LEB128)
+## 3. Variable-Length Encoding (VLE / LEB128) & Variable Indices
 
-Unsigned integer counts, lengths, coordinates, angles, and radius use standard 7-bit continuation LEB128:
-- Values $V < 128$: single byte `V` (`bit 7 = 0`).
-- Values $V \ge 128$: byte is `(V & 0x7F) | 0x80`, followed by remaining bits shifted right by 7.
-- Values $< 128$ consume **1 byte**.
+- **Unsigned VLE (LEB128):** Counts, lengths, coordinates, angles, radii, and hint categories use standard 7-bit continuation LEB128:
+  - Values $V < 128$: single byte `V` (`bit 7 = 0`).
+  - Values $V \ge 128$: byte is `(V & 0x7F) | 0x80`, followed by remaining bits shifted right by 7.
+- **Variable Index (`varIdx: uint8`):** Single-letter variable names `'a'..'z'` encode as 1 byte `0..25` (`'a' = 0`, `'b' = 1`, ..., `'z' = 25`).
 
 ---
 
 ## 4. Environment State Payload (`envId = 0x01` Grid World)
 
-When `envId = 0x01`, the map payload immediately follows the 3-byte header:
+When `envId = 0x01`, the map payload immediately follows the 3-byte header. Small-grid packing applies whenever $\text{width} \le 16 \text{ and } \text{height} \le 16$.
+
+### 4.1 Classic Grid Layout (`envVersion = 1` Prefix)
 
 ```
 +-------------------------------------------------------------------------+
-| width (VLE) | height (VLE) | robotPose (1-2B)                           |
+| width (VLE) | height (VLE) | robotPose (2-3B)                           |
 | barrierCount (VLE) | ... packed barriers ...                            |
 | flagCount (VLE)    | ... packed flags ...                               |
 +-------------------------------------------------------------------------+
 ```
 
-1. **Dimensions**:
-   - `width: VLE`
-   - `height: VLE`
-2. **Robot Pose**:
-   - For small grids ($\text{width} \le 16 \text{ and } \text{height} \le 16$):
-     - Byte 1: `[x: 4 bits][y: 4 bits]`
-     - Byte 2: `[dir: 2 bits]` (`0` = NORTH, `1` = EAST, `2` = SOUTH, `3` = WEST)
-   - For large grids ($\text{width} > 16 \text{ or } \text{height} > 16$):
-     - `x: VLE`, `y: VLE`, `dir: uint8`
-3. **Barriers**:
-   - `barrierCount: VLE`
-   - Small grid barrier (1 byte each):
-     - `bit 7`: Orientation (`0` = 'H', `1` = 'V')
-     - `bits 6..4`: `x` (3–4 bits)
-     - `bits 3..0`: `y` (4 bits)
-   - Large grid barrier: `[ori: 1 bit][x: 7 bits]` followed by `y: VLE`.
-4. **Flags & Objectives**:
-   - `flagCount: VLE`
-   - Small grid flag (2 bytes each):
-     - Byte 1: `[x: 4 bits][y: 4 bits]`
-     - Byte 2: `[isGoal: 1 bit][order: 7 bits]` (`isGoal = 1` for final goal, `order = 1..127` for numbered flags)
-   - Large grid flag: `x: VLE`, `y: VLE`, `isGoal: 1 bit | order: 7 bits`.
+1. **Dimensions:** `width: VLE`, `height: VLE`.
+2. **Robot Pose:**
+   - Small grid ($\le 16 \times 16$): Byte 1 = `[x: 4 bits][y: 4 bits]`, Byte 2 = `[dir: 2 bits]` (`0` = NORTH, `1` = EAST, `2` = SOUTH, `3` = WEST). *(Note: `envVersion >= 2` serializes `initialX, initialY, initialDir` so post-run Instant mode exports preserve starting pose.)*
+   - Large grid ($> 16$): `x: VLE`, `y: VLE`, `dir: uint8`.
+3. **Barriers (`barrierCount: VLE`):**
+   - Small grid (1 byte each): `[ori: 1 bit (0='H', 1='V')][x: 3 bits][y: 4 bits]`.
+   - Large grid: `[ori: 1 bit][x: 7 bits]`, followed by `y: VLE`.
+4. **Flags & Objectives (`flagCount: VLE`):**
+   - Small grid (2 bytes each): Byte 1 = `[x: 4 bits][y: 4 bits]`, Byte 2 = `[isGoal: 1 bit][order: 7 bits]`.
+   - Large grid: `x: VLE`, `y: VLE`, `[isGoal: 1 bit][order: 7 bits]`.
+
+When `envVersion === 1` (classic maps with no interactive world elements), the Grid payload ends here and Code Scopes (§5) begin immediately.
+
+### 4.2 Interactive World Extension Block (`envVersion = 2`)
+
+Emitted only when a Grid map contains `waterCells`, `lockedGates`, `floorSwitches`, or `worldItems`. Immediately follows the exact `envVersion = 1` prefix above. Cell coordinates use `CellCoord` = 1 byte `[x: 4 bits][y: 4 bits]` on small grids ($\le 16 \times 16$) or `x: VLE, y: VLE` on large grids:
+
+5. **Water Cells (`waterCount: VLE`):** `waterCount` × `CellCoord`.
+6. **Locked Gates (`gateCount: VLE`):** For each gate:
+   - `coord: CellCoord`
+   - `attrByte: uint8` = `[000 (b7..b5) | colorIdx (b4..b2: 0=amber, 1=emerald, 2=purple) | shapeIdx (b1..b0: 0=circle ●, 1=triangle ▲, 2=diamond ◆)]`.
+7. **Floor Switches (`switchCount: VLE`):** For each switch:
+   - `coord: CellCoord`
+   - `flagsByte: uint8`:
+     - `bit 0 (0x01)`: `hasLinkedGate`
+     - `bit 1 (0x02)`: `hasExplicitRequiredForGoal`
+     - `bit 2 (0x04)`: `requiredForGoal` boolean value
+   - If `hasLinkedGate`: followed by `linkedGateIdx: VLE` (0-based index into Locked Gates table).
+8. **World Items (`itemCount: VLE`):** For each authored floor pickup item:
+   - `coord: CellCoord`
+   - `attrByte: uint8` = `[0 (b7) | colorIdx (b6..b4, keys only) | shapeIdx (b3..b2, keys only) | typeIdx (b1..b0: 0=key, 1=plank, 2=crate)]`.
 
 ---
 
@@ -88,78 +117,149 @@ For each scope:
 ```
 
 ### 5.1 Scope IDs
-The high bit separates the main entry point from subfunctions:
-- `0x00`: `MAIN` (high bit `0`)
-- `0x80 | fnIndex`: Subfunctions (high bit `1`)
-  - `0x81`: `F1`
-  - `0x82`: `F2`
-  - `0x83`: `F3`
+- `0x00`: `MAIN`
+- `0x81`: `F1` (`0x80 | 1`)
+- `0x82`: `F2` (`0x80 | 2`)
+- `0x83`: `F3` (`0x80 | 3`)
 
 ---
 
-## 6. Block Envelope & Opcode Encoding
+## 6. Block Envelopes & Variable Parameter Masks
 
-Each block begins with an instruction header byte:
+RobotEmu uses two distinct block-envelope layouts depending on the 5-bit opcode (`blockHeader & 0x1F`):
+
+### 6.1 Standard Block Envelope (All Opcodes Except `0x07`, `0x08`, `0x09`)
 
 ```
-  Bit 7      Bit 6      Bits 4..0
-+----------+----------+-----------------------------------------+
-| Reserved | HasRep   | Opcode (0..31)                          |
-+----------+----------+-----------------------------------------+
-```
-- **Bit 7 (`Reserved`)**: Reserved for future flag use (must be `0`).
-- **Bit 6 (`HasRep`)**:
-  - `0`: Default execution (`repeatCount = 1` or omitted).
-  - `1`: Followed immediately by `repeatCount: VLE`.
-- **Bits 4..0 (`Opcode`)**: Value from `0` to `31`.
+Byte 0 (blockHeader):
+  Bit 7 (0x80)    Bit 6 (0x40)    Bit 5 (0x20)   Bits 4..0 (0x1F)
++---------------+---------------+--------------+------------------+
+| HasVarParam   | HasRep        | Reserved (0) | Opcode (0..31)   |
++---------------+---------------+--------------+------------------+
 
-> **Parameter Rule**: The opcode strictly dictates what parameters follow and their exact binary types. No parameter length headers or metadata tags are used.
+Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
+  Bits 7..3 (0)   Bit 2 (0x04)     Bit 1 (0x02)     Bit 0 (0x01)
++---------------+----------------+----------------+----------------+
+| Reserved (0)  | Param1IsVar    | Param0IsVar    | RepeatIsVar    |
++---------------+----------------+----------------+----------------+
+```
+
+1. **`paramVarMask` (`uint8`, present iff `HasVarParam == 1`):**
+   - `bit 0 (0x01)`: `repeatCount` is a variable index (`varIdx: uint8`) instead of `VLE`.
+   - `bit 1 (0x02)`: Action parameter 0 is a variable index (`varIdx: uint8`) instead of `VLE`/`uint8`.
+   - `bit 2 (0x04)`: Action parameter 1 is a variable index (`varIdx: uint8`) instead of `VLE`.
+2. **Repeat Count (present iff `HasRep == 1`):**
+   - If `HasVarParam == 1` and `(paramVarMask & 0x01) != 0`: `varIdx: uint8` (`0..25`).
+   - Otherwise: `repeatCount: VLE`.
+3. **Opcode-Specific Parameters:** Dictated strictly by `(envByte, opcode)` and `paramVarMask` bits `1..2`.
+
+### 6.2 Special Unconditional Descriptor Envelopes (`0x07`, `0x08`, `0x09`)
+
+`OP_VAR_ASSIGN (0x07)`, `OP_VAR_OP (0x08)`, and `OP_PLACEHOLDER (0x09)` never use `HasVarParam` or `HasRep` (`Byte 0` is literally the raw opcode byte `0x07`, `0x08`, or `0x09` with bits `7..5 = 0`):
+
+1. **`OP_VAR_ASSIGN = 0x07` (`a = b`):**
+   ```
+   Byte 0: 0x07 (OP_VAR_ASSIGN — bits 7..5 MUST be 0)
+   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 7..2 = 0 in M1–M3; bit 4 reserved for M6 sensor)
+   Byte 2: targetVarIdx (uint8: 0..25 for 'a'..'z')
+   Byte 3+: operandB payload governed by operandDescMask
+   ```
+2. **`OP_VAR_OP = 0x08` (`a = b op c`):**
+   ```
+   Byte 0: 0x08 (OP_VAR_OP — bits 7..5 MUST be 0)
+   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 3..2 = typeC, bits 7..4 = 0 in M1–M3; bits 5..4 reserved for M6 sensors)
+   Byte 2: targetVarIdx (uint8: 0..25 for 'a'..'z')
+   Byte 3: opByte (uint8: 0x00..0x0C — see §7.1.1)
+   Byte 4+: operandB payload, followed immediately by operandC payload
+   ```
+   **2-Bit Operand Type Codes (`typeB`, `typeC`):**
+   - `0` (`00`): Variable — `varIdx: uint8` (`0..25`)
+   - `1` (`01`): Non-negative integer — `VLE(n)`
+   - `2` (`10`): Negative integer — `VLE(abs(n))`
+   - `3` (`11`): IEEE-754 float64 — `8 bytes` big-endian (`DataView.setFloat64`)
+3. **`OP_PLACEHOLDER = 0x09` (`?` Scaffold Block):**
+   ```
+   Byte 0: 0x09 (OP_PLACEHOLDER)
+   Byte 1+: hintCategoryCode (VLE)
+   ```
 
 ---
 
 ## 7. Opcode Tables
 
-### 7.1 Universal Control Flow Opcodes (`0x00`–`0x0F`)
+### 7.1 Universal Control & Variable Opcodes (`0x00`–`0x0F`)
+
 Governed by `formatVersion = 1` across all environments.
 
 | Opcode | Instruction | Parameters | Description |
 | :--- | :--- | :--- | :--- |
-| `0x01` | `LOOP_START` | None | Loop iteration count encoded via `HasRep` + `repeatCount: VLE`. |
-| `0x02` | `LOOP_END` | None | Loop end block. |
-| `0x03` | `CALL_FN` | `fnIndex: uint8` | Single byte: `1` for `F1`, `2` for `F2`, `3` for `F3`. |
-| `0x04` | `IF` | Reserved | Condition parameter (reserved). |
-| `0x05` | `ELSE` | None | Else branch (reserved). |
-| `0x06` | `END_IF` | None | End if (reserved). |
+| `0x01` | `LOOP_START` | None (uses `HasRep`) | Loop iteration count via `HasRep` (`VLE` or `varIdx` via `HasVarParam`). |
+| `0x02` | `LOOP_END` | None | Closes matching `LOOP_START`. |
+| `0x03` | `CALL_FN` | `fnIndex: uint8` | Calls helper scope: `1` = `F1`, `2` = `F2`, `3` = `F3`. |
+| `0x04` | `IF` | Reserved (M5) | Conditional branch start (activated in Module 5). |
+| `0x05` | `ELSE` | None (M5) | Else branch separator (activated in Module 5). |
+| `0x06` | `END_IF` | None (M5) | Conditional branch closer (activated in Module 5). |
+| `0x07` | `VAR_ASSIGN` | `operandDescMask`, `varIdx`, `operandB` | Assigns `a = b` (see §6.2). |
+| `0x08` | `VAR_OP` | `operandDescMask`, `varIdx`, `opByte`, `operandB`, `operandC` | Evaluates `a = b op c` (see §6.2 & §7.1.1). |
+| `0x09` | `PLACEHOLDER` | `hintCategory: VLE` | `?` scaffold block (`0`=any, `1`=motion, `2`=turn, `3`=item, `4`=loop, `5`=function, `6`=conditional, `7`=sensor, `8`=variable, `9`=operator, `10`=socket). |
+| `0x0A`–`0x0F` | Reserved | Reserved | Reserved for Module 5–9 control extensions (`ELSE_IF`, `WHILE`, `END_WHILE`, etc.). |
+
+#### 7.1.1 `VAR_OP` Binary Operator Codes (`opByte: uint8`)
+
+`0x00` `+` · `0x01` `-` · `0x02` `*` · `0x03` `/` · `0x04` `%` · `0x05` `==` · `0x06` `!=` · `0x07` `<` · `0x08` `<=` · `0x09` `>` · `0x0A` `>=` · `0x0B` `&&` · `0x0C` `||`.
 
 ---
 
-### 7.2 Grid World Opcodes (`envId = 0x01`, `envVersion = 1`)
+### 7.2 Grid World Opcodes (`envId = 0x00` or `0x01`, `envVersion = 1..2`)
 
 | Opcode | Action Type | Parameters | Description |
 | :--- | :--- | :--- | :--- |
-| `0x10` | `MOVE_FWD` | None | Move forward 1 cell (supports repeat). |
-| `0x11` | `MOVE_BACK` | None | Move backward 1 cell (supports repeat). |
-| `0x12` | `TURN_LEFT` | None | Turn left 90° (supports repeat). |
-| `0x13` | `TURN_RIGHT` | None | Turn right 90° (supports repeat). |
+| `0x10` | `MOVE_FWD` | None | Move forward 1 cell (supports `HasRep` + variable repeat). |
+| `0x11` | `MOVE_BACK` | None | Move backward 1 cell (supports `HasRep` + variable repeat). |
+| `0x12` | `TURN_LEFT` | None | Turn left 90° egocentrically (supports `HasRep` + variable repeat). |
+| `0x13` | `TURN_RIGHT` | None | Turn right 90° egocentrically (supports `HasRep` + variable repeat). |
+| `0x14` | `PICK_UP` | None | Pick up floor item into backpack (supports `HasRep` + variable repeat). |
+| `0x15` | `USE_DROP` | None | Use carried key/plank ahead or drop crate on current tile (supports `HasRep` + variable repeat). |
 
 ---
 
 ### 7.3 Turtle World Opcodes (`envId = 0x02`, `envVersion = 1`)
 
-| Opcode | Action Type | Parameters | Description |
+| Opcode | Action Type | Parameters (`param0`, `param1`) | Description |
 | :--- | :--- | :--- | :--- |
-| `0x10` | `FORWARD` | None | Step forward default distance (legacy unparameterized, supports repeat). |
-| `0x11` | `BACKWARD` | None | Step backward default distance (legacy unparameterized, supports repeat). |
-| `0x12` | `TURN_LEFT` | `angle: VLE` | Turn left by degrees (e.g. 30, 45, 90 via VLE). |
-| `0x13` | `TURN_RIGHT` | `angle: VLE` | Turn right by degrees (e.g. 30, 45, 90 via VLE). |
-| `0x14` | `ARC_LEFT` | `radius: VLE`, `angle: VLE` | Arc left by radius and degrees (both VLE). |
-| `0x15` | `ARC_RIGHT` | `radius: VLE`, `angle: VLE` | Arc right by radius and degrees (both VLE). |
+| `0x10` | `FORWARD` | None | Step forward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
+| `0x11` | `BACKWARD` | None | Step backward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
+| `0x12` | `TURN_LEFT` | `angle: VLE \| varIdx` | Turn left in degrees (`param0`). |
+| `0x13` | `TURN_RIGHT` | `angle: VLE \| varIdx` | Turn right in degrees (`param0`). |
+| `0x14` | `ARC_LEFT` | `radius: VLE \| varIdx`, `angle: VLE \| varIdx` | Arc left by radius (`param0`) and degrees (`param1`). |
+| `0x15` | `ARC_RIGHT` | `radius: VLE \| varIdx`, `angle: VLE \| varIdx` | Arc right by radius (`param0`) and degrees (`param1`). |
 | `0x16` | `PEN_UP` | None | Lift pen up. |
 | `0x17` | `PEN_DOWN` | None | Lower pen down. |
-| `0x18` | `SET_PEN_COLOR` | `colorId: uint8` | 1-byte color index: `0` = `#0f172a` (Black), `1` = `#ef4444` (Red), `2` = `#3b82f6` (Blue), `3` = `#10b981` (Green), `4` = `#f59e0b` (Amber), `5` = `#8b5cf6` (Purple). |
-| `0x19` | `SET_PEN_WIDTH` | `width: VLE` | Line width via VLE. |
-| `0x1A` | `FORWARD` | `length: VLE` | Step forward with explicit length in pixels (supports repeat & variables). |
-| `0x1B` | `BACKWARD` | `length: VLE` | Step backward with explicit length in pixels (supports repeat & variables). |
+| `0x18` | `SET_PEN_COLOR` | `colorId: uint8` | Palette index: `0` = `#0f172a` (Black), `1` = `#ef4444` (Red), `2` = `#3b82f6` (Blue), `3` = `#10b981` (Green), `4` = `#f59e0b` (Amber), `5` = `#8b5cf6` (Purple), `6` = `#ec4899` (Pink), `7` = `#06b6d4` (Cyan). |
+| `0x19` | `SET_PEN_WIDTH` | `width: VLE \| varIdx` | Line width in pixels (`param0`). |
+| `0x1A` | `FORWARD` | `length: VLE \| varIdx` | Step forward explicit pixel distance (`param0`, supports `HasRep`). |
+| `0x1B` | `BACKWARD` | `length: VLE \| varIdx` | Step backward explicit pixel distance (`param0`, supports `HasRep`). |
+
+---
+
+### 7.4 Beat & Light Matrix Opcodes (`envId = 0x03`, `envVersion = 1`)
+
+| Opcode | Action Type | Parameters (`param0`, `param1`) | Description |
+| :--- | :--- | :--- | :--- |
+| `0x10` | `DRUM_KICK` | None | Kick drum hit, 1 beat (supports `HasRep` + variable repeat). |
+| `0x11` | `DRUM_SNARE` | None | Snare drum hit, 1 beat (supports `HasRep` + variable repeat). |
+| `0x12` | `DRUM_CLAP` | None | Handclap accent, 1 beat (supports `HasRep` + variable repeat). |
+| `0x13` | `PLAY_CHIME` | None | Bright chime, 1 beat (supports `HasRep` + variable repeat). |
+| `0x14` | `STAMP_PRESET` / `STAMP_*` | `presetByte: uint8 \| varIdx` | `0` = `STAMP_HEART`, `1` = `STAMP_STAR`, `2` = `STAMP_SMILE`; `0x80 \| id` (for `id <= 2`) or `3..7` (`NOTE`, `BOLT`, `DIAMOND`, `CHECK`, `ROBOT`) decodes as parameterized `STAMP_PRESET`; `varIdx` when `Param0IsVar`. |
+| `0x15` | `WAIT_BEAT` | None | Holds current LEDs silent for 1 beat (supports `HasRep`). |
+| `0x16` | `CLEAR_LEDS` | None | Clears all 64 LEDs to off. |
+| `0x17` | `PLAY_NOTE` | `pitch: VLE \| varIdx`, `durCode: uint8` | Scale note `1..8` (`param0`) + duration code (`0` = `0.5`, `1` = `1`, `2` = `2` beats). |
+| `0x18` | `SET_LED_COLOR` | `colorId: uint8 \| varIdx` | Active LED color index (`0`=Cyan `#06b6d4`, `1`=Rose `#f43f5e`, `2`=Amber `#fbbf24`, `3`=Emerald `#10b981`, `4`=Purple `#a855f7`, `5`=Blue `#3b82f6`, `6`=Orange `#f97316`, `7`=Pink `#ec4899`) or `varIdx` (`Param0IsVar`). |
+| `0x19` | `LIGHT_ROW` | `y: VLE \| varIdx` | Lights row `y` (`1..8`, `param0`) in active LED color. |
+| `0x1A` | `LIGHT_COL` | `x: VLE \| varIdx` | Lights column `x` (`1..8`, `param0`) in active LED color. |
+| `0x1B` | `LIGHT_PIXEL` | `x: VLE \| varIdx`, `y: VLE \| varIdx` | Lights pixel `(x, y)` (`param0`, `param1`) in active LED color. |
+| `0x1C` | `CURSOR_STEP` | None | Advances LED cursor 1 pixel and lights it (supports `HasRep` + variable repeat). |
+| `0x1D` | `CURSOR_TURN` | `dirByte: uint8` | Rotates LED cursor 90° (`0` = `LEFT`, `1` = `RIGHT`). |
 
 ---
 
