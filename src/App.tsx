@@ -1,5 +1,6 @@
 import React from 'react';
 import { Toolbar } from './components/Toolbar';
+import { ExplanationDemoBar } from './components/ExplanationDemoBar';
 import { BlockPalette } from './components/BlockPalette';
 import { WorkspaceCanvas } from './components/WorkspaceCanvas';
 import { SolutionModal } from './components/SolutionModal';
@@ -25,6 +26,9 @@ export const App: React.FC = () => {
     <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Application Bar */}
       <Toolbar />
+
+      {/* Interactive Explanation Demo Bar (Lesson 1.0, 2.6, 3.0) */}
+      <ExplanationDemoBar />
 
       {/* Main Split-Pane Workspace */}
       <main className="flex flex-1 flex-col md:flex-row overflow-hidden">

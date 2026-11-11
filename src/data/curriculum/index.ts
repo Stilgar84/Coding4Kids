@@ -1,10 +1,12 @@
 export * from './types';
 
 import { CurriculumActivity, CurriculumModule } from './types';
+import { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 import { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 import { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 import { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
 
+export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 export { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 export { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
@@ -55,6 +57,7 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
  * Downstream curriculum slices spread into this list in canonical pedagogical order.
  */
 export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = [
+  ...MODULE_1_DEMO_ACTIVITIES,
   ...MODULE_1_ROBOT_ACTIVITIES,
   ...MODULE_1_LOGO_ACTIVITIES,
   ...MODULE_1_BEAT_ACTIVITIES,

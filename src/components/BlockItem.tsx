@@ -73,6 +73,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     appMode,
     activeActivityId,
     activeActivityVersion,
+    activeDemoTabIndex,
     activeSimId,
   } = useAppStore.getState();
   const [isNumberHovered, setIsNumberHovered] = useState(false);
@@ -88,6 +89,20 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       : undefined;
   const allowActionParams =
     appMode !== 'curriculum' || activeCurriculumActivity?.palette?.allowActionParams !== false;
+
+  const activeDemoSpotlights =
+    appMode === 'curriculum' &&
+    activeCurriculumActivity?.format === 'explanation' &&
+    activeCurriculumActivity.demoTabs?.length
+      ? activeCurriculumActivity.demoTabs[
+          Math.min(
+            Math.max(0, activeDemoTabIndex),
+            activeCurriculumActivity.demoTabs.length - 1
+          )
+        ]?.spotlights ?? []
+      : [];
+  const showDemoExecutionOrderCue =
+    scope === 'MAIN' && activeDemoSpotlights.includes('execution-order');
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const simPaletteItems = currentSimEnv?.paletteItems || [];
@@ -697,6 +712,30 @@ export const BlockItem: React.FC<BlockItemProps> = ({
           title="Loop syntax error"
         >
           <AlertTriangle className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+        </div>
+      )}
+
+      {/* Explanation Demo Execution-Order Step Badge & Active Pointer */}
+      {showDemoExecutionOrderCue && !isLoopError && (
+        <div
+          data-testid={`demo-step-badge-${index + 1}`}
+          aria-hidden="true"
+          className={`absolute -top-2 -left-1.5 min-w-[18px] h-[18px] px-1 rounded-full border text-[10px] font-black flex items-center justify-center shadow-sm z-20 pointer-events-none ${
+            isActive
+              ? 'bg-yellow-300 border-yellow-100 text-slate-950 scale-110'
+              : 'bg-slate-900/95 border-sky-400/70 text-sky-200'
+          }`}
+        >
+          {index + 1}
+        </div>
+      )}
+      {showDemoExecutionOrderCue && isActive && (
+        <div
+          data-testid="demo-active-block-pointer"
+          aria-hidden="true"
+          className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[10px] leading-none text-yellow-300 drop-shadow font-black z-30 pointer-events-none"
+        >
+          ▼
         </div>
       )}
 

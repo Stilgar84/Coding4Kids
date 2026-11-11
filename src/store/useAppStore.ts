@@ -217,6 +217,9 @@ interface AppState {
   appMode: AppMode;
   activeActivityId: string;
   activeActivityVersion: number;
+  activeDemoTabIndex: number;
+  demoTabIndexByActivity: Record<string, number>;
+  exploredDemoTabs: Record<string, string[]>;
   curriculumWorkspaces: Record<string, WorkspaceState>;
   sandboxSnapshot: SandboxModeSnapshot | null;
   statusAnnouncement: string;
@@ -269,6 +272,9 @@ interface AppState {
   // Mode & Curriculum actions
   setAppMode: (mode: AppMode) => void;
   setCurriculumActivity: (activityId: string, version?: number) => void;
+  selectExplanationDemoTab: (tabIndex: number) => void;
+  markActiveDemoTabExplored: () => void;
+  completeExplanationAndContinue: () => string | null;
   openCopyInSandbox: () => void;
   loadVariationWorkspace: (workspace: WorkspaceState, title?: string) => void;
   resetActivityToStarter: () => void;
@@ -772,11 +778,65 @@ export const useAppStore = create<AppState>((set, get) => {
     if (mode === 'curriculum') {
       const actId = override?.activityId ?? s.activeActivityId;
       const actVer = override?.activityVersion ?? s.activeActivityVersion;
+      const act = getActivityAtVersion(actId, actVer) ?? getActivityLatest(actId);
+      // Do not overwrite primary lesson autosave when viewing secondary explanation demo tabs
+      if (
+        act?.format === 'explanation' &&
+        (act.demoTabs?.length ?? 0) > 1 &&
+        s.activeDemoTabIndex > 0
+      ) {
+        return;
+      }
       saveLessonAutosave(profileId, actId, ws, actVer);
     } else {
       const simId = override?.simId ?? s.activeSimId;
       saveSandboxAutosave(profileId, simId, ws);
     }
+  };
+
+  const markDemoTabExploredInternal = (announceOnAllExplored = true) => {
+    const s = get();
+    if (s.appMode !== 'curriculum') return;
+    const activity =
+      getActivityAtVersion(s.activeActivityId, s.activeActivityVersion) ??
+      getActivityLatest(s.activeActivityId);
+    if (!activity || activity.format !== 'explanation' || !activity.demoTabs?.length) {
+      return;
+    }
+    const clampedIdx = Math.min(
+      Math.max(0, s.activeDemoTabIndex),
+      activity.demoTabs.length - 1
+    );
+    const activeTab = activity.demoTabs[clampedIdx];
+    if (!activeTab) return;
+
+    const prevExplored = s.exploredDemoTabs[activity.id] ?? [];
+    if (prevExplored.includes(activeTab.id)) {
+      return;
+    }
+    const nextExploredForActivity = [...prevExplored, activeTab.id];
+    const allExploredNow = activity.demoTabs.every((t) =>
+      nextExploredForActivity.includes(t.id)
+    );
+    const nextIdxInCatalog = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
+    const nextActivity =
+      nextIdxInCatalog >= 0 && nextIdxInCatalog < CURRICULUM_ACTIVITIES.length - 1
+        ? CURRICULUM_ACTIVITIES[nextIdxInCatalog + 1]
+        : undefined;
+
+    set((curr) => ({
+      exploredDemoTabs: {
+        ...curr.exploredDemoTabs,
+        [activity.id]: nextExploredForActivity,
+      },
+      ...(announceOnAllExplored && allExploredNow && curr.runtime?.status !== 'PAUSED'
+        ? {
+            statusAnnouncement: nextActivity
+              ? `All ${activity.demoTabs!.length} examples explored in Activity ${activity.id}! Press Continue to advance to Activity ${nextActivity.id}: ${nextActivity.title}.`
+              : `All ${activity.demoTabs!.length} examples explored in Activity ${activity.id}! Press Continue when ready.`,
+          }
+        : {}),
+    }));
   };
 
   const recordCurriculumSuccessIfApplicable = () => {
@@ -841,6 +901,9 @@ export const useAppStore = create<AppState>((set, get) => {
     appMode: bootMode,
     activeActivityId: bootActivity?.id || '1.1',
     activeActivityVersion: bootActivity?.version || 1,
+    activeDemoTabIndex: 0,
+    demoTabIndexByActivity: {},
+    exploredDemoTabs: {},
     curriculumWorkspaces:
       bootMode === 'curriculum' && bootActivity
         ? { ...bootCurriculumAutosaves, [bootActivity.id]: cloneWorkspace(initialWorkspace) }
@@ -1088,6 +1151,9 @@ export const useAppStore = create<AppState>((set, get) => {
           completedActivities: nextCompleted,
           activeActivityId: activity.id,
           activeActivityVersion: activity.version,
+          activeDemoTabIndex: 0,
+          demoTabIndexByActivity: {},
+          exploredDemoTabs: {},
           activeSimId: targetSimId,
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
@@ -1118,6 +1184,9 @@ export const useAppStore = create<AppState>((set, get) => {
           profiles: profilesState.profiles,
           activeProfileId: profileId,
           completedActivities: nextCompleted,
+          activeDemoTabIndex: 0,
+          demoTabIndexByActivity: {},
+          exploredDemoTabs: {},
           curriculumWorkspaces: nextCurriculumWorkspaces,
           savedWorkspaces: nextSavedWorkspaces,
           sandboxSnapshot: null,
@@ -1199,20 +1268,38 @@ export const useAppStore = create<AppState>((set, get) => {
 
       get().pause();
 
+      const activeTab =
+        activity.format === 'explanation' &&
+        activity.demoTabs &&
+        state.activeDemoTabIndex > 0 &&
+        activity.demoTabs[state.activeDemoTabIndex]
+          ? activity.demoTabs[state.activeDemoTabIndex]
+          : undefined;
+
+      const referenceStarterWs =
+        activeTab?.workspace ?? activity.starterWorkspace ?? activity.demoTabs?.[0]?.workspace;
+
       const hasChangedFromStarter =
         JSON.stringify(normalizeWorkspaceForCompare(state.workspace)) !==
-        JSON.stringify(normalizeWorkspaceForCompare(activity.starterWorkspace));
+        JSON.stringify(normalizeWorkspaceForCompare(referenceStarterWs));
 
       if (hasChangedFromStarter) {
         recordMutation('Reset to starter');
       }
 
-      const starterWs = activity.starterWorkspace
-        ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+      const starterWs = referenceStarterWs
+        ? cloneWorkspaceWithFreshIds(referenceStarterWs)
         : createEmptyWorkspace();
+
+      const prevFitToView = state.grid.fitToView ?? false;
+      const nextGrid =
+        activeTab?.gridState
+          ? createCurriculumGridState(activeTab.gridState, prevFitToView)
+          : undefined;
 
       set({
         workspace: starterWs,
+        ...(nextGrid ? { grid: nextGrid } : {}),
         curriculumWorkspaces: {
           ...state.curriculumWorkspaces,
           [activity.id]: cloneWorkspace(starterWs),
@@ -1251,16 +1338,32 @@ export const useAppStore = create<AppState>((set, get) => {
 
         if (!activity) return;
 
+        const savedTabIdx =
+          activity.format === 'explanation' && activity.demoTabs?.length
+            ? Math.min(
+                Math.max(0, state.demoTabIndexByActivity[activity.id] ?? 0),
+                activity.demoTabs.length - 1
+              )
+            : 0;
+        const activeTab =
+          savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
+
         const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
         const prevFitToView = state.grid.fitToView ?? false;
-        const targetGrid = activity.grid
-          ? createCurriculumGridState(activity.grid, prevFitToView)
+        const resolvedGridDef =
+          activeTab?.gridState ?? activity.grid ?? activity.demoTabs?.[0]?.gridState;
+        const targetGrid = resolvedGridDef
+          ? createCurriculumGridState(resolvedGridDef, prevFitToView)
           : state.grid;
 
         const targetWs = state.curriculumWorkspaces[activity.id]
           ? cloneWorkspace(state.curriculumWorkspaces[activity.id])
+          : activeTab?.workspace
+          ? cloneWorkspaceWithFreshIds(activeTab.workspace)
           : activity.starterWorkspace
           ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+          : activity.demoTabs?.[0]?.workspace
+          ? cloneWorkspaceWithFreshIds(activity.demoTabs[0].workspace)
           : createEmptyWorkspace();
 
         const allowedScopes: ScopeType[] =
@@ -1273,6 +1376,7 @@ export const useAppStore = create<AppState>((set, get) => {
           appMode: 'curriculum',
           activeActivityId: activity.id,
           activeActivityVersion: activity.version,
+          activeDemoTabIndex: savedTabIdx,
           activeSimId: targetSimId,
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
@@ -1385,16 +1489,32 @@ export const useAppStore = create<AppState>((set, get) => {
             }
           : { ...state.curriculumWorkspaces };
 
+      const savedTabIdx =
+        activity.format === 'explanation' && activity.demoTabs?.length
+          ? Math.min(
+              Math.max(0, state.demoTabIndexByActivity[activity.id] ?? 0),
+              activity.demoTabs.length - 1
+            )
+          : 0;
+      const activeTab =
+        savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
+
       const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
       const prevFitToView = state.grid.fitToView ?? false;
-      const targetGrid = activity.grid
-        ? createCurriculumGridState(activity.grid, prevFitToView)
+      const resolvedGridDef =
+        activeTab?.gridState ?? activity.grid ?? activity.demoTabs?.[0]?.gridState;
+      const targetGrid = resolvedGridDef
+        ? createCurriculumGridState(resolvedGridDef, prevFitToView)
         : state.grid;
 
       const targetWs = nextCurriculumWorkspaces[activity.id]
         ? cloneWorkspace(nextCurriculumWorkspaces[activity.id])
+        : activeTab?.workspace
+        ? cloneWorkspaceWithFreshIds(activeTab.workspace)
         : activity.starterWorkspace
         ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+        : activity.demoTabs?.[0]?.workspace
+        ? cloneWorkspaceWithFreshIds(activity.demoTabs[0].workspace)
         : createEmptyWorkspace();
 
       nextCurriculumWorkspaces[activity.id] = cloneWorkspace(targetWs);
@@ -1408,6 +1528,7 @@ export const useAppStore = create<AppState>((set, get) => {
         appMode: 'curriculum',
         activeActivityId: activity.id,
         activeActivityVersion: activity.version,
+        activeDemoTabIndex: savedTabIdx,
         activeSimId: targetSimId,
         grid: targetGrid,
         turtleState: createInitialTurtleState(),
@@ -1427,6 +1548,111 @@ export const useAppStore = create<AppState>((set, get) => {
 
       get().reset();
       get().runInstantIfActive();
+    },
+
+    selectExplanationDemoTab: (tabIndex) => {
+      const state = get();
+      if (state.appMode !== 'curriculum') return;
+
+      const activity =
+        getActivityAtVersion(state.activeActivityId, state.activeActivityVersion) ??
+        getActivityLatest(state.activeActivityId);
+      if (!activity || activity.format !== 'explanation' || !activity.demoTabs?.length) {
+        return;
+      }
+
+      const clampedIndex = Math.min(
+        Math.max(0, tabIndex),
+        activity.demoTabs.length - 1
+      );
+      const tab = activity.demoTabs[clampedIndex];
+      if (!tab) return;
+
+      get().pause();
+      get().clearHistory();
+
+      const prevFitToView = state.grid.fitToView ?? false;
+      const resolvedGridDef = tab.gridState ?? activity.grid;
+      const nextGrid = resolvedGridDef
+        ? createCurriculumGridState(resolvedGridDef, prevFitToView)
+        : state.grid;
+      const nextWs = cloneWorkspaceWithFreshIds(tab.workspace);
+
+      set({
+        activeDemoTabIndex: clampedIndex,
+        demoTabIndexByActivity: {
+          ...state.demoTabIndexByActivity,
+          [activity.id]: clampedIndex,
+        },
+        grid: nextGrid,
+        turtleState: createInitialTurtleState(),
+        beatState: resetBeatState(state.beatState),
+        workspace: nextWs,
+        curriculumWorkspaces: {
+          ...state.curriculumWorkspaces,
+          [activity.id]: cloneWorkspace(nextWs),
+        },
+        selectedBlockId: null,
+        activeScope: 'MAIN',
+        runtime: null,
+        ghostPreview: null,
+        slotCapRejectionCount: 0,
+        lastSlotCapRejectedAt: null,
+        statusAnnouncement: `Example ${clampedIndex + 1} of ${activity.demoTabs.length}${
+          tab.title ? `: ${tab.title}` : ''
+        }. Press Play or Step to watch.`,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
+    markActiveDemoTabExplored: () => {
+      markDemoTabExploredInternal(true);
+    },
+
+    completeExplanationAndContinue: () => {
+      const state = get();
+      if (state.appMode !== 'curriculum') return null;
+
+      const activity =
+        getActivityAtVersion(state.activeActivityId, state.activeActivityVersion) ??
+        getActivityLatest(state.activeActivityId);
+      if (!activity || activity.format !== 'explanation') return null;
+
+      get().pause();
+
+      markLessonCompleted(state.activeProfileId, activity.id, activity.version);
+      const nextCompleted = {
+        ...state.completedActivities,
+        [activity.id]: true,
+      };
+      set({
+        completedActivities: nextCompleted,
+      });
+
+      const currentIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
+      const nextActivity =
+        currentIdx >= 0 && currentIdx < CURRICULUM_ACTIVITIES.length - 1
+          ? CURRICULUM_ACTIVITIES[currentIdx + 1]
+          : undefined;
+
+      if (nextActivity) {
+        get().setCurriculumActivity(nextActivity.id, nextActivity.version);
+        set({
+          completedActivities: {
+            ...get().completedActivities,
+            [activity.id]: true,
+          },
+          statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}. Advancing to Activity ${nextActivity.id}: ${nextActivity.title}.`,
+        });
+        return nextActivity.id;
+      }
+
+      set({
+        statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}.`,
+      });
+      return null;
     },
 
     openCopyInSandbox: () => {
@@ -2122,6 +2348,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (result.status === 'SUCCESS' || result.finalRuntime.status === 'SUCCESS') {
         recordCurriculumSuccessIfApplicable();
       }
+      markDemoTabExploredInternal(true);
     },
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
@@ -2815,6 +3042,7 @@ export const useAppStore = create<AppState>((set, get) => {
           timerId = null;
           set({ isPlaying: false });
         }
+        markDemoTabExploredInternal(true);
       } else if (activeSimId === 'beat') {
         if (!get().isPlaying) {
           beatSynth.unlockFromGesture();
@@ -2871,6 +3099,7 @@ export const useAppStore = create<AppState>((set, get) => {
           timerId = null;
           set({ isPlaying: false });
         }
+        markDemoTabExploredInternal(true);
       } else {
         // Turtle mode
         // If an animation is currently active, snap-commit it first
@@ -2901,6 +3130,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         runTurtleExecutionLoop(true);
+        markDemoTabExploredInternal(true);
       }
     },
 
@@ -2981,6 +3211,7 @@ export const useAppStore = create<AppState>((set, get) => {
         // Turtle runner: RAF-driven constant speed loop
         set({ isPlaying: true });
         runTurtleExecutionLoop(false);
+        markDemoTabExploredInternal(true);
       }
     },
 
