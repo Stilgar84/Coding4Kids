@@ -1,12 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { BlockItem } from './BlockItem';
+import {
+  BlockItem,
+  computeLoopNestingMetadata,
+  type LoopStrokeStyle,
+  type LoopDepthMarker,
+  type MatchedLoopSpan,
+  type BlockLoopRoleSpan,
+  type BlockLoopMetadata,
+  type ScopeLoopNestingAnalysis,
+} from './BlockItem';
 import { AlertTriangle } from 'lucide-react';
 import { validateLoopStructure } from '../engine/interpreter';
 import {
   computeSlotBudget,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
+
+export {
+  computeLoopNestingMetadata,
+  type LoopStrokeStyle,
+  type LoopDepthMarker,
+  type MatchedLoopSpan,
+  type BlockLoopRoleSpan,
+  type BlockLoopMetadata,
+  type ScopeLoopNestingAnalysis,
+};
 
 const SLOT_SHAKE_DURATION_MS = 500;
 
@@ -70,12 +89,26 @@ export const WorkspaceCanvas: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeScope, selectedBlockId, removeBlock]);
 
-  // Loop validation diagnostics
+  // Loop validation diagnostics & matched nesting bracket metadata
   const loopValidation = validateLoopStructure(blocks);
   const unclosedSet = new Set([
     ...loopValidation.unclosedLoopStartIds,
     ...loopValidation.orphanLoopEndIds,
   ]);
+  const activeLoopStartPcs = new Set(
+    (runtime?.loopStack ?? [])
+      .filter((frame) => frame.scope === activeScope)
+      .map((frame) => frame.loopStartPc)
+  );
+  const loopAnalysis = computeLoopNestingMetadata(blocks, activeLoopStartPcs);
+  const sequenceGapClass =
+    loopAnalysis.maxTier >= 2
+      ? 'gap-x-1.5 gap-y-9 pb-9'
+      : loopAnalysis.maxTier >= 1
+      ? 'gap-x-1.5 gap-y-7 pb-7'
+      : loopAnalysis.maxDepth > 0
+      ? 'gap-x-1.5 gap-y-5 pb-5'
+      : 'gap-1.5';
 
   // Handle canvas background click to reset selection
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -189,6 +222,7 @@ export const WorkspaceCanvas: React.FC = () => {
             isLoopError={isLoopError}
             isDragging={draggingBlockId === block.id}
             iterationProgress={iterationProgress}
+            loopMeta={loopAnalysis.blockMeta[idx]}
             onSelect={() => setSelectedBlockId(block.id)}
             onDragStartBlock={(_e, _index, blockId) => setDraggingBlockId(blockId)}
             onDragEndBlock={handleDragEnd}
@@ -239,6 +273,8 @@ export const WorkspaceCanvas: React.FC = () => {
         data-bg-canvas="true"
         data-slot-capped={budget.isCapped ? 'true' : 'false'}
         data-slot-rejected={isSlotRejected ? 'true' : 'false'}
+        data-loop-count={loopAnalysis.matchedSpans.length}
+        data-max-loop-depth={loopAnalysis.maxDepth}
         role="region"
         aria-label={
           budget.isCapped && budget.counterMax !== null
@@ -250,7 +286,7 @@ export const WorkspaceCanvas: React.FC = () => {
         onDragLeave={handleSequenceDragLeave}
         onDrop={handleSequenceDropFallback}
         onDragEnd={handleDragEnd}
-        className={`flex-1 p-3 overflow-y-auto overflow-x-hidden flex flex-wrap content-start items-center gap-1.5 min-h-[160px] transition-colors ${
+        className={`flex-1 p-3 overflow-y-auto overflow-x-hidden flex flex-wrap content-start items-center ${sequenceGapClass} min-h-[160px] transition-colors ${
           isSlotRejected
             ? 'animate-slot-tray-shake bg-amber-950/20 ring-2 ring-inset ring-amber-400/70'
             : ''
