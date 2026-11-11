@@ -18,6 +18,8 @@ import {
 
 export const SaveProgramModal: React.FC = () => {
   const {
+    appMode,
+    activeActivityId,
     isSaveModalOpen,
     setSaveModalOpen,
     activeSimId,
@@ -95,13 +97,27 @@ export const SaveProgramModal: React.FC = () => {
     if (isSaveModalOpen) {
       setSavedSuccess(false);
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      if (activeSimId === 'grid') {
+      if (appMode === 'curriculum') {
+        setTitle(`Activity ${activeActivityId} (${timeStr})`);
+      } else if (activeSimId === 'grid') {
         setTitle(`Lesson ${currentLevel} Solution (${timeStr})`);
       } else {
         setTitle(`Turtle Drawing (${timeStr})`);
       }
     }
-  }, [isSaveModalOpen, activeSimId, currentLevel]);
+  }, [isSaveModalOpen, appMode, activeActivityId, activeSimId, currentLevel]);
+
+  useEffect(() => {
+    if (!isSaveModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSaveModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSaveModalOpen, setSaveModalOpen]);
 
   if (!isSaveModalOpen || !simData) return null;
 

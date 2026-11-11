@@ -10,7 +10,8 @@ import {
 } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState } from '../simulations/turtle/turtleEnvironment';
-import type { EditorTool, HistorySnapshot } from '../store/useAppStore';
+import type { EditorTool, HistorySnapshot, SandboxModeSnapshot } from '../store/useAppStore';
+import type { AppMode } from '../data/curriculum/types';
 
 export const PENDING_UPDATE_STORAGE_KEY = 'robotemu_pending_update_state';
 export const UPDATE_SNAPSHOT_VERSION = 1;
@@ -18,6 +19,11 @@ export const UPDATE_SNAPSHOT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_PERSISTED_HISTORY = 20;
 
 export interface AppUpdateStateInput {
+  appMode?: AppMode;
+  activeActivityId?: string;
+  activeActivityVersion?: number;
+  curriculumWorkspaces?: Record<string, WorkspaceState>;
+  sandboxSnapshot?: SandboxModeSnapshot | null;
   activeSimId: 'grid' | 'turtle';
   currentLevel: number;
   workspace: WorkspaceState;
@@ -329,6 +335,11 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     version: UPDATE_SNAPSHOT_VERSION,
     savedAt: now,
     expiresAt: now + UPDATE_SNAPSHOT_TTL_MS,
+    appMode: state.appMode ?? 'sandbox',
+    activeActivityId: state.activeActivityId ?? '1.1',
+    activeActivityVersion: state.activeActivityVersion ?? 1,
+    curriculumWorkspaces: JSON.parse(JSON.stringify(state.curriculumWorkspaces || {})),
+    sandboxSnapshot: state.sandboxSnapshot ? JSON.parse(JSON.stringify(state.sandboxSnapshot)) : null,
     activeSimId: state.activeSimId,
     currentLevel: state.currentLevel,
     workspace: JSON.parse(JSON.stringify(state.workspace)),
@@ -391,6 +402,25 @@ export function consumeRestoredStateAfterUpdate(
       return null;
     }
 
+    const appMode: AppMode = parsed.appMode === 'curriculum' ? 'curriculum' : 'sandbox';
+    const activeActivityId =
+      typeof parsed.activeActivityId === 'string' && parsed.activeActivityId
+        ? parsed.activeActivityId
+        : '1.1';
+    const activeActivityVersion =
+      typeof parsed.activeActivityVersion === 'number' &&
+      Number.isInteger(parsed.activeActivityVersion) &&
+      parsed.activeActivityVersion >= 1
+        ? parsed.activeActivityVersion
+        : 1;
+
+    const curriculumWorkspaces: Record<string, WorkspaceState> = {};
+    if (parsed.curriculumWorkspaces && typeof parsed.curriculumWorkspaces === 'object') {
+      for (const [key, ws] of Object.entries(parsed.curriculumWorkspaces)) {
+        curriculumWorkspaces[key] = sanitizeWorkspace(ws);
+      }
+    }
+
     const activeSimId: 'grid' | 'turtle' = parsed.activeSimId === 'turtle' ? 'turtle' : 'grid';
     const currentLevel =
       typeof parsed.currentLevel === 'number' && Number.isInteger(parsed.currentLevel) && parsed.currentLevel >= 1
@@ -405,15 +435,47 @@ export function consumeRestoredStateAfterUpdate(
       }
     }
 
+    let sandboxSnapshot: SandboxModeSnapshot | null = null;
+    if (parsed.sandboxSnapshot && typeof parsed.sandboxSnapshot === 'object') {
+      const snap = parsed.sandboxSnapshot as Record<string, any>;
+      const snapSaved: Record<string, WorkspaceState> = {};
+      if (snap.savedWorkspaces && typeof snap.savedWorkspaces === 'object') {
+        for (const [k, ws] of Object.entries(snap.savedWorkspaces)) {
+          snapSaved[k] = sanitizeWorkspace(ws);
+        }
+      }
+      sandboxSnapshot = {
+        activeSimId: snap.activeSimId === 'turtle' ? 'turtle' : 'grid',
+        currentLevel:
+          typeof snap.currentLevel === 'number' && Number.isInteger(snap.currentLevel) && snap.currentLevel >= 1
+            ? snap.currentLevel
+            : 1,
+        grid: sanitizeGridState(snap.grid, fallbackGrid),
+        turtleState: sanitizeTurtleState(snap.turtleState),
+        workspace: sanitizeWorkspace(snap.workspace),
+        savedWorkspaces: snapSaved,
+      };
+    }
+
     const grid = sanitizeGridState(parsed.grid, fallbackGrid);
     const turtleState = sanitizeTurtleState(parsed.turtleState);
     const runtime = sanitizeRuntime(parsed.runtime);
     const activeScope: ScopeType = VALID_SCOPES.includes(parsed.activeScope) ? parsed.activeScope : 'MAIN';
     const selectedBlockId = typeof parsed.selectedBlockId === 'string' ? parsed.selectedBlockId : null;
     const speed = sanitizeSpeed(parsed.speed);
-    const editorTool: EditorTool = VALID_TOOLS.includes(parsed.editorTool) ? parsed.editorTool : 'NONE';
+    const editorTool: EditorTool =
+      appMode === 'curriculum'
+        ? 'NONE'
+        : VALID_TOOLS.includes(parsed.editorTool)
+        ? parsed.editorTool
+        : 'NONE';
 
     return {
+      appMode,
+      activeActivityId,
+      activeActivityVersion,
+      curriculumWorkspaces,
+      sandboxSnapshot,
       activeSimId,
       currentLevel,
       workspace,

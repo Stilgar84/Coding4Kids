@@ -5,6 +5,12 @@ import { getSimEnvironment } from '../engine/simulation/registry';
 import { validateLoopStructure } from '../engine/interpreter';
 import { LESSONS } from '../data/lessons';
 import {
+  CURRICULUM_ACTIVITIES,
+  getActivityAtVersion,
+  getActivityLatest,
+  getCurriculumModule,
+} from '../data/curriculum';
+import {
   Play,
   Pause,
   SkipForward,
@@ -22,12 +28,20 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Copy,
 } from 'lucide-react';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
 import { usePwaUpdateStore, reopenUpdatePrompt } from '../services/pwaUpdateManager';
 
 export const Toolbar: React.FC = () => {
   const {
+    appMode,
+    setAppMode,
+    activeActivityId,
+    activeActivityVersion,
+    setCurriculumActivity,
+    openCopyInSandbox,
+    statusAnnouncement,
     activeSimId,
     setSimEnvironment,
     currentLevel,
@@ -58,6 +72,13 @@ export const Toolbar: React.FC = () => {
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
+  const currentCurriculumActivity =
+    getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+    getActivityLatest(activeActivityId) ??
+    CURRICULUM_ACTIVITIES[0];
+  const currentCurriculumModule = currentCurriculumActivity
+    ? getCurriculumModule(currentCurriculumActivity.moduleId)
+    : undefined;
 
   const hasLoopError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((sc) => {
     return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
@@ -89,15 +110,46 @@ export const Toolbar: React.FC = () => {
     setLevel(nextId);
   };
 
+  const handlePrevActivity = () => {
+    if (CURRICULUM_ACTIVITIES.length === 0) return;
+    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+    const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
+    setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+  };
+
+  const handleNextActivity = () => {
+    if (CURRICULUM_ACTIVITIES.length === 0) return;
+    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+    const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
+    setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
+  };
+
   const ToolsComponent = currentSimEnv?.ToolsComponent;
   const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+  const showDesktopTools = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
+  const showMobileLessonNav = appMode === 'curriculum' || activeSimId === 'grid';
+  const handleMobilePrev = appMode === 'curriculum' ? handlePrevActivity : handlePrevLevel;
+  const handleMobileNext = appMode === 'curriculum' ? handleNextActivity : handleNextLevel;
+  const canShowSolution =
+    appMode === 'curriculum'
+      ? Boolean(currentCurriculumActivity?.referenceSolution)
+      : activeSimId === 'grid';
   const { needRefresh, isPromptDismissed } = usePwaUpdateStore();
 
   return (
     <>
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="mode-status-announcer"
+        className="sr-only"
+      >
+        {statusAnnouncement}
+      </div>
+
       <header className="flex flex-nowrap md:flex-wrap items-center justify-between gap-1.5 md:gap-3 px-2 py-1.5 md:p-3 h-12 md:h-auto bg-slate-900 border-b-2 border-slate-800 shadow-md flex-shrink-0 z-20">
-        {/* Mobile Left: Hamburger Menu Button + Compact Level/Sim Indicator */}
-        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0">
+        {/* Mobile Left: Hamburger Menu Button + Compact Prev/Next Lesson/Activity Nav */}
+        <div className="flex md:hidden items-center gap-1 flex-shrink-0">
           <button
             data-testid="btn-hamburger-menu"
             onClick={toggleMobileMenu}
@@ -108,109 +160,282 @@ export const Toolbar: React.FC = () => {
             <Menu className="w-5 h-5" />
           </button>
 
-          <button
-            onClick={toggleMobileMenu}
-            className="flex items-center gap-1 px-2 h-9 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 font-bold text-xs active:scale-95 transition-transform"
-            title="Current lesson / Switch level"
-          >
-            <span>{activeSimId === 'grid' ? '🤖' : '🐢'}</span>
-            <span>{activeSimId === 'grid' ? `L${currentLevel}` : 'LOGO'}</span>
-          </button>
+          <div className="flex items-center h-9 bg-slate-800 rounded-xl border border-slate-700 shadow-sm overflow-hidden">
+            {showMobileLessonNav && (
+              <button
+                type="button"
+                data-testid="btn-mobile-prev-lesson"
+                onClick={handleMobilePrev}
+                className="flex items-center justify-center w-7 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-r border-slate-700/80"
+                title={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Lesson'}
+                aria-label={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Lesson'}
+              >
+                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              data-testid="btn-mobile-mode-indicator"
+              onClick={toggleMobileMenu}
+              className="flex items-center gap-1 px-1.5 h-full hover:bg-slate-700 text-slate-200 font-bold text-xs active:bg-slate-600 transition-colors whitespace-nowrap"
+              title={
+                appMode === 'curriculum'
+                  ? `Learn Mode: Activity ${activeActivityId}`
+                  : 'Current lesson / Switch mode'
+              }
+              aria-label={
+                appMode === 'curriculum'
+                  ? `Learn Mode Activity ${activeActivityId} — Open Menu`
+                  : 'Sandbox Mode — Open Menu'
+              }
+            >
+              {appMode === 'curriculum' ? (
+                <>
+                  <span>🎓</span>
+                  <span>{activeActivityId}</span>
+                </>
+              ) : (
+                <>
+                  <span>{activeSimId === 'grid' ? '🤖' : '🐢'}</span>
+                  <span>{activeSimId === 'grid' ? `L${currentLevel}` : 'LOGO'}</span>
+                </>
+              )}
+            </button>
+
+            {showMobileLessonNav && (
+              <button
+                type="button"
+                data-testid="btn-mobile-next-lesson"
+                onClick={handleMobileNext}
+                className="flex items-center justify-center w-7 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-l border-slate-700/80"
+                title={appMode === 'curriculum' ? 'Next Activity' : 'Next Lesson'}
+                aria-label={appMode === 'curriculum' ? 'Next Activity' : 'Next Lesson'}
+              >
+                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Desktop Left Section: Environment Switcher + Grid Lesson Navigation */}
-        <div className="hidden md:flex items-center gap-3 max-w-full overflow-hidden">
-          {/* Environment Switcher Pill */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
+        {/* Desktop Left Section: Mode Switcher + Mode-Specific Navigation */}
+        <div className="hidden md:flex items-center gap-2.5 max-w-full overflow-hidden">
+          {/* Curriculum (Learn) vs Free-Play (Sandbox) Mode Switcher */}
+          <div
+            role="group"
+            aria-label="Application Mode"
+            className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800 flex-shrink-0"
+          >
             <button
-              data-testid="sim-tab-grid"
-              onClick={() => setSimEnvironment('grid')}
+              data-testid="btn-mode-curriculum"
+              type="button"
+              aria-pressed={appMode === 'curriculum'}
+              aria-label="Learn Mode"
+              onClick={() => setAppMode('curriculum')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                activeSimId === 'grid'
-                  ? 'bg-sky-600 text-white shadow-md'
+                appMode === 'curriculum'
+                  ? 'bg-violet-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
+              title="Curriculum Learn Mode (guided activities with read-only maps)"
             >
-              <span>🤖</span>
-              <span>Grid</span>
+              <span>🎓</span>
+              <span>Learn</span>
             </button>
             <button
-              data-testid="sim-tab-turtle"
-              onClick={() => setSimEnvironment('turtle')}
+              data-testid="btn-mode-sandbox"
+              type="button"
+              aria-pressed={appMode === 'sandbox'}
+              aria-label="Sandbox Mode"
+              onClick={() => setAppMode('sandbox')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                activeSimId === 'turtle'
-                  ? 'bg-emerald-600 text-white shadow-md'
+                appMode === 'sandbox'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
+              title="Sandbox Free-Play Mode (editable maps and full blocks)"
             >
-              <span>🐢</span>
-              <span>Turtle</span>
+              <span>🛠️</span>
+              <span>Sandbox</span>
             </button>
           </div>
 
-          {/* If Grid is active, show Lesson Navigation & Selection */}
-          {activeSimId === 'grid' ? (
+          {appMode === 'curriculum' ? (
             <div className="flex items-center gap-2 max-w-full overflow-hidden">
-              {/* Prev / Next Chevrons */}
+              {/* Prev / Next Curriculum Activity Chevrons */}
               <div className="flex items-center gap-1">
                 <button
-                  onClick={handlePrevLevel}
+                  data-testid="btn-prev-activity"
+                  type="button"
+                  onClick={handlePrevActivity}
+                  aria-label="Previous Activity"
                   className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                  title="Previous Lesson"
+                  title="Previous Activity"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={handleNextLevel}
+                  data-testid="btn-next-activity"
+                  type="button"
+                  onClick={handleNextActivity}
+                  aria-label="Next Activity"
                   className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                  title="Next Lesson"
+                  title="Next Activity"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Dropdown Selector for Course Lessons */}
-              <div className="flex items-center gap-1.5 bg-slate-800 px-2 rounded-2xl border-2 border-slate-700">
-                <span className="text-base" title={currentLesson.moduleTitle}>
-                  {currentLesson.moduleIcon}
+              {/* Curriculum Activity Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 rounded-2xl border-2 border-violet-500/40">
+                <span className="text-base" title={currentCurriculumModule?.title || 'Curriculum'}>
+                  {currentCurriculumModule?.icon || '🎓'}
                 </span>
                 <select
-                  value={currentLevel}
-                  onChange={(e) => setLevel(Number(e.target.value))}
-                  className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[240px] truncate"
-                  title="Select Course Lesson"
+                  data-testid="select-curriculum-activity"
+                  aria-label="Select Curriculum Activity"
+                  value={activeActivityId}
+                  onChange={(e) => setCurriculumActivity(e.target.value)}
+                  className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[250px] truncate"
+                  title="Select Curriculum Activity"
                 >
-                  {LESSONS.map((l) => (
-                    <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
-                      {l.id}. {l.title} ({l.concept})
+                  {CURRICULUM_ACTIVITIES.map((act) => (
+                    <option key={act.id} value={act.id} className="bg-slate-900 text-slate-100">
+                      {act.id} — {act.title} ({act.concept})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Level Quick Buttons (Scrollable Tray) */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[200px] md:max-w-[280px] lg:max-w-[360px] no-scrollbar">
-                {PRESET_LEVELS.map((lvl) => (
+              {/* Activity Quick Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[180px] lg:max-w-[260px] no-scrollbar">
+                {CURRICULUM_ACTIVITIES.map((act) => (
                   <button
-                    key={lvl.id}
-                    data-testid={`btn-level-${lvl.id}`}
-                    onClick={() => setLevel(lvl.id)}
-                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm border-2 transition-all ${
-                      currentLevel === lvl.id
-                        ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
+                    key={act.id}
+                    type="button"
+                    data-testid={`btn-activity-${act.id}`}
+                    aria-current={activeActivityId === act.id ? 'step' : undefined}
+                    aria-label={`Activity ${act.id}: ${act.title}`}
+                    onClick={() => setCurriculumActivity(act.id)}
+                    className={`flex-shrink-0 flex items-center justify-center px-2.5 h-10 rounded-xl font-black text-xs border-2 transition-all ${
+                      activeActivityId === act.id
+                        ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
                         : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
                     }`}
                   >
-                    {lvl.id}
+                    {act.id}
                   </button>
                 ))}
               </div>
+
+              {/* Open Copy in Sandbox Action */}
+              <button
+                data-testid="btn-open-copy-sandbox"
+                type="button"
+                onClick={openCopyInSandbox}
+                aria-label="Open Copy in Sandbox"
+                className="flex items-center gap-1.5 px-3 h-10 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 transition-all active:scale-95 whitespace-nowrap"
+                title="Clone this map and your blocks into Sandbox mode for free editing"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Open Copy in Sandbox</span>
+              </button>
             </div>
           ) : (
-            /* Turtle mode badge */
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-semibold text-emerald-300">
-              <span>LOGO Unbounded Canvas</span>
-            </div>
+            <>
+              {/* Environment Switcher Pill */}
+              <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
+                <button
+                  data-testid="sim-tab-grid"
+                  onClick={() => setSimEnvironment('grid')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeSimId === 'grid'
+                      ? 'bg-sky-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>🤖</span>
+                  <span>Grid</span>
+                </button>
+                <button
+                  data-testid="sim-tab-turtle"
+                  onClick={() => setSimEnvironment('turtle')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    activeSimId === 'turtle'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>🐢</span>
+                  <span>Turtle</span>
+                </button>
+              </div>
+
+              {/* If Grid is active, show Lesson Navigation & Selection */}
+              {activeSimId === 'grid' ? (
+                <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                  {/* Prev / Next Chevrons */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handlePrevLevel}
+                      className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
+                      title="Previous Lesson"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={handleNextLevel}
+                      className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
+                      title="Next Lesson"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Dropdown Selector for Course Lessons */}
+                  <div className="flex items-center gap-1.5 bg-slate-800 px-2 rounded-2xl border-2 border-slate-700">
+                    <span className="text-base" title={currentLesson.moduleTitle}>
+                      {currentLesson.moduleIcon}
+                    </span>
+                    <select
+                      value={currentLevel}
+                      onChange={(e) => setLevel(Number(e.target.value))}
+                      className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[240px] truncate"
+                      title="Select Course Lesson"
+                    >
+                      {LESSONS.map((l) => (
+                        <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
+                          {l.id}. {l.title} ({l.concept})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Level Quick Buttons (Scrollable Tray) */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[200px] md:max-w-[280px] lg:max-w-[360px] no-scrollbar">
+                    {PRESET_LEVELS.map((lvl) => (
+                      <button
+                        key={lvl.id}
+                        data-testid={`btn-level-${lvl.id}`}
+                        onClick={() => setLevel(lvl.id)}
+                        className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm border-2 transition-all ${
+                          currentLevel === lvl.id
+                            ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
+                            : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                        }`}
+                      >
+                        {lvl.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* Turtle mode badge */
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-semibold text-emerald-300">
+                  <span>LOGO Unbounded Canvas</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -230,7 +455,7 @@ export const Toolbar: React.FC = () => {
           )}
 
           {/* Solution Button (Desktop only) */}
-          {activeSimId === 'grid' && (
+          {canShowSolution && (
             <button
               data-testid="btn-solution"
               onClick={() => setSolutionOpen(true)}
@@ -422,7 +647,7 @@ export const Toolbar: React.FC = () => {
         </div>
 
         {/* Right Section: Environment-Specific Toolbar Tools (Desktop only) */}
-        {ToolsComponent && (
+        {showDesktopTools && ToolsComponent && (
           <div className="hidden md:flex items-center">
             <ToolsComponent state={currentSimState} />
           </div>

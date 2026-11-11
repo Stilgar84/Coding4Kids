@@ -31,6 +31,13 @@ import {
 } from '../simulations/turtle/physics';
 import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { LESSONS } from '../data/lessons';
+import {
+  AppMode,
+  CURRICULUM_ACTIVITIES,
+  createCurriculumGridState,
+  getActivityAtVersion,
+  getActivityLatest,
+} from '../data/curriculum';
 import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
 import {
   saveStateBeforeUpdate,
@@ -89,6 +96,30 @@ export const cloneWorkspace = (ws: WorkspaceState): WorkspaceState => ({
   })),
 });
 
+export const cloneWorkspaceWithFreshIds = (ws: WorkspaceState): WorkspaceState => {
+  const cloneList = (blocks: CodeBlock[] = []) =>
+    blocks.map((b) => ({
+      ...b,
+      id: `${b.type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
+    }));
+  return {
+    MAIN: cloneList(ws?.MAIN),
+    F1: cloneList(ws?.F1),
+    F2: cloneList(ws?.F2),
+    F3: cloneList(ws?.F3),
+  };
+};
+
+export interface SandboxModeSnapshot {
+  activeSimId: 'grid' | 'turtle';
+  currentLevel: number;
+  grid: GridState;
+  turtleState: TurtleState;
+  workspace: WorkspaceState;
+  savedWorkspaces: Record<string, WorkspaceState>;
+}
+
 export function computeInstantSimulation(
   workspace: WorkspaceState,
   simId: 'grid' | 'turtle',
@@ -128,6 +159,14 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
 }));
 
 interface AppState {
+  // Mode & Curriculum selection
+  appMode: AppMode;
+  activeActivityId: string;
+  activeActivityVersion: number;
+  curriculumWorkspaces: Record<string, WorkspaceState>;
+  sandboxSnapshot: SandboxModeSnapshot | null;
+  statusAnnouncement: string;
+
   // Environment selection
   activeSimId: 'grid' | 'turtle';
   currentLevel: number;
@@ -161,6 +200,11 @@ interface AppState {
   startHistoryBatch: (description?: string) => void;
   endHistoryBatch: () => void;
   clearHistory: () => void;
+
+  // Mode & Curriculum actions
+  setAppMode: (mode: AppMode) => void;
+  setCurriculumActivity: (activityId: string, version?: number) => void;
+  openCopyInSandbox: () => void;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -504,6 +548,7 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   }
   const initialPreset = PRESET_LEVELS[0];
+  const defaultActivity = CURRICULUM_ACTIVITIES[0];
 
   const createGridFromPreset = (preset: LevelPreset, prevFitToView: boolean = false): GridState => ({
     width: preset.width,
@@ -522,6 +567,53 @@ export const useAppStore = create<AppState>((set, get) => {
     fitToView: prevFitToView,
   });
 
+  const buildSandboxSnapshot = (state: AppState): SandboxModeSnapshot => {
+    const snapSaved: Record<string, WorkspaceState> = {};
+    for (const [k, ws] of Object.entries(state.savedWorkspaces)) {
+      snapSaved[k] = cloneWorkspace(ws);
+    }
+    snapSaved[state.activeSimId] = cloneWorkspace(state.workspace);
+    return {
+      activeSimId: state.activeSimId,
+      currentLevel: state.currentLevel,
+      grid: JSON.parse(JSON.stringify(getInitialGridState(state.grid))),
+      turtleState: JSON.parse(JSON.stringify(getInitialTurtleState(state.turtleState))),
+      workspace: cloneWorkspace(state.workspace),
+      savedWorkspaces: snapSaved,
+    };
+  };
+
+  let bootMode: AppMode = 'sandbox';
+  let bootActivity = defaultActivity;
+  if (typeof window !== 'undefined' && window.location?.search) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const modeParam = params.get('mode')?.toLowerCase();
+      if (modeParam === 'curriculum' || modeParam === 'learn') {
+        bootMode = 'curriculum';
+      }
+      const activityParam = params.get('activity');
+      if (activityParam) {
+        const found = getActivityLatest(activityParam);
+        if (found) {
+          bootActivity = found;
+        }
+      }
+    } catch {
+      // Ignore malformed query string
+    }
+  }
+
+  const initialGrid =
+    bootMode === 'curriculum' && bootActivity?.grid
+      ? createCurriculumGridState(bootActivity.grid)
+      : createGridFromPreset(initialPreset);
+
+  const initialWorkspace =
+    bootMode === 'curriculum' && bootActivity?.starterWorkspace
+      ? cloneWorkspaceWithFreshIds(bootActivity.starterWorkspace)
+      : createEmptyWorkspace();
+
   const recordMutation = (desc?: string) => {
     if (activeBatchSnapshot !== null) {
       return;
@@ -538,16 +630,21 @@ export const useAppStore = create<AppState>((set, get) => {
   };
 
   return {
-    activeSimId: 'grid',
+    appMode: bootMode,
+    activeActivityId: bootActivity?.id || '1.1',
+    activeActivityVersion: bootActivity?.version || 1,
+    curriculumWorkspaces:
+      bootMode === 'curriculum' && bootActivity
+        ? { [bootActivity.id]: cloneWorkspace(initialWorkspace) }
+        : {},
+    sandboxSnapshot: null,
+    statusAnnouncement: '',
+
+    activeSimId: bootMode === 'curriculum' && bootActivity?.simId === 'turtle' ? 'turtle' : 'grid',
     currentLevel: 1,
-    grid: createGridFromPreset(initialPreset),
+    grid: initialGrid,
     turtleState: createInitialTurtleState(),
-    workspace: {
-      MAIN: [],
-      F1: [],
-      F2: [],
-      F3: [],
-    },
+    workspace: initialWorkspace,
     savedWorkspaces: {},
     activeScope: 'MAIN',
     selectedBlockId: null,
@@ -571,7 +668,7 @@ export const useAppStore = create<AppState>((set, get) => {
     canRedo: false,
 
     undo: () => {
-      const { past, future } = get();
+      const { past, future, appMode, activeActivityId, curriculumWorkspaces } = get();
       if (past.length === 0) return;
 
       activeBatchSnapshot = null;
@@ -584,9 +681,10 @@ export const useAppStore = create<AppState>((set, get) => {
       currentSnapshot.activeScope = previousSnapshot.activeScope;
 
       const newFuture = [...future, currentSnapshot];
+      const restoredWs = cloneWorkspace(previousSnapshot.workspace);
 
       set({
-        workspace: cloneWorkspace(previousSnapshot.workspace),
+        workspace: restoredWs,
         grid: JSON.parse(JSON.stringify(previousSnapshot.grid)),
         ...(previousSnapshot.turtleState
           ? { turtleState: JSON.parse(JSON.stringify(previousSnapshot.turtleState)) }
@@ -594,10 +692,19 @@ export const useAppStore = create<AppState>((set, get) => {
         activeScope: previousSnapshot.activeScope,
         selectedBlockId: previousSnapshot.selectedBlockId,
         activeSimId: previousSnapshot.activeSimId,
-        savedWorkspaces: {
-          ...get().savedWorkspaces,
-          [previousSnapshot.activeSimId]: cloneWorkspace(previousSnapshot.workspace),
-        },
+        ...(appMode === 'curriculum'
+          ? {
+              curriculumWorkspaces: {
+                ...curriculumWorkspaces,
+                [activeActivityId]: cloneWorkspace(restoredWs),
+              },
+            }
+          : {
+              savedWorkspaces: {
+                ...get().savedWorkspaces,
+                [previousSnapshot.activeSimId]: cloneWorkspace(restoredWs),
+              },
+            }),
         runtime: null,
         past: newPast,
         future: newFuture,
@@ -610,7 +717,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     redo: () => {
-      const { past, future } = get();
+      const { past, future, appMode, activeActivityId, curriculumWorkspaces } = get();
       if (future.length === 0) return;
 
       activeBatchSnapshot = null;
@@ -623,9 +730,10 @@ export const useAppStore = create<AppState>((set, get) => {
       currentSnapshot.activeScope = nextSnapshot.activeScope;
 
       const newPast = [...past.slice(Math.max(0, past.length - (MAX_HISTORY - 1))), currentSnapshot];
+      const restoredWs = cloneWorkspace(nextSnapshot.workspace);
 
       set({
-        workspace: cloneWorkspace(nextSnapshot.workspace),
+        workspace: restoredWs,
         grid: JSON.parse(JSON.stringify(nextSnapshot.grid)),
         ...(nextSnapshot.turtleState
           ? { turtleState: JSON.parse(JSON.stringify(nextSnapshot.turtleState)) }
@@ -633,10 +741,19 @@ export const useAppStore = create<AppState>((set, get) => {
         activeScope: nextSnapshot.activeScope,
         selectedBlockId: nextSnapshot.selectedBlockId,
         activeSimId: nextSnapshot.activeSimId,
-        savedWorkspaces: {
-          ...get().savedWorkspaces,
-          [nextSnapshot.activeSimId]: cloneWorkspace(nextSnapshot.workspace),
-        },
+        ...(appMode === 'curriculum'
+          ? {
+              curriculumWorkspaces: {
+                ...curriculumWorkspaces,
+                [activeActivityId]: cloneWorkspace(restoredWs),
+              },
+            }
+          : {
+              savedWorkspaces: {
+                ...get().savedWorkspaces,
+                [nextSnapshot.activeSimId]: cloneWorkspace(restoredWs),
+              },
+            }),
         runtime: null,
         past: newPast,
         future: newFuture,
@@ -690,7 +807,221 @@ export const useAppStore = create<AppState>((set, get) => {
       });
     },
 
+    setAppMode: (mode) => {
+      const state = get();
+      if (mode === state.appMode) return;
+
+      get().pause();
+      get().clearHistory();
+
+      if (mode === 'curriculum') {
+        const nextSandboxSnapshot = buildSandboxSnapshot(state);
+        const activity =
+          getActivityAtVersion(state.activeActivityId, state.activeActivityVersion) ??
+          getActivityLatest(state.activeActivityId) ??
+          CURRICULUM_ACTIVITIES[0];
+
+        if (!activity) return;
+
+        const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+        const prevFitToView = state.grid.fitToView ?? false;
+        const targetGrid = activity.grid
+          ? createCurriculumGridState(activity.grid, prevFitToView)
+          : state.grid;
+
+        const targetWs = state.curriculumWorkspaces[activity.id]
+          ? cloneWorkspace(state.curriculumWorkspaces[activity.id])
+          : activity.starterWorkspace
+          ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+          : createEmptyWorkspace();
+
+        set({
+          appMode: 'curriculum',
+          activeActivityId: activity.id,
+          activeActivityVersion: activity.version,
+          activeSimId: targetSimId,
+          grid: targetGrid,
+          turtleState: createInitialTurtleState(),
+          workspace: targetWs,
+          curriculumWorkspaces: {
+            ...state.curriculumWorkspaces,
+            [activity.id]: cloneWorkspace(targetWs),
+          },
+          sandboxSnapshot: nextSandboxSnapshot,
+          editorTool: 'NONE',
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+          runtime: null,
+          statusAnnouncement: `Learn mode: Activity ${activity.id} ${activity.title}. Map is read-only.`,
+        });
+
+        get().reset();
+        get().runInstantIfActive();
+      } else {
+        const nextCurriculumWorkspaces = {
+          ...state.curriculumWorkspaces,
+          [state.activeActivityId]: cloneWorkspace(state.workspace),
+        };
+
+        const snap = state.sandboxSnapshot;
+        const restoredSimId: 'grid' | 'turtle' = snap?.activeSimId ?? 'grid';
+        const restoredLevel = snap?.currentLevel ?? state.currentLevel;
+        const prevFitToView = state.grid.fitToView ?? false;
+        const fallbackPreset =
+          PRESET_LEVELS.find((p) => p.id === restoredLevel) || PRESET_LEVELS[0];
+        const restoredGrid = snap
+          ? getInitialGridState({
+              ...JSON.parse(JSON.stringify(snap.grid)),
+              fitToView: prevFitToView,
+            })
+          : createGridFromPreset(fallbackPreset, prevFitToView);
+        const restoredTurtle = snap
+          ? getInitialTurtleState(JSON.parse(JSON.stringify(snap.turtleState)))
+          : createInitialTurtleState();
+        const restoredWs = snap ? cloneWorkspace(snap.workspace) : createEmptyWorkspace();
+        const restoredSaved: Record<string, WorkspaceState> = {};
+        if (snap) {
+          for (const [k, ws] of Object.entries(snap.savedWorkspaces)) {
+            restoredSaved[k] = cloneWorkspace(ws);
+          }
+        } else {
+          for (const [k, ws] of Object.entries(state.savedWorkspaces)) {
+            restoredSaved[k] = cloneWorkspace(ws);
+          }
+        }
+
+        set({
+          appMode: 'sandbox',
+          activeSimId: restoredSimId,
+          currentLevel: restoredLevel,
+          grid: restoredGrid,
+          turtleState: restoredTurtle,
+          workspace: restoredWs,
+          savedWorkspaces: restoredSaved,
+          curriculumWorkspaces: nextCurriculumWorkspaces,
+          editorTool: 'NONE',
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+          runtime: null,
+          statusAnnouncement: 'Sandbox mode: map and blocks are editable.',
+        });
+
+        get().reset();
+        get().runInstantIfActive();
+      }
+    },
+
+    setCurriculumActivity: (activityId, version) => {
+      const activity =
+        version !== undefined
+          ? getActivityAtVersion(activityId, version)
+          : getActivityLatest(activityId);
+      if (!activity) return;
+
+      const state = get();
+      get().pause();
+      get().clearHistory();
+
+      const nextSandboxSnapshot =
+        state.appMode === 'sandbox' ? buildSandboxSnapshot(state) : state.sandboxSnapshot;
+
+      const nextCurriculumWorkspaces =
+        state.appMode === 'curriculum'
+          ? {
+              ...state.curriculumWorkspaces,
+              [state.activeActivityId]: cloneWorkspace(state.workspace),
+            }
+          : { ...state.curriculumWorkspaces };
+
+      const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+      const prevFitToView = state.grid.fitToView ?? false;
+      const targetGrid = activity.grid
+        ? createCurriculumGridState(activity.grid, prevFitToView)
+        : state.grid;
+
+      const targetWs = nextCurriculumWorkspaces[activity.id]
+        ? cloneWorkspace(nextCurriculumWorkspaces[activity.id])
+        : activity.starterWorkspace
+        ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+        : createEmptyWorkspace();
+
+      nextCurriculumWorkspaces[activity.id] = cloneWorkspace(targetWs);
+
+      set({
+        appMode: 'curriculum',
+        activeActivityId: activity.id,
+        activeActivityVersion: activity.version,
+        activeSimId: targetSimId,
+        grid: targetGrid,
+        turtleState: createInitialTurtleState(),
+        workspace: targetWs,
+        curriculumWorkspaces: nextCurriculumWorkspaces,
+        sandboxSnapshot: nextSandboxSnapshot,
+        editorTool: 'NONE',
+        selectedBlockId: null,
+        activeScope: 'MAIN',
+        runtime: null,
+        statusAnnouncement: `Activity ${activity.id}: ${activity.title}`,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
+    openCopyInSandbox: () => {
+      const state = get();
+      if (state.appMode !== 'curriculum') return;
+
+      get().pause();
+      get().clearHistory();
+
+      const nextCurriculumWorkspaces = {
+        ...state.curriculumWorkspaces,
+        [state.activeActivityId]: cloneWorkspace(state.workspace),
+      };
+
+      const clonedWs = cloneWorkspaceWithFreshIds(state.workspace);
+      const clonedGrid = getInitialGridState(JSON.parse(JSON.stringify(state.grid)));
+      const clonedTurtle = getInitialTurtleState(JSON.parse(JSON.stringify(state.turtleState)));
+
+      const baseSaved = state.sandboxSnapshot?.savedWorkspaces ?? state.savedWorkspaces;
+      const nextSavedWorkspaces: Record<string, WorkspaceState> = {};
+      for (const [k, ws] of Object.entries(baseSaved)) {
+        nextSavedWorkspaces[k] = cloneWorkspace(ws);
+      }
+      nextSavedWorkspaces[state.activeSimId] = cloneWorkspace(clonedWs);
+
+      set({
+        appMode: 'sandbox',
+        grid: clonedGrid,
+        turtleState: clonedTurtle,
+        workspace: clonedWs,
+        savedWorkspaces: nextSavedWorkspaces,
+        curriculumWorkspaces: nextCurriculumWorkspaces,
+        sandboxSnapshot: {
+          activeSimId: state.activeSimId,
+          currentLevel: state.currentLevel,
+          grid: JSON.parse(JSON.stringify(clonedGrid)),
+          turtleState: JSON.parse(JSON.stringify(clonedTurtle)),
+          workspace: cloneWorkspace(clonedWs),
+          savedWorkspaces: nextSavedWorkspaces,
+        },
+        editorTool: 'NONE',
+        selectedBlockId: null,
+        activeScope: 'MAIN',
+        runtime: null,
+        isMobileMenuOpen: false,
+        statusAnnouncement: `Opened editable copy of Activity ${state.activeActivityId} in Sandbox mode.`,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
     setSimEnvironment: (simId) => {
+      if (get().appMode === 'curriculum') {
+        get().setAppMode('sandbox');
+      }
       const { activeSimId, workspace, savedWorkspaces } = get();
       if (simId === activeSimId) return;
 
@@ -780,14 +1111,34 @@ export const useAppStore = create<AppState>((set, get) => {
         return { success: false, error: res.error || 'Failed to import code' };
       }
 
+      // Importing a full environment snapshot (custom Grid map or Turtle drawing) while in
+      // Curriculum mode switches cleanly to Sandbox so read-only lesson maps are never mutated.
+      if (
+        get().appMode === 'curriculum' &&
+        (res.envId === 'turtle' || (res.envId === 'grid' && Boolean(res.gridState)))
+      ) {
+        get().setAppMode('sandbox');
+      }
+
       recordMutation('Import code');
 
       get().pause();
 
-      const { activeSimId, workspace, savedWorkspaces } = get();
+      const { appMode, activeActivityId, curriculumWorkspaces, activeSimId, workspace, savedWorkspaces } = get();
       const newWorkspace = res.workspace || createEmptyWorkspace();
 
-      if (res.envId === 'turtle') {
+      if (appMode === 'curriculum') {
+        set({
+          workspace: newWorkspace,
+          curriculumWorkspaces: {
+            ...curriculumWorkspaces,
+            [activeActivityId]: cloneWorkspace(newWorkspace),
+          },
+          runtime: null,
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+        });
+      } else if (res.envId === 'turtle') {
         const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
         if (activeSimId !== 'turtle') {
           updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
@@ -838,6 +1189,34 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     loadSolution: (lessonId) => {
+      if (get().appMode === 'curriculum' && lessonId === undefined) {
+        const { activeActivityId, activeActivityVersion } = get();
+        const activity =
+          getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+          getActivityLatest(activeActivityId);
+        if (!activity?.referenceSolution) return;
+
+        recordMutation('Load solution');
+        get().reset();
+
+        const newWorkspace = cloneWorkspaceWithFreshIds(activity.referenceSolution);
+        set((state) => ({
+          workspace: newWorkspace,
+          curriculumWorkspaces: {
+            ...state.curriculumWorkspaces,
+            [state.activeActivityId]: cloneWorkspace(newWorkspace),
+          },
+          activeScope: 'MAIN',
+          selectedBlockId: null,
+        }));
+        get().runInstantIfActive();
+        return;
+      }
+
+      if (get().appMode === 'curriculum') {
+        get().setAppMode('sandbox');
+      }
+
       const id = lessonId ?? get().currentLevel;
       const lesson = LESSONS.find((l) => l.id === id);
       if (!lesson) return;
@@ -872,6 +1251,9 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setLevel: (levelId) => {
+      if (get().appMode === 'curriculum') {
+        get().setAppMode('sandbox');
+      }
       get().clearHistory();
       const prevFitToView = get().grid.fitToView ?? false;
       get().reset();
@@ -885,7 +1267,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     setActiveScope: (scope) => set({ activeScope: scope, selectedBlockId: null }),
     setSelectedBlockId: (id) => set({ selectedBlockId: id }),
-    setEditorTool: (tool) => set({ editorTool: tool }),
+    setEditorTool: (tool) => {
+      if (get().appMode === 'curriculum' && tool !== 'NONE') return;
+      set({ editorTool: tool });
+    },
     setSpeed: (speed) => {
       const prevSpeed = get().speed;
       const wasInstant = prevSpeed === 'instant' || (prevSpeed as any) === 0;
@@ -995,11 +1380,20 @@ export const useAppStore = create<AppState>((set, get) => {
         } else {
           currentBlocks.push(newBlock);
         }
+        const nextWorkspace: WorkspaceState = {
+          ...state.workspace,
+          [scope]: currentBlocks,
+        };
         return {
-          workspace: {
-            ...state.workspace,
-            [scope]: currentBlocks,
-          },
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {}),
           selectedBlockId: id,
         };
       });
@@ -1010,14 +1404,25 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
       recordMutation('Update block params');
-      set((state) => ({
-        workspace: {
+      set((state) => {
+        const nextWorkspace: WorkspaceState = {
           ...state.workspace,
           [scope]: state.workspace[scope].map((b) =>
             b.id === blockId ? { ...b, params: { ...(b.params || {}), ...newParams } } : b
           ),
-        },
-      }));
+        };
+        return {
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {}),
+        };
+      });
       get().runInstantIfActive();
     },
 
@@ -1025,13 +1430,24 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
       recordMutation('Remove block');
-      set((state) => ({
-        workspace: {
+      set((state) => {
+        const nextWorkspace: WorkspaceState = {
           ...state.workspace,
           [scope]: state.workspace[scope].filter((b) => b.id !== blockId),
-        },
-        selectedBlockId: state.selectedBlockId === blockId ? null : state.selectedBlockId,
-      }));
+        };
+        return {
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {}),
+          selectedBlockId: state.selectedBlockId === blockId ? null : state.selectedBlockId,
+        };
+      });
       get().runInstantIfActive();
     },
 
@@ -1039,14 +1455,25 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock || currentBlock.repeatCount === repeatCount) return;
       recordMutation('Update block repeat');
-      set((state) => ({
-        workspace: {
+      set((state) => {
+        const nextWorkspace: WorkspaceState = {
           ...state.workspace,
           [scope]: state.workspace[scope].map((b) =>
             b.id === blockId ? { ...b, repeatCount } : b
           ),
-        },
-      }));
+        };
+        return {
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {}),
+        };
+      });
       get().runInstantIfActive();
     },
 
@@ -1057,11 +1484,20 @@ export const useAppStore = create<AppState>((set, get) => {
         const blocks = [...state.workspace[scope]];
         const [moved] = blocks.splice(fromIndex, 1);
         blocks.splice(toIndex, 0, moved);
+        const nextWorkspace: WorkspaceState = {
+          ...state.workspace,
+          [scope]: blocks,
+        };
         return {
-          workspace: {
-            ...state.workspace,
-            [scope]: blocks,
-          },
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {}),
         };
       });
       get().runInstantIfActive();
@@ -1079,26 +1515,45 @@ export const useAppStore = create<AppState>((set, get) => {
           const newWorkspace = { ...state.workspace, [scope]: [] };
           return {
             workspace: newWorkspace,
-            savedWorkspaces: {
-              ...state.savedWorkspaces,
-              [state.activeSimId]: cloneWorkspace(newWorkspace),
-            },
+            ...(state.appMode === 'curriculum'
+              ? {
+                  curriculumWorkspaces: {
+                    ...state.curriculumWorkspaces,
+                    [state.activeActivityId]: cloneWorkspace(newWorkspace),
+                  },
+                }
+              : {
+                  savedWorkspaces: {
+                    ...state.savedWorkspaces,
+                    [state.activeSimId]: cloneWorkspace(newWorkspace),
+                  },
+                }),
           };
         });
       } else {
         const emptyWorkspace = createEmptyWorkspace();
         set((state) => ({
           workspace: emptyWorkspace,
-          savedWorkspaces: {
-            ...state.savedWorkspaces,
-            [state.activeSimId]: cloneWorkspace(emptyWorkspace),
-          },
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(emptyWorkspace),
+                },
+              }
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(emptyWorkspace),
+                },
+              }),
         }));
       }
       get().runInstantIfActive();
     },
 
     toggleWall: (edge) => {
+      if (get().appMode === 'curriculum') return;
       recordMutation('Toggle wall');
       set((state) => {
         const exists = state.grid.barriers.some(
@@ -1117,6 +1572,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addWall: (edge) => {
+      if (get().appMode === 'curriculum') return;
       const exists = get().grid.barriers.some(
         (b) => b.orientation === edge.orientation && b.x === edge.x && b.y === edge.y
       );
@@ -1134,6 +1590,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     resizeBoard: (direction, delta) => {
+      if (get().appMode === 'curriculum') return;
       if (delta === 0) return;
       const { grid } = get();
       const minSize = 3;
@@ -1294,6 +1751,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setCellContent: (x, y) => {
+      if (get().appMode === 'curriculum') return;
       const { editorTool, grid } = get();
       if (editorTool === 'ROBOT') {
         recordMutation('Place/rotate robot');
@@ -1370,6 +1828,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     clearGridUserCustoms: () => {
+      if (get().appMode === 'curriculum') return;
       recordMutation('Clear grid customs');
       const prevFitToView = get().grid.fitToView ?? false;
       const preset = PRESET_LEVELS.find((p) => p.id === get().currentLevel) || PRESET_LEVELS[0];
@@ -1593,6 +2052,11 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const s = get();
       return saveStateBeforeUpdate({
+        appMode: s.appMode,
+        activeActivityId: s.activeActivityId,
+        activeActivityVersion: s.activeActivityVersion,
+        curriculumWorkspaces: s.curriculumWorkspaces,
+        sandboxSnapshot: s.sandboxSnapshot,
         activeSimId: s.activeSimId,
         currentLevel: s.currentLevel,
         workspace: s.workspace,
@@ -1622,6 +2086,11 @@ export const useAppStore = create<AppState>((set, get) => {
       activeBatchSnapshot = null;
 
       set({
+        appMode: restored.appMode ?? 'sandbox',
+        activeActivityId: restored.activeActivityId ?? '1.1',
+        activeActivityVersion: restored.activeActivityVersion ?? 1,
+        curriculumWorkspaces: restored.curriculumWorkspaces ?? {},
+        sandboxSnapshot: restored.sandboxSnapshot ?? null,
         activeSimId: restored.activeSimId,
         currentLevel: restored.currentLevel,
         workspace: restored.workspace,

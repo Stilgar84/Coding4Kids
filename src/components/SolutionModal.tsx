@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { LESSONS } from '../data/lessons';
+import {
+  CURRICULUM_ACTIVITIES,
+  getActivityAtVersion,
+  getActivityLatest,
+  getCurriculumModule,
+} from '../data/curriculum';
 import { CodeBlock, ScopeType } from '../types';
 import {
   X,
@@ -21,6 +27,10 @@ import {
 
 export const SolutionModal: React.FC = () => {
   const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    setCurriculumActivity,
     currentLevel,
     setLevel,
     isSolutionOpen,
@@ -30,22 +40,71 @@ export const SolutionModal: React.FC = () => {
 
   const [copiedNotification, setCopiedNotification] = useState(false);
 
+  useEffect(() => {
+    if (!isSolutionOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSolutionOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSolutionOpen, setSolutionOpen]);
+
   if (!isSolutionOpen) return null;
 
+  const isCurriculum = appMode === 'curriculum';
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
+  const currentActivity =
+    getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+    getActivityLatest(activeActivityId) ??
+    CURRICULUM_ACTIVITIES[0];
+  const currentModule = currentActivity
+    ? getCurriculumModule(currentActivity.moduleId)
+    : undefined;
+
+  const solutionWorkspace = isCurriculum
+    ? currentActivity?.referenceSolution
+    : currentLesson.solution;
+
+  const totalInstructions = solutionWorkspace
+    ? (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).reduce(
+        (acc, sc) => acc + (solutionWorkspace[sc]?.length || 0),
+        0
+      )
+    : 0;
 
   const handleLoadSolution = () => {
-    loadSolution(currentLesson.id);
+    if (isCurriculum) {
+      loadSolution();
+    } else {
+      loadSolution(currentLesson.id);
+    }
     setCopiedNotification(true);
     setTimeout(() => setCopiedNotification(false), 2500);
   };
 
   const handlePrevLesson = () => {
+    if (isCurriculum) {
+      if (CURRICULUM_ACTIVITIES.length === 0) return;
+      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+      const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
+      setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+      return;
+    }
     const prevId = currentLesson.id > 1 ? currentLesson.id - 1 : LESSONS.length;
     setLevel(prevId);
   };
 
   const handleNextLesson = () => {
+    if (isCurriculum) {
+      if (CURRICULUM_ACTIVITIES.length === 0) return;
+      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+      const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
+      setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
+      return;
+    }
     const nextId = currentLesson.id < LESSONS.length ? currentLesson.id + 1 : 1;
     setLevel(nextId);
   };
@@ -119,7 +178,7 @@ export const SolutionModal: React.FC = () => {
   };
 
   const renderScopeSolution = (scope: ScopeType, title: string, colorClass: string) => {
-    const blocks = currentLesson.solution[scope];
+    const blocks = solutionWorkspace?.[scope];
     if (!blocks || blocks.length === 0) return null;
 
     return (
@@ -139,8 +198,13 @@ export const SolutionModal: React.FC = () => {
     );
   };
 
+  const activityIndex = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Lesson Solution"
       data-testid="solution-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={() => setSolutionOpen(false)}
@@ -158,14 +222,18 @@ export const SolutionModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
-                  {currentLesson.moduleTitle}
+                  {isCurriculum
+                    ? currentModule?.title || `Module ${currentActivity?.moduleId ?? 1}`
+                    : currentLesson.moduleTitle}
                 </span>
                 <span className="text-xs font-semibold text-slate-400">
-                  Lesson {currentLesson.id} of {LESSONS.length}
+                  {isCurriculum
+                    ? `Activity ${currentActivity?.id} (${activityIndex + 1} of ${CURRICULUM_ACTIVITIES.length})`
+                    : `Lesson ${currentLesson.id} of ${LESSONS.length}`}
                 </span>
               </div>
               <h2 className="text-xl font-black text-white flex items-center gap-2 mt-0.5">
-                {currentLesson.title}
+                {isCurriculum ? currentActivity?.title : currentLesson.title}
               </h2>
             </div>
           </div>
@@ -175,6 +243,7 @@ export const SolutionModal: React.FC = () => {
             onClick={() => setSolutionOpen(false)}
             className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors"
             title="Close"
+            aria-label="Close solution modal"
           >
             <X className="w-5 h-5 stroke-[2.5]" />
           </button>
@@ -187,15 +256,19 @@ export const SolutionModal: React.FC = () => {
             <BookOpen className="w-5 h-5 text-sky-400 mt-0.5 flex-shrink-0" />
             <div className="space-y-1">
               <div className="text-sm font-black text-sky-300">
-                Core Concept: {currentLesson.concept}
+                Core Concept: {isCurriculum ? currentActivity?.concept : currentLesson.concept}
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {currentLesson.description}
-              </p>
-              <div className="text-xs font-semibold text-amber-300/90 pt-1 flex items-center gap-1.5">
-                <span>💡 Hint:</span>
-                <span>{currentLesson.hint}</span>
-              </div>
+              {(isCurriculum ? currentActivity?.description : currentLesson.description) && (
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {isCurriculum ? currentActivity?.description : currentLesson.description}
+                </p>
+              )}
+              {(isCurriculum ? currentActivity?.hint : currentLesson.hint) && (
+                <div className="text-xs font-semibold text-amber-300/90 pt-1 flex items-center gap-1.5">
+                  <span>💡 Hint:</span>
+                  <span>{isCurriculum ? currentActivity?.hint : currentLesson.hint}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -205,7 +278,9 @@ export const SolutionModal: React.FC = () => {
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
                 <span>Recommended Solution</span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {currentLesson.instructionCount} instructions (&lt;15)
+                  {isCurriculum
+                    ? `${totalInstructions} blocks`
+                    : `${currentLesson.instructionCount} instructions (<15)`}
                 </span>
               </h3>
             </div>
@@ -242,16 +317,20 @@ export const SolutionModal: React.FC = () => {
               onClick={handlePrevLesson}
               className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
               title="Previous Lesson"
+              aria-label="Previous Lesson"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <span className="text-xs font-bold text-slate-400 px-1">
-              {currentLesson.id} / {LESSONS.length}
+              {isCurriculum
+                ? `${currentActivity?.id} (${activityIndex + 1}/${CURRICULUM_ACTIVITIES.length})`
+                : `${currentLesson.id} / ${LESSONS.length}`}
             </span>
             <button
               onClick={handleNextLesson}
               className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
               title="Next Lesson"
+              aria-label="Next Lesson"
             >
               <ChevronRight className="w-5 h-5" />
             </button>

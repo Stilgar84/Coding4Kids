@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { WallEdge, Direction } from '../types';
-import { Trophy, Footprints, Maximize2, Minimize2 } from 'lucide-react';
+import { Trophy, Footprints, Maximize2, Minimize2, Lock } from 'lucide-react';
+import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
 
 const CELL_SIZE = 72; // pixels per cell
 
 export const GridCanvas: React.FC = () => {
   const {
+    appMode,
     grid,
     toggleWall,
     addWall,
@@ -20,6 +22,7 @@ export const GridCanvas: React.FC = () => {
     endHistoryBatch,
   } = useAppStore();
 
+  const isReadOnly = appMode === 'curriculum';
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
   const handleToggleFit = () => {
@@ -369,113 +372,131 @@ export const GridCanvas: React.FC = () => {
           >
             {/* SVG Grid Container with Boundary Drag Handles */}
             <div className="relative p-2 bg-slate-900 rounded-2xl border-4 border-slate-800 shadow-2xl">
-        {/* Grid dimensions pill */}
-        <div
-          data-testid="grid-size-indicator"
-          className="absolute -top-3.5 -right-3.5 z-30 px-2.5 py-0.5 bg-slate-800 border-2 border-slate-700 rounded-full text-[11px] font-black text-amber-300 shadow-md select-none"
-        >
-          {width} × {height}
-        </div>
-
-        {/* Top Boundary Resize Handle */}
-        <div
-          data-testid="resize-handle-top"
-          onPointerDown={(e) => startResizeDrag('TOP', e)}
-          className="group absolute -top-4 left-6 right-6 h-6 cursor-ns-resize flex items-center justify-center z-30 select-none"
-          title="Drag top boundary to resize board"
-        >
-          <div className="flex items-center gap-1 px-3 py-0.5 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
-            <span className="text-[10px] font-black">▲</span>
-            <button
-              type="button"
-              data-testid="btn-resize-top-plus"
-              onClick={(e) => {
-                e.stopPropagation();
-                resizeBoard('TOP', 1);
-              }}
-              className="text-xs font-black hover:text-white px-0.5"
-              title="Add row at top"
+        {/* Grid dimensions pill + Read-only indicator in Curriculum mode */}
+        <div className="absolute -top-3.5 -right-3.5 z-30 flex items-center gap-1.5 select-none">
+          {isReadOnly && (
+            <div
+              data-testid="grid-readonly-badge"
+              aria-label="Read-only lesson map"
+              title="Read-only lesson map — use Open Copy in Sandbox to edit"
+              className="flex items-center gap-1 px-2 py-0.5 bg-slate-800 border-2 border-sky-500/60 rounded-full text-[10px] font-black text-sky-300 shadow-md"
             >
-              +
-            </button>
-            <span className="text-[10px] font-black">▼</span>
+              <Lock className="w-3 h-3 stroke-[2.5]" />
+              <span>Locked</span>
+            </div>
+          )}
+          <div
+            data-testid="grid-size-indicator"
+            className="px-2.5 py-0.5 bg-slate-800 border-2 border-slate-700 rounded-full text-[11px] font-black text-amber-300 shadow-md"
+          >
+            {width} × {height}
           </div>
         </div>
 
-        {/* Bottom Boundary Resize Handle */}
-        <div
-          data-testid="resize-handle-bottom"
-          onPointerDown={(e) => startResizeDrag('BOTTOM', e)}
-          className="group absolute -bottom-4 left-6 right-6 h-6 cursor-ns-resize flex items-center justify-center z-30 select-none"
-          title="Drag bottom boundary to resize board"
-        >
-          <div className="flex items-center gap-1 px-3 py-0.5 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
-            <span className="text-[10px] font-black">▲</span>
-            <button
-              type="button"
-              data-testid="btn-resize-bottom-plus"
-              onClick={(e) => {
-                e.stopPropagation();
-                resizeBoard('BOTTOM', 1);
-              }}
-              className="text-xs font-black hover:text-white px-0.5"
-              title="Add row at bottom"
+        {/* Boundary Resize Handles (Sandbox mode only) */}
+        {!isReadOnly && (
+          <>
+            {/* Top Boundary Resize Handle */}
+            <div
+              data-testid="resize-handle-top"
+              onPointerDown={(e) => startResizeDrag('TOP', e)}
+              className="group absolute -top-4 left-6 right-6 h-6 cursor-ns-resize flex items-center justify-center z-30 select-none"
+              title="Drag top boundary to resize board"
             >
-              +
-            </button>
-            <span className="text-[10px] font-black">▼</span>
-          </div>
-        </div>
+              <div className="flex items-center gap-1 px-3 py-0.5 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
+                <span className="text-[10px] font-black">▲</span>
+                <button
+                  type="button"
+                  data-testid="btn-resize-top-plus"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resizeBoard('TOP', 1);
+                  }}
+                  className="text-xs font-black hover:text-white px-0.5"
+                  title="Add row at top"
+                >
+                  +
+                </button>
+                <span className="text-[10px] font-black">▼</span>
+              </div>
+            </div>
 
-        {/* Left Boundary Resize Handle */}
-        <div
-          data-testid="resize-handle-left"
-          onPointerDown={(e) => startResizeDrag('LEFT', e)}
-          className="group absolute -left-4 top-6 bottom-6 w-6 cursor-ew-resize flex items-center justify-center z-30 select-none"
-          title="Drag left boundary to resize board"
-        >
-          <div className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
-            <span className="text-[10px] font-black">◀</span>
-            <button
-              type="button"
-              data-testid="btn-resize-left-plus"
-              onClick={(e) => {
-                e.stopPropagation();
-                resizeBoard('LEFT', 1);
-              }}
-              className="text-xs font-black hover:text-white py-0.5"
-              title="Add column at left"
+            {/* Bottom Boundary Resize Handle */}
+            <div
+              data-testid="resize-handle-bottom"
+              onPointerDown={(e) => startResizeDrag('BOTTOM', e)}
+              className="group absolute -bottom-4 left-6 right-6 h-6 cursor-ns-resize flex items-center justify-center z-30 select-none"
+              title="Drag bottom boundary to resize board"
             >
-              +
-            </button>
-            <span className="text-[10px] font-black">▶</span>
-          </div>
-        </div>
+              <div className="flex items-center gap-1 px-3 py-0.5 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
+                <span className="text-[10px] font-black">▲</span>
+                <button
+                  type="button"
+                  data-testid="btn-resize-bottom-plus"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resizeBoard('BOTTOM', 1);
+                  }}
+                  className="text-xs font-black hover:text-white px-0.5"
+                  title="Add row at bottom"
+                >
+                  +
+                </button>
+                <span className="text-[10px] font-black">▼</span>
+              </div>
+            </div>
 
-        {/* Right Boundary Resize Handle */}
-        <div
-          data-testid="resize-handle-right"
-          onPointerDown={(e) => startResizeDrag('RIGHT', e)}
-          className="group absolute -right-4 top-6 bottom-6 w-6 cursor-ew-resize flex items-center justify-center z-30 select-none"
-          title="Drag right boundary to resize board"
-        >
-          <div className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
-            <span className="text-[10px] font-black">◀</span>
-            <button
-              type="button"
-              data-testid="btn-resize-right-plus"
-              onClick={(e) => {
-                e.stopPropagation();
-                resizeBoard('RIGHT', 1);
-              }}
-              className="text-xs font-black hover:text-white py-0.5"
-              title="Add column at right"
+            {/* Left Boundary Resize Handle */}
+            <div
+              data-testid="resize-handle-left"
+              onPointerDown={(e) => startResizeDrag('LEFT', e)}
+              className="group absolute -left-4 top-6 bottom-6 w-6 cursor-ew-resize flex items-center justify-center z-30 select-none"
+              title="Drag left boundary to resize board"
             >
-              +
-            </button>
-            <span className="text-[10px] font-black">▶</span>
-          </div>
-        </div>
+              <div className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
+                <span className="text-[10px] font-black">◀</span>
+                <button
+                  type="button"
+                  data-testid="btn-resize-left-plus"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resizeBoard('LEFT', 1);
+                  }}
+                  className="text-xs font-black hover:text-white py-0.5"
+                  title="Add column at left"
+                >
+                  +
+                </button>
+                <span className="text-[10px] font-black">▶</span>
+              </div>
+            </div>
+
+            {/* Right Boundary Resize Handle */}
+            <div
+              data-testid="resize-handle-right"
+              onPointerDown={(e) => startResizeDrag('RIGHT', e)}
+              className="group absolute -right-4 top-6 bottom-6 w-6 cursor-ew-resize flex items-center justify-center z-30 select-none"
+              title="Drag right boundary to resize board"
+            >
+              <div className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-full bg-slate-800/90 border border-slate-600 group-hover:border-amber-400 group-hover:bg-slate-700 text-slate-400 group-hover:text-amber-300 shadow-md transition-colors">
+                <span className="text-[10px] font-black">◀</span>
+                <button
+                  type="button"
+                  data-testid="btn-resize-right-plus"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resizeBoard('RIGHT', 1);
+                  }}
+                  className="text-xs font-black hover:text-white py-0.5"
+                  title="Add column at right"
+                >
+                  +
+                </button>
+                <span className="text-[10px] font-black">▶</span>
+              </div>
+            </div>
+          </>
+        )}
 
         <svg
           data-testid="grid-canvas"
@@ -496,13 +517,26 @@ export const GridCanvas: React.FC = () => {
                 fill={(x + y) % 2 === 0 ? '#1e293b' : '#0f172a'}
                 stroke="#334155"
                 strokeWidth={1}
-                className="cursor-pointer transition-colors hover:fill-slate-700/50"
-                onClick={() => setCellContent(x, y)}
-                onMouseDown={() => handleCellMouseDown(x, y)}
-                onMouseEnter={(e) => handleCellMouseEnter(x, y, e)}
+                className={
+                  isReadOnly
+                    ? 'transition-colors'
+                    : 'cursor-pointer transition-colors hover:fill-slate-700/50'
+                }
+                onClick={isReadOnly ? undefined : () => setCellContent(x, y)}
+                onMouseDown={isReadOnly ? undefined : () => handleCellMouseDown(x, y)}
+                onMouseEnter={isReadOnly ? undefined : (e) => handleCellMouseEnter(x, y, e)}
               />
             ))
           )}
+
+          {/* Pluggable Under-Robot Overlay Slot (World Items — Commit 14) */}
+          <GridOverlayLayer
+            grid={grid}
+            cellSize={CELL_SIZE}
+            isInstant={isInstant}
+            isReadOnly={isReadOnly}
+            layer="under-robot"
+          />
 
           {/* Trace Path Line */}
           {showTrace && trace.length > 1 && (
@@ -572,21 +606,24 @@ export const GridCanvas: React.FC = () => {
               const hasWall = barriers.some(
                 (b) => b.orientation === 'H' && b.x === col && b.y === y
               );
+              if (isReadOnly && !hasWall) return null;
               return (
                 <g key={`h-wall-${col}-${y}`}>
-                  {/* Wide hitbox for touch / mouse drag */}
-                  <rect
-                    data-testid={`wall-h-hitbox-${col}-${y}`}
-                    x={col * CELL_SIZE}
-                    y={y * CELL_SIZE - 14}
-                    width={CELL_SIZE}
-                    height={28}
-                    fill="transparent"
-                    className="cursor-pointer"
-                    onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)}
-                    onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)}
-                    onClick={(e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)}
-                  />
+                  {/* Wide hitbox for touch / mouse drag (Sandbox mode only) */}
+                  {!isReadOnly && (
+                    <rect
+                      data-testid={`wall-h-hitbox-${col}-${y}`}
+                      x={col * CELL_SIZE}
+                      y={y * CELL_SIZE - 14}
+                      width={CELL_SIZE}
+                      height={28}
+                      fill="transparent"
+                      className="cursor-pointer"
+                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)}
+                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)}
+                      onClick={(e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)}
+                    />
+                  )}
                   {/* Visible Wall Rectangle */}
                   {hasWall && (
                     <rect
@@ -597,10 +634,24 @@ export const GridCanvas: React.FC = () => {
                       height={8}
                       rx={4}
                       fill="#ef4444"
-                      className="filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] cursor-pointer"
-                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)}
-                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)}
-                      onClick={(e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)}
+                      className={`filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] ${
+                        isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
+                      }`}
+                      onMouseDown={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)
+                      }
+                      onMouseEnter={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)
+                      }
+                      onClick={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)
+                      }
                     />
                   )}
                 </g>
@@ -615,21 +666,24 @@ export const GridCanvas: React.FC = () => {
               const hasWall = barriers.some(
                 (b) => b.orientation === 'V' && b.x === x && b.y === row
               );
+              if (isReadOnly && !hasWall) return null;
               return (
                 <g key={`v-wall-${x}-${row}`}>
-                  {/* Wide hitbox for touch / mouse drag */}
-                  <rect
-                    data-testid={`wall-v-hitbox-${x}-${row}`}
-                    x={x * CELL_SIZE - 14}
-                    y={row * CELL_SIZE}
-                    width={28}
-                    height={CELL_SIZE}
-                    fill="transparent"
-                    className="cursor-pointer"
-                    onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)}
-                    onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)}
-                    onClick={(e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)}
-                  />
+                  {/* Wide hitbox for touch / mouse drag (Sandbox mode only) */}
+                  {!isReadOnly && (
+                    <rect
+                      data-testid={`wall-v-hitbox-${x}-${row}`}
+                      x={x * CELL_SIZE - 14}
+                      y={row * CELL_SIZE}
+                      width={28}
+                      height={CELL_SIZE}
+                      fill="transparent"
+                      className="cursor-pointer"
+                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)}
+                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)}
+                      onClick={(e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)}
+                    />
+                  )}
                   {/* Visible Wall Rectangle */}
                   {hasWall && (
                     <rect
@@ -640,10 +694,24 @@ export const GridCanvas: React.FC = () => {
                       height={CELL_SIZE - 4}
                       rx={4}
                       fill="#ef4444"
-                      className="filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] cursor-pointer"
-                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)}
-                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)}
-                      onClick={(e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)}
+                      className={`filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] ${
+                        isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
+                      }`}
+                      onMouseDown={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)
+                      }
+                      onMouseEnter={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)
+                      }
+                      onClick={
+                        isReadOnly
+                          ? undefined
+                          : (e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)
+                      }
                     />
                   )}
                 </g>
@@ -685,6 +753,15 @@ export const GridCanvas: React.FC = () => {
               <circle cx={6} cy={3} r={3} fill="#0f172a" />
             </g>
           </g>
+
+          {/* Pluggable Over-Robot Overlay Slots (Flag Padlocks C6, Ghost Step C7, Demo Spotlights C8a) */}
+          <GridOverlayLayer
+            grid={grid}
+            cellSize={CELL_SIZE}
+            isInstant={isInstant}
+            isReadOnly={isReadOnly}
+            layer="over-robot"
+          />
         </svg>
             </div>
           </div>

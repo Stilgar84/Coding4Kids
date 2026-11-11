@@ -13,9 +13,12 @@ test.describe('Mobile Phone Compact Vertical Layout', () => {
   });
 
   test('renders thin single-line top bar with hamburger menu and critical buttons', async ({ page }) => {
-    // Hamburger menu button should be visible on mobile
+    // Hamburger menu button and compact prev/next lesson navigation should be visible on mobile
     const hamburgerBtn = page.getByTestId('btn-hamburger-menu');
     await expect(hamburgerBtn).toBeVisible();
+    await expect(page.getByTestId('btn-mobile-prev-lesson')).toBeVisible();
+    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('L1');
+    await expect(page.getByTestId('btn-mobile-next-lesson')).toBeVisible();
 
     // Critical buttons should be visible
     await expect(page.getByTestId('btn-undo')).toBeVisible();
@@ -23,6 +26,16 @@ test.describe('Mobile Phone Compact Vertical Layout', () => {
     await expect(page.getByTestId('btn-toggle-map')).toBeVisible();
     await expect(page.getByTestId('btn-reset')).toBeVisible();
     await expect(page.getByTestId('btn-play')).toBeVisible();
+
+    // Verify top bar stays within 375px viewport with no horizontal overflow
+    const headerOverflows = await page.locator('header').evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(headerOverflows).toBe(false);
+
+    // Navigate next/prev lessons directly from narrow top bar
+    await page.getByTestId('btn-mobile-next-lesson').click();
+    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('L2');
+    await page.getByTestId('btn-mobile-prev-lesson').click();
+    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('L1');
 
     // Desktop-only toolbar buttons should NOT be visible in the top header
     await expect(page.getByTestId('btn-save-modal')).not.toBeVisible();

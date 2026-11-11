@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore, PRESET_LEVELS } from '../store/useAppStore';
 import { LESSONS } from '../data/lessons';
+import {
+  CURRICULUM_ACTIVITIES,
+  getActivityAtVersion,
+  getActivityLatest,
+  getCurriculumModule,
+} from '../data/curriculum';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import {
   X,
@@ -16,12 +22,19 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Copy,
 } from 'lucide-react';
 import { isFullscreenActive, toggleFullscreen } from '../utils/fullscreen';
 import { usePwaUpdateStore, applyAppUpdate } from '../services/pwaUpdateManager';
 
 export const MobileDrawerMenu: React.FC = () => {
   const {
+    appMode,
+    setAppMode,
+    activeActivityId,
+    activeActivityVersion,
+    setCurriculumActivity,
+    openCopyInSandbox,
     isMobileMenuOpen,
     setMobileMenuOpen,
     activeSimId,
@@ -56,11 +69,31 @@ export const MobileDrawerMenu: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen, setMobileMenuOpen]);
+
   if (!isMobileMenuOpen) return null;
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
+  const currentCurriculumActivity =
+    getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+    getActivityLatest(activeActivityId) ??
+    CURRICULUM_ACTIVITIES[0];
+  const currentCurriculumModule = currentCurriculumActivity
+    ? getCurriculumModule(currentCurriculumActivity.moduleId)
+    : undefined;
   const ToolsComponent = currentSimEnv?.ToolsComponent;
+  const showToolsSection = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
   const currentSimState = activeSimId === 'grid' ? grid : turtleState;
 
   const isInstant = speed === 'instant' || (speed as any) === 0;
@@ -89,6 +122,20 @@ export const MobileDrawerMenu: React.FC = () => {
     setLevel(nextId);
   };
 
+  const handlePrevActivity = () => {
+    if (CURRICULUM_ACTIVITIES.length === 0) return;
+    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+    const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
+    setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+  };
+
+  const handleNextActivity = () => {
+    if (CURRICULUM_ACTIVITIES.length === 0) return;
+    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+    const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
+    setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
+  };
+
   const handleToggleFullscreen = async () => {
     const active = await toggleFullscreen();
     setIsFullscreen(active);
@@ -96,6 +143,9 @@ export const MobileDrawerMenu: React.FC = () => {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Navigation Menu"
       data-testid="mobile-drawer-overlay"
       className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={() => setMobileMenuOpen(false)}
@@ -108,7 +158,7 @@ export const MobileDrawerMenu: React.FC = () => {
         {/* Header with Title and Close Button */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🤖</span>
+            <span className="text-xl">{appMode === 'curriculum' ? '🎓' : '🤖'}</span>
             <span className="font-extrabold text-white text-base">Menu</span>
           </div>
           <button
@@ -138,107 +188,245 @@ export const MobileDrawerMenu: React.FC = () => {
             </button>
           )}
 
-          {/* Section: Environment Selector */}
+          {/* Section: Mode Switcher (Learn vs Sandbox) */}
           <div className="flex flex-col gap-2">
             <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-              Environment
+              Mode
             </span>
-            <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+            <div
+              role="group"
+              aria-label="Application Mode"
+              className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800"
+            >
               <button
-                data-testid="drawer-tab-grid"
-                onClick={() => setSimEnvironment('grid')}
+                data-testid="drawer-mode-curriculum"
+                type="button"
+                aria-pressed={appMode === 'curriculum'}
+                aria-label="Learn Mode"
+                onClick={() => setAppMode('curriculum')}
                 className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
-                  activeSimId === 'grid'
-                    ? 'bg-sky-600 text-white shadow-md'
+                  appMode === 'curriculum'
+                    ? 'bg-violet-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <span>🤖</span>
-                <span>Grid</span>
+                <span>🎓</span>
+                <span>Learn</span>
               </button>
               <button
-                data-testid="drawer-tab-turtle"
-                onClick={() => setSimEnvironment('turtle')}
+                data-testid="drawer-mode-sandbox"
+                type="button"
+                aria-pressed={appMode === 'sandbox'}
+                aria-label="Sandbox Mode"
+                onClick={() => setAppMode('sandbox')}
                 className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
-                  activeSimId === 'turtle'
-                    ? 'bg-emerald-600 text-white shadow-md'
+                  appMode === 'sandbox'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <span>🐢</span>
-                <span>Turtle</span>
+                <span>🛠️</span>
+                <span>Sandbox</span>
               </button>
             </div>
           </div>
 
-          {/* Section: Lessons (Grid only) */}
-          {activeSimId === 'grid' && (
-            <div className="flex flex-col gap-2">
+          {appMode === 'curriculum' ? (
+            <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                  Lessons
+                  Curriculum Activities
                 </span>
-                <button
-                  data-testid="drawer-btn-solution"
-                  onClick={() => {
-                    setSolutionOpen(true);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                >
-                  <Lightbulb className="w-3.5 h-3.5 fill-amber-300" />
-                  <span>Solution</span>
-                </button>
+                {currentCurriculumActivity?.referenceSolution && (
+                  <button
+                    data-testid="drawer-btn-solution"
+                    onClick={() => {
+                      setSolutionOpen(true);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-xl text-xs font-bold active:scale-95 transition-transform"
+                  >
+                    <Lightbulb className="w-3.5 h-3.5 fill-amber-300" />
+                    <span>Solution</span>
+                  </button>
+                )}
               </div>
 
-              {/* Prev / Next & Dropdown */}
+              {/* Prev / Next & Curriculum Activity Dropdown */}
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={handlePrevLevel}
+                  data-testid="drawer-btn-prev-activity"
+                  type="button"
+                  aria-label="Previous Activity"
+                  onClick={handlePrevActivity}
                   className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <div className="flex-1 flex items-center gap-1 bg-slate-800 px-2 rounded-xl border border-slate-700 min-w-0">
-                  <span className="text-sm flex-shrink-0">{currentLesson.moduleIcon}</span>
+                <div className="flex-1 flex items-center gap-1 bg-slate-800 px-2 rounded-xl border border-violet-500/40 min-w-0">
+                  <span className="text-sm flex-shrink-0">{currentCurriculumModule?.icon || '🎓'}</span>
                   <select
-                    value={currentLevel}
-                    onChange={(e) => setLevel(Number(e.target.value))}
+                    data-testid="drawer-select-activity"
+                    aria-label="Select Curriculum Activity"
+                    value={activeActivityId}
+                    onChange={(e) => setCurriculumActivity(e.target.value)}
                     className="bg-transparent text-white font-bold text-xs h-10 w-full focus:outline-none cursor-pointer truncate"
                   >
-                    {LESSONS.map((l) => (
-                      <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
-                        {l.id}. {l.title}
+                    {CURRICULUM_ACTIVITIES.map((act) => (
+                      <option key={act.id} value={act.id} className="bg-slate-900 text-slate-100">
+                        {act.id} — {act.title}
                       </option>
                     ))}
                   </select>
                 </div>
                 <button
-                  onClick={handleNextLevel}
+                  data-testid="drawer-btn-next-activity"
+                  type="button"
+                  aria-label="Next Activity"
+                  onClick={handleNextActivity}
                   className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Quick Level Pills */}
+              {/* Quick Activity Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
-                {PRESET_LEVELS.map((lvl) => (
+                {CURRICULUM_ACTIVITIES.map((act) => (
                   <button
-                    key={lvl.id}
-                    data-testid={`drawer-level-${lvl.id}`}
-                    onClick={() => setLevel(lvl.id)}
-                    className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs border transition-all ${
-                      currentLevel === lvl.id
-                        ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
+                    key={act.id}
+                    type="button"
+                    data-testid={`drawer-activity-${act.id}`}
+                    aria-current={activeActivityId === act.id ? 'step' : undefined}
+                    onClick={() => setCurriculumActivity(act.id)}
+                    className={`flex-shrink-0 flex items-center justify-center px-2.5 h-8 rounded-lg font-black text-xs border transition-all ${
+                      activeActivityId === act.id
+                        ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
                         : 'bg-slate-800 border-slate-700 text-slate-300'
                     }`}
                   >
-                    {lvl.id}
+                    {act.id}
                   </button>
                 ))}
               </div>
+
+              {/* Open Copy in Sandbox Button */}
+              <button
+                data-testid="drawer-btn-open-copy-sandbox"
+                type="button"
+                aria-label="Open Copy in Sandbox"
+                onClick={openCopyInSandbox}
+                className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 active:scale-95 transition-all"
+              >
+                <Copy className="w-4 h-4" />
+                <span>Open Copy in Sandbox</span>
+              </button>
             </div>
+          ) : (
+            <>
+              {/* Section: Environment Selector */}
+              <div className="flex flex-col gap-2">
+                <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
+                  Environment
+                </span>
+                <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                  <button
+                    data-testid="drawer-tab-grid"
+                    onClick={() => setSimEnvironment('grid')}
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
+                      activeSimId === 'grid'
+                        ? 'bg-sky-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>🤖</span>
+                    <span>Grid</span>
+                  </button>
+                  <button
+                    data-testid="drawer-tab-turtle"
+                    onClick={() => setSimEnvironment('turtle')}
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
+                      activeSimId === 'turtle'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>🐢</span>
+                    <span>Turtle</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section: Lessons (Grid only) */}
+              {activeSimId === 'grid' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
+                      Lessons
+                    </span>
+                    <button
+                      data-testid="drawer-btn-solution"
+                      onClick={() => {
+                        setSolutionOpen(true);
+                        setMobileMenuOpen(false);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-xl text-xs font-bold active:scale-95 transition-transform"
+                    >
+                      <Lightbulb className="w-3.5 h-3.5 fill-amber-300" />
+                      <span>Solution</span>
+                    </button>
+                  </div>
+
+                  {/* Prev / Next & Dropdown */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handlePrevLevel}
+                      className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <div className="flex-1 flex items-center gap-1 bg-slate-800 px-2 rounded-xl border border-slate-700 min-w-0">
+                      <span className="text-sm flex-shrink-0">{currentLesson.moduleIcon}</span>
+                      <select
+                        value={currentLevel}
+                        onChange={(e) => setLevel(Number(e.target.value))}
+                        className="bg-transparent text-white font-bold text-xs h-10 w-full focus:outline-none cursor-pointer truncate"
+                      >
+                        {LESSONS.map((l) => (
+                          <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
+                            {l.id}. {l.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={handleNextLevel}
+                      className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Quick Level Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
+                    {PRESET_LEVELS.map((lvl) => (
+                      <button
+                        key={lvl.id}
+                        data-testid={`drawer-level-${lvl.id}`}
+                        onClick={() => setLevel(lvl.id)}
+                        className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs border transition-all ${
+                          currentLevel === lvl.id
+                            ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
+                            : 'bg-slate-800 border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {lvl.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Section: Files & Storage */}
@@ -329,11 +517,11 @@ export const MobileDrawerMenu: React.FC = () => {
             </div>
           </div>
 
-          {/* Section: Custom Environment Tools (if present) */}
-          {ToolsComponent && (
+          {/* Section: Custom Environment Tools (if present and editable) */}
+          {showToolsSection && ToolsComponent && (
             <div className="flex flex-col gap-2">
               <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                Map Editor Tools
+                {activeSimId === 'grid' ? 'Map Editor Tools' : 'Canvas Tools'}
               </span>
               <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-center">
                 <ToolsComponent state={currentSimState} />
