@@ -26,9 +26,19 @@ import {
 } from 'lucide-react';
 import { isFullscreenActive, toggleFullscreen } from '../utils/fullscreen';
 import { usePwaUpdateStore, applyAppUpdate } from '../services/pwaUpdateManager';
+import {
+  getProfileAvatar,
+  getProfileColor,
+  getProfileDisplayName,
+} from '../services/profileService';
 
 export const MobileDrawerMenu: React.FC = () => {
   const {
+    profiles,
+    activeProfileId,
+    setProfileModalOpen,
+    completedActivities,
+    resetActivityToStarter,
     appMode,
     setAppMode,
     activeActivityId,
@@ -95,6 +105,11 @@ export const MobileDrawerMenu: React.FC = () => {
   const ToolsComponent = currentSimEnv?.ToolsComponent;
   const showToolsSection = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
   const currentSimState = activeSimId === 'grid' ? grid : turtleState;
+
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
+  const activeAvatar = getProfileAvatar(activeProfile?.avatarId ?? 'robot');
+  const activeColor = getProfileColor(activeProfile?.colorId ?? 'sky');
+  const activeDisplayName = activeProfile ? getProfileDisplayName(activeProfile) : 'Player 1';
 
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
@@ -187,6 +202,54 @@ export const MobileDrawerMenu: React.FC = () => {
               <span>{isUpdating ? 'Updating…' : 'Update App & Restore Workspace'}</span>
             </button>
           )}
+
+          {/* Section: Active Player Profile Switcher */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
+              Player Profile
+            </span>
+            <button
+              type="button"
+              data-testid="drawer-btn-profile-switcher"
+              aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setProfileModalOpen(true);
+              }}
+              className="flex items-center justify-between gap-3 w-full p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 transition-all active:scale-[0.99]"
+              style={{ borderColor: `${activeColor.accentColor}99` }}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="relative flex items-center justify-center w-10 h-10 rounded-xl border text-xl shrink-0"
+                  style={{
+                    backgroundColor: `${activeColor.accentColor}26`,
+                    borderColor: activeColor.accentColor,
+                  }}
+                >
+                  <span aria-hidden="true">{activeAvatar.emoji}</span>
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950 border border-slate-900"
+                    style={{ backgroundColor: activeColor.accentColor }}
+                  >
+                    {activeColor.shapeSymbol}
+                  </span>
+                </span>
+                <div className="flex flex-col text-left min-w-0">
+                  <span className="font-black text-xs text-white truncate">
+                    {activeDisplayName}
+                  </span>
+                  <span className="text-[11px] text-slate-400 truncate">
+                    {activeColor.label}
+                  </span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-violet-600/30 border border-violet-400/50 text-violet-200 font-bold text-[11px] shrink-0">
+                Switch
+              </span>
+            </button>
+          </div>
 
           {/* Section: Mode Switcher (Learn vs Sandbox) */}
           <div className="flex flex-col gap-2">
@@ -293,35 +356,63 @@ export const MobileDrawerMenu: React.FC = () => {
 
               {/* Quick Activity Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
-                {CURRICULUM_ACTIVITIES.map((act) => (
-                  <button
-                    key={act.id}
-                    type="button"
-                    data-testid={`drawer-activity-${act.id}`}
-                    aria-current={activeActivityId === act.id ? 'step' : undefined}
-                    onClick={() => setCurriculumActivity(act.id)}
-                    className={`flex-shrink-0 flex items-center justify-center px-2.5 h-8 rounded-lg font-black text-xs border transition-all ${
-                      activeActivityId === act.id
-                        ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
-                        : 'bg-slate-800 border-slate-700 text-slate-300'
-                    }`}
-                  >
-                    {act.id}
-                  </button>
-                ))}
+                {CURRICULUM_ACTIVITIES.map((act) => {
+                  const isCompleted = Boolean(completedActivities[act.id]);
+                  return (
+                    <button
+                      key={act.id}
+                      type="button"
+                      data-testid={`drawer-activity-${act.id}`}
+                      aria-current={activeActivityId === act.id ? 'step' : undefined}
+                      onClick={() => setCurriculumActivity(act.id)}
+                      className={`flex-shrink-0 flex items-center justify-center gap-1 px-2.5 h-8 rounded-lg font-black text-xs border transition-all ${
+                        activeActivityId === act.id
+                          ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
+                          : isCompleted
+                          ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200'
+                          : 'bg-slate-800 border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <span>{act.id}</span>
+                      {isCompleted && (
+                        <span aria-hidden="true" className="text-[10px] text-emerald-300">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Open Copy in Sandbox Button */}
-              <button
-                data-testid="drawer-btn-open-copy-sandbox"
-                type="button"
-                aria-label="Open Copy in Sandbox"
-                onClick={openCopyInSandbox}
-                className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 active:scale-95 transition-all"
-              >
-                <Copy className="w-4 h-4" />
-                <span>Open Copy in Sandbox</span>
-              </button>
+              {/* Reset to Starter & Open Copy in Sandbox Actions */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  data-testid="drawer-btn-reset-to-starter"
+                  type="button"
+                  aria-label="Reset to Starter"
+                  onClick={() => {
+                    resetActivityToStarter();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-slate-800 hover:bg-rose-500/20 text-rose-200 font-bold text-xs rounded-xl border border-rose-400/40 active:scale-95 transition-all"
+                >
+                  <span aria-hidden="true" className="text-sm leading-none font-black">
+                    ↺
+                  </span>
+                  <span>Starter</span>
+                </button>
+
+                <button
+                  data-testid="drawer-btn-open-copy-sandbox"
+                  type="button"
+                  aria-label="Open Copy in Sandbox"
+                  onClick={openCopyInSandbox}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 active:scale-95 transition-all"
+                >
+                  <Copy className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Sandbox Copy</span>
+                </button>
+              </div>
             </div>
           ) : (
             <>

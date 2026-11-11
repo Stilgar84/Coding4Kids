@@ -6,6 +6,7 @@ import { SolutionModal } from './components/SolutionModal';
 import { ExportImportModal } from './components/ExportImportModal';
 import { SaveProgramModal } from './components/SaveProgramModal';
 import { LoadProgramModal } from './components/LoadProgramModal';
+import { ProfileSwitcherModal } from './components/ProfileSwitcherModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStore } from './store/useAppStore';
 import { VariationCardsPanel } from './components/VariationCardsPanel';
@@ -62,6 +63,9 @@ export const App: React.FC = () => {
       {/* Local Save & Load Modals */}
       <SaveProgramModal />
       <LoadProgramModal />
+
+      {/* Kid-Friendly Multi-Profile Switcher Modal */}
+      <ProfileSwitcherModal />
 
       {/* PWA Update Banner & Post-Update State Restore Toast */}
       <PwaUpdatePrompt />

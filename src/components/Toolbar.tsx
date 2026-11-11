@@ -32,9 +32,19 @@ import {
 } from 'lucide-react';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
 import { usePwaUpdateStore, reopenUpdatePrompt } from '../services/pwaUpdateManager';
+import {
+  getProfileAvatar,
+  getProfileColor,
+  getProfileDisplayName,
+} from '../services/profileService';
 
 export const Toolbar: React.FC = () => {
   const {
+    profiles,
+    activeProfileId,
+    setProfileModalOpen,
+    completedActivities,
+    resetActivityToStarter,
     appMode,
     setAppMode,
     activeActivityId,
@@ -139,6 +149,11 @@ export const Toolbar: React.FC = () => {
       : activeSimId === 'grid';
   const { needRefresh, isPromptDismissed } = usePwaUpdateStore();
 
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
+  const activeAvatar = getProfileAvatar(activeProfile?.avatarId ?? 'robot');
+  const activeColor = getProfileColor(activeProfile?.colorId ?? 'sky');
+  const activeDisplayName = activeProfile ? getProfileDisplayName(activeProfile) : 'Player 1';
+
   return (
     <>
       <div
@@ -221,8 +236,33 @@ export const Toolbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Desktop Left Section: Mode Switcher + Mode-Specific Navigation */}
+        {/* Desktop Left Section: Profile Switcher + Mode Switcher + Mode-Specific Navigation */}
         <div className="hidden md:flex items-center gap-2.5 max-w-full overflow-hidden">
+          {/* Kid-Friendly Avatar Profile Switcher Button (Desktop) */}
+          <button
+            type="button"
+            data-testid="btn-profile-switcher"
+            onClick={() => setProfileModalOpen(true)}
+            aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
+            title={`Player: ${activeDisplayName} (${activeColor.label}) — Click to switch profile`}
+            className="flex items-center gap-2 px-2.5 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 border-2 transition-all active:scale-95 flex-shrink-0 shadow-sm"
+            style={{ borderColor: `${activeColor.accentColor}99` }}
+          >
+            <span className="relative flex items-center justify-center text-lg leading-none select-none">
+              <span aria-hidden="true">{activeAvatar.emoji}</span>
+              <span
+                aria-hidden="true"
+                className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950"
+                style={{ backgroundColor: activeColor.accentColor }}
+              >
+                {activeColor.shapeSymbol}
+              </span>
+            </span>
+            <span className="hidden xl:inline text-xs font-extrabold text-slate-100 max-w-[96px] truncate">
+              {activeDisplayName}
+            </span>
+          </button>
+
           {/* Curriculum (Learn) vs Free-Play (Sandbox) Mode Switcher */}
           <div
             role="group"
@@ -312,24 +352,49 @@ export const Toolbar: React.FC = () => {
 
               {/* Activity Quick Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[180px] lg:max-w-[260px] no-scrollbar">
-                {CURRICULUM_ACTIVITIES.map((act) => (
-                  <button
-                    key={act.id}
-                    type="button"
-                    data-testid={`btn-activity-${act.id}`}
-                    aria-current={activeActivityId === act.id ? 'step' : undefined}
-                    aria-label={`Activity ${act.id}: ${act.title}`}
-                    onClick={() => setCurriculumActivity(act.id)}
-                    className={`flex-shrink-0 flex items-center justify-center px-2.5 h-10 rounded-xl font-black text-xs border-2 transition-all ${
-                      activeActivityId === act.id
-                        ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
-                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
-                    }`}
-                  >
-                    {act.id}
-                  </button>
-                ))}
+                {CURRICULUM_ACTIVITIES.map((act) => {
+                  const isCompleted = Boolean(completedActivities[act.id]);
+                  return (
+                    <button
+                      key={act.id}
+                      type="button"
+                      data-testid={`btn-activity-${act.id}`}
+                      aria-current={activeActivityId === act.id ? 'step' : undefined}
+                      aria-label={`Activity ${act.id}: ${act.title}${isCompleted ? ' (Completed)' : ''}`}
+                      onClick={() => setCurriculumActivity(act.id)}
+                      className={`flex-shrink-0 flex items-center justify-center gap-1 px-2.5 h-10 rounded-xl font-black text-xs border-2 transition-all ${
+                        activeActivityId === act.id
+                          ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
+                          : isCompleted
+                          ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200 hover:border-emerald-400'
+                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      <span>{act.id}</span>
+                      {isCompleted && (
+                        <span aria-hidden="true" className="text-[10px] text-emerald-300">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+
+              {/* Undo-Protected Reset to Starter Action */}
+              <button
+                data-testid="btn-reset-to-starter"
+                type="button"
+                onClick={resetActivityToStarter}
+                aria-label="Reset to Starter"
+                className="flex items-center gap-1.5 px-3 h-10 bg-slate-800 hover:bg-rose-500/20 text-rose-200 font-bold text-xs rounded-xl border border-rose-400/40 transition-all active:scale-95 whitespace-nowrap"
+                title="Reset blocks to activity starter (Undo restores your blocks)"
+              >
+                <span aria-hidden="true" className="text-sm leading-none font-black">
+                  ↺
+                </span>
+                <span>Starter</span>
+              </button>
 
               {/* Open Copy in Sandbox Action */}
               <button

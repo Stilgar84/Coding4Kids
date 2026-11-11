@@ -19,6 +19,7 @@ export const UPDATE_SNAPSHOT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_PERSISTED_HISTORY = 20;
 
 export interface AppUpdateStateInput {
+  activeProfileId?: string;
   appMode?: AppMode;
   activeActivityId?: string;
   activeActivityVersion?: number;
@@ -335,6 +336,7 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     version: UPDATE_SNAPSHOT_VERSION,
     savedAt: now,
     expiresAt: now + UPDATE_SNAPSHOT_TTL_MS,
+    ...(state.activeProfileId ? { activeProfileId: state.activeProfileId } : {}),
     appMode: state.appMode ?? 'sandbox',
     activeActivityId: state.activeActivityId ?? '1.1',
     activeActivityVersion: state.activeActivityVersion ?? 1,
@@ -402,6 +404,10 @@ export function consumeRestoredStateAfterUpdate(
       return null;
     }
 
+    const activeProfileId =
+      typeof parsed.activeProfileId === 'string' && parsed.activeProfileId.trim()
+        ? parsed.activeProfileId.trim()
+        : undefined;
     const appMode: AppMode = parsed.appMode === 'curriculum' ? 'curriculum' : 'sandbox';
     const activeActivityId =
       typeof parsed.activeActivityId === 'string' && parsed.activeActivityId
@@ -471,6 +477,7 @@ export function consumeRestoredStateAfterUpdate(
         : 'NONE';
 
     return {
+      ...(activeProfileId ? { activeProfileId } : {}),
       appMode,
       activeActivityId,
       activeActivityVersion,

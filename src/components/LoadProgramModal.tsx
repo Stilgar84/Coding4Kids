@@ -18,6 +18,7 @@ import {
 
 export const LoadProgramModal: React.FC = () => {
   const {
+    activeProfileId,
     isLoadModalOpen,
     setLoadModalOpen,
     importCode,
@@ -28,10 +29,10 @@ export const LoadProgramModal: React.FC = () => {
 
   useEffect(() => {
     if (isLoadModalOpen) {
-      setSaves(getSavedPrograms());
+      setSaves(getSavedPrograms(activeProfileId));
       setDeleteConfirmId(null);
     }
-  }, [isLoadModalOpen]);
+  }, [isLoadModalOpen, activeProfileId]);
 
   if (!isLoadModalOpen) return null;
 

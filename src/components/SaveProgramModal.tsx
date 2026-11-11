@@ -18,6 +18,7 @@ import {
 
 export const SaveProgramModal: React.FC = () => {
   const {
+    activeProfileId,
     appMode,
     activeActivityId,
     isSaveModalOpen,
@@ -126,6 +127,7 @@ export const SaveProgramModal: React.FC = () => {
 
     saveProgram({
       title: title.trim() || 'Untitled Program',
+      profileId: activeProfileId,
       simId: activeSimId,
       code,
       screenshot: simData.screenshot,

@@ -37,6 +37,7 @@ import {
   createCurriculumGridState,
   getActivityAtVersion,
   getActivityLatest,
+  isValidatedPuzzleActivity,
 } from '../data/curriculum';
 import {
   GhostPreviewState,
@@ -50,6 +51,22 @@ import {
   saveStateBeforeUpdate,
   consumeRestoredStateAfterUpdate,
 } from '../services/pwaStateRestoreService';
+import {
+  CreateProfileInput,
+  UserProfile,
+  createProfile,
+  deleteProfile,
+  ensureProfilesInitialized,
+  getProfileDisplayName,
+  getProfileLessonWorkspaces,
+  getProfileProgress,
+  getProfileSandboxWorkspaces,
+  getProfiles,
+  markLessonCompleted,
+  saveLessonAutosave,
+  saveSandboxAutosave,
+  setActiveProfileId,
+} from '../services/profileService';
 
 export type EditorTool = 'NONE' | 'ROBOT' | 'WALL' | 'FLAG' | 'GOAL' | 'ERASE';
 
@@ -166,6 +183,12 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
 }));
 
 interface AppState {
+  // Multi-profile state
+  profiles: UserProfile[];
+  activeProfileId: string;
+  isProfileModalOpen: boolean;
+  completedActivities: Record<string, boolean>;
+
   // Mode & Curriculum selection
   appMode: AppMode;
   activeActivityId: string;
@@ -209,11 +232,19 @@ interface AppState {
   endHistoryBatch: () => void;
   clearHistory: () => void;
 
+  // Profile actions
+  setProfileModalOpen: (open: boolean) => void;
+  switchProfile: (profileId: string) => void;
+  createAndSwitchProfile: (input: CreateProfileInput) => UserProfile;
+  deleteUserProfile: (profileId: string) => boolean;
+  reloadActiveProfileState: () => void;
+
   // Mode & Curriculum actions
   setAppMode: (mode: AppMode) => void;
   setCurriculumActivity: (activityId: string, version?: number) => void;
   openCopyInSandbox: () => void;
   loadVariationWorkspace: (workspace: WorkspaceState, title?: string) => void;
+  resetActivityToStarter: () => void;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -371,11 +402,17 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: commit.finalRuntime,
           isPlaying: false,
         });
+        if (completedTurtleState.status === 'SUCCESS' || commit.finalRuntime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
       } else {
         set({
           turtleState: completedTurtleState,
           runtime: commit.finalRuntime,
         });
+        if (completedTurtleState.status === 'SUCCESS' || commit.finalRuntime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
         runTurtleExecutionLoop(false);
       }
     }
@@ -463,6 +500,10 @@ export const useAppStore = create<AppState>((set, get) => {
             : {}),
         });
 
+        if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
+
         if (res.done) {
           set({ isPlaying: false });
           return;
@@ -497,6 +538,10 @@ export const useAppStore = create<AppState>((set, get) => {
               }
             : {}),
         });
+
+        if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
 
         if (res.done) {
           set({ isPlaying: false });
@@ -549,6 +594,10 @@ export const useAppStore = create<AppState>((set, get) => {
           turtleState,
           activeScope,
         });
+
+        if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
+          recordCurriculumSuccessIfApplicable();
+        }
 
         if (res.done || isSingleStep) {
           set({ isPlaying: false });
@@ -642,10 +691,82 @@ export const useAppStore = create<AppState>((set, get) => {
       ? createCurriculumGridState(bootActivity.grid)
       : createGridFromPreset(initialPreset);
 
+  const bootProfilesState = ensureProfilesInitialized();
+  const bootActiveProfileId = bootProfilesState.activeProfileId;
+  const bootCurriculumAutosaves = getProfileLessonWorkspaces(bootActiveProfileId);
+  const bootSandboxAutosaves = getProfileSandboxWorkspaces(bootActiveProfileId);
+  const bootSimId: 'grid' | 'turtle' =
+    bootMode === 'curriculum' && bootActivity?.simId === 'turtle' ? 'turtle' : 'grid';
+
+  const buildCompletedMap = (profileId: string): Record<string, boolean> => {
+    const prog = getProfileProgress(profileId);
+    const map: Record<string, boolean> = {};
+    for (const k of Object.keys(prog.completedLessons)) {
+      map[k] = true;
+    }
+    return map;
+  };
+
   const initialWorkspace =
-    bootMode === 'curriculum' && bootActivity?.starterWorkspace
-      ? cloneWorkspaceWithFreshIds(bootActivity.starterWorkspace)
+    bootMode === 'curriculum'
+      ? bootActivity && bootCurriculumAutosaves[bootActivity.id]
+        ? cloneWorkspace(bootCurriculumAutosaves[bootActivity.id])
+        : bootActivity?.starterWorkspace
+        ? cloneWorkspaceWithFreshIds(bootActivity.starterWorkspace)
+        : createEmptyWorkspace()
+      : bootSandboxAutosaves[bootSimId]
+      ? cloneWorkspace(bootSandboxAutosaves[bootSimId])
       : createEmptyWorkspace();
+
+  const persistActiveWorkspace = (
+    ws: WorkspaceState,
+    override?: {
+      appMode?: AppMode;
+      profileId?: string;
+      activityId?: string;
+      activityVersion?: number;
+      simId?: 'grid' | 'turtle';
+    }
+  ) => {
+    const s = get();
+    const mode = override?.appMode ?? s.appMode;
+    const profileId = override?.profileId ?? s.activeProfileId;
+    if (mode === 'curriculum') {
+      const actId = override?.activityId ?? s.activeActivityId;
+      const actVer = override?.activityVersion ?? s.activeActivityVersion;
+      saveLessonAutosave(profileId, actId, ws, actVer);
+    } else {
+      const simId = override?.simId ?? s.activeSimId;
+      saveSandboxAutosave(profileId, simId, ws);
+    }
+  };
+
+  const recordCurriculumSuccessIfApplicable = () => {
+    const s = get();
+    if (s.appMode !== 'curriculum') return;
+    const activity =
+      getActivityAtVersion(s.activeActivityId, s.activeActivityVersion) ??
+      getActivityLatest(s.activeActivityId);
+    if (!activity || !isValidatedPuzzleActivity(activity)) return;
+    markLessonCompleted(s.activeProfileId, s.activeActivityId, s.activeActivityVersion);
+    if (!s.completedActivities[s.activeActivityId]) {
+      set((curr) => ({
+        completedActivities: {
+          ...curr.completedActivities,
+          [curr.activeActivityId]: true,
+        },
+      }));
+    }
+  };
+
+  const normalizeWorkspaceForCompare = (ws?: WorkspaceState) =>
+    (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).map((sc) =>
+      (ws?.[sc] || []).map((b) => ({
+        type: b.type,
+        repeatCount: b.repeatCount ?? 1,
+        params: b.params ?? null,
+      }))
+    );
 
   const recordMutation = (desc?: string) => {
     if (activeBatchSnapshot !== null) {
@@ -674,23 +795,28 @@ export const useAppStore = create<AppState>((set, get) => {
   };
 
   return {
+    profiles: bootProfilesState.profiles,
+    activeProfileId: bootActiveProfileId,
+    isProfileModalOpen: false,
+    completedActivities: buildCompletedMap(bootActiveProfileId),
+
     appMode: bootMode,
     activeActivityId: bootActivity?.id || '1.1',
     activeActivityVersion: bootActivity?.version || 1,
     curriculumWorkspaces:
       bootMode === 'curriculum' && bootActivity
-        ? { [bootActivity.id]: cloneWorkspace(initialWorkspace) }
-        : {},
+        ? { ...bootCurriculumAutosaves, [bootActivity.id]: cloneWorkspace(initialWorkspace) }
+        : bootCurriculumAutosaves,
     sandboxSnapshot: null,
     statusAnnouncement: '',
     ghostPreview: null,
 
-    activeSimId: bootMode === 'curriculum' && bootActivity?.simId === 'turtle' ? 'turtle' : 'grid',
+    activeSimId: bootSimId,
     currentLevel: 1,
     grid: initialGrid,
     turtleState: createInitialTurtleState(),
     workspace: initialWorkspace,
-    savedWorkspaces: {},
+    savedWorkspaces: bootSandboxAutosaves,
     activeScope: 'MAIN',
     selectedBlockId: null,
     runtime: null,
@@ -757,6 +883,11 @@ export const useAppStore = create<AppState>((set, get) => {
         canRedo: true,
       });
 
+      persistActiveWorkspace(restoredWs, {
+        appMode,
+        simId: previousSnapshot.activeSimId,
+      });
+
       get().reset();
       get().runInstantIfActive();
     },
@@ -806,6 +937,11 @@ export const useAppStore = create<AppState>((set, get) => {
         canRedo: newFuture.length > 0,
       });
 
+      persistActiveWorkspace(restoredWs, {
+        appMode,
+        simId: nextSnapshot.activeSimId,
+      });
+
       get().reset();
       get().runInstantIfActive();
     },
@@ -850,6 +986,183 @@ export const useAppStore = create<AppState>((set, get) => {
         canUndo: false,
         canRedo: false,
       });
+    },
+
+    setProfileModalOpen: (open) => set({ isProfileModalOpen: open }),
+
+    reloadActiveProfileState: () => {
+      const state = get();
+      get().pause();
+      get().clearHistory();
+
+      const profilesState = ensureProfilesInitialized();
+      const profileId = profilesState.activeProfileId;
+      const nextCurriculumWorkspaces = getProfileLessonWorkspaces(profileId);
+      const nextSavedWorkspaces = getProfileSandboxWorkspaces(profileId);
+      const nextCompleted = buildCompletedMap(profileId);
+      const prevFitToView = state.grid.fitToView ?? false;
+
+      if (state.appMode === 'curriculum') {
+        const activity =
+          getActivityAtVersion(state.activeActivityId, state.activeActivityVersion) ??
+          getActivityLatest(state.activeActivityId) ??
+          CURRICULUM_ACTIVITIES[0];
+        if (!activity) return;
+
+        const targetSimId: 'grid' | 'turtle' = activity.simId === 'turtle' ? 'turtle' : 'grid';
+        const targetGrid = activity.grid
+          ? createCurriculumGridState(activity.grid, prevFitToView)
+          : getInitialGridState(state.grid);
+
+        const targetWs = nextCurriculumWorkspaces[activity.id]
+          ? cloneWorkspace(nextCurriculumWorkspaces[activity.id])
+          : activity.starterWorkspace
+          ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+          : createEmptyWorkspace();
+
+        set({
+          profiles: profilesState.profiles,
+          activeProfileId: profileId,
+          completedActivities: nextCompleted,
+          activeActivityId: activity.id,
+          activeActivityVersion: activity.version,
+          activeSimId: targetSimId,
+          grid: targetGrid,
+          turtleState: createInitialTurtleState(),
+          workspace: targetWs,
+          curriculumWorkspaces: {
+            ...nextCurriculumWorkspaces,
+            [activity.id]: cloneWorkspace(targetWs),
+          },
+          savedWorkspaces: nextSavedWorkspaces,
+          sandboxSnapshot: null,
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+          editorTool: 'NONE',
+          runtime: null,
+        });
+      } else {
+        const fallbackPreset =
+          PRESET_LEVELS.find((p) => p.id === state.currentLevel) || PRESET_LEVELS[0];
+        const targetWs = nextSavedWorkspaces[state.activeSimId]
+          ? cloneWorkspace(nextSavedWorkspaces[state.activeSimId])
+          : createEmptyWorkspace();
+
+        set({
+          profiles: profilesState.profiles,
+          activeProfileId: profileId,
+          completedActivities: nextCompleted,
+          curriculumWorkspaces: nextCurriculumWorkspaces,
+          savedWorkspaces: nextSavedWorkspaces,
+          sandboxSnapshot: null,
+          grid: createGridFromPreset(fallbackPreset, prevFitToView),
+          turtleState: createInitialTurtleState(),
+          workspace: targetWs,
+          selectedBlockId: null,
+          activeScope: 'MAIN',
+          editorTool: 'NONE',
+          runtime: null,
+        });
+      }
+
+      get().reset();
+      get().runInstantIfActive();
+    },
+
+    switchProfile: (profileId) => {
+      const state = get();
+      if (profileId === state.activeProfileId) {
+        set({ isProfileModalOpen: false, profiles: getProfiles() });
+        return;
+      }
+
+      const targetProfile = setActiveProfileId(profileId);
+      if (!targetProfile) return;
+
+      get().reloadActiveProfileState();
+      set({
+        isProfileModalOpen: false,
+        statusAnnouncement: `Switched profile to ${getProfileDisplayName(targetProfile)}.`,
+      });
+    },
+
+    createAndSwitchProfile: (input) => {
+      const created = createProfile(input);
+      get().switchProfile(created.id);
+      set({
+        isProfileModalOpen: false,
+        statusAnnouncement: `Created and switched to profile ${getProfileDisplayName(created)}.`,
+      });
+      return created;
+    },
+
+    deleteUserProfile: (profileId) => {
+      const wasActive = get().activeProfileId === profileId;
+      const deleted = deleteProfile(profileId);
+      if (!deleted) return false;
+
+      if (wasActive) {
+        get().reloadActiveProfileState();
+        const fallbackProfile = getProfiles().find((p) => p.id === get().activeProfileId);
+        set({
+          statusAnnouncement: fallbackProfile
+            ? `Profile deleted. Switched to ${getProfileDisplayName(fallbackProfile)}.`
+            : 'Profile deleted.',
+        });
+      } else {
+        set({
+          profiles: getProfiles(),
+          statusAnnouncement: 'Profile deleted.',
+        });
+      }
+      return true;
+    },
+
+    resetActivityToStarter: () => {
+      const state = get();
+      if (state.appMode !== 'curriculum') return;
+
+      const activity =
+        getActivityAtVersion(state.activeActivityId, state.activeActivityVersion) ??
+        getActivityLatest(state.activeActivityId);
+      if (!activity) return;
+
+      get().pause();
+
+      const hasChangedFromStarter =
+        JSON.stringify(normalizeWorkspaceForCompare(state.workspace)) !==
+        JSON.stringify(normalizeWorkspaceForCompare(activity.starterWorkspace));
+
+      if (hasChangedFromStarter) {
+        recordMutation('Reset to starter');
+      }
+
+      const starterWs = activity.starterWorkspace
+        ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
+        : createEmptyWorkspace();
+
+      set({
+        workspace: starterWs,
+        curriculumWorkspaces: {
+          ...state.curriculumWorkspaces,
+          [activity.id]: cloneWorkspace(starterWs),
+        },
+        selectedBlockId: null,
+        activeScope: 'MAIN',
+        runtime: null,
+        statusAnnouncement: hasChangedFromStarter
+          ? `Reset Activity ${activity.id} to starter blocks. Press Undo to restore your previous blocks.`
+          : `Activity ${activity.id} reset to starter.`,
+      });
+
+      persistActiveWorkspace(starterWs, {
+        appMode: 'curriculum',
+        activityId: activity.id,
+        activityVersion: activity.version,
+      });
+
+      get().reset();
+      get().runInstantIfActive();
     },
 
     setAppMode: (mode) => {
@@ -924,7 +1237,11 @@ export const useAppStore = create<AppState>((set, get) => {
         const restoredTurtle = snap
           ? getInitialTurtleState(JSON.parse(JSON.stringify(snap.turtleState)))
           : createInitialTurtleState();
-        const restoredWs = snap ? cloneWorkspace(snap.workspace) : createEmptyWorkspace();
+        const restoredWs = snap
+          ? cloneWorkspace(snap.workspace)
+          : state.savedWorkspaces[restoredSimId]
+          ? cloneWorkspace(state.savedWorkspaces[restoredSimId])
+          : createEmptyWorkspace();
         const restoredSaved: Record<string, WorkspaceState> = {};
         if (snap) {
           for (const [k, ws] of Object.entries(snap.savedWorkspaces)) {
@@ -1028,6 +1345,13 @@ export const useAppStore = create<AppState>((set, get) => {
         [state.activeActivityId]: cloneWorkspace(state.workspace),
       };
 
+      saveLessonAutosave(
+        state.activeProfileId,
+        state.activeActivityId,
+        state.workspace,
+        state.activeActivityVersion
+      );
+
       const clonedWs = cloneWorkspaceWithFreshIds(state.workspace);
       const clonedGrid = getInitialGridState(JSON.parse(JSON.stringify(state.grid)));
       const clonedTurtle = getInitialTurtleState(JSON.parse(JSON.stringify(state.turtleState)));
@@ -1038,6 +1362,7 @@ export const useAppStore = create<AppState>((set, get) => {
         nextSavedWorkspaces[k] = cloneWorkspace(ws);
       }
       nextSavedWorkspaces[state.activeSimId] = cloneWorkspace(clonedWs);
+      saveSandboxAutosave(state.activeProfileId, state.activeSimId, clonedWs);
 
       set({
         appMode: 'sandbox',
@@ -1098,6 +1423,7 @@ export const useAppStore = create<AppState>((set, get) => {
         statusAnnouncement: announcement,
       }));
 
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1116,6 +1442,7 @@ export const useAppStore = create<AppState>((set, get) => {
         ...savedWorkspaces,
         [activeSimId]: cloneWorkspace(workspace),
       };
+      saveSandboxAutosave(get().activeProfileId, activeSimId, workspace);
 
       // Restore any saved code for destination env or clear it
       const destinationWorkspace = updatedSavedWorkspaces[simId]
@@ -1221,12 +1548,15 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: null,
           activeScope: 'MAIN',
         });
+        persistActiveWorkspace(newWorkspace, { appMode: 'curriculum' });
       } else if (res.envId === 'turtle') {
         const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
         if (activeSimId !== 'turtle') {
           updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
+          saveSandboxAutosave(get().activeProfileId, activeSimId, workspace);
         }
         updatedSavedWorkspaces['turtle'] = cloneWorkspace(newWorkspace);
+        saveSandboxAutosave(get().activeProfileId, 'turtle', newWorkspace);
 
         set({
           activeSimId: 'turtle',
@@ -1241,8 +1571,10 @@ export const useAppStore = create<AppState>((set, get) => {
         const updatedSavedWorkspaces: Record<string, WorkspaceState> = { ...savedWorkspaces };
         if (activeSimId !== 'grid') {
           updatedSavedWorkspaces[activeSimId] = cloneWorkspace(workspace);
+          saveSandboxAutosave(get().activeProfileId, activeSimId, workspace);
         }
         updatedSavedWorkspaces['grid'] = cloneWorkspace(newWorkspace);
+        saveSandboxAutosave(get().activeProfileId, 'grid', newWorkspace);
 
         set({
           activeSimId: 'grid',
@@ -1264,6 +1596,7 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: null,
           activeScope: 'MAIN',
         });
+        saveSandboxAutosave(get().activeProfileId, activeSimId, newWorkspace);
       }
 
       get().reset();
@@ -1294,6 +1627,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           statusAnnouncement: `Loaded full reference solution for ${activity.title}. Press Undo to restore your previous blocks.`,
         }));
+        persistActiveWorkspace(newWorkspace, { appMode: 'curriculum' });
         get().runInstantIfActive();
         return;
       }
@@ -1333,6 +1667,7 @@ export const useAppStore = create<AppState>((set, get) => {
         selectedBlockId: null,
         ghostPreview: null,
       });
+      persistActiveWorkspace(newWorkspace, { appMode: 'sandbox' });
       get().runInstantIfActive();
     },
 
@@ -1420,6 +1755,7 @@ export const useAppStore = create<AppState>((set, get) => {
           activity?.title ? ` for ${activity.title}` : ''
         }. Select a highlighted block in the palette to fill ?, or press Undo to restore your previous blocks.`,
       }));
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
       return true;
     },
@@ -1491,6 +1827,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
 
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
       return true;
     },
@@ -1619,6 +1956,10 @@ export const useAppStore = create<AppState>((set, get) => {
           ...pauseUpdates,
         });
       }
+
+      if (result.status === 'SUCCESS' || result.finalRuntime.status === 'SUCCESS') {
+        recordCurriculumSuccessIfApplicable();
+      }
     },
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
@@ -1673,10 +2014,16 @@ export const useAppStore = create<AppState>((set, get) => {
                   [state.activeActivityId]: cloneWorkspace(nextWorkspace),
                 },
               }
-            : {}),
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
           selectedBlockId: id,
         };
       });
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1710,9 +2057,15 @@ export const useAppStore = create<AppState>((set, get) => {
                   [state.activeActivityId]: cloneWorkspace(nextWorkspace),
                 },
               }
-            : {}),
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
         };
       });
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1734,10 +2087,16 @@ export const useAppStore = create<AppState>((set, get) => {
                   [state.activeActivityId]: cloneWorkspace(nextWorkspace),
                 },
               }
-            : {}),
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
           selectedBlockId: state.selectedBlockId === blockId ? null : state.selectedBlockId,
         };
       });
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1761,9 +2120,15 @@ export const useAppStore = create<AppState>((set, get) => {
                   [state.activeActivityId]: cloneWorkspace(nextWorkspace),
                 },
               }
-            : {}),
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
         };
       });
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1787,9 +2152,15 @@ export const useAppStore = create<AppState>((set, get) => {
                   [state.activeActivityId]: cloneWorkspace(nextWorkspace),
                 },
               }
-            : {}),
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
         };
       });
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -1839,6 +2210,7 @@ export const useAppStore = create<AppState>((set, get) => {
               }),
         }));
       }
+      persistActiveWorkspace(get().workspace);
       get().runInstantIfActive();
     },
 
@@ -2192,6 +2564,13 @@ export const useAppStore = create<AppState>((set, get) => {
             : {}),
         });
 
+        if (
+          (res.nextGrid as GridState).status === 'SUCCESS' ||
+          res.nextRuntime.status === 'SUCCESS'
+        ) {
+          recordCurriculumSuccessIfApplicable();
+        }
+
         if ((res.done || isPausedOnPlaceholder) && timerId) {
           clearInterval(timerId);
           timerId = null;
@@ -2214,6 +2593,12 @@ export const useAppStore = create<AppState>((set, get) => {
             },
             runtime: commit.finalRuntime,
           });
+          if (
+            commit.finalTurtleState.status === 'SUCCESS' ||
+            commit.finalRuntime.status === 'SUCCESS'
+          ) {
+            recordCurriculumSuccessIfApplicable();
+          }
           if (commit.isDone) {
             set({ isPlaying: false });
             return;
@@ -2362,6 +2747,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const s = get();
       return saveStateBeforeUpdate({
+        activeProfileId: s.activeProfileId,
         appMode: s.appMode,
         activeActivityId: s.activeActivityId,
         activeActivityVersion: s.activeActivityVersion,
@@ -2395,7 +2781,18 @@ export const useAppStore = create<AppState>((set, get) => {
       pendingTurtleCommit = null;
       activeBatchSnapshot = null;
 
+      if (restored.activeProfileId) {
+        setActiveProfileId(restored.activeProfileId);
+      }
+      const profilesState = ensureProfilesInitialized();
+      const resolvedProfileId = restored.activeProfileId && profilesState.profiles.some((p) => p.id === restored.activeProfileId)
+        ? restored.activeProfileId
+        : profilesState.activeProfileId;
+
       set({
+        profiles: profilesState.profiles,
+        activeProfileId: resolvedProfileId,
+        completedActivities: buildCompletedMap(resolvedProfileId),
         appMode: restored.appMode ?? 'sandbox',
         activeActivityId: restored.activeActivityId ?? '1.1',
         activeActivityVersion: restored.activeActivityVersion ?? 1,

@@ -2,6 +2,7 @@ import { SimulationStatus } from '../types';
 
 export const STORAGE_KEY = 'robotemu_saved_programs';
 export const CURRENT_STORAGE_VERSION = 1;
+export const DEFAULT_SAVE_PROFILE_ID = 'default';
 
 export interface SavedProgramEntry {
   version: number;
@@ -14,15 +15,16 @@ export interface SavedProgramEntry {
   status: SimulationStatus;
   stepCount: number;
   levelId?: number;
+  profileId?: string;
 }
 
 const DEFAULT_FALLBACK_THUMBNAIL =
   'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23ffffff%22%2F%3E%3C%2Fsvg%3E';
 
-// In-memory fallback for test environments (such as Node.js in Vitest)
+// Shared in-memory fallback for test environments (such as Node.js in Vitest)
 let memoryStorage: Record<string, string> = {};
 
-function getStorageItem(key: string): string | null {
+export function getStorageItem(key: string): string | null {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       return window.localStorage.getItem(key);
@@ -33,7 +35,7 @@ function getStorageItem(key: string): string | null {
   return memoryStorage[key] ?? null;
 }
 
-function setStorageItem(key: string, value: string): void {
+export function setStorageItem(key: string, value: string): void {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.setItem(key, value);
@@ -45,7 +47,7 @@ function setStorageItem(key: string, value: string): void {
   memoryStorage[key] = value;
 }
 
-function removeStorageItem(key: string): void {
+export function removeStorageItem(key: string): void {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.removeItem(key);
@@ -59,6 +61,7 @@ function removeStorageItem(key: string): void {
 /**
  * Migrates and normalizes a raw parsed object to a valid SavedProgramEntry.
  * Guarantees backward compatibility for entries created without schema versioning or with missing fields.
+ * Legacy v1 entries without a `profileId` associate automatically with `'default'`.
  */
 export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -83,6 +86,10 @@ export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
     raw.status === 'SUCCESS' || raw.status === 'COLLISION' ? raw.status : 'IDLE';
   const stepCount = typeof raw.stepCount === 'number' ? raw.stepCount : 0;
   const levelId = typeof raw.levelId === 'number' ? raw.levelId : undefined;
+  const profileId =
+    typeof raw.profileId === 'string' && raw.profileId.trim()
+      ? raw.profileId.trim()
+      : DEFAULT_SAVE_PROFILE_ID;
 
   return {
     version,
@@ -95,15 +102,54 @@ export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
     status,
     stepCount,
     levelId,
+    profileId,
   };
 }
 
 export const normalizeSavedEntry = migrateSavedEntry;
 
 /**
- * Retrieves all saved programs from storage, migrated to the current schema.
+ * Non-destructively migrates persisted `robotemu_saved_programs` entries so any legacy v1 save
+ * missing `profileId` is explicitly stamped with `defaultProfileId` (`'default'`) in storage
+ * without altering any existing fields or invalidating existing saves.
  */
-export function getSavedPrograms(): SavedProgramEntry[] {
+export function migrateLegacySavedProgramsToDefault(
+  defaultProfileId: string = DEFAULT_SAVE_PROFILE_ID
+): number {
+  try {
+    const raw = getStorageItem(STORAGE_KEY);
+    if (!raw) return 0;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return 0;
+
+    let migratedCount = 0;
+    const updated = parsed.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      if (typeof item.profileId === 'string' && item.profileId.trim()) {
+        return item;
+      }
+      migratedCount++;
+      return {
+        ...item,
+        profileId: defaultProfileId,
+      };
+    });
+
+    if (migratedCount > 0) {
+      setStorageItem(STORAGE_KEY, JSON.stringify(updated));
+    }
+    return migratedCount;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Retrieves saved programs from storage, migrated to the current schema.
+ * When `profileId` is provided, scopes results to that profile (associating legacy entries without `profileId` to `'default'`).
+ */
+export function getSavedPrograms(profileId?: string): SavedProgramEntry[] {
   try {
     const raw = getStorageItem(STORAGE_KEY);
     if (!raw) return [];
@@ -115,7 +161,9 @@ export function getSavedPrograms(): SavedProgramEntry[] {
     for (const item of parsed) {
       const migrated = migrateSavedEntry(item);
       if (migrated) {
-        entries.push(migrated);
+        if (!profileId || (migrated.profileId || DEFAULT_SAVE_PROFILE_ID) === profileId) {
+          entries.push(migrated);
+        }
       }
     }
 
@@ -151,6 +199,10 @@ export function saveProgram(
     status: entry.status,
     stepCount: entry.stepCount,
     levelId: entry.levelId,
+    profileId:
+      typeof entry.profileId === 'string' && entry.profileId.trim()
+        ? entry.profileId.trim()
+        : DEFAULT_SAVE_PROFILE_ID,
   };
 
   const existingIndex = all.findIndex((item) => item.id === completeEntry.id);
@@ -184,6 +236,26 @@ export function deleteProgram(id: string): boolean {
 }
 
 /**
+ * Deletes all saved programs belonging to a specific non-default profile.
+ */
+export function deleteProgramsForProfile(profileId: string): number {
+  if (!profileId || profileId === DEFAULT_SAVE_PROFILE_ID) return 0;
+  try {
+    const all = getSavedPrograms();
+    const remaining = all.filter(
+      (item) => (item.profileId || DEFAULT_SAVE_PROFILE_ID) !== profileId
+    );
+    const removedCount = all.length - remaining.length;
+    if (removedCount > 0) {
+      setStorageItem(STORAGE_KEY, JSON.stringify(remaining));
+    }
+    return removedCount;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Finds a saved program by ID.
  */
 export function getProgramById(id: string): SavedProgramEntry | null {
@@ -196,5 +268,4 @@ export function getProgramById(id: string): SavedProgramEntry | null {
  */
 export function clearAllSavedPrograms(): void {
   removeStorageItem(STORAGE_KEY);
-  memoryStorage = {};
 }
