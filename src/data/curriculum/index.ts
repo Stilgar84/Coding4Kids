@@ -5,11 +5,13 @@ import { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 import { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 import { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 import { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
+import { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 
 export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 export { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
 export { MODULE_1_BEAT_ACTIVITIES } from './module1Beat';
+export { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 
 /**
  * Static Module catalog for Modules 1–3.
@@ -61,6 +63,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = [
   ...MODULE_1_ROBOT_ACTIVITIES,
   ...MODULE_1_LOGO_ACTIVITIES,
   ...MODULE_1_BEAT_ACTIVITIES,
+  ...MODULE_2_OBJECTS_ACTIVITIES,
 ];
 
 export function getCurriculumModules(): CurriculumModule[] {
