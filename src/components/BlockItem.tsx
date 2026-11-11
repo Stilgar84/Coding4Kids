@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
+import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
 
 interface BlockItemProps {
@@ -52,13 +53,36 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 }) => {
   const { updateBlockRepeat, updateBlockParams, runtime } = useAppStore();
   const subscribedSimId = useAppStore((state) => state.activeSimId);
-  const activeSimId = useAppStore.getState().activeSimId || subscribedSimId;
+  const subscribedAppMode = useAppStore((state) => state.appMode);
+  const subscribedActivityId = useAppStore((state) => state.activeActivityId);
+  const subscribedActivityVersion = useAppStore((state) => state.activeActivityVersion);
+
+  const storeSnapshot = useAppStore.getState();
+  const activeSimId = storeSnapshot.activeSimId || subscribedSimId;
+  const appMode = storeSnapshot.appMode || subscribedAppMode;
+  const activeActivityId = storeSnapshot.activeActivityId || subscribedActivityId;
+  const activeActivityVersion = storeSnapshot.activeActivityVersion || subscribedActivityVersion;
+
   const [isNumberHovered, setIsNumberHovered] = useState(false);
 
+  const activeCurriculumActivity =
+    appMode === 'curriculum'
+      ? getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+        getActivityLatest(activeActivityId)
+      : undefined;
+  const allowActionParams =
+    appMode !== 'curriculum' || activeCurriculumActivity?.palette?.allowActionParams !== false;
+
   const currentSimEnv = getSimEnvironment(activeSimId);
-  const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === block.type);
+  const lookupActionType =
+    activeSimId === 'turtle' && block.type === 'MOVE_FWD'
+      ? 'FORWARD'
+      : activeSimId === 'turtle' && block.type === 'MOVE_BACK'
+      ? 'BACKWARD'
+      : block.type;
+  const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === lookupActionType);
   const paramDefs = paletteItem?.paramDefs || [];
-  const hasParams = paramDefs.length > 0;
+  const hasParams = paramDefs.length > 0 && allowActionParams;
 
   // Check if block type supports repeat multipliers
   const nonRepeatableTypes = [

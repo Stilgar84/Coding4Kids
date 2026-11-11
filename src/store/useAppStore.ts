@@ -205,6 +205,7 @@ interface AppState {
   setAppMode: (mode: AppMode) => void;
   setCurriculumActivity: (activityId: string, version?: number) => void;
   openCopyInSandbox: () => void;
+  loadVariationWorkspace: (workspace: WorkspaceState, title?: string) => void;
 
   // Actions
   setSimEnvironment: (simId: 'grid' | 'turtle') => void;
@@ -1018,6 +1019,40 @@ export const useAppStore = create<AppState>((set, get) => {
       get().runInstantIfActive();
     },
 
+    loadVariationWorkspace: (variationWorkspace, title) => {
+      get().pause();
+      recordMutation(title ? `Load variation: ${title}` : 'Load variation');
+      get().reset();
+
+      const newWorkspace = cloneWorkspaceWithFreshIds(variationWorkspace);
+      const announcement = title
+        ? `Loaded variation: ${title}. Press Undo to restore previous blocks.`
+        : 'Loaded variation into workspace. Press Undo to restore previous blocks.';
+
+      set((state) => ({
+        workspace: newWorkspace,
+        ...(state.appMode === 'curriculum'
+          ? {
+              curriculumWorkspaces: {
+                ...state.curriculumWorkspaces,
+                [state.activeActivityId]: cloneWorkspace(newWorkspace),
+              },
+            }
+          : {
+              savedWorkspaces: {
+                ...state.savedWorkspaces,
+                [state.activeSimId]: cloneWorkspace(newWorkspace),
+              },
+            }),
+        activeScope: 'MAIN',
+        selectedBlockId: null,
+        runtime: null,
+        statusAnnouncement: announcement,
+      }));
+
+      get().runInstantIfActive();
+    },
+
     setSimEnvironment: (simId) => {
       if (get().appMode === 'curriculum') {
         get().setAppMode('sandbox');
@@ -1368,11 +1403,36 @@ export const useAppStore = create<AppState>((set, get) => {
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
       recordMutation('Add block');
-      const id = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const simEnv = getSimEnvironment(get().activeSimId);
-      const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === type);
-      const resolvedParams = params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
-      const newBlock: CodeBlock = { id, type, repeatCount, params: resolvedParams };
+      const currentState = get();
+      const activeActivity =
+        currentState.appMode === 'curriculum'
+          ? getActivityAtVersion(currentState.activeActivityId, currentState.activeActivityVersion) ??
+            getActivityLatest(currentState.activeActivityId)
+          : undefined;
+      const allowActionParams =
+        currentState.appMode !== 'curriculum' ||
+        activeActivity?.palette?.allowActionParams !== false;
+
+      const normalizedType =
+        currentState.appMode === 'curriculum' &&
+        !allowActionParams &&
+        currentState.activeSimId === 'turtle'
+          ? type === 'MOVE_FWD'
+            ? 'FORWARD'
+            : type === 'MOVE_BACK'
+            ? 'BACKWARD'
+            : type
+          : type;
+
+      const id = `${normalizedType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const simEnv = getSimEnvironment(currentState.activeSimId);
+      const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === normalizedType);
+      const isVariableBlock = normalizedType === 'VAR_ASSIGN' || normalizedType === 'VAR_OP';
+      const resolvedParams =
+        !allowActionParams && !isVariableBlock
+          ? undefined
+          : params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
+      const newBlock: CodeBlock = { id, type: normalizedType, repeatCount, params: resolvedParams };
       set((state) => {
         const currentBlocks = [...state.workspace[scope]];
         if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
@@ -1401,8 +1461,18 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     updateBlockParams: (scope, blockId, newParams) => {
-      const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
+      const currentState = get();
+      const currentBlock = currentState.workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
+      const isVariableBlock = currentBlock.type === 'VAR_ASSIGN' || currentBlock.type === 'VAR_OP';
+      if (currentState.appMode === 'curriculum' && !isVariableBlock) {
+        const activeActivity =
+          getActivityAtVersion(currentState.activeActivityId, currentState.activeActivityVersion) ??
+          getActivityLatest(currentState.activeActivityId);
+        if (activeActivity?.palette?.allowActionParams === false) {
+          return;
+        }
+      }
       recordMutation('Update block params');
       set((state) => {
         const nextWorkspace: WorkspaceState = {

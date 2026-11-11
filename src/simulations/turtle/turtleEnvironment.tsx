@@ -4,6 +4,7 @@ import {
   SimActionResult,
   ActionParamDef,
 } from '../../engine/simulation/types';
+import { registerSimulation } from '../../engine/simulation/registry';
 import { TurtleState } from './types';
 import {
   moveTurtleForward,
@@ -23,6 +24,25 @@ import {
   Slash,
   Palette,
 } from 'lucide-react';
+
+export const DEFAULT_TURN_ANGLE = 90;
+
+export function normalizeTurtleActionType(actionType: string): string {
+  if (actionType === 'MOVE_FWD') return 'FORWARD';
+  if (actionType === 'MOVE_BACK') return 'BACKWARD';
+  return actionType;
+}
+
+export function getEffectiveTurtlePaletteItems(allowActionParams = true): SimPaletteItem[] {
+  if (allowActionParams) {
+    return TURTLE_PALETTE_ITEMS;
+  }
+  return TURTLE_PALETTE_ITEMS.map((item) => ({
+    ...item,
+    paramDefs: undefined,
+    params: undefined,
+  }));
+}
 
 export function createInitialTurtleState(): TurtleState {
   return {
@@ -348,26 +368,42 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
     switch (actionType) {
       case 'FORWARD':
       case 'MOVE_FWD': {
-        const dist = options?.params?.length ?? options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
+        const rawDist = options?.params?.length ?? options?.params?.distance;
+        const dist =
+          typeof rawDist === 'number' && Number.isFinite(rawDist)
+            ? rawDist
+            : DEFAULT_STEP_DISTANCE;
         nextState = moveTurtleForward(nextState, dist);
         break;
       }
 
       case 'BACKWARD':
       case 'MOVE_BACK': {
-        const dist = options?.params?.length ?? options?.params?.distance ?? DEFAULT_STEP_DISTANCE;
+        const rawDist = options?.params?.length ?? options?.params?.distance;
+        const dist =
+          typeof rawDist === 'number' && Number.isFinite(rawDist)
+            ? rawDist
+            : DEFAULT_STEP_DISTANCE;
         nextState = moveTurtleBackward(nextState, dist);
         break;
       }
 
       case 'TURN_LEFT': {
-        const baseAngle = options?.params?.angle ?? 90;
+        const rawAngle = options?.params?.angle;
+        const baseAngle =
+          typeof rawAngle === 'number' && Number.isFinite(rawAngle)
+            ? rawAngle
+            : DEFAULT_TURN_ANGLE;
         nextState = turnTurtle(nextState, -baseAngle);
         break;
       }
 
       case 'TURN_RIGHT': {
-        const baseAngle = options?.params?.angle ?? 90;
+        const rawAngle = options?.params?.angle;
+        const baseAngle =
+          typeof rawAngle === 'number' && Number.isFinite(rawAngle)
+            ? rawAngle
+            : DEFAULT_TURN_ANGLE;
         nextState = turnTurtle(nextState, baseAngle);
         break;
       }
@@ -424,3 +460,5 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
 
   ToolsComponent: TurtleToolbarTools,
 };
+
+registerSimulation(turtleSimulationEnvironment);

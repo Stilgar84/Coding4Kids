@@ -8,6 +8,7 @@ import { SaveProgramModal } from './components/SaveProgramModal';
 import { LoadProgramModal } from './components/LoadProgramModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStore } from './store/useAppStore';
+import { VariationCardsPanel } from './components/VariationCardsPanel';
 import { getSimEnvironment } from './engine/simulation/registry';
 import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 
@@ -44,7 +45,10 @@ export const App: React.FC = () => {
             data-testid="pane-simulation"
             className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
           >
-            {Renderer && <Renderer state={activeState} runtimeStatus={runtime?.status} />}
+            <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col">
+              {Renderer && <Renderer state={activeState} runtimeStatus={runtime?.status} />}
+            </div>
+            <VariationCardsPanel />
           </section>
         )}
       </main>
