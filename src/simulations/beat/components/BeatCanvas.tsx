@@ -2,7 +2,7 @@ import React, { useSyncExternalStore } from 'react';
 import { Bell, Eraser, Grid, Hourglass, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { SimulationStatus } from '../../../types';
 import { useAppStore } from '../../../store/useAppStore';
-import { BEAT_GRID_SIZE, BeatCueKind, BeatState } from '../types';
+import { BEAT_GRID_SIZE, BEAT_LED_PALETTE, BeatCueKind, BeatState } from '../types';
 import { beatSynth } from '../beatSynth';
 
 interface BeatCanvasProps {
@@ -139,11 +139,20 @@ function getCursorArrowRotation(dir: BeatState['cursor']['dir']): number {
 }
 
 export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
-  const storeBeatState = useAppStore((s) => s.beatState);
-  const setBeatMuted = useAppStore((s) => s.setBeatMuted);
-  const unlockBeatAudio = useAppStore((s) => s.unlockBeatAudio);
+  useAppStore();
+  const {
+    beatState: storeBeatState,
+    setBeatMuted,
+    toggleBeatMuted,
+    unlockBeatAudio,
+  } = useAppStore.getState();
 
   const state = propState || storeBeatState;
+  const isMuted = Boolean(state.isMuted);
+  const activeColor = state.activeColor || '#06b6d4';
+  const swatchMeta = BEAT_LED_PALETTE.find(
+    (s) => s.hex.toLowerCase() === activeColor.toLowerCase()
+  );
 
   const synthNeedsUnlock = useSyncExternalStore(
     beatSynth.subscribe,
@@ -154,11 +163,17 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
   const activeCue: BeatCueKind | 'NONE' = state.lastTriggeredEvent?.kind || 'NONE';
   const cueVisual = getCueVisualStyle(activeCue);
   const activeBeatSlot = state.beatIndex > 0 ? ((state.beatIndex - 1) % 4) + 1 : 0;
-  const showTapForSoundPill = state.isMuted || synthNeedsUnlock;
 
   const handleTapForSound = () => {
     setBeatMuted(false);
     unlockBeatAudio();
+  };
+
+  const handleToggleMute = () => {
+    if (isMuted) {
+      unlockBeatAudio();
+    }
+    toggleBeatMuted();
   };
 
   return (
@@ -166,7 +181,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
       data-testid="beat-canvas"
       className="relative flex flex-col w-full h-full bg-slate-950 select-none overflow-hidden"
     >
-      {/* Top Status & Accessibility Bar: Beat-Ring Cue Indicator + Tap-for-Sound / Mute Pill */}
+      {/* Top Status & Accessibility Bar: Beat-Ring Cue Indicator + Active LED Color + Mute / Tap-for-Sound */}
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1 z-10 flex-shrink-0">
         {/* Visual Percussion & 4-Beat Rhythm Indicator (Color-Blind & Deaf Inclusive) */}
         <div
@@ -204,30 +219,54 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
           </span>
         </div>
 
-        {/* Autoplay-Safe "Tap for Sound" / Mute Pill */}
-        {showTapForSoundPill ? (
+        {/* Right Controls: Active LED Color Swatch + Autoplay Unlock Pill + Mute Toggle */}
+        <div className="flex items-center gap-1.5">
+          <div
+            data-testid="tool-beat-active-color"
+            title={`Active LED Color: ${swatchMeta?.label || activeColor}`}
+            aria-label={`Active LED Color: ${swatchMeta?.label || activeColor}`}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 border border-slate-700"
+          >
+            <span
+              style={{
+                backgroundColor: activeColor,
+                boxShadow: `0 0 8px ${activeColor}99`,
+              }}
+              className="flex items-center justify-center w-5 h-5 rounded-md border border-white/60 text-[10px] font-black text-slate-950 leading-none"
+            >
+              {swatchMeta?.shapeCue || '●'}
+            </span>
+          </div>
+
+          {synthNeedsUnlock && !isMuted && (
+            <button
+              type="button"
+              data-testid="beat-tap-for-sound-pill"
+              onClick={handleTapForSound}
+              aria-label="Audio paused by browser — Tap for Sound"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/70 text-[11px] font-extrabold shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <VolumeX className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">Tap for Sound</span>
+            </button>
+          )}
+
           <button
             type="button"
-            data-testid="beat-tap-for-sound-pill"
-            onClick={handleTapForSound}
-            aria-label={state.isMuted ? 'Sound muted — Tap for Sound' : 'Audio paused by browser — Tap for Sound'}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/70 text-xs font-extrabold shadow-md transition-all active:scale-95 cursor-pointer"
+            data-testid="tool-beat-mute"
+            aria-pressed={isMuted}
+            aria-label={isMuted ? 'Unmute Beat Audio' : 'Mute Beat Audio'}
+            title={isMuted ? 'Sound Muted (Tap to Unmute)' : 'Sound On (Tap to Mute)'}
+            onClick={handleToggleMute}
+            className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+              isMuted
+                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-400/80 shadow-md'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border-slate-700'
+            }`}
           >
-            <VolumeX className="w-3.5 h-3.5 text-amber-300" />
-            <span>Tap for Sound</span>
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
-        ) : (
-          <button
-            type="button"
-            data-testid="beat-sound-active-pill"
-            onClick={() => setBeatMuted(true)}
-            aria-label="Mute Beat Sound"
-            title="Sound On (Click to Mute)"
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border border-slate-700 text-xs font-bold transition-all active:scale-95 cursor-pointer"
-          >
-            <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-          </button>
-        )}
+        </div>
       </div>
 
       {/* Main Centered 8x8 RGB LED Matrix Chassis + Synchronized Beat-Ring Pulse */}

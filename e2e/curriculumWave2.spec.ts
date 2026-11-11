@@ -13,9 +13,9 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await expect(page.getByTestId('palette-loop-start')).toHaveCount(0);
     await expect(page.getByTestId('palette-call-f1')).toHaveCount(0);
 
-    // 4-slot physical tray starts with 0 placed blocks and 4 empty slots, with slot counter inline in palette control row
+    // 4-slot physical tray starts with 0 placed blocks and 4 empty slots, with slot counter inline next to smart trash button
     const slotCounter = page.getByTestId('workspace-slot-counter');
-    const deleteBtn = page.getByTestId('btn-palette-delete-block');
+    const trashBtn = page.getByTestId('btn-trash');
     await expect(slotCounter).toBeVisible();
     await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 4');
     await expect(page.getByTestId('workspace-empty-slot')).toHaveCount(4);
@@ -23,10 +23,10 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await expect(page.getByTestId('btn-workspace-undo')).toHaveCount(0);
 
     const counterBox = await slotCounter.boundingBox();
-    const deleteBox = await deleteBtn.boundingBox();
+    const trashBox = await trashBtn.boundingBox();
     expect(counterBox).not.toBeNull();
-    expect(deleteBox).not.toBeNull();
-    expect(Math.abs(counterBox!.y - deleteBox!.y)).toBeLessThan(8);
+    expect(trashBox).not.toBeNull();
+    expect(Math.abs(counterBox!.y - trashBox!.y)).toBeLessThan(8);
 
     // Trigger Tier 1 Ghost-Step Preview from Two-Tier Help Modal -> workspace blocks remain 0
     await page.getByTestId('btn-solution').click();
@@ -62,9 +62,9 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
 
     // Switch to 1.2 and back to 1.1 -> auto-restores 2 blocks
-    await page.getByTestId('btn-activity-1.2').click();
+    await page.getByTestId('btn-next-lesson').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(0);
-    await page.getByTestId('btn-activity-1.1').click();
+    await page.getByTestId('btn-prev-lesson').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
 
     // Create a new Frog profile -> starts clean with 0 blocks on 1.1
@@ -82,8 +82,9 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await page.getByTestId('profile-card-default').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
 
-    // Reset to Starter clears blocks, and 1-tap Undo restores them!
-    await page.getByTestId('btn-reset-to-starter').click();
+    // Reset to Starter via Unified Menu Drawer clears blocks, and 1-tap header Undo restores them!
+    await page.getByTestId('btn-hamburger-menu').click();
+    await page.getByTestId('drawer-btn-reset-to-starter').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(0);
     await page.getByTestId('btn-undo').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
@@ -99,11 +100,11 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await expect(page.getByTestId('flag-padlock-overlay')).toBeAttached();
     await expect(page.locator('[data-testid^="padlock-"]')).toHaveCount(1);
 
-    // Load full reference solution via Two-Tier Help Modal and run to unlock & win
+    // Load full reference solution via Two-Tier Help Modal (auto-closes modal) and run to unlock & win
     await page.getByTestId('btn-solution').click();
     await page.getByTestId('btn-reveal-full-solution').click();
     await page.getByTestId('btn-load-solution').click();
-    await page.getByTestId('btn-close-solution').click();
+    await expect(page.getByTestId('solution-modal')).toHaveCount(0);
 
     await page.getByTestId('btn-play').click();
     await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 6000 });
@@ -125,10 +126,10 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     // 3 auto-rendered SVG variation thumbnails are visible
     await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(3);
 
-    // Load a variation card and then Undo back to starter workspace
+    // Load a variation card and then Undo via canonical header Undo button back to starter workspace
     await page.locator('[data-testid^="btn-load-variation-"]').nth(1).click();
-    await expect(page.getByTestId('btn-variation-undo')).toBeEnabled();
-    await page.getByTestId('btn-variation-undo').click();
+    await expect(page.getByTestId('btn-undo')).toBeEnabled();
+    await page.getByTestId('btn-undo').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(initialCount);
   });
 
@@ -139,7 +140,8 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await page.goto('/');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    // Switch to Beat & Light environment in Sandbox mode
+    // Switch to Beat & Light environment via LessonPickerModal
+    await page.getByTestId('btn-lesson-picker').click();
     await page.getByTestId('sim-tab-beat').click();
     await expect(page.getByTestId('beat-canvas')).toBeVisible();
     await expect(page.getByTestId('beat-led-grid')).toBeVisible();

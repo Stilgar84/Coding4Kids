@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { ChevronDown, ChevronUp, Copy, Play, Sparkles, Square, Undo2 } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, ChevronUp, Copy, Play, Sparkles, Square } from 'lucide-react';
 import { InterpreterRuntimeState, ScopeType, SimulationSpeed, WorkspaceState } from '../types';
 import {
   CreativeVariationCard,
@@ -618,20 +618,15 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
 };
 
 export const VariationCardsPanel: React.FC = () => {
-  const subscribedAppMode = useAppStore((state) => state.appMode);
-  const subscribedActivityId = useAppStore((state) => state.activeActivityId);
-  const subscribedActivityVersion = useAppStore((state) => state.activeActivityVersion);
-  const subscribedCanUndo = useAppStore((state) => state.canUndo);
-  const subscribedMainIsPlaying = useAppStore((state) => state.isPlaying);
-
+  useAppStore();
   const snapshot = useAppStore.getState();
-  const appMode = snapshot.appMode || subscribedAppMode;
-  const activeActivityId = snapshot.activeActivityId || subscribedActivityId;
-  const activeActivityVersion = snapshot.activeActivityVersion || subscribedActivityVersion;
-  const canUndo = snapshot.canUndo ?? subscribedCanUndo;
-  const mainIsPlaying = snapshot.isPlaying ?? subscribedMainIsPlaying;
+  const appMode = snapshot.appMode;
+  const activeActivityId = snapshot.activeActivityId;
+  const activeActivityVersion = snapshot.activeActivityVersion;
+  const mainIsPlaying = snapshot.isPlaying;
+  const completedActivities = snapshot.completedActivities;
   const loadVariationWorkspace = snapshot.loadVariationWorkspace;
-  const undo = snapshot.undo;
+  const completeCreativeActivity = snapshot.completeCreativeActivity;
 
   const previewSnapshot = useSyncExternalStore(
     beatVariationPreviewPlayer.subscribe,
@@ -729,19 +724,33 @@ export const VariationCardsPanel: React.FC = () => {
           )}
         </button>
 
-        {canUndo && (
-          <button
-            type="button"
-            data-testid="btn-variation-undo"
-            onClick={() => undo()}
-            title="Undo last workspace change"
-            aria-label="Undo last workspace change"
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <Undo2 className="w-3.5 h-3.5 text-sky-400" aria-hidden="true" />
-            <span>Undo</span>
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid="btn-complete-creative-activity"
+          onClick={() => {
+            beatVariationPreviewPlayer.stop('silent');
+            completeCreativeActivity(true);
+          }}
+          title={
+            completedActivities[activeActivity.id]
+              ? 'Next lesson'
+              : 'Mark lesson complete and continue'
+          }
+          aria-label={
+            completedActivities[activeActivity.id]
+              ? 'Next lesson'
+              : 'Mark creative lesson complete and continue'
+          }
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 ${
+            completedActivities[activeActivity.id]
+              ? 'bg-emerald-600/25 hover:bg-emerald-600/35 text-emerald-200 border-emerald-400/60'
+              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 shadow-sm'
+          }`}
+        >
+          <Check className="w-3.5 h-3.5 stroke-[2.8]" aria-hidden="true" />
+          <span>{completedActivities[activeActivity.id] ? 'Next' : 'Done'}</span>
+          <ArrowRight className="w-3 h-3 stroke-[2.5]" aria-hidden="true" />
+        </button>
       </div>
 
       {/* Collapsible Horizontal Card Strip */}

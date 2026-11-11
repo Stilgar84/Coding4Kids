@@ -776,7 +776,10 @@ const BACKPACK_SHAKE_CSS = `
  * Compact 1-slot Backpack HUD badge displayed in GridCanvas whenever interactive world elements
  * exist on the map or the robot is carrying an item.
  */
-export const BackpackHud: React.FC<{ grid: GridState }> = ({ grid }) => {
+export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
+  grid,
+  stacked = false,
+}) => {
   const carried = grid.robot.carriedItem ?? null;
   const showHud = Boolean(carried) || hasInteractiveWorldElements(grid);
   const feedbackSeq = grid.lastInteractionFeedback?.seq ?? 0;
@@ -814,7 +817,9 @@ export const BackpackHud: React.FC<{ grid: GridState }> = ({ grid }) => {
       data-feedback-kind={grid.lastInteractionFeedback?.kind}
       aria-label={summaryLabel}
       title={grid.lastInteractionFeedback?.message || summaryLabel}
-      className={`absolute top-3 left-3 z-20 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-2xl border-2 shadow-lg backdrop-blur-sm transition-colors ${
+      className={`${
+        stacked ? '' : 'absolute top-3 left-3 z-20 '
+      }pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-2xl border-2 shadow-lg backdrop-blur-sm transition-colors ${
         isShaking
           ? 'backpack-hud-shake bg-amber-950/90 border-amber-400 text-amber-100'
           : carried

@@ -21,6 +21,7 @@ import {
 export type LoadFilterMode = 'current-lesson' | 'all-lessons' | 'sandbox' | 'all';
 
 export const LoadProgramModal: React.FC = () => {
+  useAppStore();
   const {
     activeProfileId,
     appMode,
@@ -28,7 +29,7 @@ export const LoadProgramModal: React.FC = () => {
     isLoadModalOpen,
     setLoadModalOpen,
     loadSavedProgram,
-  } = useAppStore();
+  } = useAppStore.getState();
 
   const [saves, setSaves] = useState<SavedProgramEntry[]>(() =>
     isLoadModalOpen ? getSavedPrograms(activeProfileId) : []
@@ -141,7 +142,7 @@ export const LoadProgramModal: React.FC = () => {
     if (res.success) {
       setLoadModalOpen(false);
     } else {
-      setLoadError(res.error || 'Failed to load saved program.');
+      setLoadError(res.error || 'Could not open saved blocks.');
     }
   };
 
@@ -174,7 +175,7 @@ export const LoadProgramModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="load-program-modal-title"
       data-testid="load-program-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
       onClick={() => setLoadModalOpen(false)}
     >
       <div
@@ -183,26 +184,21 @@ export const LoadProgramModal: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/60 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/60 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-indigo-600/30 border border-indigo-500/50 text-indigo-400">
               <FolderOpen className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 id="load-program-modal-title" className="text-lg font-black text-white">
-                  Saved Programs
-                </h2>
-                <span
-                  data-testid="saved-count-badge"
-                  className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700"
-                >
-                  {filteredSaves.length}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Choose a saved lesson slot or sandbox program to load
-              </p>
+            <div className="flex items-center gap-2">
+              <h2 id="load-program-modal-title" className="text-lg font-black text-white">
+                Open Saved
+              </h2>
+              <span
+                data-testid="saved-count-badge"
+                className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700"
+              >
+                {filteredSaves.length}
+              </span>
             </div>
           </div>
           <button
@@ -220,7 +216,7 @@ export const LoadProgramModal: React.FC = () => {
         <div
           role="group"
           aria-label="Filter saved programs"
-          className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-slate-800 bg-slate-950/40 shrink-0"
+          className="flex flex-wrap items-center gap-2 px-5 py-2.5 border-b border-slate-800 bg-slate-950/40 shrink-0"
         >
           {appMode === 'curriculum' && (
             <button
@@ -234,7 +230,7 @@ export const LoadProgramModal: React.FC = () => {
                   : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-600'
               }`}
             >
-              🎓 Activity {activeActivityId} ({counts.currentLesson})
+              🎓 {activeActivityId} ({counts.currentLesson})
             </button>
           )}
           <button
@@ -248,7 +244,7 @@ export const LoadProgramModal: React.FC = () => {
                 : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-600'
             }`}
           >
-            All Saves ({counts.all})
+            ✨ All ({counts.all})
           </button>
           <button
             type="button"
@@ -261,7 +257,7 @@ export const LoadProgramModal: React.FC = () => {
                 : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-600'
             }`}
           >
-            Lessons ({counts.allLessons})
+            🎓 Learn ({counts.allLessons})
           </button>
           <button
             type="button"
@@ -274,12 +270,12 @@ export const LoadProgramModal: React.FC = () => {
                 : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-600'
             }`}
           >
-            🛠️ Sandbox ({counts.sandbox})
+            🛠️ Play ({counts.sandbox})
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
+        <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-4">
           {loadError && (
             <div
               role="alert"
@@ -291,18 +287,15 @@ export const LoadProgramModal: React.FC = () => {
           )}
 
           {filteredSaves.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-center text-slate-400 gap-3">
+            <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400 gap-3">
               <div className="flex items-center justify-center w-16 h-16 rounded-3xl bg-slate-800/80 border border-slate-700 text-slate-500">
                 <FolderOpen className="w-8 h-8" />
               </div>
               <div className="max-w-xs">
                 <p className="font-bold text-slate-200 text-base">
                   {filterMode === 'current-lesson'
-                    ? `No saved slots for Activity ${activeActivityId} yet`
-                    : 'No saved programs yet'}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Build and test your code, then click the Save button in the toolbar to save a numbered slot.
+                    ? `No saved slots for ${activeActivityId} yet`
+                    : 'No saved blocks yet'}
                 </p>
                 {filterMode !== 'all' && counts.all > 0 && (
                   <button
@@ -310,7 +303,7 @@ export const LoadProgramModal: React.FC = () => {
                     onClick={() => setFilterMode('all')}
                     className="mt-3 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-indigo-300 border border-slate-700 transition-colors"
                   >
-                    Show All Saved Programs ({counts.all})
+                    Show All ({counts.all})
                   </button>
                 )}
               </div>
@@ -351,7 +344,7 @@ export const LoadProgramModal: React.FC = () => {
                         />
                       ) : (
                         <div className="flex items-center justify-center text-slate-400 text-xs">
-                          No thumbnail
+                          🤖
                         </div>
                       )}
 
@@ -365,34 +358,34 @@ export const LoadProgramModal: React.FC = () => {
                             Slot {entry.slotIndex}
                           </span>
                         )}
-                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/90 text-slate-200 backdrop-blur-sm border border-slate-700">
+                        <span className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-900/90 text-slate-200 backdrop-blur-sm border border-slate-700">
                           {entry.simId === 'turtle'
-                            ? '🐢 Turtle'
+                            ? '🐢'
                             : entry.simId === 'beat'
-                            ? '🎵 Beat'
-                            : '🤖 Grid'}
+                            ? '🎵'
+                            : '🤖'}
                         </span>
                       </div>
 
-                      {/* Bottom-Left Lesson / Sandbox Origin + Version Badge */}
+                      {/* Bottom-Left Lesson / Play Origin */}
                       <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
                         {entry.lessonId ? (
                           <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/90 text-emerald-300 border border-emerald-600/40 backdrop-blur-sm">
-                            🎓 {entry.lessonId} • v{savedVer}
+                            🎓 {entry.lessonId}
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900/90 text-slate-300 border border-slate-700 backdrop-blur-sm">
-                            🛠️ Sandbox
+                            🛠️ Play
                           </span>
                         )}
 
                         {hasVersionMismatch && latestLesson && (
                           <span
                             data-testid={`load-mismatch-badge-${entry.id}`}
-                            title={`Saved on v${savedVer}; latest lesson is v${latestLesson.version}`}
+                            title="Newer puzzle map available"
                             className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-950/95 text-amber-300 border border-amber-500/60"
                           >
-                            ▲ v{savedVer} → v{latestLesson.version}
+                            ✨ New Map
                           </span>
                         )}
                       </div>
@@ -402,17 +395,17 @@ export const LoadProgramModal: React.FC = () => {
                         {entry.status === 'SUCCESS' ? (
                           <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-600/50 backdrop-blur-sm">
                             <Trophy className="w-3 h-3 text-emerald-400" />
-                            <span>Win</span>
+                            <span>🏁</span>
                           </div>
                         ) : entry.status === 'COLLISION' ? (
                           <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-red-950/90 text-red-300 border border-red-600/50 backdrop-blur-sm">
                             <AlertTriangle className="w-3 h-3 text-red-400" />
-                            <span>Hit</span>
+                            <span>💥</span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-sky-950/90 text-sky-300 border border-sky-600/50 backdrop-blur-sm">
                             <Compass className="w-3 h-3 text-sky-400" />
-                            <span>Done</span>
+                            <span>✓</span>
                           </div>
                         )}
                       </div>
@@ -433,7 +426,7 @@ export const LoadProgramModal: React.FC = () => {
                           <span>•</span>
                           <span className="flex items-center gap-0.5">
                             <Clock className="w-3 h-3 text-slate-500" />
-                            {entry.stepCount} steps
+                            {entry.stepCount}
                           </span>
                         </div>
                       </div>
@@ -445,7 +438,7 @@ export const LoadProgramModal: React.FC = () => {
                           onClick={() => handleLoad(entry)}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors active:scale-95 shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                         >
-                          <span>Load</span>
+                          <span>Open</span>
                           <ArrowRight className="w-3.5 h-3.5" />
                         </button>
 
@@ -466,7 +459,7 @@ export const LoadProgramModal: React.FC = () => {
                           title="Delete saved program"
                         >
                           {deleteConfirmId === entry.id ? (
-                            <span>Confirm</span>
+                            <span>Delete?</span>
                           ) : (
                             <Trash2 className="w-4 h-4" />
                           )}

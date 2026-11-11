@@ -11,9 +11,11 @@ import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/Wor
 const CELL_SIZE = 72; // pixels per cell
 
 export const GridCanvas: React.FC = () => {
+  useAppStore();
   const {
     appMode,
     grid,
+    runtime,
     toggleWall,
     addWall,
     resizeBoard,
@@ -24,7 +26,7 @@ export const GridCanvas: React.FC = () => {
     speed,
     startHistoryBatch,
     endHistoryBatch,
-  } = useAppStore();
+  } = useAppStore.getState();
 
   const isReadOnly = appMode === 'curriculum';
   const isInstant = speed === 'instant' || (speed as any) === 0;
@@ -323,8 +325,29 @@ export const GridCanvas: React.FC = () => {
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none">
-      {/* 1-Slot Backpack HUD Indicator (when interactive elements exist or carrying an item) */}
-      <BackpackHud grid={grid} />
+      {/* Top-Left Non-Overlapping HUD Stack: 1-Slot Backpack + Runtime Variables */}
+      <div className="absolute top-3 left-3 z-20 flex flex-col items-start gap-1.5 pointer-events-none">
+        <BackpackHud grid={grid} stacked />
+        {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
+          <div
+            data-testid="toolbar-variables"
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 backdrop-blur border border-indigo-500/50 rounded-xl text-xs shadow-lg"
+          >
+            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">
+              VARS
+            </span>
+            {Object.entries(runtime.variables).map(([k, v]) => (
+              <span
+                key={k}
+                data-testid={`var-badge-${k}`}
+                className="px-1.5 py-0.5 rounded bg-indigo-950/90 border border-indigo-500/40 font-mono font-bold text-indigo-200"
+              >
+                {k}={v}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Simulation status banner if collision or victory */}
       {status === 'COLLISION' && (
@@ -386,10 +409,10 @@ export const GridCanvas: React.FC = () => {
               data-testid="grid-readonly-badge"
               aria-label="Read-only lesson map"
               title="Read-only lesson map — use Open Copy in Sandbox to edit"
-              className="flex items-center gap-1 px-2 py-0.5 bg-slate-800 border-2 border-sky-500/60 rounded-full text-[10px] font-black text-sky-300 shadow-md"
+              className="flex items-center justify-center w-6 h-6 bg-slate-800 border-2 border-sky-500/60 rounded-full text-sky-300 shadow-md"
             >
-              <Lock className="w-3 h-3 stroke-[2.5]" />
-              <span>Locked</span>
+              <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span className="sr-only">Read-only lesson map</span>
             </div>
           )}
           <div

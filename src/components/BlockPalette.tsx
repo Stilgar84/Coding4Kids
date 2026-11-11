@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { SimPaletteItem } from '../engine/simulation/types';
 import {
   Repeat,
-  Undo2,
+  CornerDownLeft,
   PhoneCall,
-  Trash,
   Trash2,
   SlidersHorizontal,
   Layers,
@@ -54,7 +53,7 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'LOOP_END',
     name: 'Loop End',
     testId: 'palette-loop-end',
-    icon: <Undo2 className="w-5 h-5 md:w-8 md:h-8 text-purple-200 stroke-[3]" />,
+    icon: <CornerDownLeft className="w-5 h-5 md:w-8 md:h-8 text-purple-200 stroke-[3]" />,
     bgClass: 'bg-purple-900 hover:bg-purple-800',
     borderClass: 'border-purple-500',
     supportsRepeat: false,
@@ -373,7 +372,35 @@ export const BlockPalette: React.FC = () => {
   } = useAppStore.getState();
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
+  const [isTrashArmed, setIsTrashArmed] = useState(false);
+  const trashBtnRef = useRef<HTMLButtonElement>(null);
   const [, setShakeTick] = useState(0);
+
+  useEffect(() => {
+    setIsTrashArmed(false);
+  }, [selectedBlockId, activeScope, activeActivityId, appMode, activeSimId, workspace[activeScope]?.length === 0]);
+
+  useEffect(() => {
+    if (!isTrashArmed) return;
+    const timer = setTimeout(() => setIsTrashArmed(false), 3000);
+    const onPointerDown = (ev: PointerEvent) => {
+      if (trashBtnRef.current && !trashBtnRef.current.contains(ev.target as Node)) {
+        setIsTrashArmed(false);
+      }
+    };
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        setIsTrashArmed(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isTrashArmed]);
 
   useEffect(() => {
     if (lastSlotCapRejectedAt === null) return;
@@ -799,39 +826,6 @@ export const BlockPalette: React.FC = () => {
           </button>
         )}
 
-        {/* Delete Single Block Button */}
-        <button
-          type="button"
-          data-testid="btn-palette-delete-block"
-          disabled={!selectedBlockId}
-          onClick={() => {
-            if (selectedBlockId) {
-              removeBlock(activeScope, selectedBlockId);
-            }
-          }}
-          title={selectedBlockId ? 'Delete selected block' : 'Select a block to delete'}
-          aria-label="Delete single block"
-          className={`flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all ${
-            selectedBlockId
-              ? 'bg-slate-800 hover:bg-rose-600 text-rose-400 hover:text-white border-slate-700 shadow-md cursor-pointer active:scale-95'
-              : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
-          }`}
-        >
-          <Trash className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
-        </button>
-
-        {/* Clear Scope / Delete All Button */}
-        <button
-          type="button"
-          data-testid="btn-clear-workspace"
-          onClick={() => clearWorkspace(activeScope)}
-          title="Delete all"
-          aria-label="Delete all"
-          className="flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 bg-slate-800 hover:bg-red-600/80 text-slate-400 hover:text-white rounded-lg md:rounded-xl border-2 border-slate-700 transition-colors active:scale-95"
-        >
-          <Trash2 className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
-        </button>
-
         {/* Divider & Number/Variable Multipliers Row */}
         {showBadgeRow && (
           <>
@@ -923,9 +917,71 @@ export const BlockPalette: React.FC = () => {
             </span>
           </div>
         )}
+
+        {/* Smart 2-Tap Trash Button (1-tap delete selected block; 2-tap armed clear all) */}
+        <button
+          ref={trashBtnRef}
+          type="button"
+          data-testid="btn-trash"
+          data-armed={isTrashArmed ? 'true' : 'false'}
+          disabled={!selectedBlockId && blocks.length === 0}
+          onClick={() => {
+            if (selectedBlockId) {
+              removeBlock(activeScope, selectedBlockId);
+              setIsTrashArmed(false);
+            } else if (blocks.length > 0) {
+              if (!isTrashArmed) {
+                setIsTrashArmed(true);
+                useAppStore.setState({
+                  statusAnnouncement: 'Tap Trash again to clear all blocks.',
+                });
+              } else {
+                clearWorkspace(activeScope);
+                setIsTrashArmed(false);
+              }
+            }
+          }}
+          title={
+            selectedBlockId
+              ? 'Delete selected block'
+              : isTrashArmed
+              ? 'Tap again to clear all blocks'
+              : blocks.length > 0
+              ? 'Clear all blocks (tap twice)'
+              : 'Workspace empty'
+          }
+          aria-label={
+            selectedBlockId
+              ? 'Delete selected block'
+              : isTrashArmed
+              ? 'Confirm clear all blocks'
+              : 'Trash'
+          }
+          className={`${
+            budget.isCapped && budget.counterMax !== null ? '' : 'ml-auto'
+          } relative flex-shrink-0 flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl border-2 transition-all ${
+            selectedBlockId
+              ? 'bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white border-rose-400 shadow-md cursor-pointer active:scale-95'
+              : isTrashArmed
+              ? 'bg-red-600 hover:bg-red-500 text-white border-red-300 shadow-lg ring-2 ring-red-400/60 animate-pulse cursor-pointer active:scale-95'
+              : blocks.length > 0
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700 cursor-pointer active:scale-95'
+              : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
+          }`}
+        >
+          <Trash2 className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
+          {isTrashArmed && !selectedBlockId && (
+            <span
+              aria-hidden="true"
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-300 text-slate-950 font-black text-[10px] leading-none flex items-center justify-center border border-slate-900 shadow"
+            >
+              ?
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Collapsible Function Selection Bar */}
+      {/* Collapsible Function Selection Bar (auto-opened by store on F1+ lessons/execution, manually toggleable) */}
       {isFunctionBarOpen && policy.showScopeSelector && (
         <div
           data-testid="palette-function-bar"

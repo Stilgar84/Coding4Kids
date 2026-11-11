@@ -3,15 +3,17 @@ import { TurtleState } from '../types';
 import { getArcSvgPath } from '../physics';
 import { SimulationStatus } from '../../../types';
 import { useAppStore } from '../../../store/useAppStore';
+import { TurtleToolbarTools } from './TurtleToolbarTools';
 
 interface TurtleCanvasProps {
   state: TurtleState;
   runtimeStatus?: SimulationStatus;
 }
 
-export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
-  const { turtleState, updateTurtleViewport, speed } = useAppStore();
-  const state = turtleState;
+export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) => {
+  useAppStore();
+  const { turtleState, updateTurtleViewport, speed } = useAppStore.getState();
+  const state = propState || turtleState;
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -326,29 +328,34 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = () => {
         </g>
       </svg>
 
-      {/* Floating Info Pill: Coordinate & Heading readout */}
+      {/* Floating Info Pill: Compact Coordinate, Heading & Pen Indicator */}
       <div
         data-testid="turtle-info-pill"
-        className="absolute bottom-4 left-4 z-20 flex items-center gap-3 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl text-xs font-mono text-slate-200 pointer-events-none select-none shadow-lg"
+        className="absolute bottom-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl text-[11px] font-mono text-slate-200 pointer-events-none select-none shadow-lg"
       >
         <span>
-          X: <b className="text-amber-400">{Math.round(robotPose.x)}</b> Y: <b className="text-amber-400">{Math.round(robotPose.y)}</b>
+          X: <b className="text-amber-400">{Math.round(robotPose.x)}</b> Y:{' '}
+          <b className="text-amber-400">{Math.round(robotPose.y)}</b>
         </span>
-        <span className="text-slate-500">|</span>
-        <span>
+        <span className="hidden sm:inline text-slate-500">|</span>
+        <span className="hidden sm:inline">
           ∠ <b className="text-sky-400">{Math.round(robotPose.heading)}°</b>
         </span>
-        <span className="text-slate-500">|</span>
-        <span className="flex items-center gap-1.5">
-          Pen:
-          <span
-            className="w-3 h-3 rounded-full border border-white/60 inline-block"
-            style={{ backgroundColor: state.penColor }}
-          />
-          <b className={state.penDown ? 'text-emerald-400' : 'text-slate-400'}>
-            {state.penDown ? 'DOWN' : 'UP'}
-          </b>
-        </span>
+        <span
+          className={`w-3 h-3 rounded-full border border-white/70 inline-block ${
+            state.penDown ? 'shadow-sm' : 'opacity-40'
+          }`}
+          style={{ backgroundColor: state.penColor }}
+          title={state.penDown ? 'Pen Down' : 'Pen Up'}
+        />
+      </div>
+
+      {/* Floating Viewport Controls (Zoom In/Out, Fit, Reset View) */}
+      <div
+        className="absolute bottom-3 right-3 z-20"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <TurtleToolbarTools />
       </div>
     </div>
   );

@@ -74,7 +74,8 @@ test.describe('Wave 3: Lesson Save Slots, Constraint Solver, Demo Runner (1.0), 
     await page.keyboard.press('Escape');
 
     // Load Slot 1 back from Load Modal -> workspace returns to 1 block
-    await page.getByTestId('btn-load-modal').click();
+    await page.getByTestId('btn-hamburger-menu').click();
+    await page.getByTestId('drawer-btn-load').click();
     await expect(page.getByTestId('load-filter-current-lesson')).toContainText('(2)');
     const slot1LoadBtn = page
       .locator('[data-testid^="saved-card-"]', { hasText: 'Slot 1' })

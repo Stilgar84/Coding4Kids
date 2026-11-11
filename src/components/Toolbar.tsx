@@ -1,37 +1,31 @@
 import React from 'react';
-import { useAppStore, PRESET_LEVELS } from '../store/useAppStore';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Lightbulb,
+  Menu,
+  Pause,
+  Play,
+  RefreshCw,
+  Save,
+  SkipBack,
+  StepForward,
+  Undo2,
+  Zap,
+} from 'lucide-react';
+import { PRESET_LEVELS, useAppStore } from '../store/useAppStore';
 import { ScopeType } from '../types';
-import { getSimEnvironment } from '../engine/simulation/registry';
 import { validateLoopStructure } from '../engine/interpreter';
 import { LESSONS } from '../data/lessons';
 import {
   CURRICULUM_ACTIVITIES,
   getActivityAtVersion,
   getActivityLatest,
-  getCurriculumModule,
 } from '../data/curriculum';
-import {
-  Play,
-  Pause,
-  SkipForward,
-  RotateCcw,
-  Zap,
-  Lightbulb,
-  ChevronLeft,
-  ChevronRight,
-  Share2,
-  Save,
-  FolderOpen,
-  Undo2,
-  Redo2,
-  Menu,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  Copy,
-} from 'lucide-react';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
-import { usePwaUpdateStore, reopenUpdatePrompt } from '../services/pwaUpdateManager';
+import { reopenUpdatePrompt, usePwaUpdateStore } from '../services/pwaUpdateManager';
 import {
   getProfileAvatar,
   getProfileColor,
@@ -39,21 +33,18 @@ import {
 } from '../services/profileService';
 
 export const Toolbar: React.FC = () => {
+  useAppStore();
   const {
     profiles,
     activeProfileId,
     setProfileModalOpen,
     completedActivities,
-    resetActivityToStarter,
     appMode,
-    setAppMode,
     activeActivityId,
     activeActivityVersion,
     setCurriculumActivity,
-    openCopyInSandbox,
     statusAnnouncement,
     activeSimId,
-    setSimEnvironment,
     currentLevel,
     setLevel,
     isPlaying,
@@ -65,31 +56,18 @@ export const Toolbar: React.FC = () => {
     setSpeed,
     workspace,
     setSolutionOpen,
-    setExportImportOpen,
     setSaveModalOpen,
-    setLoadModalOpen,
-    grid,
-    turtleState,
-    beatState,
-    runtime,
+    setLessonPickerOpen,
     undo,
-    redo,
     canUndo,
-    canRedo,
     toggleMobileMenu,
-    isMapHidden,
-    toggleMapHidden,
-  } = useAppStore();
+  } = useAppStore.getState();
 
-  const currentSimEnv = getSimEnvironment(activeSimId);
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
   const currentCurriculumActivity =
     getActivityAtVersion(activeActivityId, activeActivityVersion) ??
     getActivityLatest(activeActivityId) ??
     CURRICULUM_ACTIVITIES[0];
-  const currentCurriculumModule = currentCurriculumActivity
-    ? getCurriculumModule(currentCurriculumActivity.moduleId)
-    : undefined;
 
   const hasLoopError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((sc) => {
     return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
@@ -104,44 +82,45 @@ export const Toolbar: React.FC = () => {
     else setSpeed(400);
   };
 
-  const getSpeedLabel = () => {
+  const getFullSpeedLabel = () => {
     if (isInstant) return 'Instant';
     if (speed === 25) return '16x';
     if (speed === 100) return '4x';
     return '1x';
   };
 
-  const handlePrevLevel = () => {
-    const prevId = currentLevel > 1 ? currentLevel - 1 : PRESET_LEVELS.length;
-    setLevel(prevId);
+  const getCompactSpeedLabel = () => {
+    if (isInstant) return '∞';
+    if (speed === 25) return '16×';
+    if (speed === 100) return '4×';
+    return '1×';
   };
 
-  const handleNextLevel = () => {
-    const nextId = currentLevel < PRESET_LEVELS.length ? currentLevel + 1 : 1;
-    setLevel(nextId);
+  const handlePrev = () => {
+    if (appMode === 'curriculum') {
+      if (CURRICULUM_ACTIVITIES.length === 0) return;
+      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+      const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
+      setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+    } else {
+      const prevId = currentLevel > 1 ? currentLevel - 1 : PRESET_LEVELS.length;
+      setLevel(prevId);
+    }
   };
 
-  const handlePrevActivity = () => {
-    if (CURRICULUM_ACTIVITIES.length === 0) return;
-    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-    const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
-    setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+  const handleNext = () => {
+    if (appMode === 'curriculum') {
+      if (CURRICULUM_ACTIVITIES.length === 0) return;
+      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
+      const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
+      setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
+    } else {
+      const nextId = currentLevel < PRESET_LEVELS.length ? currentLevel + 1 : 1;
+      setLevel(nextId);
+    }
   };
 
-  const handleNextActivity = () => {
-    if (CURRICULUM_ACTIVITIES.length === 0) return;
-    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-    const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
-    setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
-  };
-
-  const ToolsComponent = currentSimEnv?.ToolsComponent;
-  const currentSimState =
-    activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
-  const showDesktopTools = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
-  const showMobileLessonNav = appMode === 'curriculum' || activeSimId === 'grid';
-  const handleMobilePrev = appMode === 'curriculum' ? handlePrevActivity : handlePrevLevel;
-  const handleMobileNext = appMode === 'curriculum' ? handleNextActivity : handleNextLevel;
+  const showPrevNextChevrons = appMode === 'curriculum' || activeSimId === 'grid';
   const canShowSolution =
     appMode === 'curriculum'
       ? Boolean(
@@ -149,6 +128,7 @@ export const Toolbar: React.FC = () => {
             currentCurriculumActivity?.partialHelp
         )
       : activeSimId === 'grid';
+
   const { needRefresh, isPromptDismissed } = usePwaUpdateStore();
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
@@ -156,109 +136,48 @@ export const Toolbar: React.FC = () => {
   const activeColor = getProfileColor(activeProfile?.colorId ?? 'sky');
   const activeDisplayName = activeProfile ? getProfileDisplayName(activeProfile) : 'Player 1';
 
+  const isCurrentActivityCompleted =
+    appMode === 'curriculum' && Boolean(completedActivities[activeActivityId]);
+
+  const cleanSandboxLessonTitle = currentLesson.title.replace(/^Course\s+\d+:\s*/i, '');
+
   return (
     <>
       <div
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         data-testid="mode-status-announcer"
         className="sr-only"
       >
         {statusAnnouncement}
       </div>
 
-      <header className="flex flex-nowrap md:flex-wrap items-center justify-between gap-1.5 md:gap-3 px-2 py-1.5 md:p-3 h-12 md:h-auto bg-slate-900 border-b-2 border-slate-800 shadow-md flex-shrink-0 z-20">
-        {/* Mobile Left: Hamburger Menu Button + Compact Prev/Next Lesson/Activity Nav */}
-        <div className="flex md:hidden items-center gap-1 flex-shrink-0">
+      <header className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2 px-1 sm:px-2.5 md:px-3 h-12 md:h-14 bg-slate-900 border-b-2 border-slate-800 shadow-md shrink-0 select-none z-30">
+        {/* Left Cluster: Menu + Profile (md+) + Lesson/World Picker */}
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 min-w-0 shrink">
           <button
+            type="button"
             data-testid="btn-hamburger-menu"
             onClick={toggleMobileMenu}
-            className="flex items-center justify-center w-9 h-9 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 shadow-sm active:scale-95 transition-transform"
-            title="Open Menu"
+            className="flex items-center justify-center w-9 h-9 md:w-10 md:h-10 lg:w-11 lg:h-11 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 shadow-sm active:scale-95 transition-transform shrink-0 cursor-pointer"
+            title="Menu"
             aria-label="Open Menu"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center h-9 bg-slate-800 rounded-xl border border-slate-700 shadow-sm overflow-hidden">
-            {showMobileLessonNav && (
-              <button
-                type="button"
-                data-testid="btn-mobile-prev-lesson"
-                onClick={handleMobilePrev}
-                className="flex items-center justify-center w-7 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-r border-slate-700/80"
-                title={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Lesson'}
-                aria-label={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Lesson'}
-              >
-                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              data-testid="btn-mobile-mode-indicator"
-              onClick={toggleMobileMenu}
-              className="flex items-center gap-1 px-1.5 h-full hover:bg-slate-700 text-slate-200 font-bold text-xs active:bg-slate-600 transition-colors whitespace-nowrap"
-              title={
-                appMode === 'curriculum'
-                  ? `Learn Mode: Activity ${activeActivityId}`
-                  : 'Current lesson / Switch mode'
-              }
-              aria-label={
-                appMode === 'curriculum'
-                  ? `Learn Mode Activity ${activeActivityId} — Open Menu`
-                  : 'Sandbox Mode — Open Menu'
-              }
-            >
-              {appMode === 'curriculum' ? (
-                <>
-                  <span>🎓</span>
-                  <span>{activeActivityId}</span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    {activeSimId === 'grid' ? '🤖' : activeSimId === 'beat' ? '🎵' : '🐢'}
-                  </span>
-                  <span>
-                    {activeSimId === 'grid'
-                      ? `L${currentLevel}`
-                      : activeSimId === 'beat'
-                      ? 'Beat'
-                      : 'LOGO'}
-                  </span>
-                </>
-              )}
-            </button>
-
-            {showMobileLessonNav && (
-              <button
-                type="button"
-                data-testid="btn-mobile-next-lesson"
-                onClick={handleMobileNext}
-                className="flex items-center justify-center w-7 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-l border-slate-700/80"
-                title={appMode === 'curriculum' ? 'Next Activity' : 'Next Lesson'}
-                aria-label={appMode === 'curriculum' ? 'Next Activity' : 'Next Lesson'}
-              >
-                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Desktop Left Section: Profile Switcher + Mode Switcher + Mode-Specific Navigation */}
-        <div className="hidden md:flex items-center gap-2.5 max-w-full overflow-hidden">
-          {/* Kid-Friendly Avatar Profile Switcher Button (Desktop) */}
+          {/* Avatar Profile Pill (md+) */}
           <button
             type="button"
             data-testid="btn-profile-switcher"
             onClick={() => setProfileModalOpen(true)}
             aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
-            title={`Player: ${activeDisplayName} (${activeColor.label}) — Click to switch profile`}
-            className="flex items-center gap-2 px-2.5 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 border-2 transition-all active:scale-95 flex-shrink-0 shadow-sm"
+            title={`Player: ${activeDisplayName}`}
+            className="hidden md:flex items-center gap-1.5 px-2.5 h-10 lg:h-11 rounded-xl bg-slate-800 hover:bg-slate-700 border-2 transition-all active:scale-95 shrink-0 shadow-sm cursor-pointer"
             style={{ borderColor: `${activeColor.accentColor}99` }}
           >
-            <span className="relative flex items-center justify-center text-lg leading-none select-none">
+            <span className="flex items-center justify-center text-base lg:text-lg leading-none">
               <span aria-hidden="true">{activeAvatar.emoji}</span>
               <span
                 aria-hidden="true"
@@ -273,485 +192,249 @@ export const Toolbar: React.FC = () => {
             </span>
           </button>
 
-          {/* Curriculum (Learn) vs Free-Play (Sandbox) Mode Switcher */}
-          <div
-            role="group"
-            aria-label="Application Mode"
-            className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800 flex-shrink-0"
-          >
+          {/* Unified Lesson / World Navigation Pill */}
+          <div className="flex items-center h-9 md:h-10 lg:h-11 bg-slate-800/95 rounded-xl border border-slate-700 shadow-sm min-w-0 shrink overflow-hidden">
+            {showPrevNextChevrons && (
+              <button
+                type="button"
+                data-testid="btn-prev-lesson"
+                onClick={handlePrev}
+                className="hidden sm:flex items-center justify-center w-8 md:w-9 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-r border-slate-700/80 shrink-0 cursor-pointer"
+                title={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Map'}
+                aria-label={appMode === 'curriculum' ? 'Previous Activity' : 'Previous Map'}
+              >
+                <ChevronLeft className="w-4 h-4 md:w-5 md:h-5 stroke-[2.5]" />
+              </button>
+            )}
+
             <button
-              data-testid="btn-mode-curriculum"
               type="button"
-              aria-pressed={appMode === 'curriculum'}
-              aria-label="Learn Mode"
-              onClick={() => setAppMode('curriculum')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+              data-testid="btn-lesson-picker"
+              onClick={() => setLessonPickerOpen(true)}
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 md:px-3 h-full min-w-[36px] shrink hover:bg-slate-700/80 active:bg-slate-700 text-slate-100 font-extrabold text-xs sm:text-sm transition-colors cursor-pointer"
+              title="Choose Lesson or World"
+              aria-label={
                 appMode === 'curriculum'
-                  ? 'bg-violet-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Curriculum Learn Mode (guided activities with read-only maps)"
+                  ? `Learn Activity ${activeActivityId}: ${currentCurriculumActivity?.title ?? ''}. Choose lesson or world`
+                  : `Sandbox ${activeSimId === 'grid' ? `Map ${currentLevel}` : activeSimId}. Choose lesson or world`
+              }
             >
-              <span>🎓</span>
-              <span>Learn</span>
-            </button>
-            <button
-              data-testid="btn-mode-sandbox"
-              type="button"
-              aria-pressed={appMode === 'sandbox'}
-              aria-label="Sandbox Mode"
-              onClick={() => setAppMode('sandbox')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                appMode === 'sandbox'
-                  ? 'bg-amber-500 text-slate-950 shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Sandbox Free-Play Mode (editable maps and full blocks)"
-            >
-              <span>🛠️</span>
-              <span>Sandbox</span>
-            </button>
-          </div>
-
-          {appMode === 'curriculum' ? (
-            <div className="flex items-center gap-2 max-w-full overflow-hidden">
-              {/* Prev / Next Curriculum Activity Chevrons */}
-              <div className="flex items-center gap-1">
-                <button
-                  data-testid="btn-prev-activity"
-                  type="button"
-                  onClick={handlePrevActivity}
-                  aria-label="Previous Activity"
-                  className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                  title="Previous Activity"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  data-testid="btn-next-activity"
-                  type="button"
-                  onClick={handleNextActivity}
-                  aria-label="Next Activity"
-                  className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                  title="Next Activity"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Curriculum Activity Selector */}
-              <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 rounded-2xl border-2 border-violet-500/40">
-                <span className="text-base" title={currentCurriculumModule?.title || 'Curriculum'}>
-                  {currentCurriculumModule?.icon || '🎓'}
-                </span>
-                <select
-                  data-testid="select-curriculum-activity"
-                  aria-label="Select Curriculum Activity"
-                  value={activeActivityId}
-                  onChange={(e) => setCurriculumActivity(e.target.value)}
-                  className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[250px] truncate"
-                  title="Select Curriculum Activity"
-                >
-                  {CURRICULUM_ACTIVITIES.map((act) => (
-                    <option key={act.id} value={act.id} className="bg-slate-900 text-slate-100">
-                      {act.id} — {act.title} ({act.concept})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Activity Quick Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[180px] lg:max-w-[260px] no-scrollbar">
-                {CURRICULUM_ACTIVITIES.map((act) => {
-                  const isCompleted = Boolean(completedActivities[act.id]);
-                  return (
-                    <button
-                      key={act.id}
-                      type="button"
-                      data-testid={`btn-activity-${act.id}`}
-                      aria-current={activeActivityId === act.id ? 'step' : undefined}
-                      aria-label={`Activity ${act.id}: ${act.title}${isCompleted ? ' (Completed)' : ''}`}
-                      onClick={() => setCurriculumActivity(act.id)}
-                      className={`flex-shrink-0 flex items-center justify-center gap-1 px-2.5 h-10 rounded-xl font-black text-xs border-2 transition-all ${
-                        activeActivityId === act.id
-                          ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
-                          : isCompleted
-                          ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200 hover:border-emerald-400'
-                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
-                      }`}
+              {appMode === 'curriculum' ? (
+                <>
+                  <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">
+                    {currentCurriculumActivity?.icon || '🎓'}
+                  </span>
+                  <span className="font-black text-indigo-200 shrink-0">{activeActivityId}</span>
+                  <span className="hidden sm:inline truncate max-w-[110px] md:max-w-[150px] lg:max-w-[230px] text-slate-200 font-bold">
+                    {currentCurriculumActivity?.title}
+                  </span>
+                  {isCurrentActivityCompleted && (
+                    <span
+                      aria-hidden="true"
+                      className="w-4 h-4 rounded-full bg-emerald-500 text-slate-950 inline-flex items-center justify-center shrink-0"
                     >
-                      <span>{act.id}</span>
-                      {isCompleted && (
-                        <span aria-hidden="true" className="text-[10px] text-emerald-300">
-                          ✓
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Undo-Protected Reset to Starter Action */}
-              <button
-                data-testid="btn-reset-to-starter"
-                type="button"
-                onClick={resetActivityToStarter}
-                aria-label="Reset to Starter"
-                className="flex items-center gap-1.5 px-3 h-10 bg-slate-800 hover:bg-rose-500/20 text-rose-200 font-bold text-xs rounded-xl border border-rose-400/40 transition-all active:scale-95 whitespace-nowrap"
-                title="Reset blocks to activity starter (Undo restores your blocks)"
-              >
-                <span aria-hidden="true" className="text-sm leading-none font-black">
-                  ↺
-                </span>
-                <span>Starter</span>
-              </button>
-
-              {/* Open Copy in Sandbox Action */}
-              <button
-                data-testid="btn-open-copy-sandbox"
-                type="button"
-                onClick={openCopyInSandbox}
-                aria-label="Open Copy in Sandbox"
-                className="flex items-center gap-1.5 px-3 h-10 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 transition-all active:scale-95 whitespace-nowrap"
-                title="Clone this map and your blocks into Sandbox mode for free editing"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>Open Copy in Sandbox</span>
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Environment Switcher Pill */}
-              <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
-                <button
-                  data-testid="sim-tab-grid"
-                  onClick={() => setSimEnvironment('grid')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                    activeSimId === 'grid'
-                      ? 'bg-sky-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span>🤖</span>
-                  <span>Grid</span>
-                </button>
-                <button
-                  data-testid="sim-tab-turtle"
-                  onClick={() => setSimEnvironment('turtle')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                    activeSimId === 'turtle'
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span>🐢</span>
-                  <span>Turtle</span>
-                </button>
-                <button
-                  data-testid="sim-tab-beat"
-                  onClick={() => setSimEnvironment('beat')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                    activeSimId === 'beat'
-                      ? 'bg-fuchsia-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span>🎵</span>
-                  <span>Beat</span>
-                </button>
-              </div>
-
-              {/* If Grid is active, show Lesson Navigation & Selection */}
-              {activeSimId === 'grid' ? (
-                <div className="flex items-center gap-2 max-w-full overflow-hidden">
-                  {/* Prev / Next Chevrons */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={handlePrevLevel}
-                      className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                      title="Previous Lesson"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={handleNextLevel}
-                      className="flex items-center justify-center w-8 h-11 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700"
-                      title="Next Lesson"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Dropdown Selector for Course Lessons */}
-                  <div className="flex items-center gap-1.5 bg-slate-800 px-2 rounded-2xl border-2 border-slate-700">
-                    <span className="text-base" title={currentLesson.moduleTitle}>
-                      {currentLesson.moduleIcon}
+                      <Check className="w-3 h-3 stroke-[3]" />
                     </span>
-                    <select
-                      value={currentLevel}
-                      onChange={(e) => setLevel(Number(e.target.value))}
-                      className="bg-transparent text-white font-bold text-sm h-11 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[240px] truncate"
-                      title="Select Course Lesson"
-                    >
-                      {LESSONS.map((l) => (
-                        <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
-                          {l.id}. {l.title} ({l.concept})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Level Quick Buttons (Scrollable Tray) */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[200px] md:max-w-[280px] lg:max-w-[360px] no-scrollbar">
-                    {PRESET_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl.id}
-                        data-testid={`btn-level-${lvl.id}`}
-                        onClick={() => setLevel(lvl.id)}
-                        className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl font-black text-sm border-2 transition-all ${
-                          currentLevel === lvl.id
-                            ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
-                            : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
-                        }`}
-                      >
-                        {lvl.id}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  )}
+                </>
+              ) : activeSimId === 'grid' ? (
+                <>
+                  <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">
+                    🤖
+                  </span>
+                  <span className="font-black text-sky-200 shrink-0">L{currentLevel}</span>
+                  <span className="hidden sm:inline truncate max-w-[110px] md:max-w-[150px] lg:max-w-[220px] text-slate-200 font-bold">
+                    {cleanSandboxLessonTitle}
+                  </span>
+                </>
               ) : activeSimId === 'beat' ? (
-                /* Beat & Light Matrix mode badge */
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-semibold text-fuchsia-300">
-                  <span>8×8 Beat &amp; Light Pad</span>
-                </div>
+                <>
+                  <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">
+                    🎵
+                  </span>
+                  <span className="truncate font-bold text-fuchsia-200">Beat</span>
+                </>
               ) : (
-                /* Turtle mode badge */
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-semibold text-emerald-300">
-                  <span>LOGO Unbounded Canvas</span>
-                </div>
+                <>
+                  <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">
+                    🐢
+                  </span>
+                  <span className="truncate font-bold text-emerald-200">Art</span>
+                </>
               )}
-            </>
-          )}
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+            </button>
+
+            {showPrevNextChevrons && (
+              <button
+                type="button"
+                data-testid="btn-next-lesson"
+                onClick={handleNext}
+                className="hidden sm:flex items-center justify-center w-8 md:w-9 h-full text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-colors border-l border-slate-700/80 shrink-0 cursor-pointer"
+                title={appMode === 'curriculum' ? 'Next Activity' : 'Next Map'}
+                aria-label={appMode === 'curriculum' ? 'Next Activity' : 'Next Map'}
+              >
+                <ChevronRight className="w-4 h-4 md:w-5 md:h-5 stroke-[2.5]" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-1 md:gap-2">
-          {/* Update Ready Indicator (shown when user snoozed the update prompt) */}
+        {/* Right Cluster: Update (md+) + Clue/Save + Transport Controls */}
+        <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+          {/* Snoozed PWA Update Indicator (md+) */}
           {needRefresh && isPromptDismissed && (
             <button
+              type="button"
               data-testid="btn-toolbar-pwa-update"
               onClick={reopenUpdatePrompt}
-              className="hidden md:flex items-center gap-1.5 px-3 h-12 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-black rounded-2xl border-2 border-sky-400/70 shadow-lg transition-transform active:scale-95"
-              title="App update available — click to update"
+              className="hidden md:flex items-center justify-center gap-1.5 px-2.5 h-10 lg:h-11 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-black rounded-xl border-2 border-sky-400/70 shadow-sm transition-transform active:scale-95 shrink-0 cursor-pointer"
+              title="App update available"
+              aria-label="App update available"
             >
               <RefreshCw className="w-4 h-4 text-sky-300" />
-              <span className="hidden lg:inline text-xs">Update</span>
+              <span className="hidden xl:inline text-xs">Update</span>
             </button>
           )}
 
-          {/* Solution Button (Desktop only) */}
+          {/* Clue / Solution Button */}
           {canShowSolution && (
             <button
+              type="button"
               data-testid="btn-solution"
               onClick={() => setSolutionOpen(true)}
-              className="hidden md:flex items-center gap-1.5 px-3.5 h-12 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl border-2 border-amber-300 shadow-lg transition-transform active:scale-95"
-              title="View Lesson Solution"
+              className="flex items-center justify-center gap-1.5 w-9 h-9 md:w-auto md:px-2.5 lg:px-3.5 md:h-10 lg:h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl border-2 border-amber-300 shadow-sm transition-transform active:scale-95 shrink-0 cursor-pointer"
+              title="Clue & Solution"
+              aria-label="Clue and Solution"
             >
-              <Lightbulb className="w-5 h-5 fill-slate-950" />
-              <span className="hidden sm:inline">Solution</span>
+              <Lightbulb className="w-4 h-4 md:w-5 md:h-5 fill-slate-950 shrink-0" />
+              <span className="hidden lg:inline text-sm">Clue</span>
             </button>
           )}
 
-          {/* Save Button (Desktop only) */}
+          {/* Save Button (always on md+, and on <md when Clue is absent in creative/sandbox worlds) */}
           <button
+            type="button"
             data-testid="btn-save-modal"
             onClick={() => setSaveModalOpen(true)}
-            className="hidden md:flex items-center gap-1.5 px-3.5 h-12 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-2xl border-2 border-sky-400 shadow-lg transition-transform active:scale-95"
-            title="Save Program Locally"
+            className={`${
+              canShowSolution ? 'hidden md:flex' : 'flex'
+            } items-center justify-center gap-1.5 w-9 h-9 md:w-auto md:px-2.5 lg:px-3.5 md:h-10 lg:h-11 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-xl border-2 border-sky-400 shadow-sm transition-transform active:scale-95 shrink-0 cursor-pointer`}
+            title="Save"
+            aria-label="Save Program"
           >
-            <Save className="w-5 h-5" />
-            <span className="hidden sm:inline">Save</span>
+            <Save className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+            <span className="hidden lg:inline text-sm">Save</span>
           </button>
 
-          {/* Load Button (Desktop only) */}
+          {/* Undo */}
           <button
-            data-testid="btn-load-modal"
-            onClick={() => setLoadModalOpen(true)}
-            className="hidden md:flex items-center gap-1.5 px-3.5 h-12 bg-slate-800 hover:bg-slate-700 text-slate-200 font-black rounded-2xl border-2 border-slate-700 shadow-lg transition-transform active:scale-95"
-            title="Load Saved Programs"
-          >
-            <FolderOpen className="w-5 h-5" />
-            <span className="hidden sm:inline">Load</span>
-          </button>
-
-          {/* Export / Import Button (Desktop only) */}
-          <button
-            data-testid="btn-export-import"
-            onClick={() => setExportImportOpen(true)}
-            className="hidden md:flex items-center gap-1.5 px-3.5 h-12 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl border-2 border-indigo-400 shadow-lg transition-transform active:scale-95"
-            title="Share / Export / Import Program"
-          >
-            <Share2 className="w-5 h-5" />
-            <span className="hidden sm:inline">Share</span>
-          </button>
-
-          {/* Undo Button (Always accessible) */}
-          <button
+            type="button"
             data-testid="btn-undo"
             disabled={!canUndo}
             onClick={undo}
-            className={`flex items-center justify-center w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl border-2 transition-transform ${
+            className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 lg:w-11 lg:h-11 rounded-xl border-2 transition-transform shrink-0 ${
               canUndo
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 shadow-md'
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 shadow-sm cursor-pointer'
                 : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
             }`}
             title="Undo (Ctrl+Z)"
-            aria-label="Undo (Ctrl+Z)"
+            aria-label="Undo"
           >
             <Undo2 className="w-4 h-4 md:w-5 md:h-5 stroke-[2.5]" />
           </button>
 
-          {/* Redo Button (Always accessible) */}
+          {/* Reset (Rewind ⏮ — distinct from Undo) */}
           <button
-            data-testid="btn-redo"
-            disabled={!canRedo}
-            onClick={redo}
-            className={`flex items-center justify-center w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl border-2 transition-transform ${
-              canRedo
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 shadow-md'
-                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
-            }`}
-            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-            aria-label="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-          >
-            <Redo2 className="w-4 h-4 md:w-5 md:h-5 stroke-[2.5]" />
-          </button>
-
-          {/* Map Toggle Button (Mobile priority, toggles map visible/hidden) */}
-          <button
-            data-testid="btn-toggle-map"
-            onClick={toggleMapHidden}
-            className={`flex md:hidden items-center justify-center w-9 h-9 rounded-xl border-2 transition-transform active:scale-95 ${
-              isMapHidden
-                ? 'bg-amber-500/20 text-amber-300 border-amber-400 shadow-md ring-2 ring-amber-400/30'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-            title={isMapHidden ? 'Show simulation map' : 'Hide simulation map'}
-            aria-label={isMapHidden ? 'Show simulation map' : 'Hide simulation map'}
-          >
-            {isMapHidden ? (
-              <EyeOff className="w-4 h-4 md:w-5 md:h-5 text-amber-300 stroke-[2.5]" />
-            ) : (
-              <Eye className="w-4 h-4 md:w-5 md:h-5 text-slate-200 stroke-[2.5]" />
-            )}
-          </button>
-
-          {/* Reset Button (Always accessible) */}
-          <button
+            type="button"
             data-testid="btn-reset"
             onClick={reset}
-            className="flex items-center justify-center w-9 h-9 md:w-12 md:h-12 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl md:rounded-2xl border-2 border-slate-700 transition-transform active:scale-95 shadow-md"
-            title="Reset"
+            className="flex items-center justify-center w-9 h-9 md:w-10 md:h-10 lg:w-11 lg:h-11 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border-2 border-slate-700 transition-transform active:scale-95 shadow-sm shrink-0 cursor-pointer"
+            title="Rewind to Start"
+            aria-label="Reset Simulation"
           >
-            <RotateCcw className="w-4 h-4 md:w-6 md:h-6 stroke-[2.5]" />
+            <SkipBack className="w-4 h-4 md:w-5 md:h-5 stroke-[2.5]" />
           </button>
 
-          {/* Step Button (Desktop only) */}
+          {/* Step (Visible on all widths so kids can single-step on phones & tablets!) */}
           <button
+            type="button"
             data-testid="btn-step"
             disabled={hasLoopError || isInstant}
             onClick={step}
-            className={`hidden md:flex items-center justify-center w-12 h-12 rounded-2xl shadow-lg border-2 transition-transform ${
+            className={`flex items-center justify-center w-9 h-9 md:w-10 md:h-10 lg:w-11 lg:h-11 rounded-xl shadow-sm border-2 transition-transform shrink-0 ${
               hasLoopError || isInstant
-                ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed opacity-60'
-                : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400 active:scale-95'
+                ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed opacity-55'
+                : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400 active:scale-95 cursor-pointer'
             }`}
             title={
               hasLoopError
-                ? 'Cannot step: unclosed loop detected'
+                ? 'Cannot step: unclosed loop'
                 : isInstant
                 ? 'Step disabled in Instant mode'
-                : 'Step'
+                : 'Step One Block'
             }
+            aria-label="Step"
           >
-            <SkipForward className="w-6 h-6 stroke-[3]" />
+            <StepForward className="w-4 h-4 md:w-5 md:h-5 stroke-[2.75]" />
           </button>
 
-          {/* Play / Pause Button (Always accessible, prominent) */}
+          {/* Play / Pause */}
           {isPlaying ? (
             <button
+              type="button"
               data-testid="btn-pause"
               onClick={pause}
-              className="flex items-center justify-center w-9 h-9 md:w-12 md:h-12 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl md:rounded-2xl shadow-lg border-2 border-amber-300 transition-transform active:scale-95"
+              className="flex items-center justify-center w-9 h-9 sm:w-10 md:w-11 md:h-10 lg:w-12 lg:h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl shadow-md border-2 border-amber-300 transition-transform active:scale-95 shrink-0 cursor-pointer"
               title="Pause"
+              aria-label="Pause"
             >
               <Pause className="w-5 h-5 md:w-6 md:h-6 stroke-[3]" />
             </button>
           ) : (
             <button
+              type="button"
               data-testid="btn-play"
               disabled={hasLoopError}
               onClick={play}
-              className={`flex items-center justify-center w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl shadow-lg border-2 transition-transform ${
+              className={`flex items-center justify-center w-9 h-9 sm:w-10 md:w-11 md:h-10 lg:w-12 lg:h-11 rounded-xl shadow-md border-2 transition-transform shrink-0 ${
                 hasLoopError
                   ? 'bg-slate-800 border-red-500/60 text-slate-500 cursor-not-allowed opacity-60'
-                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 active:scale-95'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 active:scale-95 cursor-pointer'
               }`}
-              title={hasLoopError ? 'Cannot play: unclosed loop detected' : 'Play'}
+              title={hasLoopError ? 'Cannot play: unclosed loop' : 'Play'}
+              aria-label="Play"
             >
               <Play className="w-5 h-5 md:w-6 md:h-6 stroke-[3] ml-0.5" />
             </button>
           )}
 
-          {/* Speed Toggle (Desktop only) */}
+          {/* Speed Toggle (Visible on all widths with compact label on <sm) */}
           <button
+            type="button"
             data-testid="btn-speed"
             onClick={toggleSpeed}
-            className={`hidden md:flex items-center justify-center gap-1 px-3 h-12 rounded-2xl border-2 font-black text-sm transition-all ${
+            className={`flex items-center justify-center gap-0.5 sm:gap-1 min-w-[36px] px-1.5 sm:px-2.5 h-9 md:h-10 lg:h-11 rounded-xl border-2 font-black text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
               isInstant
-                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md scale-105'
+                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
                 : 'bg-slate-800 hover:bg-slate-700 text-yellow-400 border-slate-700'
             }`}
-            title={isInstant ? 'Simulation Speed: Instant' : 'Speed'}
+            title={`Speed: ${getFullSpeedLabel()}`}
+            aria-label={`Simulation Speed: ${getFullSpeedLabel()}`}
           >
-            <Zap className={`w-4 h-4 ${isInstant ? 'fill-slate-950 text-slate-950' : 'fill-yellow-400'}`} />
-            <span>{getSpeedLabel()}</span>
+            <Zap
+              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${
+                isInstant ? 'fill-slate-950 text-slate-950' : 'fill-yellow-400'
+              }`}
+            />
+            <span className="sm:hidden">{getCompactSpeedLabel()}</span>
+            <span className="hidden sm:inline">{getFullSpeedLabel()}</span>
           </button>
-
-          {/* Active Runtime Variables Indicator (Desktop only) */}
-          {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
-            <div
-              data-testid="toolbar-variables"
-              className="hidden md:flex items-center gap-2 px-3 h-12 bg-slate-950/80 border-2 border-slate-700/80 rounded-2xl text-xs font-mono shadow-inner"
-              title="Runtime Variables"
-            >
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">VARS:</span>
-              <div className="flex items-center gap-2 overflow-x-auto max-w-[200px] sm:max-w-[300px]">
-                {Object.entries(runtime.variables).map(([k, v]) => (
-                  <span key={k} className="text-amber-300 font-bold flex items-center whitespace-nowrap">
-                    <span className="italic">{k}</span>
-                    <span className="text-slate-500 mx-0.5">=</span>
-                    <span className="text-violet-200">
-                      {typeof v === 'number' ? (Number.isInteger(v) ? v : Number(v.toFixed(2))) : v}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
-
-        {/* Right Section: Environment-Specific Toolbar Tools (Desktop only) */}
-        {showDesktopTools && ToolsComponent && (
-          <div className="hidden md:flex items-center">
-            <ToolsComponent state={currentSimState} />
-          </div>
-        )}
       </header>
 
-      {/* Slide-out Mobile Menu Drawer */}
+      {/* Unified Menu Drawer (Available on all screen widths) */}
       <MobileDrawerMenu />
     </>
   );
 };
-

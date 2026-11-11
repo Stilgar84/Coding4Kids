@@ -4,7 +4,9 @@ import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { Sparkles, History, X, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const LessonVersionMismatchModal: React.FC = () => {
-  const { pendingVersionMismatch, resolveVersionMismatch, dismissVersionMismatch } = useAppStore();
+  useAppStore();
+  const { pendingVersionMismatch, resolveVersionMismatch, dismissVersionMismatch } =
+    useAppStore.getState();
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const latestBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -68,8 +70,8 @@ export const LessonVersionMismatchModal: React.FC = () => {
   );
 
   const activityTitle = latestActivity
-    ? `Activity ${latestActivity.id}: ${latestActivity.title}`
-    : `Activity ${pendingVersionMismatch.lessonId}`;
+    ? `${latestActivity.id} ${latestActivity.title}`
+    : pendingVersionMismatch.lessonId;
   const activityIcon = latestActivity?.icon || '🎓';
 
   return (
@@ -84,11 +86,11 @@ export const LessonVersionMismatchModal: React.FC = () => {
     >
       <div
         ref={dialogRef}
-        className="relative w-full max-w-lg bg-slate-900 border-2 border-amber-500/60 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-md bg-slate-900 border-2 border-amber-500/60 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+        {/* Header — btn-mismatch-cancel MUST stay 1st in Tab order */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/80">
           <div className="flex items-center gap-3">
             <div
               className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/50 text-2xl select-none"
@@ -99,11 +101,11 @@ export const LessonVersionMismatchModal: React.FC = () => {
             <div>
               <h2
                 id="lesson-version-mismatch-title"
-                className="text-lg font-black text-white leading-tight"
+                className="text-base sm:text-lg font-black text-white leading-tight"
               >
-                Updated Lesson Detected!
+                Newer Puzzle Map!
               </h2>
-              <p className="text-xs text-slate-300 font-semibold truncate max-w-[290px]">
+              <p className="text-xs text-slate-300 font-semibold truncate max-w-[260px]">
                 {activityTitle}
               </p>
             </div>
@@ -121,78 +123,47 @@ export const LessonVersionMismatchModal: React.FC = () => {
         </div>
 
         {/* Body */}
-        <div className="p-6 flex flex-col gap-4">
-          {/* Version Comparison Banner */}
+        <div className="p-5 flex flex-col gap-3.5">
           <div
             data-testid="mismatch-version-badges"
-            className="flex items-center justify-between gap-2 px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800"
+            className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800"
           >
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Your Saved Blocks
-              </span>
-              <span className="inline-flex items-center gap-1.5 mt-0.5 text-sm font-black text-amber-300">
-                <span>■ Version v{pendingVersionMismatch.savedVersion}</span>
-                {pendingVersionMismatch.slotIndex !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
-                    Slot {pendingVersionMismatch.slotIndex}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            <ArrowRight className="w-5 h-5 text-slate-500 shrink-0" aria-hidden="true" />
-
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Current Lesson
-              </span>
-              <span className="inline-flex items-center gap-1 mt-0.5 text-sm font-black text-emerald-300">
-                <span>● Version v{pendingVersionMismatch.latestVersion}</span>
-              </span>
-            </div>
+            <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-300">
+              <span>🗺️ Old Map</span>
+              {pendingVersionMismatch.slotIndex !== undefined && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                  Slot {pendingVersionMismatch.slotIndex}
+                </span>
+              )}
+            </span>
+            <ArrowRight className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-300">
+              <span>✨ New Map</span>
+            </span>
           </div>
 
           <p id="lesson-version-mismatch-desc" className="text-xs text-slate-300 leading-relaxed">
-            {pendingVersionMismatch.title ? (
-              <>
-                <strong className="text-white">&ldquo;{pendingVersionMismatch.title}&rdquo;</strong>{' '}
-                was built on an earlier version of this puzzle. How would you like to open your
-                blocks?
-              </>
-            ) : (
-              <>
-                This shared program was built on an earlier version of this puzzle. How would you
-                like to open the blocks?
-              </>
-            )}
+            Pick which map to open with your blocks:
           </p>
 
-          {/* Choice 1: Load into Latest Lesson */}
+          {/* Choice 1: New Map (btn-mismatch-load-latest — 2nd in Tab order) */}
           <button
             ref={latestBtnRef}
             type="button"
             data-testid="btn-mismatch-load-latest"
             onClick={() => resolveVersionMismatch('latest')}
-            className="group flex items-center gap-3.5 w-full p-4 text-left rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-400/70 hover:border-emerald-300 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 active:scale-[0.99]"
+            className="group flex items-center gap-3.5 w-full p-3.5 text-left rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-400/70 hover:border-emerald-300 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 active:scale-[0.99]"
           >
             <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-emerald-500 text-slate-950 shrink-0 shadow">
               <Sparkles className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-black text-sm text-white">Load into Latest Lesson</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/30 text-emerald-200 border border-emerald-400/40">
-                  v{pendingVersionMismatch.latestVersion}
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Keep the newest map &amp; goals and place your saved blocks inside.
-              </p>
+              <span className="font-black text-sm text-white block">Play on New Map ✨</span>
+              <span className="text-xs text-slate-300">Put your blocks on the newest puzzle</span>
             </div>
           </button>
 
-          {/* Choice 2: Open in Original Lesson Version */}
+          {/* Choice 2: Old Map (btn-mismatch-open-original — 3rd in Tab order) */}
           <button
             type="button"
             data-testid="btn-mismatch-open-original"
@@ -202,7 +173,7 @@ export const LessonVersionMismatchModal: React.FC = () => {
                 resolveVersionMismatch('original');
               }
             }}
-            className={`group flex items-center gap-3.5 w-full p-4 text-left rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
+            className={`group flex items-center gap-3.5 w-full p-3.5 text-left rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
               canOpenOriginal
                 ? 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-400/70 hover:border-indigo-300 cursor-pointer active:scale-[0.99]'
                 : 'bg-slate-950/70 border-slate-800 opacity-60 cursor-not-allowed'
@@ -218,19 +189,12 @@ export const LessonVersionMismatchModal: React.FC = () => {
               <History className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-black text-sm text-white">
-                  Open in Original Lesson Version
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
-                  v{pendingVersionMismatch.savedVersion}
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <span className="font-black text-sm text-white block">Play on Old Map 🕰️</span>
+              <span className="text-xs text-slate-300">
                 {canOpenOriginal
-                  ? `Play on the classic v${pendingVersionMismatch.savedVersion} map where these blocks were saved.`
-                  : `Original version v${pendingVersionMismatch.savedVersion} is no longer stored in this app build.`}
-              </p>
+                  ? 'Open the classic puzzle map'
+                  : 'Old map is no longer stored'}
+              </span>
             </div>
           </button>
 
@@ -241,11 +205,7 @@ export const LessonVersionMismatchModal: React.FC = () => {
               className="flex items-start gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-amber-200"
             >
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <span>
-                Historical map v{pendingVersionMismatch.savedVersion} is unavailable, so{' '}
-                <strong>Load into Latest Lesson</strong> will safely import your blocks into v
-                {pendingVersionMismatch.latestVersion}.
-              </span>
+              <span>Tap Play on New Map to open your blocks!</span>
             </div>
           )}
         </div>

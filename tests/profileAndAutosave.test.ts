@@ -495,10 +495,10 @@ describe('Commit 3 (Wave 2): Kid-Friendly Multi-Profile, Lesson Auto-Save & Rese
         expect(modalMarkup).toContain(`data-testid="btn-delete-profile-${panda.id}"`);
         expect(modalMarkup).toContain('data-testid="btn-show-create-profile"');
 
-        // Toolbar in Curriculum mode renders profile switcher, Reset to Starter, and aria-live announcer
+        // Toolbar in Curriculum mode renders profile switcher, lesson picker, and aria-live announcer
         const toolbarMarkup = renderToStaticMarkup(React.createElement(Toolbar));
         expect(toolbarMarkup).toContain('data-testid="btn-profile-switcher"');
-        expect(toolbarMarkup).toContain('data-testid="btn-reset-to-starter"');
+        expect(toolbarMarkup).toContain('data-testid="btn-lesson-picker"');
         expect(toolbarMarkup).toContain('data-testid="mode-status-announcer"');
         expect(toolbarMarkup).toContain('aria-live="polite"');
 

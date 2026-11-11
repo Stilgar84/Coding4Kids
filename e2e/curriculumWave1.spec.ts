@@ -1,16 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode', () => {
-  test('enforces read-only maps in Learn mode across 1.1–1.3 and mounts GridOverlayLayer slots', async ({ page }) => {
+  test('enforces read-only maps in Learn mode across 1.1–1.3, celebrates with VictoryCelebrationModal, and mounts GridOverlayLayer slots', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    const learnBtn = page.getByTestId('btn-mode-curriculum');
-    const sandboxBtn = page.getByTestId('btn-mode-sandbox');
-
     // Starts in Sandbox mode by default with editable tools & resize handles
-    await expect(sandboxBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(learnBtn).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('tool-wall')).toBeVisible();
     await expect(page.getByTestId('resize-handle-right')).toBeVisible();
     await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
@@ -21,12 +16,14 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await expect(page.getByTestId('grid-slot-ghost-preview')).toBeAttached();
     await expect(page.getByTestId('grid-slot-demo-spotlights')).toBeAttached();
 
-    // Switch to Learn mode -> loads canonical first Module 1 Activity 1.0, then switch to 1.1 (4 × 3)
-    await learnBtn.click();
-    await expect(learnBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(sandboxBtn).toHaveAttribute('aria-pressed', 'false');
+    // Open LessonPickerModal -> switch to Learn mode -> select Activity 1.1 (4 × 3)
+    await page.getByTestId('btn-lesson-picker').click();
+    await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
+    await page.getByTestId('picker-mode-curriculum').click();
     await expect(page.getByTestId('mode-status-announcer')).toContainText('1.0');
     await page.getByTestId('btn-activity-1.1').click();
+    await expect(page.getByTestId('lesson-picker-modal')).toHaveCount(0);
+
     await expect(page.getByTestId('mode-status-announcer')).toContainText('1.1');
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 3');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
@@ -47,19 +44,22 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     // Visible corridor walls are still rendered faithfully
     await expect(page.getByTestId('wall-h-0-1')).toBeVisible();
 
-    // Solve Activity 1.1 with 3 Move Forward blocks
+    // Solve Activity 1.1 with 3 Move Forward blocks -> opens VictoryCelebrationModal with Next button!
     await page.getByTestId('palette-move-fwd').click();
     await page.getByTestId('palette-move-fwd').click();
     await page.getByTestId('palette-move-fwd').click();
     await page.getByTestId('btn-play').click();
-    await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('status-success')).toBeVisible();
 
-    // Switch to Activity 1.2 (4 × 4) and 1.3 (4 × 3) via quick pills
-    await page.getByTestId('btn-activity-1.2').click();
+    // Click Next inside VictoryCelebrationModal -> advances straight to Activity 1.2 (4 × 4)
+    await page.getByTestId('btn-victory-next').click();
+    await expect(page.getByTestId('victory-modal')).toHaveCount(0);
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 4');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
 
-    await page.getByTestId('btn-activity-1.3').click();
+    // Advance to Activity 1.3 (4 × 3) via header next chevron
+    await page.getByTestId('btn-next-lesson').click();
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 3');
     await expect(page.getByTestId('flag-1')).toBeVisible();
   });
@@ -71,7 +71,7 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
     // Booted directly into Learn mode on Activity 1.2
-    await expect(page.getByTestId('btn-mode-curriculum')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.2');
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 4');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
 
@@ -80,11 +80,11 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await page.getByTestId('palette-turn-left').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
 
-    // Click "Open Copy in Sandbox"
-    await page.getByTestId('btn-open-copy-sandbox').click();
+    // Click "Open Copy in Sandbox" from Unified Menu Drawer
+    await page.getByTestId('btn-hamburger-menu').click();
+    await page.getByTestId('drawer-btn-open-copy-sandbox').click();
 
     // Now in Sandbox mode with cloned 4 × 4 map and 2 blocks, and full editing restored
-    await expect(page.getByTestId('btn-mode-sandbox')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 4');
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
@@ -98,7 +98,9 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await expect(page.getByTestId('wall-h-0-1')).toBeVisible();
 
     // Switch back to Learn mode -> original 1.2 map is still read-only 4 × 4 without custom wall
-    await page.getByTestId('btn-mode-curriculum').click();
+    await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('picker-mode-curriculum').click();
+    await page.getByTestId('btn-activity-1.2').click();
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 4');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
     await expect(page.getByTestId('wall-h-0-1')).toHaveCount(0);
@@ -107,17 +109,21 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
   test('supports keyboard activation (Tab + Enter/Space + Escape) and mobile drawer mode switching', async ({
     page,
   }) => {
-    // Desktop keyboard activation check
     await page.goto('/');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    const learnBtn = page.getByTestId('btn-mode-curriculum');
-    await learnBtn.focus();
+    // Open LessonPickerModal via keyboard Enter
+    const pickerBtn = page.getByTestId('btn-lesson-picker');
+    await pickerBtn.focus();
     await page.keyboard.press('Enter');
-    await expect(learnBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
 
-    // Select validated puzzle 1.1, open Solution modal and close with Escape
+    // Switch to Learn mode and pick 1.1
+    await page.getByTestId('picker-mode-curriculum').click();
     await page.getByTestId('btn-activity-1.1').click();
+    await expect(page.getByTestId('lesson-picker-modal')).toHaveCount(0);
+
+    // Open Solution modal and close with Escape
     await page.getByTestId('btn-solution').click();
     await expect(page.getByTestId('solution-modal')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -125,14 +131,12 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
 
     // Resize to mobile compact viewport (iPhone SE)
     await page.setViewportSize({ width: 375, height: 667 });
-    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('1.1');
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.1');
 
-    // Navigate next/prev curriculum activities directly from narrow top bar
-    await page.getByTestId('btn-mobile-next-lesson').click();
-    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('1.2');
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 4');
-    await page.getByTestId('btn-mobile-prev-lesson').click();
-    await expect(page.getByTestId('btn-mobile-mode-indicator')).toContainText('1.1');
+    // Open LessonPickerModal on mobile to jump to 1.3
+    await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('btn-activity-1.3').click();
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.3');
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 3');
 
     // Open mobile drawer and verify Escape closes it
@@ -141,22 +145,16 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('mobile-drawer-content')).toHaveCount(0);
 
-    // Reopen drawer in Learn mode: Map Editor Tools hidden, select 1.3, then Open Copy in Sandbox
+    // Reopen drawer in Learn mode: Map Editor Tools hidden, click Open Copy in Sandbox
     await page.getByTestId('btn-hamburger-menu').click();
     await expect(page.getByTestId('drawer-mode-curriculum')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('tool-wall')).toHaveCount(0);
 
-    await page.getByTestId('drawer-activity-1.3').click();
     await page.getByTestId('drawer-btn-open-copy-sandbox').click();
 
-    // Drawer closes automatically and app switches to Sandbox mode on mobile
+    // Drawer closes automatically and app switches to Sandbox mode on mobile with Map Editor dock restored!
     await expect(page.getByTestId('mobile-drawer-content')).toHaveCount(0);
     await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
-
-    // Reopen drawer in Sandbox mode -> Map Editor Tools are back!
-    await page.getByTestId('btn-hamburger-menu').click();
-    const drawer = page.getByTestId('mobile-drawer-content');
-    await expect(drawer.getByTestId('drawer-mode-sandbox')).toHaveAttribute('aria-pressed', 'true');
-    await expect(drawer.getByTestId('tool-wall')).toBeVisible();
+    await expect(page.getByTestId('tool-wall')).toBeVisible();
   });
 });

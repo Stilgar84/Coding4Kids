@@ -810,15 +810,15 @@ export function markLessonCompleted(
       mod.capstoneIds.length > 0 &&
       mod.capstoneIds.every((capId) => Boolean(current.completedLessons[capId]));
 
-    if (allCapstonesDone && !badgeSet.has(mod.badgeId)) {
-      badgeSet.add(mod.badgeId);
-      newlyEarnedBadges.push(mod.badgeId);
-    }
-
     const modActivities = getActivitiesForModule(mod.id);
     const allRegisteredActivitiesDone =
       modActivities.length > 0 &&
       modActivities.every((act) => Boolean(current.completedLessons[act.id]));
+
+    if ((allCapstonesDone || allRegisteredActivitiesDone) && !badgeSet.has(mod.badgeId)) {
+      badgeSet.add(mod.badgeId);
+      newlyEarnedBadges.push(mod.badgeId);
+    }
 
     if ((allCapstonesDone || allRegisteredActivitiesDone) && CURRICULUM_MODULES[i + 1]) {
       unlockedSet.add(CURRICULUM_MODULES[i + 1].id);

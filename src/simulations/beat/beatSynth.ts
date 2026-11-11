@@ -393,6 +393,47 @@ export class BeatSynthEngine {
   }
 
   /**
+   * Cheerful victory fanfare played when a puzzle is solved or a module badge is earned.
+   * Respects mute & Web Audio autoplay state; never throws or blocks.
+   */
+  playVictoryFanfare(isGrand: boolean = false): void {
+    const ctx = this.getReadyContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const notes = isGrand
+        ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98] // C5..G6 grand trophy fanfare
+        : [523.25, 659.25, 783.99, 1046.5]; // C5..C6 puzzle win arpeggio
+      const spacing = isGrand ? 0.085 : 0.075;
+
+      notes.forEach((freq, idx) => {
+        const isLast = idx === notes.length - 1;
+        const t0 = now + idx * spacing;
+        const dur = isLast ? (isGrand ? 0.55 : 0.4) : 0.2;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, t0);
+
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.linearRampToValueAtTime(isLast ? 0.24 : 0.18, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        this.trackSource(osc);
+        osc.start(t0);
+        osc.stop(t0 + dur + 0.015);
+      });
+    } catch {
+      // Never block or throw
+    }
+  }
+
+  /**
    * Plays a scale note (1..8 => C4..C5) for Tier 2 PLAY_NOTE.
    */
   playNote(pitch: number = 1, durationSec: number = 0.28): void {

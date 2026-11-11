@@ -18,12 +18,12 @@ import {
   Check,
   Trophy,
   AlertTriangle,
-  Clock,
   Compass,
   Plus,
 } from 'lucide-react';
 
 export const SaveProgramModal: React.FC = () => {
+  useAppStore();
   const {
     activeProfileId,
     appMode,
@@ -38,7 +38,7 @@ export const SaveProgramModal: React.FC = () => {
     beatState,
     currentLevel,
     exportCode,
-  } = useAppStore();
+  } = useAppStore.getState();
 
   const initialNextSlot =
     appMode === 'curriculum'
@@ -55,6 +55,20 @@ export const SaveProgramModal: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isSaveModalOpen && closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [isSaveModalOpen]);
 
   const lessonSlots = useMemo<SavedProgramEntry[]>(() => {
     if (!isSaveModalOpen || appMode !== 'curriculum') return [];
@@ -165,11 +179,11 @@ export const SaveProgramModal: React.FC = () => {
         setSelectedSlot(nextSlot);
         setTitle(`Activity ${activeActivityId} — Slot ${nextSlot}`);
       } else if (activeSimId === 'grid') {
-        setTitle(`Lesson ${currentLevel} Solution (${timeStr})`);
+        setTitle(`Level ${currentLevel} (${timeStr})`);
       } else if (activeSimId === 'beat') {
-        setTitle(`Beat & Light Mix (${timeStr})`);
+        setTitle(`Beat Mix (${timeStr})`);
       } else {
-        setTitle(`Turtle Drawing (${timeStr})`);
+        setTitle(`Turtle Art (${timeStr})`);
       }
     }
   }, [isSaveModalOpen, appMode, activeProfileId, activeActivityId, activeSimId, currentLevel]);
@@ -223,7 +237,6 @@ export const SaveProgramModal: React.FC = () => {
 
   const handleSave = () => {
     if (appMode === 'curriculum') {
-      // Path A: code-only payload + top-level lessonId, lessonVersion, slotIndex
       const code = exportCode(false);
       saveProgram({
         title: title.trim() || `Activity ${activeActivityId} — Slot ${selectedSlot}`,
@@ -240,7 +253,7 @@ export const SaveProgramModal: React.FC = () => {
     } else {
       const code = exportCode(true);
       saveProgram({
-        title: title.trim() || 'Untitled Program',
+        title: title.trim() || 'My Program',
         profileId: activeProfileId,
         simId: activeSimId,
         code,
@@ -252,9 +265,11 @@ export const SaveProgramModal: React.FC = () => {
     }
 
     setSavedSuccess(true);
-    setTimeout(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
       setSaveModalOpen(false);
-    }, 900);
+    }, 650);
   };
 
   const selectedSlotOccupied = appMode === 'curriculum' && slotMap.has(selectedSlot);
@@ -265,7 +280,7 @@ export const SaveProgramModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="save-program-modal-title"
       data-testid="save-program-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
       onClick={() => setSaveModalOpen(false)}
     >
       <div
@@ -273,22 +288,15 @@ export const SaveProgramModal: React.FC = () => {
         className="relative w-full max-w-md max-h-[90vh] bg-slate-900 border-2 border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/60 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-emerald-600/30 border border-emerald-500/50 text-emerald-400">
-              <Save className="w-5 h-5" />
+        {/* Compact Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/60 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-9 h-9 rounded-2xl bg-emerald-600/30 border border-emerald-500/50 text-emerald-400">
+              <Save className="w-4 h-4" />
             </div>
-            <div>
-              <h2 id="save-program-modal-title" className="text-lg font-black text-white">
-                {appMode === 'curriculum' ? 'Save Lesson Slot' : 'Save Program Locally'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {appMode === 'curriculum'
-                  ? `Activity ${activeActivityId} (v${activeActivityVersion}) • Code-only slot`
-                  : `Pre-simulated up to ${MAX_SAVE_SIMULATION_STEPS} steps`}
-              </p>
-            </div>
+            <h2 id="save-program-modal-title" className="text-base sm:text-lg font-black text-white">
+              Save
+            </h2>
           </div>
           <button
             type="button"
@@ -301,171 +309,132 @@ export const SaveProgramModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="p-6 overflow-y-auto flex flex-col gap-4">
-          {/* Visual Numbered Lesson Save Slots (Curriculum Mode) */}
+        {/* Above-the-Fold Body Content */}
+        <div className="p-4 overflow-y-auto flex flex-col gap-3">
+          {/* 1. Visual Numbered Lesson Save Slots (Curriculum Mode) */}
           {appMode === 'curriculum' && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                <span>Choose Save Slot</span>
-                <span className="text-[11px] text-slate-400">
-                  {selectedSlotOccupied ? `Replaces Slot ${selectedSlot}` : `New Slot ${selectedSlot}`}
-                </span>
-              </div>
-              <div
-                role="group"
-                aria-label="Lesson save slots"
-                data-testid="lesson-save-slots-grid"
-                className="grid grid-cols-3 gap-2.5"
-              >
-                {displayedSlotNumbers.map((slotNum) => {
-                  const occupied = slotMap.get(slotNum);
-                  const isSelected = selectedSlot === slotNum;
-                  return (
-                    <button
-                      key={slotNum}
-                      type="button"
-                      data-testid={`save-slot-btn-${slotNum}`}
-                      aria-pressed={isSelected}
-                      aria-label={
-                        occupied
-                          ? `Slot ${slotNum}, occupied (${occupied.title})`
-                          : `Slot ${slotNum}, empty`
-                      }
-                      onClick={() => handleSelectSlot(slotNum)}
-                      className={`relative flex flex-col items-center justify-between p-2 rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
-                        isSelected
-                          ? 'bg-emerald-500/15 border-emerald-400 shadow-md scale-[1.02]'
-                          : 'bg-slate-950 border-slate-800 hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full mb-1">
-                        <span
-                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
-                            isSelected
-                              ? 'bg-emerald-500 text-slate-950'
-                              : 'bg-slate-800 text-slate-300'
-                          }`}
-                        >
-                          Slot {slotNum}
+            <div
+              role="group"
+              aria-label="Lesson save slots"
+              data-testid="lesson-save-slots-grid"
+              className="grid grid-cols-3 gap-2"
+            >
+              {displayedSlotNumbers.map((slotNum) => {
+                const occupied = slotMap.get(slotNum);
+                const isSelected = selectedSlot === slotNum;
+                return (
+                  <button
+                    key={slotNum}
+                    type="button"
+                    data-testid={`save-slot-btn-${slotNum}`}
+                    aria-pressed={isSelected}
+                    aria-label={
+                      occupied
+                        ? `Slot ${slotNum}, occupied (${occupied.title})`
+                        : `Slot ${slotNum}, empty`
+                    }
+                    onClick={() => handleSelectSlot(slotNum)}
+                    className={`relative flex flex-col items-center justify-between p-1.5 rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                      isSelected
+                        ? 'bg-emerald-500/15 border-emerald-400 shadow-md scale-[1.02]'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <span
+                        className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                          isSelected
+                            ? 'bg-emerald-500 text-slate-950'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        Slot {slotNum}
+                      </span>
+                      {occupied && (
+                        <span className="text-[10px] font-extrabold text-amber-300">
+                          {occupied.status === 'SUCCESS'
+                            ? '★'
+                            : occupied.status === 'COLLISION'
+                            ? '!'
+                            : '●'}
                         </span>
-                        {occupied && (
-                          <span
-                            className="text-[10px] font-extrabold text-slate-400"
-                            title={`Saved at v${occupied.lessonVersion ?? 1}`}
-                          >
-                            {occupied.status === 'SUCCESS'
-                              ? '★'
-                              : occupied.status === 'COLLISION'
-                              ? '!'
-                              : '●'}
-                          </span>
-                        )}
-                      </div>
-
-                      {occupied ? (
-                        <div
-                          className={`w-full h-14 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 ${
-                            occupied.simId === 'turtle' ? 'bg-white' : 'bg-slate-950'
-                          }`}
-                        >
-                          <img
-                            src={occupied.screenshot}
-                            alt={`Slot ${slotNum} preview`}
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-full h-14 rounded-xl border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 gap-0.5">
-                          <Plus className="w-4 h-4" />
-                          <span className="text-[10px] font-bold">Empty</span>
-                        </div>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
+                    </div>
+
+                    {occupied ? (
+                      <div
+                        className={`w-full h-12 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 ${
+                          occupied.simId === 'turtle' ? 'bg-white' : 'bg-slate-950'
+                        }`}
+                      >
+                        <img
+                          src={occupied.screenshot}
+                          alt={`Slot ${slotNum} preview`}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full h-12 rounded-xl border border-dashed border-slate-700 flex items-center justify-center text-slate-500">
+                        <Plus className="w-4 h-4" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Resulting Map Screenshot Preview */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-              <span>Resulting Map Preview</span>
-              <span className="text-[11px] text-slate-500">
-                {activeSimId === 'grid'
-                  ? 'Grid World'
-                  : activeSimId === 'beat'
-                  ? 'Beat & Light Matrix'
-                  : 'Turtle LOGO'}
-              </span>
-            </div>
-            <div
-              className={`relative w-full h-40 rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner group ${
-                activeSimId === 'grid' || activeSimId === 'beat' ? 'bg-slate-950' : 'bg-white'
-              }`}
-            >
-              <img
-                data-testid="save-map-preview"
-                src={simData.screenshot}
-                alt="Resulting map preview"
-                className="w-full h-full object-contain"
-              />
-            </div>
-          </div>
-
-          {/* Simulation Outcome Badge */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
-            <div className="flex items-center gap-2">
-              {simData.status === 'SUCCESS' ? (
-                <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                  <Trophy className="w-4 h-4 text-emerald-400" />
-                  <span>Success</span>
-                </div>
-              ) : simData.status === 'COLLISION' ? (
-                <div className="flex items-center gap-1.5 text-red-400 font-bold">
-                  <AlertTriangle className="w-4 h-4 text-red-400" />
-                  <span>Collision</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-sky-400 font-bold">
-                  <Compass className="w-4 h-4 text-sky-400" />
-                  <span>Completed</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 text-slate-400 font-medium">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>
-                {simData.stepCount >= MAX_SAVE_SIMULATION_STEPS
-                  ? `Limit (${MAX_SAVE_SIMULATION_STEPS} steps)`
-                  : `${simData.stepCount} ${simData.stepCount === 1 ? 'step' : 'steps'}`}
-              </span>
-            </div>
-          </div>
-
-          {/* Title Input */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="save-program-title-input" className="text-xs text-slate-400 font-semibold">
-              Program Title
-            </label>
-            <input
-              id="save-program-title-input"
-              type="text"
-              data-testid="input-save-title"
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                setHasCustomTitle(true);
-              }}
-              placeholder="Enter program name..."
-              maxLength={60}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+          {/* 2. Compact Preview Thumbnail + Overlaid Outcome Pill */}
+          <div
+            className={`relative w-full h-28 sm:h-36 rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner ${
+              activeSimId === 'grid' || activeSimId === 'beat' ? 'bg-slate-950' : 'bg-white'
+            }`}
+          >
+            <img
+              data-testid="save-map-preview"
+              src={simData.screenshot}
+              alt="Program preview"
+              className="w-full h-full object-contain"
             />
+
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 backdrop-blur border border-slate-700 text-xs font-extrabold shadow">
+              {simData.status === 'SUCCESS' ? (
+                <span className="inline-flex items-center gap-1 text-emerald-400">
+                  <Trophy className="w-3.5 h-3.5" />
+                  <span>🏁</span>
+                </span>
+              ) : simData.status === 'COLLISION' ? (
+                <span className="inline-flex items-center gap-1 text-red-400">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>💥</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-sky-400">
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>✓</span>
+                </span>
+              )}
+              <span className="text-slate-400 font-mono text-[11px]">{simData.stepCount}</span>
+            </div>
           </div>
 
-          {/* Save Button */}
+          {/* 3. Compact Name Input */}
+          <input
+            id="save-program-title-input"
+            type="text"
+            aria-label="Program name"
+            data-testid="input-save-title"
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setHasCustomTitle(true);
+            }}
+            placeholder="Name..."
+            maxLength={60}
+            className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+          />
+
+          {/* 4. Primary Save Button (Always Above the Fold!) */}
           <button
             type="button"
             data-testid="btn-confirm-save"
@@ -480,11 +449,7 @@ export const SaveProgramModal: React.FC = () => {
             {savedSuccess ? (
               <>
                 <Check className="w-5 h-5 text-emerald-300" />
-                <span>
-                  {appMode === 'curriculum'
-                    ? `Saved to Slot ${selectedSlot}!`
-                    : 'Saved to Local Storage!'}
-                </span>
+                <span>Saved!</span>
               </>
             ) : (
               <>
@@ -492,9 +457,9 @@ export const SaveProgramModal: React.FC = () => {
                 <span>
                   {appMode === 'curriculum'
                     ? selectedSlotOccupied
-                      ? `Overwrite Slot ${selectedSlot}`
-                      : `Save to Slot ${selectedSlot}`
-                    : 'Save Locally'}
+                      ? `Save Slot ${selectedSlot}`
+                      : `Save Slot ${selectedSlot}`
+                    : 'Save'}
                 </span>
               </>
             )}

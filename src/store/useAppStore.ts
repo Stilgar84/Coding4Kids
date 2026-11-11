@@ -53,6 +53,7 @@ import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/s
 import { LESSONS } from '../data/lessons';
 import {
   AppMode,
+  CurriculumActivity,
   CURRICULUM_ACTIVITIES,
   createCurriculumGridState,
   getActivityAtVersion,
@@ -289,6 +290,9 @@ interface AppState {
   isExportImportOpen: boolean;
   isSaveModalOpen: boolean;
   isLoadModalOpen: boolean;
+  isLessonPickerOpen: boolean;
+  isVictoryModalOpen: boolean;
+  victoryEarnedBadges: string[];
   isSubpaletteCollapsed: boolean;
   isMapHidden: boolean;
   isFunctionBarOpen: boolean;
@@ -329,6 +333,7 @@ interface AppState {
   selectExplanationDemoTab: (tabIndex: number) => void;
   markActiveDemoTabExplored: () => void;
   completeExplanationAndContinue: () => string | null;
+  completeCreativeActivity: (advanceToNext?: boolean) => string | null;
   openCopyInSandbox: () => void;
   loadVariationWorkspace: (workspace: WorkspaceState, title?: string) => void;
   resetActivityToStarter: () => void;
@@ -349,11 +354,13 @@ interface AppState {
   setEditorTool: (tool: EditorTool) => void;
   setEditorKeyGateVariant: (variant: KeyGateShape) => void;
   setSpeed: (speed: SimulationSpeed | number) => void;
-  runInstantIfActive: () => void;
+  runInstantIfActive: (options?: { allowVictoryModal?: boolean }) => void;
   setSolutionOpen: (open: boolean) => void;
   setExportImportOpen: (open: boolean) => void;
   setSaveModalOpen: (open: boolean) => void;
   setLoadModalOpen: (open: boolean) => void;
+  setLessonPickerOpen: (open: boolean) => void;
+  dismissVictoryModal: () => void;
   loadSolution: (lessonId?: number) => void;
   triggerGhostPreview: () => boolean;
   stopGhostPreview: () => void;
@@ -426,6 +433,7 @@ interface TurtlePendingCommit {
   finalRuntime: InterpreterRuntimeState;
   isDone: boolean;
   isSingleStep: boolean;
+  wasSuccessBefore: boolean;
 }
 
 let pendingTurtleCommit: TurtlePendingCommit | null = null;
@@ -507,7 +515,17 @@ export const useAppStore = create<AppState>((set, get) => {
           isPlaying: false,
         });
         if (completedTurtleState.status === 'SUCCESS' || commit.finalRuntime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!commit.wasSuccessBefore) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          commit.isDone &&
+          !commit.isSingleStep &&
+          commit.finalRuntime.status !== 'PAUSED' &&
+          completedTurtleState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
       } else {
         set({
@@ -515,7 +533,10 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: commit.finalRuntime,
         });
         if (completedTurtleState.status === 'SUCCESS' || commit.finalRuntime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!commit.wasSuccessBefore) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
         }
         runTurtleExecutionLoop(false);
       }
@@ -581,21 +602,28 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentBlock = scopeBlocks[currentFrame.pc];
 
       const isMotion = currentBlock && isTurtleMotionAction(currentBlock.type);
+      const wasSuccess =
+        (turtleState.status as string) === 'SUCCESS' ||
+        (runtime.status as string) === 'SUCCESS';
 
       if (!isMotion) {
         const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
 
+        const prevScope = get().activeScope;
         const activeScope = runtime.callStack.length > 0
           ? runtime.callStack[runtime.callStack.length - 1].scope
-          : get().activeScope;
+          : prevScope;
 
         const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
           runtime,
           turtleState,
           activeScope,
+          ...(activeScope !== prevScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
           ...(isPausedOnPlaceholder
             ? {
                 selectedBlockId: runtime.activeBlockId,
@@ -605,7 +633,17 @@ export const useAppStore = create<AppState>((set, get) => {
         });
 
         if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          res.done &&
+          !isSingleStep &&
+          !isPausedOnPlaceholder &&
+          turtleState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
 
         if (res.done) {
@@ -626,15 +664,19 @@ export const useAppStore = create<AppState>((set, get) => {
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
 
+        const prevScope = get().activeScope;
         const activeScope = runtime.callStack.length > 0
           ? runtime.callStack[runtime.callStack.length - 1].scope
-          : get().activeScope;
+          : prevScope;
 
         const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
           runtime,
           turtleState,
           activeScope,
+          ...(activeScope !== prevScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
           ...(isPausedOnPlaceholder
             ? {
                 selectedBlockId: runtime.activeBlockId,
@@ -644,7 +686,17 @@ export const useAppStore = create<AppState>((set, get) => {
         });
 
         if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          res.done &&
+          !isSingleStep &&
+          !isPausedOnPlaceholder &&
+          turtleState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
 
         if (res.done) {
@@ -663,9 +715,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
       const toPose = { ...(res.nextGrid as TurtleState).robot };
 
+      const prevScope = get().activeScope;
       const activeScope = res.nextRuntime.callStack.length > 0
         ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-        : get().activeScope;
+        : prevScope;
 
       const resolvedParams: Record<string, any> = {};
       if (currentBlock.params) {
@@ -697,10 +750,23 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime,
           turtleState,
           activeScope,
+          ...(activeScope !== prevScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
         });
 
         if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          res.done &&
+          !isSingleStep &&
+          runtime.status !== 'PAUSED' &&
+          turtleState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
 
         if (res.done || isSingleStep) {
@@ -716,6 +782,7 @@ export const useAppStore = create<AppState>((set, get) => {
         finalRuntime: res.nextRuntime,
         isDone: res.done,
         isSingleStep,
+        wasSuccessBefore: wasSuccess,
       };
 
       set({
@@ -725,6 +792,9 @@ export const useAppStore = create<AppState>((set, get) => {
         },
         runtime: res.nextRuntime,
         activeScope,
+        ...(activeScope !== prevScope && activeScope !== 'MAIN'
+          ? { isFunctionBarOpen: true }
+          : {}),
         isPlaying: !isSingleStep,
       });
 
@@ -903,14 +973,63 @@ export const useAppStore = create<AppState>((set, get) => {
     }));
   };
 
-  const recordCurriculumSuccessIfApplicable = () => {
+  const getActiveCurriculumActivityObj = (): CurriculumActivity | undefined => {
     const s = get();
-    if (s.appMode !== 'curriculum') return;
-    const activity =
+    if (s.appMode !== 'curriculum') return undefined;
+    return (
       getActivityAtVersion(s.activeActivityId, s.activeActivityVersion) ??
-      getActivityLatest(s.activeActivityId);
-    if (!activity || !isValidatedPuzzleActivity(activity)) return;
-    markLessonCompleted(s.activeProfileId, s.activeActivityId, s.activeActivityVersion);
+      getActivityLatest(s.activeActivityId)
+    );
+  };
+
+  const isExplanationActivity = (): boolean => {
+    const act = getActiveCurriculumActivityObj();
+    return Boolean(act && act.format === 'explanation');
+  };
+
+  const isCreativeCurriculumActivity = (
+    act: CurriculumActivity | undefined = getActiveCurriculumActivityObj()
+  ): boolean =>
+    Boolean(act) &&
+    !isValidatedPuzzleActivity(act!) &&
+    (act!.format === 'sandbox' ||
+      (act!.format === 'capstone' &&
+        (act!.capstoneType === 'creative' || (act!.capstoneType as string) === 'sandbox')));
+
+  const isCurrentSimSuccess = (): boolean => {
+    const s = get();
+    const simStatus =
+      s.activeSimId === 'grid'
+        ? s.grid.status
+        : s.activeSimId === 'beat'
+        ? s.beatState.status
+        : s.turtleState.status;
+    return simStatus === 'SUCCESS' || s.runtime?.status === 'SUCCESS';
+  };
+
+  const triggerVictoryModal = (earnedBadges: string[] = [], playAudio = true) => {
+    if (isExplanationActivity()) return;
+    const s = get();
+    const act = getActiveCurriculumActivityObj();
+    const isGrand = earnedBadges.length > 0 || Boolean(act && act.format === 'capstone');
+    set({
+      isVictoryModalOpen: true,
+      victoryEarnedBadges: earnedBadges,
+    });
+    if (playAudio && s.speed !== 'instant' && (s.speed as any) !== 0 && !s.beatState.isMuted) {
+      beatSynth.playVictoryFanfare(isGrand);
+    }
+  };
+
+  const recordCurriculumSuccessIfApplicable = (): {
+    newlyEarnedBadges: string[];
+    isCapstone: boolean;
+  } | null => {
+    const s = get();
+    if (s.appMode !== 'curriculum') return null;
+    const activity = getActiveCurriculumActivityObj();
+    if (!activity || !isValidatedPuzzleActivity(activity)) return null;
+    const res = markLessonCompleted(s.activeProfileId, s.activeActivityId, s.activeActivityVersion);
     if (!s.completedActivities[s.activeActivityId]) {
       set((curr) => ({
         completedActivities: {
@@ -918,6 +1037,36 @@ export const useAppStore = create<AppState>((set, get) => {
           [curr.activeActivityId]: true,
         },
       }));
+    }
+    return {
+      newlyEarnedBadges: res.newlyEarnedBadges,
+      isCapstone: activity.format === 'capstone',
+    };
+  };
+
+  const recordCreativePlayCompletionIfApplicable = (playAudio = true) => {
+    const s = get();
+    if (s.appMode !== 'curriculum') return;
+    const activity = getActiveCurriculumActivityObj();
+    if (!activity || !isCreativeCurriculumActivity(activity)) return;
+    const totalBlocks =
+      s.workspace.MAIN.length +
+      s.workspace.F1.length +
+      s.workspace.F2.length +
+      s.workspace.F3.length;
+    if (totalBlocks === 0) return;
+
+    const res = markLessonCompleted(s.activeProfileId, activity.id, activity.version);
+    if (!s.completedActivities[activity.id]) {
+      set((curr) => ({
+        completedActivities: {
+          ...curr.completedActivities,
+          [activity.id]: true,
+        },
+      }));
+    }
+    if (activity.format === 'capstone' || res.newlyEarnedBadges.length > 0) {
+      triggerVictoryModal(res.newlyEarnedBadges, playAudio);
     }
   };
 
@@ -1008,6 +1157,7 @@ export const useAppStore = create<AppState>((set, get) => {
         ? activity.palette.allowedScopes
         : ['MAIN'];
     const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
+    const shouldOpenFuncBar = allowedScopes.some((sc) => sc !== 'MAIN');
 
     set({
       appMode: 'curriculum',
@@ -1023,6 +1173,9 @@ export const useAppStore = create<AppState>((set, get) => {
       editorTool: 'NONE',
       selectedBlockId: null,
       activeScope: initialScope,
+      isFunctionBarOpen: shouldOpenFuncBar,
+      isVictoryModalOpen: false,
+      victoryEarnedBadges: [],
       runtime: null,
       ghostPreview: null,
       slotCapRejectionCount: 0,
@@ -1080,6 +1233,9 @@ export const useAppStore = create<AppState>((set, get) => {
     isExportImportOpen: false,
     isSaveModalOpen: false,
     isLoadModalOpen: false,
+    isLessonPickerOpen: false,
+    isVictoryModalOpen: false,
+    victoryEarnedBadges: [],
     isSubpaletteCollapsed: false,
     isMapHidden: false,
     isFunctionBarOpen: false,
@@ -1294,6 +1450,11 @@ export const useAppStore = create<AppState>((set, get) => {
           ? cloneWorkspaceWithFreshIds(activity.starterWorkspace)
           : createEmptyWorkspace();
 
+        const allowedScopes: ScopeType[] =
+          activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+            ? activity.palette.allowedScopes
+            : ['MAIN'];
+
         set({
           profiles: profilesState.profiles,
           activeProfileId: profileId,
@@ -1317,6 +1478,9 @@ export const useAppStore = create<AppState>((set, get) => {
           pendingVersionMismatch: null,
           selectedBlockId: null,
           activeScope: 'MAIN',
+          isFunctionBarOpen: allowedScopes.some((sc) => sc !== 'MAIN'),
+          isVictoryModalOpen: false,
+          victoryEarnedBadges: [],
           editorTool: 'NONE',
           runtime: null,
           ghostPreview: null,
@@ -1608,6 +1772,9 @@ export const useAppStore = create<AppState>((set, get) => {
           editorTool: 'NONE',
           selectedBlockId: null,
           activeScope: initialScope,
+          isFunctionBarOpen: allowedScopes.some((sc) => sc !== 'MAIN'),
+          isVictoryModalOpen: false,
+          victoryEarnedBadges: [],
           runtime: null,
           ghostPreview: null,
           slotCapRejectionCount: 0,
@@ -1757,6 +1924,9 @@ export const useAppStore = create<AppState>((set, get) => {
         editorTool: 'NONE',
         selectedBlockId: null,
         activeScope: initialScope,
+        isFunctionBarOpen: allowedScopes.some((sc) => sc !== 'MAIN'),
+        isVictoryModalOpen: false,
+        victoryEarnedBadges: [],
         runtime: null,
         ghostPreview: null,
         slotCapRejectionCount: 0,
@@ -1865,6 +2035,60 @@ export const useAppStore = create<AppState>((set, get) => {
           statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}. Advancing to Activity ${nextActivity.id}: ${nextActivity.title}.`,
         });
         return nextActivity.id;
+      }
+
+      set({
+        statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}.`,
+      });
+      return null;
+    },
+
+    completeCreativeActivity: (advanceToNext = false) => {
+      const state = get();
+      if (state.appMode !== 'curriculum') return null;
+
+      const activity = getActiveCurriculumActivityObj();
+      if (!activity || !isCreativeCurriculumActivity(activity)) return null;
+
+      get().pause();
+
+      const res = markLessonCompleted(state.activeProfileId, activity.id, activity.version);
+      const nextCompleted = {
+        ...state.completedActivities,
+        [activity.id]: true,
+      };
+      set({
+        completedActivities: nextCompleted,
+      });
+
+      if (activity.format === 'capstone' || res.newlyEarnedBadges.length > 0) {
+        triggerVictoryModal(
+          res.newlyEarnedBadges,
+          state.speed !== 'instant' && (state.speed as any) !== 0
+        );
+        set({
+          statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}!`,
+        });
+        return activity.id;
+      }
+
+      if (advanceToNext) {
+        const currentIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
+        const nextActivity =
+          currentIdx >= 0 && currentIdx < CURRICULUM_ACTIVITIES.length - 1
+            ? CURRICULUM_ACTIVITIES[currentIdx + 1]
+            : undefined;
+        if (nextActivity) {
+          get().setCurriculumActivity(nextActivity.id, nextActivity.version);
+          set({
+            completedActivities: {
+              ...get().completedActivities,
+              [activity.id]: true,
+            },
+            statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}. Advancing to Activity ${nextActivity.id}: ${nextActivity.title}.`,
+          });
+          return nextActivity.id;
+        }
       }
 
       set({
@@ -2029,6 +2253,10 @@ export const useAppStore = create<AppState>((set, get) => {
     setSaveModalOpen: (open) => set({ isSaveModalOpen: open }),
 
     setLoadModalOpen: (open) => set({ isLoadModalOpen: open }),
+
+    setLessonPickerOpen: (open) => set({ isLessonPickerOpen: open }),
+
+    dismissVictoryModal: () => set({ isVictoryModalOpen: false, victoryEarnedBadges: [] }),
 
     exportCode: (includeMap = true) => {
       const {
@@ -2524,6 +2752,7 @@ export const useAppStore = create<AppState>((set, get) => {
       );
       if (targetIdx === -1) return false;
 
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Replace placeholder block');
 
       const id = `${newType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -2585,7 +2814,7 @@ export const useAppStore = create<AppState>((set, get) => {
       });
 
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
       return true;
     },
 
@@ -2701,7 +2930,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    runInstantIfActive: () => {
+    runInstantIfActive: (options) => {
       const { speed, workspace, activeSimId, grid, turtleState, beatState } = get();
       if (speed !== 'instant' && (speed as any) !== 0) return;
 
@@ -2756,7 +2985,10 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       if (result.status === 'SUCCESS' || result.finalRuntime.status === 'SUCCESS') {
-        recordCurriculumSuccessIfApplicable();
+        const reward = recordCurriculumSuccessIfApplicable();
+        if (options?.allowVictoryModal) {
+          triggerVictoryModal(reward?.newlyEarnedBadges ?? [], false);
+        }
       }
       markDemoTabExploredInternal(true);
     },
@@ -2798,6 +3030,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
       }
 
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Add block');
       const currentState = get();
       const activeActivity =
@@ -2863,7 +3096,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
     },
 
     updateBlockParams: (scope, blockId, newParams) => {
@@ -2882,6 +3115,7 @@ export const useAppStore = create<AppState>((set, get) => {
           return;
         }
       }
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Update block params');
       set((state) => {
         const nextWorkspace: WorkspaceState = {
@@ -2908,12 +3142,13 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
     },
 
     removeBlock: (scope, blockId) => {
       const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Remove block');
       set((state) => {
         const nextWorkspace: WorkspaceState = {
@@ -2940,12 +3175,13 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
     },
 
     updateBlockRepeat: (scope, blockId, repeatCount) => {
       const currentBlock = get().workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock || currentBlock.repeatCount === repeatCount) return;
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Update block repeat');
       set((state) => {
         const nextWorkspace: WorkspaceState = {
@@ -2972,11 +3208,12 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
     },
 
     reorderBlocks: (scope, fromIndex, toIndex) => {
       if (fromIndex === toIndex) return;
+      const wasSuccess = isCurrentSimSuccess();
       recordMutation('Reorder blocks');
       set((state) => {
         const blocks = [...state.workspace[scope]];
@@ -3004,7 +3241,7 @@ export const useAppStore = create<AppState>((set, get) => {
         };
       });
       persistActiveWorkspace(get().workspace);
-      get().runInstantIfActive();
+      get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
     },
 
     clearWorkspace: (scope) => {
@@ -3705,6 +3942,9 @@ export const useAppStore = create<AppState>((set, get) => {
         const simEnv = getSimEnvironment('grid');
         if (!simEnv) return;
 
+        const wasSuccess = grid.status === 'SUCCESS' || currentRuntime.status === 'SUCCESS';
+        const wasPlaying = get().isPlaying;
+
         const res = tickInterpreter(currentRuntime, workspace, grid, simEnv);
 
         // Auto switch active tab to current running scope if function called
@@ -3722,6 +3962,9 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: res.nextRuntime,
           grid: nextGridState,
           activeScope,
+          ...(activeScope !== prev.activeScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
           isPlaying: !res.done && !isPausedOnPlaceholder && prev.isPlaying,
           ...(isPausedOnPlaceholder
             ? {
@@ -3739,10 +3982,20 @@ export const useAppStore = create<AppState>((set, get) => {
         }));
 
         if (
-          (res.nextGrid as GridState).status === 'SUCCESS' ||
+          nextGridState.status === 'SUCCESS' ||
           res.nextRuntime.status === 'SUCCESS'
         ) {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          wasPlaying &&
+          res.done &&
+          !isPausedOnPlaceholder &&
+          nextGridState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
 
         if ((res.done || isPausedOnPlaceholder) && timerId) {
@@ -3770,6 +4023,9 @@ export const useAppStore = create<AppState>((set, get) => {
         const simEnv = getSimEnvironment('beat');
         if (!simEnv) return;
 
+        const wasSuccess = beatState.status === 'SUCCESS' || currentRuntime.status === 'SUCCESS';
+        const wasPlaying = get().isPlaying;
+        const prevScope = get().activeScope;
         const prevBeatIndex = beatState.beatIndex;
         const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv);
         const nextBeat = res.nextGrid as BeatState;
@@ -3781,7 +4037,7 @@ export const useAppStore = create<AppState>((set, get) => {
         const activeScope =
           res.nextRuntime.callStack.length > 0
             ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-            : get().activeScope;
+            : prevScope;
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
 
@@ -3789,6 +4045,9 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: res.nextRuntime,
           beatState: nextBeat,
           activeScope,
+          ...(activeScope !== prevScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
           isPlaying: !res.done && !isPausedOnPlaceholder && get().isPlaying,
           ...(isPausedOnPlaceholder
             ? {
@@ -3799,7 +4058,17 @@ export const useAppStore = create<AppState>((set, get) => {
         });
 
         if (nextBeat.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS') {
-          recordCurriculumSuccessIfApplicable();
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          wasPlaying &&
+          res.done &&
+          !isPausedOnPlaceholder &&
+          nextBeat.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
         }
 
         if ((res.done || isPausedOnPlaceholder) && timerId) {
@@ -3829,7 +4098,10 @@ export const useAppStore = create<AppState>((set, get) => {
             commit.finalTurtleState.status === 'SUCCESS' ||
             commit.finalRuntime.status === 'SUCCESS'
           ) {
-            recordCurriculumSuccessIfApplicable();
+            const reward = recordCurriculumSuccessIfApplicable();
+            if (!commit.wasSuccessBefore) {
+              triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+            }
           }
           if (commit.isDone) {
             set({ isPlaying: false });
@@ -3865,7 +4137,20 @@ export const useAppStore = create<AppState>((set, get) => {
             }
           }
         }
-        get().runInstantIfActive();
+        const wasSuccess = isCurrentSimSuccess();
+        set({ isVictoryModalOpen: false, victoryEarnedBadges: [] });
+        get().runInstantIfActive({ allowVictoryModal: !wasSuccess });
+        if (
+          !isCurrentSimSuccess() &&
+          get().runtime?.status !== 'PAUSED' &&
+          (activeSimId === 'grid'
+            ? get().grid.status !== 'COLLISION'
+            : activeSimId === 'beat'
+            ? get().beatState.status !== 'COLLISION'
+            : get().turtleState.status !== 'COLLISION')
+        ) {
+          recordCreativePlayCompletionIfApplicable(false);
+        }
         return;
       }
 
@@ -3874,6 +4159,8 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       if (get().isPlaying) return;
+
+      set({ isVictoryModalOpen: false, victoryEarnedBadges: [] });
 
       const { grid, turtleState, beatState, runtime } = get();
       const currentSimState =
@@ -3958,12 +4245,16 @@ export const useAppStore = create<AppState>((set, get) => {
           isPlaying: false,
           runtime: null,
           ghostPreview: null,
+          isVictoryModalOpen: false,
+          victoryEarnedBadges: [],
           grid: getInitialGridState(grid),
         });
       } else if (activeSimId === 'beat') {
         set({
           isPlaying: false,
           runtime: null,
+          isVictoryModalOpen: false,
+          victoryEarnedBadges: [],
           beatState: getInitialBeatState(beatState),
         });
       } else {
@@ -3971,6 +4262,8 @@ export const useAppStore = create<AppState>((set, get) => {
           isPlaying: false,
           runtime: null,
           ghostPreview: null,
+          isVictoryModalOpen: false,
+          victoryEarnedBadges: [],
           turtleState: getInitialTurtleState(turtleState),
         });
       }
@@ -4066,6 +4359,8 @@ export const useAppStore = create<AppState>((set, get) => {
         isSubpaletteCollapsed: restored.isSubpaletteCollapsed,
         isMapHidden: restored.isMapHidden,
         isFunctionBarOpen: restored.isFunctionBarOpen,
+        isVictoryModalOpen: false,
+        victoryEarnedBadges: [],
         past: restored.past,
         future: restored.future,
         canUndo: restored.past.length > 0,

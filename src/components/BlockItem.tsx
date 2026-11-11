@@ -5,8 +5,8 @@ import {
   ArrowDown,
   CornerUpLeft,
   CornerUpRight,
+  CornerDownLeft,
   Repeat,
-  Undo2,
   PhoneCall,
   AlertTriangle,
   RotateCcw,
@@ -403,7 +403,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
       case 'LOOP_END':
         return (
-          <Undo2
+          <CornerDownLeft
             className={`w-5 h-5 md:w-7 md:h-7 ${
               isActive ? 'text-slate-950 stroke-[3]' : 'text-purple-200 stroke-[3]'
             }`}

@@ -1,69 +1,65 @@
 import React, { useEffect, useState } from 'react';
-import { useAppStore, PRESET_LEVELS } from '../store/useAppStore';
-import { LESSONS } from '../data/lessons';
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Lightbulb,
+  Map,
+  Maximize2,
+  Minimize2,
+  Redo2,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Share2,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
   getActivityAtVersion,
   getActivityLatest,
-  getCurriculumModule,
 } from '../data/curriculum';
-import { getSimEnvironment } from '../engine/simulation/registry';
-import {
-  X,
-  Lightbulb,
-  Save,
-  FolderOpen,
-  Share2,
-  Zap,
-  Maximize2,
-  Minimize2,
-  Eye,
-  EyeOff,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Copy,
-} from 'lucide-react';
 import { isFullscreenActive, toggleFullscreen } from '../utils/fullscreen';
-import { usePwaUpdateStore, applyAppUpdate } from '../services/pwaUpdateManager';
+import { applyAppUpdate, usePwaUpdateStore } from '../services/pwaUpdateManager';
 import {
   getProfileAvatar,
   getProfileColor,
   getProfileDisplayName,
+  getProfileProgress,
 } from '../services/profileService';
 
 export const MobileDrawerMenu: React.FC = () => {
+  useAppStore();
   const {
     profiles,
     activeProfileId,
     setProfileModalOpen,
-    completedActivities,
     resetActivityToStarter,
     appMode,
     setAppMode,
     activeActivityId,
     activeActivityVersion,
-    setCurriculumActivity,
     openCopyInSandbox,
     isMobileMenuOpen,
     setMobileMenuOpen,
     activeSimId,
     setSimEnvironment,
-    currentLevel,
-    setLevel,
-    speed,
-    setSpeed,
     setSolutionOpen,
     setSaveModalOpen,
     setLoadModalOpen,
     setExportImportOpen,
+    setLessonPickerOpen,
     isMapHidden,
     toggleMapHidden,
-    grid,
-    turtleState,
     beatState,
-    runtime,
-  } = useAppStore();
+    toggleBeatMuted,
+    canRedo,
+    redo,
+  } = useAppStore.getState();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { needRefresh, isUpdating } = usePwaUpdateStore();
@@ -85,73 +81,35 @@ export const MobileDrawerMenu: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        setMobileMenuOpen(false);
+        useAppStore.getState().setMobileMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMobileMenuOpen, setMobileMenuOpen]);
+  }, [isMobileMenuOpen]);
 
   if (!isMobileMenuOpen) return null;
 
-  const currentSimEnv = getSimEnvironment(activeSimId);
-  const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
   const currentCurriculumActivity =
     getActivityAtVersion(activeActivityId, activeActivityVersion) ??
     getActivityLatest(activeActivityId) ??
     CURRICULUM_ACTIVITIES[0];
-  const currentCurriculumModule = currentCurriculumActivity
-    ? getCurriculumModule(currentCurriculumActivity.moduleId)
-    : undefined;
-  const ToolsComponent = currentSimEnv?.ToolsComponent;
-  const showToolsSection = Boolean(ToolsComponent) && !(appMode === 'curriculum' && activeSimId === 'grid');
-  const currentSimState =
-    activeSimId === 'grid' ? grid : activeSimId === 'beat' ? beatState : turtleState;
+
+  const canShowSolution =
+    appMode === 'curriculum'
+      ? Boolean(
+          currentCurriculumActivity?.referenceSolution ||
+            currentCurriculumActivity?.partialHelp
+        )
+      : activeSimId === 'grid';
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
   const activeAvatar = getProfileAvatar(activeProfile?.avatarId ?? 'robot');
   const activeColor = getProfileColor(activeProfile?.colorId ?? 'sky');
   const activeDisplayName = activeProfile ? getProfileDisplayName(activeProfile) : 'Player 1';
-
-  const isInstant = speed === 'instant' || (speed as any) === 0;
-
-  const toggleSpeed = () => {
-    if (speed === 400) setSpeed(100);
-    else if (speed === 100) setSpeed(25);
-    else if (speed === 25) setSpeed('instant');
-    else setSpeed(400);
-  };
-
-  const getSpeedLabel = () => {
-    if (isInstant) return 'Instant';
-    if (speed === 25) return '16x';
-    if (speed === 100) return '4x';
-    return '1x';
-  };
-
-  const handlePrevLevel = () => {
-    const prevId = currentLevel > 1 ? currentLevel - 1 : PRESET_LEVELS.length;
-    setLevel(prevId);
-  };
-
-  const handleNextLevel = () => {
-    const nextId = currentLevel < PRESET_LEVELS.length ? currentLevel + 1 : 1;
-    setLevel(nextId);
-  };
-
-  const handlePrevActivity = () => {
-    if (CURRICULUM_ACTIVITIES.length === 0) return;
-    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-    const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
-    setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
-  };
-
-  const handleNextActivity = () => {
-    if (CURRICULUM_ACTIVITIES.length === 0) return;
-    const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-    const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
-    setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
-  };
+  const progress = getProfileProgress(activeProfileId);
+  const completedCount = Object.keys(progress.completedLessons || {}).length;
+  const badgeCount = (progress.earnedBadges || []).length;
 
   const handleToggleFullscreen = async () => {
     const active = await toggleFullscreen();
@@ -164,499 +122,347 @@ export const MobileDrawerMenu: React.FC = () => {
       aria-modal="true"
       aria-label="Navigation Menu"
       data-testid="mobile-drawer-overlay"
-      className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex bg-black/65 backdrop-blur-sm"
       onClick={() => setMobileMenuOpen(false)}
     >
       <div
         data-testid="mobile-drawer-content"
-        className="w-[85vw] max-w-[340px] h-full bg-slate-900 border-r border-slate-800 flex flex-col shadow-2xl p-4 overflow-y-auto"
+        className="w-[88vw] max-w-[340px] h-full bg-slate-900 border-r border-slate-800 flex flex-col shadow-2xl p-3.5 sm:p-4 overflow-y-auto gap-3.5"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header with Title and Close Button */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-xl">{appMode === 'curriculum' ? '🎓' : '🤖'}</span>
-            <span className="font-extrabold text-white text-base">Menu</span>
+            <span className="text-xl" aria-hidden="true">
+              {appMode === 'curriculum' ? '🎓' : '🤖'}
+            </span>
+            <span className="font-black text-white text-base tracking-tight">Menu</span>
           </div>
           <button
+            type="button"
             data-testid="btn-close-mobile-menu"
             onClick={() => setMobileMenuOpen(false)}
-            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 active:scale-95 transition-transform"
+            className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex flex-col gap-5 py-4">
-          {/* Pending App Update Action (when update is available) */}
-          {needRefresh && (
-            <button
-              data-testid="drawer-btn-pwa-update"
-              disabled={isUpdating}
-              onClick={() => {
-                setMobileMenuOpen(false);
-                void applyAppUpdate();
+        {/* Pending PWA Update CTA */}
+        {needRefresh && (
+          <button
+            type="button"
+            data-testid="drawer-btn-pwa-update"
+            disabled={isUpdating}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              void applyAppUpdate();
+            }}
+            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs rounded-2xl border-2 border-sky-300 shadow-lg active:scale-95 transition-all disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 stroke-[2.5] ${isUpdating ? 'animate-spin' : ''}`} />
+            <span>{isUpdating ? 'Updating…' : 'Update App'}</span>
+          </button>
+        )}
+
+        {/* Row 1: Primary File Actions (Save / Open / Share) — Immediately Visible */}
+        <div className="grid grid-cols-3 gap-2 shrink-0">
+          <button
+            type="button"
+            data-testid="drawer-btn-save"
+            onClick={() => {
+              setSaveModalOpen(true);
+              setMobileMenuOpen(false);
+            }}
+            className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 bg-slate-800 hover:bg-sky-700/80 text-white rounded-2xl border border-slate-700 active:scale-95 transition-all cursor-pointer"
+          >
+            <Save className="w-6 h-6 text-sky-400" />
+            <span className="text-xs font-extrabold">Save</span>
+          </button>
+          <button
+            type="button"
+            data-testid="drawer-btn-load"
+            onClick={() => {
+              setLoadModalOpen(true);
+              setMobileMenuOpen(false);
+            }}
+            className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 bg-slate-800 hover:bg-amber-700/60 text-white rounded-2xl border border-slate-700 active:scale-95 transition-all cursor-pointer"
+          >
+            <FolderOpen className="w-6 h-6 text-amber-400" />
+            <span className="text-xs font-extrabold">Open</span>
+          </button>
+          <button
+            type="button"
+            data-testid="drawer-btn-share"
+            onClick={() => {
+              setExportImportOpen(true);
+              setMobileMenuOpen(false);
+            }}
+            className="flex flex-col items-center justify-center gap-1.5 py-3 px-2 bg-slate-800 hover:bg-indigo-700/80 text-white rounded-2xl border border-slate-700 active:scale-95 transition-all cursor-pointer"
+          >
+            <Share2 className="w-6 h-6 text-indigo-400" />
+            <span className="text-xs font-extrabold">Share</span>
+          </button>
+        </div>
+
+        {/* Row 2: Active Player Profile Card with Stars & Badges */}
+        <button
+          type="button"
+          data-testid="drawer-btn-profile-switcher"
+          aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
+          onClick={() => {
+            setMobileMenuOpen(false);
+            setProfileModalOpen(true);
+          }}
+          className="flex items-center justify-between gap-2.5 w-full p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 transition-all active:scale-[0.99] shrink-0 cursor-pointer"
+          style={{ borderColor: `${activeColor.accentColor}99` }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span
+              className="relative flex items-center justify-center w-11 h-11 rounded-xl border text-2xl shrink-0"
+              style={{
+                backgroundColor: `${activeColor.accentColor}26`,
+                borderColor: activeColor.accentColor,
               }}
-              className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs rounded-2xl border-2 border-sky-300 shadow-lg active:scale-95 transition-all disabled:opacity-60"
             >
-              <RefreshCw className={`w-4 h-4 stroke-[2.5] ${isUpdating ? 'animate-spin' : ''}`} />
-              <span>{isUpdating ? 'Updating…' : 'Update App & Restore Workspace'}</span>
+              <span aria-hidden="true">{activeAvatar.emoji}</span>
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950 border border-slate-900"
+                style={{ backgroundColor: activeColor.accentColor }}
+              >
+                {activeColor.shapeSymbol}
+              </span>
+            </span>
+            <div className="flex flex-col text-left min-w-0">
+              <span className="font-black text-sm text-white truncate">{activeDisplayName}</span>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <span>⭐ {completedCount}</span>
+                <span data-testid="drawer-profile-badge-count">🏅 {badgeCount}</span>
+              </div>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-xl bg-violet-600/30 border border-violet-400/50 text-violet-200 font-extrabold text-xs shrink-0">
+            Players
+          </span>
+        </button>
+
+        {/* Row 3: Mode Switcher, Sandbox Worlds & Lessons/Maps Picker */}
+        <div className="flex flex-col gap-2 shrink-0">
+          <div
+            role="group"
+            aria-label="Application Mode"
+            className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800"
+          >
+            <button
+              data-testid="drawer-mode-curriculum"
+              type="button"
+              aria-pressed={appMode === 'curriculum'}
+              onClick={() => setAppMode('curriculum')}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                appMode === 'curriculum'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span aria-hidden="true">🎓</span>
+              <span>Learn</span>
+            </button>
+            <button
+              data-testid="drawer-mode-sandbox"
+              type="button"
+              aria-pressed={appMode === 'sandbox'}
+              onClick={() => setAppMode('sandbox')}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                appMode === 'sandbox'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span aria-hidden="true">🛠️</span>
+              <span>Sandbox</span>
+            </button>
+          </div>
+
+          {/* Sandbox World Switcher Tiles */}
+          {appMode === 'sandbox' && (
+            <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                data-testid="drawer-tab-grid"
+                onClick={() => setSimEnvironment('grid')}
+                className={`flex items-center justify-center gap-1 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  activeSimId === 'grid'
+                    ? 'bg-sky-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span aria-hidden="true">🤖</span>
+                <span>Grid</span>
+              </button>
+              <button
+                type="button"
+                data-testid="drawer-tab-turtle"
+                onClick={() => setSimEnvironment('turtle')}
+                className={`flex items-center justify-center gap-1 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  activeSimId === 'turtle'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span aria-hidden="true">🐢</span>
+                <span>Art</span>
+              </button>
+              <button
+                type="button"
+                data-testid="drawer-tab-beat"
+                onClick={() => setSimEnvironment('beat')}
+                className={`flex items-center justify-center gap-1 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  activeSimId === 'beat'
+                    ? 'bg-fuchsia-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span aria-hidden="true">🎵</span>
+                <span>Beat</span>
+              </button>
+            </div>
+          )}
+
+          {/* Big Lessons & Maps Picker CTA */}
+          <button
+            type="button"
+            data-testid="drawer-btn-lesson-picker"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setLessonPickerOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-indigo-600/25 hover:bg-indigo-600/35 border border-indigo-400/50 text-indigo-100 font-extrabold text-sm active:scale-[0.99] transition-all cursor-pointer"
+          >
+            <Map className="w-5 h-5 text-indigo-300" />
+            <span>Lessons &amp; Maps</span>
+          </button>
+        </div>
+
+        {/* Row 4: Secondary Kid-Friendly Tools Grid */}
+        <div className="grid grid-cols-2 gap-2 shrink-0">
+          {/* Sound On / Muted */}
+          <button
+            type="button"
+            data-testid="drawer-btn-sound"
+            aria-pressed={!beatState.isMuted}
+            onClick={toggleBeatMuted}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-all cursor-pointer ${
+              beatState.isMuted
+                ? 'bg-slate-800 text-slate-400 border-slate-700'
+                : 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40'
+            }`}
+          >
+            {beatState.isMuted ? (
+              <VolumeX className="w-4 h-4 text-slate-400 shrink-0" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-emerald-300 shrink-0" />
+            )}
+            <span>{beatState.isMuted ? 'Muted' : 'Sound On'}</span>
+          </button>
+
+          {/* Redo */}
+          <button
+            type="button"
+            data-testid="drawer-btn-redo"
+            disabled={!canRedo}
+            onClick={redo}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs transition-all ${
+              canRedo
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 active:scale-95 cursor-pointer'
+                : 'bg-slate-900/60 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+            }`}
+          >
+            <Redo2 className="w-4 h-4 shrink-0" />
+            <span>Redo</span>
+          </button>
+
+          {/* Clue / Solution shortcut */}
+          {canShowSolution && (
+            <button
+              type="button"
+              data-testid="drawer-btn-solution"
+              onClick={() => {
+                setSolutionOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+            >
+              <Lightbulb className="w-4 h-4 fill-amber-300 text-amber-300 shrink-0" />
+              <span>Clue</span>
             </button>
           )}
 
-          {/* Section: Active Player Profile Switcher */}
-          <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-              Player Profile
-            </span>
-            <button
-              type="button"
-              data-testid="drawer-btn-profile-switcher"
-              aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
-              onClick={() => {
-                setMobileMenuOpen(false);
-                setProfileModalOpen(true);
-              }}
-              className="flex items-center justify-between gap-3 w-full p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 transition-all active:scale-[0.99]"
-              style={{ borderColor: `${activeColor.accentColor}99` }}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span
-                  className="relative flex items-center justify-center w-10 h-10 rounded-xl border text-xl shrink-0"
-                  style={{
-                    backgroundColor: `${activeColor.accentColor}26`,
-                    borderColor: activeColor.accentColor,
-                  }}
-                >
-                  <span aria-hidden="true">{activeAvatar.emoji}</span>
-                  <span
-                    aria-hidden="true"
-                    className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950 border border-slate-900"
-                    style={{ backgroundColor: activeColor.accentColor }}
-                  >
-                    {activeColor.shapeSymbol}
-                  </span>
-                </span>
-                <div className="flex flex-col text-left min-w-0">
-                  <span className="font-black text-xs text-white truncate">
-                    {activeDisplayName}
-                  </span>
-                  <span className="text-[11px] text-slate-400 truncate">
-                    {activeColor.label}
-                  </span>
-                </div>
-              </div>
-              <span className="px-2.5 py-1 rounded-xl bg-violet-600/30 border border-violet-400/50 text-violet-200 font-bold text-[11px] shrink-0">
-                Switch
-              </span>
-            </button>
-          </div>
-
-          {/* Section: Mode Switcher (Learn vs Sandbox) */}
-          <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-              Mode
-            </span>
-            <div
-              role="group"
-              aria-label="Application Mode"
-              className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800"
-            >
-              <button
-                data-testid="drawer-mode-curriculum"
-                type="button"
-                aria-pressed={appMode === 'curriculum'}
-                aria-label="Learn Mode"
-                onClick={() => setAppMode('curriculum')}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
-                  appMode === 'curriculum'
-                    ? 'bg-violet-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <span>🎓</span>
-                <span>Learn</span>
-              </button>
-              <button
-                data-testid="drawer-mode-sandbox"
-                type="button"
-                aria-pressed={appMode === 'sandbox'}
-                aria-label="Sandbox Mode"
-                onClick={() => setAppMode('sandbox')}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl font-bold text-xs transition-all ${
-                  appMode === 'sandbox'
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <span>🛠️</span>
-                <span>Sandbox</span>
-              </button>
-            </div>
-          </div>
-
-          {appMode === 'curriculum' ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                  Curriculum Activities
-                </span>
-                {(currentCurriculumActivity?.referenceSolution ||
-                  currentCurriculumActivity?.partialHelp) && (
-                  <button
-                    data-testid="drawer-btn-solution"
-                    onClick={() => {
-                      setSolutionOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                  >
-                    <Lightbulb className="w-3.5 h-3.5 fill-amber-300" />
-                    <span>Solution</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Prev / Next & Curriculum Activity Dropdown */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  data-testid="drawer-btn-prev-activity"
-                  type="button"
-                  aria-label="Previous Activity"
-                  onClick={handlePrevActivity}
-                  className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="flex-1 flex items-center gap-1 bg-slate-800 px-2 rounded-xl border border-violet-500/40 min-w-0">
-                  <span className="text-sm flex-shrink-0">{currentCurriculumModule?.icon || '🎓'}</span>
-                  <select
-                    data-testid="drawer-select-activity"
-                    aria-label="Select Curriculum Activity"
-                    value={activeActivityId}
-                    onChange={(e) => setCurriculumActivity(e.target.value)}
-                    className="bg-transparent text-white font-bold text-xs h-10 w-full focus:outline-none cursor-pointer truncate"
-                  >
-                    {CURRICULUM_ACTIVITIES.map((act) => (
-                      <option key={act.id} value={act.id} className="bg-slate-900 text-slate-100">
-                        {act.id} — {act.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  data-testid="drawer-btn-next-activity"
-                  type="button"
-                  aria-label="Next Activity"
-                  onClick={handleNextActivity}
-                  className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Quick Activity Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
-                {CURRICULUM_ACTIVITIES.map((act) => {
-                  const isCompleted = Boolean(completedActivities[act.id]);
-                  return (
-                    <button
-                      key={act.id}
-                      type="button"
-                      data-testid={`drawer-activity-${act.id}`}
-                      aria-current={activeActivityId === act.id ? 'step' : undefined}
-                      onClick={() => setCurriculumActivity(act.id)}
-                      className={`flex-shrink-0 flex items-center justify-center gap-1 px-2.5 h-8 rounded-lg font-black text-xs border transition-all ${
-                        activeActivityId === act.id
-                          ? 'bg-violet-500 border-violet-300 text-white shadow-md scale-105'
-                          : isCompleted
-                          ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200'
-                          : 'bg-slate-800 border-slate-700 text-slate-300'
-                      }`}
-                    >
-                      <span>{act.id}</span>
-                      {isCompleted && (
-                        <span aria-hidden="true" className="text-[10px] text-emerald-300">
-                          ✓
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Reset to Starter & Open Copy in Sandbox Actions */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  data-testid="drawer-btn-reset-to-starter"
-                  type="button"
-                  aria-label="Reset to Starter"
-                  onClick={() => {
-                    resetActivityToStarter();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-slate-800 hover:bg-rose-500/20 text-rose-200 font-bold text-xs rounded-xl border border-rose-400/40 active:scale-95 transition-all"
-                >
-                  <span aria-hidden="true" className="text-sm leading-none font-black">
-                    ↺
-                  </span>
-                  <span>Starter</span>
-                </button>
-
-                <button
-                  data-testid="drawer-btn-open-copy-sandbox"
-                  type="button"
-                  aria-label="Open Copy in Sandbox"
-                  onClick={openCopyInSandbox}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-slate-800 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 active:scale-95 transition-all"
-                >
-                  <Copy className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">Sandbox Copy</span>
-                </button>
-              </div>
-            </div>
-          ) : (
+          {/* Curriculum-specific tools: Start Over & Edit in Sandbox */}
+          {appMode === 'curriculum' && (
             <>
-              {/* Section: Environment Selector */}
-              <div className="flex flex-col gap-2">
-                <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                  Environment
-                </span>
-                <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                  <button
-                    data-testid="drawer-tab-grid"
-                    onClick={() => setSimEnvironment('grid')}
-                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
-                      activeSimId === 'grid'
-                        ? 'bg-sky-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span>🤖</span>
-                    <span>Grid</span>
-                  </button>
-                  <button
-                    data-testid="drawer-tab-turtle"
-                    onClick={() => setSimEnvironment('turtle')}
-                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
-                      activeSimId === 'turtle'
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span>🐢</span>
-                    <span>Turtle</span>
-                  </button>
-                  <button
-                    data-testid="drawer-tab-beat"
-                    onClick={() => setSimEnvironment('beat')}
-                    className={`flex items-center justify-center gap-1 py-2 rounded-xl font-bold text-xs transition-all ${
-                      activeSimId === 'beat'
-                        ? 'bg-fuchsia-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span>🎵</span>
-                    <span>Beat</span>
-                  </button>
-                </div>
-              </div>
+              <button
+                type="button"
+                data-testid="drawer-btn-reset-to-starter"
+                onClick={() => {
+                  resetActivityToStarter();
+                  setMobileMenuOpen(false);
+                }}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-rose-200 border border-rose-400/40 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4 shrink-0" />
+                <span>Start Over</span>
+              </button>
 
-              {/* Section: Lessons (Grid only) */}
-              {activeSimId === 'grid' && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                      Lessons
-                    </span>
-                    <button
-                      data-testid="drawer-btn-solution"
-                      onClick={() => {
-                        setSolutionOpen(true);
-                        setMobileMenuOpen(false);
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                    >
-                      <Lightbulb className="w-3.5 h-3.5 fill-amber-300" />
-                      <span>Solution</span>
-                    </button>
-                  </div>
-
-                  {/* Prev / Next & Dropdown */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handlePrevLevel}
-                      className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <div className="flex-1 flex items-center gap-1 bg-slate-800 px-2 rounded-xl border border-slate-700 min-w-0">
-                      <span className="text-sm flex-shrink-0">{currentLesson.moduleIcon}</span>
-                      <select
-                        value={currentLevel}
-                        onChange={(e) => setLevel(Number(e.target.value))}
-                        className="bg-transparent text-white font-bold text-xs h-10 w-full focus:outline-none cursor-pointer truncate"
-                      >
-                        {LESSONS.map((l) => (
-                          <option key={l.id} value={l.id} className="bg-slate-900 text-slate-100">
-                            {l.id}. {l.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={handleNextLevel}
-                      className="flex items-center justify-center w-9 h-10 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Quick Level Pills */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
-                    {PRESET_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl.id}
-                        data-testid={`drawer-level-${lvl.id}`}
-                        onClick={() => setLevel(lvl.id)}
-                        className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs border transition-all ${
-                          currentLevel === lvl.id
-                            ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md scale-105'
-                            : 'bg-slate-800 border-slate-700 text-slate-300'
-                        }`}
-                      >
-                        {lvl.id}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <button
+                type="button"
+                data-testid="drawer-btn-open-copy-sandbox"
+                onClick={openCopyInSandbox}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+              >
+                <Copy className="w-4 h-4 shrink-0" />
+                <span className="truncate">Edit in Sandbox</span>
+              </button>
             </>
           )}
 
-          {/* Section: Files & Storage */}
-          <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-              Program Storage & Sharing
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                data-testid="drawer-btn-save"
-                onClick={() => {
-                  setSaveModalOpen(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 bg-slate-800 hover:bg-sky-700 text-white rounded-xl border border-slate-700 active:scale-95 transition-transform"
-              >
-                <Save className="w-5 h-5 text-sky-400" />
-                <span className="text-[11px] font-bold">Save</span>
-              </button>
-              <button
-                data-testid="drawer-btn-load"
-                onClick={() => {
-                  setLoadModalOpen(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl border border-slate-700 active:scale-95 transition-transform"
-              >
-                <FolderOpen className="w-5 h-5 text-amber-400" />
-                <span className="text-[11px] font-bold">Load</span>
-              </button>
-              <button
-                data-testid="drawer-btn-share"
-                onClick={() => {
-                  setExportImportOpen(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 bg-slate-800 hover:bg-indigo-700 text-white rounded-xl border border-slate-700 active:scale-95 transition-transform"
-              >
-                <Share2 className="w-5 h-5 text-indigo-400" />
-                <span className="text-[11px] font-bold">Share</span>
-              </button>
-            </div>
-          </div>
+          {/* Mobile Stacked Layout Map Visibility Toggle */}
+          <button
+            type="button"
+            data-testid="drawer-btn-toggle-map"
+            onClick={() => {
+              toggleMapHidden();
+              setMobileMenuOpen(false);
+            }}
+            className={`md:hidden flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-all cursor-pointer ${
+              isMapHidden
+                ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                : 'bg-slate-800 text-slate-300 border-slate-700'
+            }`}
+          >
+            {isMapHidden ? (
+              <EyeOff className="w-4 h-4 text-amber-300 shrink-0" />
+            ) : (
+              <Eye className="w-4 h-4 text-sky-400 shrink-0" />
+            )}
+            <span>{isMapHidden ? 'Show Map' : 'Hide Map'}</span>
+          </button>
 
-          {/* Section: Speed & Display */}
-          <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-              Display & Performance
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              {/* Speed Button */}
-              <button
-                data-testid="drawer-btn-speed"
-                onClick={toggleSpeed}
-                className={`flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border font-bold transition-all active:scale-95 ${
-                  isInstant
-                    ? 'bg-amber-400 text-slate-950 border-amber-300'
-                    : 'bg-slate-800 text-yellow-400 border-slate-700'
-                }`}
-              >
-                <Zap className={`w-5 h-5 ${isInstant ? 'fill-slate-950' : 'fill-yellow-400'}`} />
-                <span className="text-[11px]">{getSpeedLabel()}</span>
-              </button>
-
-              {/* Hide / Show Map */}
-              <button
-                data-testid="drawer-btn-toggle-map"
-                onClick={toggleMapHidden}
-                className={`flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border font-bold transition-all active:scale-95 ${
-                  isMapHidden
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
-                    : 'bg-slate-800 text-slate-300 border-slate-700'
-                }`}
-              >
-                {isMapHidden ? <EyeOff className="w-5 h-5 text-amber-300" /> : <Eye className="w-5 h-5 text-sky-400" />}
-                <span className="text-[11px]">{isMapHidden ? 'Map: Off' : 'Map: On'}</span>
-              </button>
-
-              {/* Fullscreen Button */}
-              <button
-                data-testid="drawer-btn-fullscreen"
-                onClick={handleToggleFullscreen}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 bg-slate-800 text-slate-300 rounded-xl border border-slate-700 active:scale-95 transition-transform"
-              >
-                {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-                <span className="text-[11px] font-bold">{isFullscreen ? 'Exit Full' : 'Fullscreen'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Section: Custom Environment Tools (if present and editable) */}
-          {showToolsSection && ToolsComponent && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
-                {activeSimId === 'grid'
-                  ? 'Map Editor Tools'
-                  : activeSimId === 'beat'
-                  ? 'Beat Pad Tools'
-                  : 'Canvas Tools'}
-              </span>
-              <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-center">
-                <ToolsComponent state={currentSimState} />
-              </div>
-            </div>
-          )}
-
-          {/* Section: Runtime Variables */}
-          {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
-            <div className="flex flex-col gap-1.5 p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                VARS:
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(runtime.variables).map(([k, v]) => (
-                  <span key={k} className="text-amber-300 font-bold">
-                    <span className="italic">{k}</span> ={' '}
-                    <span className="text-violet-200">
-                      {typeof v === 'number' ? (Number.isInteger(v) ? v : Number(v.toFixed(2))) : v}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Fullscreen */}
+          <button
+            type="button"
+            data-testid="drawer-btn-fullscreen"
+            onClick={handleToggleFullscreen}
+            className="flex items-center justify-center gap-2 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <Maximize2 className="w-4 h-4 shrink-0" />
+            )}
+            <span>{isFullscreen ? 'Exit Full' : 'Fullscreen'}</span>
+          </button>
         </div>
       </div>
     </div>

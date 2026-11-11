@@ -6,7 +6,6 @@ import {
   CurriculumActivity,
   getActivityAtVersion,
   getActivityLatest,
-  getCurriculumModule,
   isValidatedPuzzleActivity,
 } from '../data/curriculum';
 import {
@@ -25,13 +24,12 @@ import {
   ArrowDown,
   CornerUpLeft,
   CornerUpRight,
+  CornerDownLeft,
   Repeat,
   Undo2,
   PhoneCall,
   Check,
   Play,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
   BookOpen,
@@ -40,6 +38,15 @@ import {
   Slash,
   Palette,
   AlertTriangle,
+  RotateCcw,
+  RotateCw,
+  Bell,
+  Music,
+  Grid,
+  Hourglass,
+  Eraser,
+  Hand,
+  Package,
 } from 'lucide-react';
 
 /**
@@ -76,26 +83,21 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
   defaultDevProofsExpanded = true,
   activityOverride,
 }) => {
-  const subscribedStore = useAppStore();
+  useAppStore();
   const {
     appMode,
     activeActivityId,
     activeActivityVersion,
-    setCurriculumActivity,
     currentLevel,
-    setLevel,
     isSolutionOpen,
     setSolutionOpen,
     loadSolution,
     triggerGhostPreview,
     loadPartialScaffold,
-  } =
-    typeof window === 'undefined' || typeof document === 'undefined'
-      ? useAppStore.getState()
-      : subscribedStore;
+  } = useAppStore.getState();
 
-  const [copiedNotification, setCopiedNotification] = useState(false);
   const [isTier2Revealed, setIsTier2Revealed] = useState(false);
+  const [isTeacherTipOpen, setIsTeacherTipOpen] = useState(false);
   const [isDevProofsOpen, setIsDevProofsOpen] = useState(defaultDevProofsExpanded);
 
   const isCurriculum = appMode === 'curriculum';
@@ -119,7 +121,7 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
 
   useEffect(() => {
     setIsTier2Revealed(false);
-    setCopiedNotification(false);
+    setIsTeacherTipOpen(false);
   }, [activeActivityId, isSolutionOpen]);
 
   useEffect(() => {
@@ -142,9 +144,6 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
 
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
   const currentActivity = resolvedActivity;
-  const currentModule = currentActivity
-    ? getCurriculumModule(currentActivity.moduleId)
-    : undefined;
 
   const solutionWorkspace = isCurriculum
     ? currentActivity?.referenceSolution
@@ -173,32 +172,7 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
     } else {
       loadSolution(currentLesson.id);
     }
-    setCopiedNotification(true);
-    setTimeout(() => setCopiedNotification(false), 2500);
-  };
-
-  const handlePrevLesson = () => {
-    if (isCurriculum) {
-      if (CURRICULUM_ACTIVITIES.length === 0) return;
-      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-      const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
-      setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
-      return;
-    }
-    const prevId = currentLesson.id > 1 ? currentLesson.id - 1 : LESSONS.length;
-    setLevel(prevId);
-  };
-
-  const handleNextLesson = () => {
-    if (isCurriculum) {
-      if (CURRICULUM_ACTIVITIES.length === 0) return;
-      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-      const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
-      setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
-      return;
-    }
-    const nextId = currentLesson.id < LESSONS.length ? currentLesson.id + 1 : 1;
-    setLevel(nextId);
+    setSolutionOpen(false);
   };
 
   const renderBlockMini = (block: CodeBlock, index: number) => {
@@ -222,7 +196,7 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
           key={`${block.id || index}`}
           data-testid="solution-mini-placeholder"
           data-placeholder-hint={hintCategory}
-          className={`relative flex items-center justify-center min-w-[50px] h-12 px-2 rounded-xl border-2 border-dashed bg-slate-900/90 text-amber-300 shadow-sm font-black text-lg select-none ${borderTint}`}
+          className={`relative flex items-center justify-center min-w-[46px] h-11 px-2 rounded-xl border-2 border-dashed bg-slate-900/90 text-amber-300 shadow-sm font-black text-lg select-none ${borderTint}`}
         >
           <span>?</span>
           {hintCategory === 'motion' && (
@@ -251,6 +225,7 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
     switch (block.type) {
       case 'MOVE_FWD':
       case 'FORWARD':
+      case 'CURSOR_STEP':
         bg = 'bg-sky-600 border-sky-400 text-white';
         icon = <ArrowUp className="w-5 h-5 stroke-[2.5]" />;
         break;
@@ -264,8 +239,25 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
         icon = <CornerUpLeft className="w-5 h-5 stroke-[2.5]" />;
         break;
       case 'TURN_RIGHT':
+      case 'CURSOR_TURN':
         bg = 'bg-amber-600 border-amber-400 text-white';
         icon = <CornerUpRight className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'PICK_UP':
+        bg = 'bg-teal-600 border-teal-300 text-white';
+        icon = <Hand className="w-5 h-5 stroke-[2.4]" />;
+        break;
+      case 'USE_DROP':
+        bg = 'bg-amber-600 border-amber-300 text-white';
+        icon = <Package className="w-5 h-5 stroke-[2.4]" />;
+        break;
+      case 'ARC_LEFT':
+        bg = 'bg-cyan-600 border-cyan-400 text-white';
+        icon = <RotateCcw className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'ARC_RIGHT':
+        bg = 'bg-cyan-600 border-cyan-400 text-white';
+        icon = <RotateCw className="w-5 h-5 stroke-[2.5]" />;
         break;
       case 'PEN_UP':
         bg = 'bg-teal-700 border-teal-400 text-teal-100';
@@ -281,8 +273,57 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
         icon = <PenTool className="w-4 h-4" />;
         break;
       case 'SET_PEN_COLOR':
+      case 'SET_LED_COLOR':
         bg = 'bg-slate-800 border-slate-500 text-pink-300';
         icon = <Palette className="w-4 h-4" />;
+        break;
+      case 'SET_PEN_WIDTH':
+        bg = 'bg-slate-800 border-slate-500 text-white';
+        icon = <div className="w-5 h-1.5 rounded-full bg-white" />;
+        break;
+      case 'DRUM_KICK':
+        bg = 'bg-rose-600 border-rose-400 text-white';
+        icon = <span className="text-base leading-none">🥁</span>;
+        break;
+      case 'DRUM_SNARE':
+        bg = 'bg-orange-600 border-orange-400 text-white';
+        icon = <span className="text-base leading-none">🪘</span>;
+        break;
+      case 'DRUM_CLAP':
+        bg = 'bg-fuchsia-600 border-fuchsia-400 text-white';
+        icon = <Sparkles className="w-4 h-4" />;
+        break;
+      case 'PLAY_CHIME':
+        bg = 'bg-amber-500 border-amber-300 text-slate-950';
+        icon = <Bell className="w-4 h-4 stroke-[2.5]" />;
+        break;
+      case 'PLAY_NOTE':
+        bg = 'bg-violet-600 border-violet-400 text-white';
+        icon = <Music className="w-4 h-4 stroke-[2.5]" />;
+        break;
+      case 'STAMP_HEART':
+        bg = 'bg-rose-500 border-rose-300 text-white';
+        icon = <span className="text-base leading-none">❤️</span>;
+        break;
+      case 'STAMP_STAR':
+        bg = 'bg-amber-500 border-amber-200 text-slate-950';
+        icon = <span className="text-base leading-none">⭐</span>;
+        break;
+      case 'STAMP_SMILE':
+        bg = 'bg-cyan-600 border-cyan-300 text-white';
+        icon = <span className="text-base leading-none">😊</span>;
+        break;
+      case 'STAMP_PRESET':
+        bg = 'bg-cyan-700 border-cyan-400 text-white';
+        icon = <Grid className="w-4 h-4" />;
+        break;
+      case 'WAIT_BEAT':
+        bg = 'bg-sky-700 border-sky-400 text-white';
+        icon = <Hourglass className="w-4 h-4" />;
+        break;
+      case 'CLEAR_LEDS':
+        bg = 'bg-slate-700 border-slate-500 text-slate-200';
+        icon = <Eraser className="w-4 h-4" />;
         break;
       case 'LOOP_START':
         bg = 'bg-purple-700 border-purple-400 text-white';
@@ -290,7 +331,7 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
         break;
       case 'LOOP_END':
         bg = 'bg-purple-900 border-purple-500 text-purple-200';
-        icon = <Undo2 className="w-5 h-5 stroke-[2.5]" />;
+        icon = <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />;
         break;
       case 'CALL_F1':
         bg = 'bg-emerald-600 border-emerald-400 text-white';
@@ -327,14 +368,14 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
         break;
       default:
         bg = 'bg-slate-700 border-slate-500 text-white';
-        icon = <span className="text-xs font-bold">{block.type}</span>;
+        icon = <Sparkles className="w-4 h-4" />;
         break;
     }
 
     return (
       <div
         key={`${block.id || index}`}
-        className={`relative flex items-center justify-center gap-1 min-w-[50px] h-12 px-2 rounded-xl border-2 shadow-sm font-black text-sm select-none ${bg}`}
+        className={`relative flex items-center justify-center gap-1 min-w-[46px] h-11 px-2 rounded-xl border-2 shadow-sm font-black text-sm select-none ${bg}`}
       >
         {icon}
         {label && <span className="font-black text-base">{label}</span>}
@@ -363,26 +404,26 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
     if (!blocks || blocks.length === 0) return null;
 
     return (
-      <div className="flex flex-col gap-2 p-3 bg-slate-900/90 rounded-2xl border border-slate-800">
+      <div className="flex flex-col gap-2 p-2.5 bg-slate-900/90 rounded-2xl border border-slate-800">
         <div className="flex items-center justify-between">
           <span
-            className={`px-2.5 py-0.5 rounded-lg text-xs font-black tracking-wide border ${colorClass}`}
+            className={`px-2 py-0.5 rounded-lg text-xs font-black tracking-wide border ${colorClass}`}
           >
             {title}
           </span>
-          <span className="text-xs text-slate-400 font-semibold">
-            {blocks.length} {blocks.length === 1 ? 'block' : 'blocks'}
-          </span>
+          <span className="text-xs text-slate-400 font-semibold">{blocks.length}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {blocks.map((block, idx) => renderBlockMini(block, idx))}
         </div>
       </div>
     );
   };
 
-  const activityIndex = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
   const ghostMaxSteps = currentActivity?.partialHelp?.ghostPreview?.maxSteps ?? 2;
+  const conceptText = isCurriculum ? currentActivity?.concept : currentLesson.concept;
+  const descText = isCurriculum ? currentActivity?.description : currentLesson.description;
+  const hintText = isCurriculum ? currentActivity?.hint : currentLesson.hint;
 
   return (
     <div
@@ -390,44 +431,36 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
       aria-modal="true"
       aria-label={isCurriculum ? 'Activity Help and Solutions' : 'Lesson Solution'}
       data-testid="solution-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={() => setSolutionOpen(false)}
     >
       <div
-        className="flex flex-col max-w-2xl w-full max-h-[90vh] bg-slate-900 border-2 border-amber-500/50 rounded-3xl shadow-2xl overflow-hidden"
+        className="flex flex-col max-w-xl w-full max-h-[90vh] bg-slate-900 border-2 border-amber-500/50 rounded-3xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <header className="flex items-center justify-between p-4 sm:p-5 bg-gradient-to-r from-amber-500/20 via-slate-800 to-slate-900 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 shadow-md">
-              <Lightbulb className="w-6 h-6 stroke-[2.5]" />
+        {/* Compact Kid-Friendly Header */}
+        <header className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500/20 via-slate-800 to-slate-900 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 shadow-md shrink-0">
+              <Lightbulb className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30">
-                  {isCurriculum
-                    ? currentModule?.title || `Module ${currentActivity?.moduleId ?? 1}`
-                    : currentLesson.moduleTitle}
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-black text-white truncate flex items-center gap-1.5">
+                {isCurriculum && currentActivity?.icon && (
+                  <span aria-hidden="true">{currentActivity.icon}</span>
+                )}
+                <span className="truncate">
+                  {isCurriculum ? currentActivity?.title : currentLesson.title}
                 </span>
-                <span className="text-xs font-semibold text-slate-400">
-                  {isCurriculum
-                    ? `Activity ${currentActivity?.id} (${activityIndex + 1} of ${
-                        CURRICULUM_ACTIVITIES.length
-                      })`
-                    : `Lesson ${currentLesson.id} of ${LESSONS.length}`}
-                </span>
-              </div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2 mt-0.5">
-                {isCurriculum ? currentActivity?.title : currentLesson.title}
               </h2>
             </div>
           </div>
 
           <button
+            type="button"
             data-testid="btn-close-solution"
             onClick={() => setSolutionOpen(false)}
-            className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors"
+            className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors shrink-0"
             title="Close"
             aria-label="Close solution modal"
           >
@@ -435,71 +468,27 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
           </button>
         </header>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-          {/* Concept Banner */}
-          <div className="p-3.5 bg-slate-950/60 rounded-2xl border border-slate-800 flex items-start gap-3">
-            <BookOpen className="w-5 h-5 text-sky-400 mt-0.5 flex-shrink-0" />
-            <div className="space-y-1">
-              <div className="text-sm font-black text-sky-300">
-                Core Concept: {isCurriculum ? currentActivity?.concept : currentLesson.concept}
-              </div>
-              {(isCurriculum ? currentActivity?.description : currentLesson.description) && (
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {isCurriculum ? currentActivity?.description : currentLesson.description}
-                </p>
-              )}
-              {(isCurriculum ? currentActivity?.hint : currentLesson.hint) && (
-                <div className="text-xs font-semibold text-amber-300/90 pt-1 flex items-center gap-1.5">
-                  <span>💡 Hint:</span>
-                  <span>{isCurriculum ? currentActivity?.hint : currentLesson.hint}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
+        {/* Scrollable Content: Visual Action Cards First (Above the Fold!) */}
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3.5">
           {isCurriculum ? (
             <>
-              {/* TIER 1: Non-Spoiling Partial Help Card */}
+              {/* TIER 1A: Ghost-Step Visual Hint Card */}
               {isGhostHelp && (
                 <section
                   data-testid="tier1-ghost-card"
-                  className="p-4 sm:p-5 rounded-2xl border-2 border-cyan-400/50 bg-gradient-to-br from-cyan-950/60 via-slate-900 to-slate-950 shadow-lg space-y-3.5"
+                  className="p-4 rounded-2xl border-2 border-cyan-400/50 bg-gradient-to-br from-cyan-950/60 via-slate-900 to-slate-950 shadow-lg"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
-                        Tier 1 • Non-Spoiling Hint
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-cyan-500/20 border border-dashed border-cyan-300 text-xl shrink-0">
+                        🤖
                       </span>
-                      <span className="text-xs font-bold text-cyan-200/80">
-                        Keeps your blocks untouched
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1.5">
-                      <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                        <span className="text-xl" aria-hidden="true">
-                          👻
-                        </span>
-                        <span>Ghost-Step Preview</span>
-                      </h3>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        Watch a translucent ghost robot animate the first{' '}
-                        {ghostMaxSteps === 1 ? 'step' : `${ghostMaxSteps} steps`} right on the
-                        map without changing your program.
-                      </p>
-                      {/* Visual Trail Illustration */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 border border-dashed border-cyan-300 text-sm">
-                          🤖
-                        </span>
+                      <div className="flex items-center gap-1.5">
                         {Array.from({ length: Math.min(3, Math.max(1, ghostMaxSteps)) }).map(
                           (_, idx) => (
                             <React.Fragment key={idx}>
-                              <span className="w-5 border-t-2 border-dashed border-cyan-400/80" />
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-cyan-950 border border-dashed border-cyan-300 text-[11px] font-black text-cyan-200">
+                              <span className="w-4 border-t-2 border-dashed border-cyan-400/80" />
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cyan-950 border border-dashed border-cyan-300 text-xs font-black text-cyan-200">
                                 {idx + 1}
                               </span>
                             </React.Fragment>
@@ -514,85 +503,74 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
                       onClick={() => triggerGhostPreview()}
                       className="flex-shrink-0 flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm border-2 border-cyan-200 shadow-lg shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer"
                     >
-                      <span className="text-base" aria-hidden="true">
+                      <span className="text-lg" aria-hidden="true">
                         👻
                       </span>
-                      <span>Watch Ghost Preview</span>
+                      <span>Watch Hint</span>
                     </button>
                   </div>
                 </section>
               )}
 
+              {/* TIER 1B: Starter ? Scaffold Card (Action Button in Header so always Above the Fold!) */}
               {!isGhostHelp && scaffoldWorkspace && (
                 <section
                   data-testid="tier1-scaffold-card"
-                  className="p-4 sm:p-5 rounded-2xl border-2 border-cyan-400/50 bg-gradient-to-br from-cyan-950/60 via-slate-900 to-slate-950 shadow-lg space-y-3.5"
+                  className="p-3.5 sm:p-4 rounded-2xl border-2 border-cyan-400/50 bg-gradient-to-br from-cyan-950/60 via-slate-900 to-slate-950 shadow-lg space-y-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
-                      Tier 1 • Guided Starter
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-amber-300 border border-amber-400/30">
-                      <Undo2 className="w-3 h-3" />
-                      <span>1-tap Undo restores your blocks</span>
-                    </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <span className="text-xl" aria-hidden="true">
                         🧩
                       </span>
-                      <span>Starter ? Scaffold</span>
-                    </h3>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Load a partial starter structure and fill in the dashed{' '}
-                      <span className="font-black text-amber-300">?</span> blocks yourself!
-                    </p>
+                      <h3 className="text-sm sm:text-base font-black text-white">Starter ? Blocks</h3>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-amber-300 border border-amber-400/30">
+                        <Undo2 className="w-3 h-3" />
+                        <span>Undo OK</span>
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      data-testid="btn-load-scaffold"
+                      onClick={() => loadPartialScaffold()}
+                      className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs sm:text-sm border-2 border-cyan-200 shadow-md transition-all active:scale-95 cursor-pointer"
+                    >
+                      <span aria-hidden="true">🧩</span>
+                      <span>Try Starter</span>
+                    </button>
                   </div>
 
                   <div className="space-y-2">
                     {renderScopeBlocks(
                       scaffoldWorkspace,
                       'MAIN',
-                      '★ Starter Main',
+                      '★ Main',
                       'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                     )}
                     {renderScopeBlocks(
                       scaffoldWorkspace,
                       'F1',
-                      '📞 Starter Function 1',
+                      '📞 F1',
                       'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                     )}
                     {renderScopeBlocks(
                       scaffoldWorkspace,
                       'F2',
-                      '📞 Starter Function 2',
+                      '📞 F2',
                       'bg-blue-500/20 text-blue-300 border-blue-500/40'
                     )}
                     {renderScopeBlocks(
                       scaffoldWorkspace,
                       'F3',
-                      '📞 Starter Function 3',
+                      '📞 F3',
                       'bg-rose-500/20 text-rose-300 border-rose-500/40'
                     )}
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      data-testid="btn-load-scaffold"
-                      onClick={() => loadPartialScaffold()}
-                      className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm border-2 border-cyan-200 shadow-lg shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer"
-                    >
-                      <span aria-hidden="true">🧩</span>
-                      <span>Load ? Starter Scaffold</span>
-                    </button>
                   </div>
                 </section>
               )}
 
-              {/* TIER 2: Secondary Expandable Full Reference Solution */}
+              {/* TIER 2: Expandable Full Reference Solution */}
               {solutionWorkspace && (
                 <section
                   data-testid="tier2-full-solution-section"
@@ -603,19 +581,17 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
                     data-testid="btn-reveal-full-solution"
                     aria-expanded={isTier2Revealed}
                     onClick={() => setIsTier2Revealed((prev) => !prev)}
-                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center justify-between gap-3 p-3.5 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                        Tier 2 • Full Solution
+                      <span className="text-base" aria-hidden="true">
+                        👀
                       </span>
-                      <span className="text-sm font-bold text-slate-200">
-                        {isTier2Revealed
-                          ? 'Hide Full Reference Solution'
-                          : 'Still stuck? Reveal Full Reference Solution'}
+                      <span className="text-sm font-black text-slate-100">
+                        {isTier2Revealed ? 'Hide Answer' : 'Show Answer'}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                        {totalInstructions} blocks
+                        {totalInstructions}
                       </span>
                     </div>
                     {isTier2Revealed ? (
@@ -626,64 +602,51 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
                   </button>
 
                   {isTier2Revealed && (
-                    <div className="p-4 pt-1 border-t border-slate-800/80 space-y-3.5">
-                      <div className="space-y-2.5 pt-2">
+                    <div className="p-3.5 pt-2 border-t border-slate-800/80 space-y-3">
+                      <div className="space-y-2">
                         {renderScopeBlocks(
                           solutionWorkspace,
                           'MAIN',
-                          '★ Main Program',
+                          '★ Main',
                           'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                         )}
                         {renderScopeBlocks(
                           solutionWorkspace,
                           'F1',
-                          '📞 Function 1',
+                          '📞 F1',
                           'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                         )}
                         {renderScopeBlocks(
                           solutionWorkspace,
                           'F2',
-                          '📞 Function 2',
+                          '📞 F2',
                           'bg-blue-500/20 text-blue-300 border-blue-500/40'
                         )}
                         {renderScopeBlocks(
                           solutionWorkspace,
                           'F3',
-                          '📞 Function 3',
+                          '📞 F3',
                           'bg-rose-500/20 text-rose-300 border-rose-500/40'
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
                         <div
                           data-testid="solution-undo-reminder"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300"
                         >
                           <Undo2 className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Safe to try — 1-tap Undo restores your previous work</span>
+                          <span>Undo restores your blocks</span>
                         </div>
 
                         <button
                           type="button"
                           data-testid="btn-load-solution"
                           onClick={handleLoadSolution}
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-sm border shadow-lg transition-all active:scale-95 cursor-pointer ${
-                            copiedNotification
-                              ? 'bg-emerald-600 border-emerald-400 text-white'
-                              : 'bg-amber-500 hover:bg-amber-400 border-amber-300 text-slate-950'
-                          }`}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
                         >
-                          {copiedNotification ? (
-                            <>
-                              <Check className="w-4 h-4 stroke-[3]" />
-                              <span>Loaded into Workspace!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-4 h-4 fill-slate-950" />
-                              <span>Load Full Solution</span>
-                            </>
-                          )}
+                          <Play className="w-4 h-4 fill-slate-950" />
+                          <span>Use Answer</span>
                         </button>
                       </div>
                     </div>
@@ -758,7 +721,6 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
                       data-testid="dev-constraint-proofs-panel"
                       className="p-4 pt-2 border-t border-slate-800/80 space-y-2.5"
                     >
-                      {/* Positive Invariant Checks */}
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span
                           data-testid="constraint-reference-badge"
@@ -810,7 +772,6 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
                           </div>
                         )}
 
-                      {/* Anti-Bypass Rule Proofs */}
                       <div className="space-y-2">
                         {constraintReport.ruleResults.map((ruleRes) => (
                           <div
@@ -889,106 +850,95 @@ export const SolutionModal: React.FC<SolutionModalProps> = ({
               )}
             </>
           ) : (
-            /* Sandbox Mode: Original Solution Breakdown */
+            /* Sandbox Mode: Recommended Solution Breakdown */
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <span>Recommended Solution</span>
                   <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    {`${currentLesson.instructionCount} instructions (<15)`}
+                    {currentLesson.instructionCount}
                   </span>
                 </h3>
+
+                <button
+                  type="button"
+                  data-testid="btn-load-solution"
+                  onClick={handleLoadSolution}
+                  className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-slate-950" />
+                  <span>Load Solution</span>
+                </button>
               </div>
 
               <div className="space-y-2.5">
                 {renderScopeBlocks(
                   solutionWorkspace,
                   'MAIN',
-                  '★ Main Program',
+                  '★ Main',
                   'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                 )}
                 {renderScopeBlocks(
                   solutionWorkspace,
                   'F1',
-                  '📞 Function 1',
+                  '📞 F1',
                   'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 )}
                 {renderScopeBlocks(
                   solutionWorkspace,
                   'F2',
-                  '📞 Function 2',
+                  '📞 F2',
                   'bg-blue-500/20 text-blue-300 border-blue-500/40'
                 )}
                 {renderScopeBlocks(
                   solutionWorkspace,
                   'F3',
-                  '📞 Function 3',
+                  '📞 F3',
                   'bg-rose-500/20 text-rose-300 border-rose-500/40'
                 )}
               </div>
             </div>
           )}
-        </div>
 
-        {/* Footer Actions */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-950/90 border-t border-slate-800">
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handlePrevLesson}
-              className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-              title="Previous Lesson"
-              aria-label="Previous Lesson"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className="text-xs font-bold text-slate-400 px-1">
-              {isCurriculum
-                ? `${currentActivity?.id} (${activityIndex + 1}/${CURRICULUM_ACTIVITIES.length})`
-                : `${currentLesson.id} / ${LESSONS.length}`}
-            </span>
-            <button
-              onClick={handleNextLesson}
-              className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-              title="Next Lesson"
-              aria-label="Next Lesson"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!isCurriculum && (
+          {/* Collapsible Parent / Teacher Tip (keeps adult prose off the primary kid view) */}
+          {(conceptText || descText || hintText) && (
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-950/50 overflow-hidden">
               <button
-                data-testid="btn-load-solution"
-                onClick={handleLoadSolution}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-sm border shadow-lg transition-all active:scale-95 ${
-                  copiedNotification
-                    ? 'bg-emerald-600 border-emerald-400 text-white'
-                    : 'bg-amber-500 hover:bg-amber-400 border-amber-300 text-slate-950'
-                }`}
+                type="button"
+                data-testid="btn-toggle-teacher-tip"
+                aria-expanded={isTeacherTipOpen}
+                onClick={() => setIsTeacherTipOpen((prev) => !prev)}
+                className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
               >
-                {copiedNotification ? (
-                  <>
-                    <Check className="w-4 h-4 stroke-[3]" />
-                    <span>Loaded into Workspace!</span>
-                  </>
+                <span className="flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Parent / Teacher Tip</span>
+                </span>
+                {isTeacherTipOpen ? (
+                  <ChevronUp className="w-4 h-4 text-slate-500" />
                 ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-slate-950" />
-                    <span>Load into Workspace</span>
-                  </>
+                  <ChevronDown className="w-4 h-4 text-slate-500" />
                 )}
               </button>
-            )}
 
-            <button
-              onClick={() => setSolutionOpen(false)}
-              className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm border border-slate-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </footer>
+              {isTeacherTipOpen && (
+                <div className="px-3.5 pb-3 pt-1 border-t border-slate-800/70 space-y-1 text-xs">
+                  {conceptText && (
+                    <div className="font-bold text-sky-300">{conceptText}</div>
+                  )}
+                  {descText && (
+                    <p className="text-slate-300 leading-relaxed">{descText}</p>
+                  )}
+                  {hintText && (
+                    <div className="font-semibold text-amber-300/90 pt-0.5">
+                      💡 {hintText}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

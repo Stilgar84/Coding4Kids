@@ -25,7 +25,8 @@ test.describe('PWA Assets & Update State Restoration E2E', () => {
   });
 
   test('proposes app update, supports snoozing, and restores workspace & map across reload', async ({ page }) => {
-    // 1. Customize state: switch to Level 2, add blocks with repeat count, add a custom wall
+    // 1. Customize state: switch to Level 2 via LessonPickerModal, add blocks with repeat count, add a custom wall
+    await page.getByTestId('btn-lesson-picker').click();
     await page.getByTestId('btn-level-2').click();
     await page.getByTestId('palette-move-fwd').click();
     await page.getByTestId('palette-number-4').click();

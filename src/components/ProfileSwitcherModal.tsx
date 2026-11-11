@@ -15,6 +15,7 @@ import {
 } from '../services/profileService';
 import {
   AlertCircle,
+  Award,
   Check,
   Copy,
   Download,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 
 export const ProfileSwitcherModal: React.FC = () => {
+  useAppStore();
   const {
     isProfileModalOpen,
     setProfileModalOpen,
@@ -38,7 +40,7 @@ export const ProfileSwitcherModal: React.FC = () => {
     createAndSwitchProfile,
     deleteUserProfile,
     importUserProfileBackup,
-  } = useAppStore();
+  } = useAppStore.getState();
 
   const [isCreating, setIsCreating] = useState(false);
   const [selectedAvatarId, setSelectedAvatarId] = useState<ProfileAvatarId>('frog');
@@ -61,7 +63,6 @@ export const ProfileSwitcherModal: React.FC = () => {
   useEffect(() => {
     if (!isProfileModalOpen) return;
 
-    // Pick a default avatar & color not yet used if possible for variety
     const usedAvatars = new Set(profiles.map((p) => p.avatarId));
     const nextAvatar =
       PROFILE_AVATARS.find((a) => !usedAvatars.has(a.id))?.id ?? PROFILE_AVATARS[1].id;
@@ -158,17 +159,18 @@ export const ProfileSwitcherModal: React.FC = () => {
     setCopiedBackup(true);
     setBackupStatus({
       type: 'success',
-      text: `Copied ${activeDisplayName}'s full profile backup JSON to clipboard!`,
+      text: `Copied ${activeDisplayName}'s backup!`,
     });
     setTimeout(() => setCopiedBackup(false), 2000);
   };
 
   const handleDownloadBackup = () => {
     const json = exportProfileBackupToJson(activeProfileId);
-    const safeSlug = activeDisplayName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') || 'player';
+    const safeSlug =
+      activeDisplayName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'player';
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -180,7 +182,7 @@ export const ProfileSwitcherModal: React.FC = () => {
     URL.revokeObjectURL(url);
     setBackupStatus({
       type: 'success',
-      text: `Downloaded ${activeDisplayName}'s backup file!`,
+      text: `Saved ${activeDisplayName}'s backup file!`,
     });
   };
 
@@ -193,7 +195,7 @@ export const ProfileSwitcherModal: React.FC = () => {
         setBackupImportText(reader.result);
         setBackupStatus({
           type: 'success',
-          text: `Loaded "${file.name}". Choose "Add as New Profile" or "Replace Active Profile" below.`,
+          text: `Loaded "${file.name}". Choose New Player or Replace below.`,
         });
       }
     };
@@ -209,7 +211,7 @@ export const ProfileSwitcherModal: React.FC = () => {
     if (!backupImportText.trim()) {
       setBackupStatus({
         type: 'error',
-        text: 'Paste a profile backup JSON or choose a .json backup file first.',
+        text: 'Paste a player backup or choose a file first.',
       });
       return;
     }
@@ -222,13 +224,13 @@ export const ProfileSwitcherModal: React.FC = () => {
         type: 'success',
         text:
           mode === 'new'
-            ? `Added new profile "${importedName}" (${res.importedSlotCount ?? 0} saved slots restored)!`
-            : `Replaced active profile with "${importedName}" (${res.importedSlotCount ?? 0} saved slots restored)!`,
+            ? `Added new player "${importedName}" (${res.importedSlotCount ?? 0} saves)!`
+            : `Updated "${importedName}" (${res.importedSlotCount ?? 0} saves)!`,
       });
     } else {
       setBackupStatus({
         type: 'error',
-        text: res.error || 'Invalid profile backup.',
+        text: res.error || 'Invalid player backup.',
       });
     }
   };
@@ -242,7 +244,7 @@ export const ProfileSwitcherModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="profile-switcher-title"
       data-testid="profile-switcher-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
       onClick={() => setProfileModalOpen(false)}
     >
       <div
@@ -251,19 +253,14 @@ export const ProfileSwitcherModal: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/70 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-violet-600/30 border border-violet-400/50 text-violet-300">
+            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-violet-600/30 border border-violet-400/50 text-violet-300">
               <Users className="w-5 h-5" />
             </div>
-            <div>
-              <h2 id="profile-switcher-title" className="text-lg font-black text-white">
-                Who&apos;s Playing?
-              </h2>
-              <p className="text-xs text-slate-400">
-                Tap your character to switch — everyone gets their own saved blocks &amp; stars!
-              </p>
-            </div>
+            <h2 id="profile-switcher-title" className="text-lg font-black text-white">
+              Who&apos;s Playing?
+            </h2>
           </div>
 
           <button
@@ -271,20 +268,20 @@ export const ProfileSwitcherModal: React.FC = () => {
             data-testid="modal-profile-close-btn"
             onClick={() => setProfileModalOpen(false)}
             aria-label="Close profile switcher"
-            className="flex items-center justify-center w-11 h-11 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
+            className="flex items-center justify-center w-10 h-10 rounded-2xl text-slate-400 hover:text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-5">
+        <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-4">
           {/* Avatar Profile Cards Grid */}
           <div
             role="list"
             aria-label="Player profiles"
             data-testid="profile-cards-grid"
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3.5"
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3"
           >
             {profiles.map((profile, index) => {
               const avatar = getProfileAvatar(profile.avatarId);
@@ -293,9 +290,9 @@ export const ProfileSwitcherModal: React.FC = () => {
               const isActive = profile.id === activeProfileId;
               const isDefault = profile.id === DEFAULT_PROFILE_ID;
               const isConfirmingDelete = confirmDeleteId === profile.id;
-              const completedCount = Object.keys(
-                getProfileProgress(profile.id).completedLessons
-              ).length;
+              const progress = getProfileProgress(profile.id);
+              const completedCount = Object.keys(progress.completedLessons).length;
+              const earnedBadges = progress.earnedBadges;
 
               return (
                 <div
@@ -308,7 +305,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       : 'bg-slate-950/90 border-slate-800 hover:border-slate-600'
                   }`}
                 >
-                  {/* 1-Tap Switch Button (full keyboard Enter/Space accessible) */}
+                  {/* 1-Tap Switch Button */}
                   <button
                     ref={index === 0 ? firstCardRef : undefined}
                     type="button"
@@ -340,7 +337,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Name & Stars */}
+                    {/* Name, Stars & Module Badges */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span
@@ -359,18 +356,26 @@ export const ProfileSwitcherModal: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 font-semibold">
+                      <div className="flex items-center gap-2.5 mt-1 text-xs text-slate-400 font-semibold">
                         <span className="inline-flex items-center gap-1 text-amber-300">
                           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                           <span data-testid={`profile-stars-${profile.id}`}>{completedCount}</span>
                         </span>
-                        <span aria-hidden="true">•</span>
-                        <span>{color.label}</span>
+                        <span
+                          data-testid={`profile-badges-${profile.id}`}
+                          className={`inline-flex items-center gap-1 ${
+                            earnedBadges.length > 0 ? 'text-amber-200' : 'text-slate-500'
+                          }`}
+                        >
+                          <Award className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{earnedBadges.length}</span>
+                          {earnedBadges.length > 0 && <span aria-hidden="true">🏅</span>}
+                        </span>
                       </div>
                     </div>
                   </button>
 
-                  {/* Non-Default Profile Delete Control (Sibling button — never nested inside switch button) */}
+                  {/* Non-Default Profile Delete Control */}
                   {!isDefault && (
                     <div className="flex items-center pr-3">
                       {isConfirmingDelete ? (
@@ -422,7 +427,7 @@ export const ProfileSwitcherModal: React.FC = () => {
               type="button"
               data-testid="btn-show-create-profile"
               onClick={() => setIsCreating(true)}
-              className="flex items-center justify-center gap-2 w-full min-h-[54px] py-3 px-4 rounded-2xl border-2 border-dashed border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-black text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.99] transition-all"
+              className="flex items-center justify-center gap-2 w-full min-h-[52px] py-3 px-4 rounded-2xl border-2 border-dashed border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-black text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.99] transition-all"
             >
               <Plus className="w-5 h-5 stroke-[2.75]" />
               <span>New Player</span>
@@ -445,12 +450,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                   >
                     {selectedAvatar.emoji}
                   </span>
-                  <div>
-                    <h3 className="text-sm font-black text-white">Pick Your Character</h3>
-                    <p className="text-[11px] text-slate-400">
-                      {customName.trim() || selectedAvatar.label} • {selectedColor.label}
-                    </p>
-                  </div>
+                  <h3 className="text-sm font-black text-white">Pick Character</h3>
                 </div>
                 <button
                   type="button"
@@ -463,113 +463,100 @@ export const ProfileSwitcherModal: React.FC = () => {
               </div>
 
               {/* Step 1: Avatar Grid */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold text-slate-300">1. Character</span>
-                <div
-                  role="group"
-                  aria-label="Choose character avatar"
-                  className="grid grid-cols-4 sm:grid-cols-8 gap-2"
-                >
-                  {PROFILE_AVATARS.map((avatar) => {
-                    const selected = avatar.id === selectedAvatarId;
-                    return (
-                      <button
-                        key={avatar.id}
-                        type="button"
-                        data-testid={`avatar-option-${avatar.id}`}
-                        aria-pressed={selected}
-                        aria-label={avatar.label}
-                        title={avatar.label}
-                        onClick={() => setSelectedAvatarId(avatar.id)}
-                        className={`flex flex-col items-center justify-center gap-0.5 min-h-[56px] p-1.5 rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
-                          selected
-                            ? 'bg-emerald-500/20 border-emerald-400 scale-105 shadow-md'
-                            : 'bg-slate-900 border-slate-800 hover:border-slate-600'
-                        }`}
-                      >
-                        <span className="text-2xl leading-none" aria-hidden="true">
-                          {avatar.emoji}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-300">{avatar.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+              <div
+                role="group"
+                aria-label="Choose character avatar"
+                className="grid grid-cols-4 sm:grid-cols-8 gap-2"
+              >
+                {PROFILE_AVATARS.map((avatar) => {
+                  const selected = avatar.id === selectedAvatarId;
+                  return (
+                    <button
+                      key={avatar.id}
+                      type="button"
+                      data-testid={`avatar-option-${avatar.id}`}
+                      aria-pressed={selected}
+                      aria-label={avatar.label}
+                      title={avatar.label}
+                      onClick={() => setSelectedAvatarId(avatar.id)}
+                      className={`flex flex-col items-center justify-center gap-0.5 min-h-[54px] p-1.5 rounded-2xl border-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                        selected
+                          ? 'bg-emerald-500/20 border-emerald-400 scale-105 shadow-md'
+                          : 'bg-slate-900 border-slate-800 hover:border-slate-600'
+                      }`}
+                    >
+                      <span className="text-2xl leading-none" aria-hidden="true">
+                        {avatar.emoji}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-300">{avatar.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Step 2: Color + Shape Badge Picker (Color-blind accessible) */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold text-slate-300">2. Color &amp; Shape Badge</span>
-                <div
-                  role="group"
-                  aria-label="Choose color and shape badge"
-                  className="grid grid-cols-3 sm:grid-cols-6 gap-2"
-                >
-                  {PROFILE_COLORS.map((color) => {
-                    const selected = color.id === selectedColorId;
-                    return (
-                      <button
-                        key={color.id}
-                        type="button"
-                        data-testid={`color-option-${color.id}`}
-                        aria-pressed={selected}
-                        aria-label={color.label}
-                        title={color.label}
-                        onClick={() => setSelectedColorId(color.id)}
-                        className={`flex items-center justify-center gap-1.5 min-h-[48px] px-2.5 py-2 rounded-2xl border-2 font-black text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${
-                          selected
-                            ? 'border-white scale-105 shadow-md text-white bg-slate-800'
-                            : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-600'
-                        }`}
+              {/* Step 2: Color + Shape Badge Picker */}
+              <div
+                role="group"
+                aria-label="Choose color and shape badge"
+                className="grid grid-cols-3 sm:grid-cols-6 gap-2"
+              >
+                {PROFILE_COLORS.map((color) => {
+                  const selected = color.id === selectedColorId;
+                  return (
+                    <button
+                      key={color.id}
+                      type="button"
+                      data-testid={`color-option-${color.id}`}
+                      aria-pressed={selected}
+                      aria-label={color.label}
+                      title={color.label}
+                      onClick={() => setSelectedColorId(color.id)}
+                      className={`flex items-center justify-center gap-1.5 min-h-[44px] px-2.5 py-1.5 rounded-2xl border-2 font-black text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                        selected
+                          ? 'border-white scale-105 shadow-md text-white bg-slate-800'
+                          : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-full text-slate-950 font-black text-xs shadow"
+                        style={{ backgroundColor: color.accentColor }}
                       >
-                        <span
-                          aria-hidden="true"
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full text-slate-950 font-black text-xs shadow"
-                          style={{ backgroundColor: color.accentColor }}
-                        >
-                          {color.shapeSymbol}
-                        </span>
-                        <span className="truncate">{color.shapeName}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        {color.shapeSymbol}
+                      </span>
+                      <span className="truncate">{color.shapeName}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Step 3: Optional Short Name */}
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="new-profile-name-input"
-                  className="text-xs font-bold text-slate-300"
-                >
-                  3. Nickname <span className="text-slate-500 font-normal">(optional)</span>
-                </label>
-                <input
-                  id="new-profile-name-input"
-                  type="text"
-                  data-testid="input-profile-name"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder={selectedAvatar.label}
-                  maxLength={16}
-                  className="w-full px-4 py-2.5 bg-slate-900 border-2 border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-bold"
-                />
-              </div>
+              <input
+                id="new-profile-name-input"
+                type="text"
+                aria-label="Nickname (optional)"
+                data-testid="input-profile-name"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder={`${selectedAvatar.label} (name optional)`}
+                maxLength={16}
+                className="w-full px-4 py-2.5 bg-slate-900 border-2 border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-bold"
+              />
 
               {/* Confirm Create Button */}
               <button
                 type="submit"
                 data-testid="btn-create-profile"
-                className="flex items-center justify-center gap-2 w-full min-h-[52px] py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm border-2 border-emerald-300 shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 active:scale-[0.99] transition-all"
+                className="flex items-center justify-center gap-2 w-full min-h-[50px] py-3 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm border-2 border-emerald-300 shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 active:scale-[0.99] transition-all"
               >
                 <Check className="w-5 h-5 stroke-[3]" />
-                <span>Start Playing as {customName.trim() || selectedAvatar.label}!</span>
+                <span>Play as {customName.trim() || selectedAvatar.label}!</span>
               </button>
             </form>
           )}
 
-          {/* Whole-Profile Backup Export & Import */}
-          <div className="border-t border-slate-800 pt-4">
+          {/* Parent / Teacher Backup Disclosure */}
+          <div className="border-t border-slate-800 pt-3">
             <button
               type="button"
               data-testid="btn-toggle-profile-backup"
@@ -578,13 +565,13 @@ export const ProfileSwitcherModal: React.FC = () => {
                 setIsBackupOpen((v) => !v);
                 setBackupStatus(null);
               }}
-              className="flex items-center justify-between w-full px-4 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-xs font-bold text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
+              className="flex items-center justify-between w-full px-4 py-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-xs font-bold text-slate-400 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
             >
               <span className="flex items-center gap-2">
                 <Download className="w-4 h-4 text-violet-400" />
-                <span>Backup or Move Profile ({activeDisplayName})</span>
+                <span>Parent Backup ({activeDisplayName})</span>
               </span>
-              <span className="text-slate-400">{isBackupOpen ? 'Hide' : 'Open'}</span>
+              <span>{isBackupOpen ? '▲' : '▼'}</span>
             </button>
 
             {isBackupOpen && (
@@ -592,43 +579,34 @@ export const ProfileSwitcherModal: React.FC = () => {
                 data-testid="profile-backup-panel"
                 className="mt-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-3.5"
               >
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold text-slate-200">
-                    Export {activeDisplayName}&apos;s Whole Profile
-                  </span>
-                  <p className="text-[11px] text-slate-400">
-                    Includes stars, badges, lesson auto-saves, sandbox auto-saves, and manual save
-                    slots.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                    <button
-                      type="button"
-                      data-testid="btn-copy-profile-backup"
-                      onClick={handleCopyBackup}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
-                    >
-                      {copiedBackup ? (
-                        <>
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          <span>Copied Backup!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 text-slate-300" />
-                          <span>Copy Backup JSON</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="btn-download-profile-json"
-                      onClick={handleDownloadBackup}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold border border-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Download .json</span>
-                    </button>
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    data-testid="btn-copy-profile-backup"
+                    onClick={handleCopyBackup}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
+                  >
+                    {copiedBackup ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-slate-300" />
+                        <span>Copy Backup</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="btn-download-profile-json"
+                    onClick={handleDownloadBackup}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold border border-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Save Backup File</span>
+                  </button>
                 </div>
 
                 <div className="border-t border-slate-800 pt-3 flex flex-col gap-2">
@@ -637,7 +615,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       htmlFor="profile-backup-import-textarea"
                       className="text-xs font-bold text-slate-200"
                     >
-                      Import Profile Backup
+                      Restore Backup
                     </label>
                     <input
                       ref={fileInputRef}
@@ -654,7 +632,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                     >
                       <FileUp className="w-3.5 h-3.5 text-violet-300" />
-                      <span>Choose .json File</span>
+                      <span>Open File</span>
                     </button>
                   </div>
 
@@ -663,8 +641,8 @@ export const ProfileSwitcherModal: React.FC = () => {
                     data-testid="textarea-profile-backup-import"
                     value={backupImportText}
                     onChange={(e) => setBackupImportText(e.target.value)}
-                    placeholder="Paste profile backup JSON here, or choose a .json file above..."
-                    rows={3}
+                    placeholder="Paste player backup here..."
+                    rows={2}
                     className="w-full p-2.5 font-mono text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-200 resize-none focus:outline-none focus:border-violet-400"
                   />
 
@@ -695,7 +673,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black border border-emerald-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 active:scale-95 transition-all"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>Add as New Profile</span>
+                      <span>New Player</span>
                     </button>
                     <button
                       type="button"
@@ -704,7 +682,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                       className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-black border border-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 active:scale-95 transition-all"
                     >
                       <RefreshCw className="w-4 h-4" />
-                      <span>Replace Active Profile</span>
+                      <span>Replace Active</span>
                     </button>
                   </div>
                 </div>

@@ -87,11 +87,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
         expect(paletteHtml).toContain(`data-testid="palette-number-var-${v}"`);
       }
 
-      // Action param toggle, Delete/Clear controls & Function bar with all 4 scopes
+      // Action param toggle, unified Smart Trash & Function bar with all 4 scopes
       expect(paletteHtml).toContain('data-testid="palette-param-toggle-btn"');
       expect(paletteHtml).toContain('data-testid="btn-toggle-function-bar"');
-      expect(paletteHtml).toContain('data-testid="btn-palette-delete-block"');
-      expect(paletteHtml).toContain('data-testid="btn-clear-workspace"');
+      expect(paletteHtml).toContain('data-testid="btn-trash"');
       expect(paletteHtml).toContain('data-testid="palette-function-bar"');
       expect(paletteHtml).toContain('data-testid="palette-tab-main"');
       expect(paletteHtml).toContain('data-testid="palette-tab-f1"');

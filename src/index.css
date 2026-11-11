@@ -56,8 +56,29 @@
   animation: slot-tray-shake 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
+@keyframes victory-modal-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-victory-enter {
+  animation: victory-modal-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-victory-enter-delayed {
+  animation: victory-modal-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-slot-tray-shake {
+  .animate-slot-tray-shake,
+  .animate-victory-enter,
+  .animate-victory-enter-delayed {
     animation: none;
   }
 }

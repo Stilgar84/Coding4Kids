@@ -126,23 +126,23 @@ export function GridToolbarTools({
   const renderActiveWorldIcon = () => {
     switch (editorTool) {
       case 'WATER':
-        return <Waves className="w-5 h-5" />;
+        return <Waves className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'KEY':
-        return <KeyRound className="w-5 h-5" />;
+        return <KeyRound className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'GATE':
-        return <DoorClosed className="w-5 h-5" />;
+        return <DoorClosed className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'CRATE':
-        return <Package className="w-5 h-5" />;
+        return <Package className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'SWITCH':
-        return <CircleDot className="w-5 h-5" />;
+        return <CircleDot className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'PLANK':
         return (
-          <span className="text-base leading-none" aria-hidden="true">
+          <span className="text-sm sm:text-base leading-none" aria-hidden="true">
             🪵
           </span>
         );
       default:
-        return <Layers className="w-5 h-5" />;
+        return <Layers className="w-4 h-4 sm:w-5 sm:h-5" />;
     }
   };
 
@@ -150,7 +150,7 @@ export function GridToolbarTools({
     <div
       role="group"
       aria-label="Grid Map Editor Tools"
-      className="relative flex items-center gap-1.5 bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800"
+      className="relative flex items-center gap-1 sm:gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 overflow-visible"
     >
       <button
         type="button"
@@ -158,14 +158,14 @@ export function GridToolbarTools({
         onClick={() => handleToolClick('ROBOT')}
         aria-pressed={editorTool === 'ROBOT'}
         aria-label="Robot placement tool"
-        className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+        className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
           editorTool === 'ROBOT'
             ? 'bg-sky-500 border-sky-300 text-white scale-105'
             : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
         }`}
         title="Robot placement tool"
       >
-        <Bot className="w-5 h-5" />
+        <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
 
       <button
@@ -174,14 +174,14 @@ export function GridToolbarTools({
         onClick={() => handleToolClick('WALL')}
         aria-pressed={editorTool === 'WALL'}
         aria-label="Wall barrier tool"
-        className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+        className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
           editorTool === 'WALL'
             ? 'bg-red-500 border-red-300 text-white scale-105'
             : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
         }`}
         title="Wall barrier tool"
       >
-        <Square className="w-5 h-5 fill-red-400" />
+        <Square className="w-4 h-4 sm:w-5 sm:h-5 fill-red-400" />
       </button>
 
       <button
@@ -190,14 +190,14 @@ export function GridToolbarTools({
         onClick={() => handleToolClick('FLAG')}
         aria-pressed={editorTool === 'FLAG'}
         aria-label="Numbered flag tool"
-        className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+        className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
           editorTool === 'FLAG'
             ? 'bg-blue-500 border-blue-300 text-white scale-105'
             : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
         }`}
         title="Numbered flag tool"
       >
-        <Flag className="w-5 h-5 fill-blue-400" />
+        <Flag className="w-4 h-4 sm:w-5 sm:h-5 fill-blue-400" />
       </button>
 
       <button
@@ -206,14 +206,14 @@ export function GridToolbarTools({
         onClick={() => handleToolClick('GOAL')}
         aria-pressed={editorTool === 'GOAL'}
         aria-label="Goal tool"
-        className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+        className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
           editorTool === 'GOAL'
             ? 'bg-yellow-500 border-yellow-300 text-slate-950 scale-105'
             : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
         }`}
         title="Goal tool"
       >
-        <Trophy className="w-5 h-5 fill-yellow-400" />
+        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-400" />
       </button>
 
       {/* Compact Grouped Interactive World Items & Terrain Selector */}
@@ -228,7 +228,7 @@ export function GridToolbarTools({
           aria-pressed={activeWorldTool}
           aria-label="World items and terrain tools"
           title="World items & terrain (Water, Plank, Key, Gate, Crate, Switch)"
-          className={`relative flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+          className={`relative flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
             activeWorldTool
               ? 'bg-teal-500 border-teal-300 text-slate-950 font-bold scale-105'
               : isWorldMenuOpen
@@ -252,7 +252,7 @@ export function GridToolbarTools({
             data-testid="world-items-popover"
             role="dialog"
             aria-label="Interactive World Items and Terrain"
-            className="absolute top-12 right-0 z-50 w-64 p-2.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-md flex flex-col gap-2.5"
+            className="absolute top-11 right-0 z-50 w-64 p-2.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-md flex flex-col gap-2.5"
           >
             <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="World Terrain and Item Tools">
               <button
@@ -395,14 +395,14 @@ export function GridToolbarTools({
         onClick={() => handleToolClick('ERASE')}
         aria-pressed={editorTool === 'ERASE'}
         aria-label="Erase tool"
-        className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
+        className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
           editorTool === 'ERASE'
             ? 'bg-rose-500 border-rose-300 text-white scale-105'
             : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
         }`}
         title="Erase tool"
       >
-        <Eraser className="w-5 h-5" />
+        <Eraser className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
     </div>
   );
