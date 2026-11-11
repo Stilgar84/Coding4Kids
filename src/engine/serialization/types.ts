@@ -14,8 +14,10 @@ export const ENV_ID_GENERIC = 0x00;
 export const ENV_ID_GRID = 0x01;
 export const ENV_ID_TURTLE = 0x02;
 export const ENV_ID_BEAT = 0x03;
+export const ENV_ID_LESSON = 0x04;
 
-export type EnvIdName = 'generic' | 'grid' | 'turtle' | 'beat';
+export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat';
+export type EnvIdName = InnerLessonEnvIdName | 'lesson';
 
 // Scope IDs
 export const SCOPE_ID_MAIN = 0x00;
@@ -191,6 +193,9 @@ export interface ImportResult {
   formatVersion?: number;
   envId?: EnvIdName;
   envVersion?: number;
+  innerEnvId?: InnerLessonEnvIdName;
+  lessonId?: string;
+  lessonVersion?: number;
   workspace?: WorkspaceState;
   gridState?: GridState;
   turtleState?: TurtleState;

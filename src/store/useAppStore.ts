@@ -59,13 +59,29 @@ import {
   formatSlotCapFullAnnouncement,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
-import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
+import {
+  exportToString,
+  importFromString,
+  exportToBinary,
+  importFromBinary,
+  exportLessonToString,
+  exportLessonToBinary,
+} from '../engine/serialization/codeSerializer';
 import {
   saveStateBeforeUpdate,
   consumeRestoredStateAfterUpdate,
 } from '../services/pwaStateRestoreService';
 import {
+  DEFAULT_FALLBACK_THUMBNAIL,
+  SavedProgramEntry,
+  getSavedPrograms,
+  saveProgram,
+} from '../services/localSaveService';
+import { generateSimulationThumbnail } from '../services/mapThumbnailGenerator';
+import {
   CreateProfileInput,
+  ProfileBackupEnvelopeV1,
+  ProfileBackupImportMode,
   UserProfile,
   createProfile,
   deleteProfile,
@@ -75,6 +91,7 @@ import {
   getProfileProgress,
   getProfileSandboxWorkspaces,
   getProfiles,
+  importProfileBackup,
   markLessonCompleted,
   saveLessonAutosave,
   saveSandboxAutosave,
@@ -206,6 +223,17 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
   flags: lesson.grid.flags,
 }));
 
+export interface PendingLessonVersionMismatch {
+  source: 'slot' | 'share';
+  lessonId: string;
+  savedVersion: number;
+  latestVersion: number;
+  workspace: WorkspaceState;
+  hasHistoricalVersion: boolean;
+  title?: string;
+  slotIndex?: number;
+}
+
 interface AppState {
   // Multi-profile state
   profiles: UserProfile[];
@@ -222,6 +250,7 @@ interface AppState {
   exploredDemoTabs: Record<string, string[]>;
   curriculumWorkspaces: Record<string, WorkspaceState>;
   sandboxSnapshot: SandboxModeSnapshot | null;
+  pendingVersionMismatch: PendingLessonVersionMismatch | null;
   statusAnnouncement: string;
   ghostPreview: GhostPreviewState | null;
   slotCapRejectionCount: number;
@@ -268,6 +297,16 @@ interface AppState {
   createAndSwitchProfile: (input: CreateProfileInput) => UserProfile;
   deleteUserProfile: (profileId: string) => boolean;
   reloadActiveProfileState: () => void;
+  importUserProfileBackup: (
+    input: ProfileBackupEnvelopeV1 | string | Uint8Array,
+    mode: ProfileBackupImportMode
+  ) => {
+    success: boolean;
+    profile?: UserProfile;
+    importedSlotCount?: number;
+    importedAutosaveCount?: number;
+    error?: string;
+  };
 
   // Mode & Curriculum actions
   setAppMode: (mode: AppMode) => void;
@@ -312,8 +351,17 @@ interface AppState {
   ) => boolean;
   exportCode: (includeMap?: boolean) => string;
   exportBinary: (includeMap?: boolean) => Uint8Array;
-  importCode: (data: string | Uint8Array) => { success: boolean; error?: string };
-  importBinary: (data: Uint8Array) => { success: boolean; error?: string };
+  importCode: (
+    data: string | Uint8Array
+  ) => { success: boolean; error?: string; versionMismatchPending?: boolean };
+  importBinary: (
+    data: Uint8Array
+  ) => { success: boolean; error?: string; versionMismatchPending?: boolean };
+  loadSavedProgram: (
+    entry: SavedProgramEntry
+  ) => { success: boolean; error?: string; versionMismatchPending?: boolean };
+  resolveVersionMismatch: (choice: 'latest' | 'original') => boolean;
+  dismissVersionMismatch: () => void;
 
   // Workspace actions
   addBlock: (scope: ScopeType, type: string, repeatCount?: number | VariableName, insertAtIndex?: number, params?: Record<string, any>) => void;
@@ -892,6 +940,89 @@ export const useAppStore = create<AppState>((set, get) => {
     return `Execution paused on ? placeholder block (${hintLabel} hint). Choose a highlighted block from the palette to replace it.`;
   };
 
+  const applyLessonWorkspaceLoad = (
+    lessonId: string,
+    targetVersion: number,
+    loadedWorkspace: WorkspaceState,
+    announcement?: string
+  ): { success: boolean; error?: string } => {
+    const activity = getActivityAtVersion(lessonId, targetVersion);
+    if (!activity) {
+      return {
+        success: false,
+        error: `Curriculum lesson ${lessonId} (v${targetVersion}) is unavailable.`,
+      };
+    }
+
+    const state = get();
+    get().pause();
+
+    if (
+      state.appMode === 'curriculum' &&
+      state.activeActivityId === activity.id &&
+      state.activeActivityVersion === activity.version
+    ) {
+      recordMutation('Load lesson workspace');
+    } else {
+      get().clearHistory();
+    }
+
+    const nextSandboxSnapshot =
+      state.appMode === 'sandbox' ? buildSandboxSnapshot(state) : state.sandboxSnapshot;
+
+    const nextCurriculumWorkspaces =
+      state.appMode === 'curriculum'
+        ? {
+            ...state.curriculumWorkspaces,
+            [state.activeActivityId]: cloneWorkspace(state.workspace),
+          }
+        : { ...state.curriculumWorkspaces };
+
+    const freshWorkspace = cloneWorkspaceWithFreshIds(loadedWorkspace);
+    nextCurriculumWorkspaces[activity.id] = cloneWorkspace(freshWorkspace);
+
+    const targetSimId: 'grid' | 'turtle' | 'beat' = resolveCurriculumSimId(activity.simId);
+    const prevFitToView = state.grid.fitToView ?? false;
+    const targetGrid = activity.grid
+      ? createCurriculumGridState(activity.grid, prevFitToView)
+      : state.grid;
+
+    const allowedScopes: ScopeType[] =
+      activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+        ? activity.palette.allowedScopes
+        : ['MAIN'];
+    const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
+
+    set({
+      appMode: 'curriculum',
+      activeActivityId: activity.id,
+      activeActivityVersion: activity.version,
+      activeSimId: targetSimId,
+      grid: targetGrid,
+      turtleState: createInitialTurtleState(),
+      beatState: resetBeatState(state.beatState),
+      workspace: freshWorkspace,
+      curriculumWorkspaces: nextCurriculumWorkspaces,
+      sandboxSnapshot: nextSandboxSnapshot,
+      editorTool: 'NONE',
+      selectedBlockId: null,
+      activeScope: initialScope,
+      runtime: null,
+      ghostPreview: null,
+      slotCapRejectionCount: 0,
+      lastSlotCapRejectedAt: null,
+      pendingVersionMismatch: null,
+      statusAnnouncement:
+        announcement ||
+        `Loaded saved blocks into Activity ${activity.id} (v${activity.version}): ${activity.title}.`,
+    });
+
+    saveLessonAutosave(get().activeProfileId, activity.id, freshWorkspace, activity.version);
+    get().reset();
+    get().runInstantIfActive();
+    return { success: true };
+  };
+
   return {
     profiles: bootProfilesState.profiles,
     activeProfileId: bootActiveProfileId,
@@ -909,6 +1040,7 @@ export const useAppStore = create<AppState>((set, get) => {
         ? { ...bootCurriculumAutosaves, [bootActivity.id]: cloneWorkspace(initialWorkspace) }
         : bootCurriculumAutosaves,
     sandboxSnapshot: null,
+    pendingVersionMismatch: null,
     statusAnnouncement: '',
     ghostPreview: null,
     slotCapRejectionCount: 0,
@@ -1165,6 +1297,7 @@ export const useAppStore = create<AppState>((set, get) => {
           },
           savedWorkspaces: nextSavedWorkspaces,
           sandboxSnapshot: null,
+          pendingVersionMismatch: null,
           selectedBlockId: null,
           activeScope: 'MAIN',
           editorTool: 'NONE',
@@ -1190,6 +1323,7 @@ export const useAppStore = create<AppState>((set, get) => {
           curriculumWorkspaces: nextCurriculumWorkspaces,
           savedWorkspaces: nextSavedWorkspaces,
           sandboxSnapshot: null,
+          pendingVersionMismatch: null,
           grid: createGridFromPreset(fallbackPreset, prevFitToView),
           turtleState: createInitialTurtleState(),
           beatState: resetBeatState(state.beatState),
@@ -1206,6 +1340,73 @@ export const useAppStore = create<AppState>((set, get) => {
 
       get().reset();
       get().runInstantIfActive();
+    },
+
+    importUserProfileBackup: (input, mode) => {
+      const res = importProfileBackup(input, mode, get().activeProfileId);
+      if (!res.success || !res.profile) {
+        return { success: false, error: res.error || 'Failed to import profile backup.' };
+      }
+
+      // Regenerate SVG thumbnails for any QR-imported save slots that omitted bulky screenshot strings
+      try {
+        const entries = getSavedPrograms(res.profile.id);
+        for (const entry of entries) {
+          if (entry.screenshot !== DEFAULT_FALLBACK_THUMBNAIL) continue;
+          const decoded = importFromString(entry.code);
+          if (!decoded.success || !decoded.workspace) continue;
+
+          if (entry.simId === 'grid') {
+            const lessonAct = entry.lessonId
+              ? getActivityAtVersion(entry.lessonId, entry.lessonVersion ?? 1) ??
+                getActivityLatest(entry.lessonId)
+              : undefined;
+            const preset =
+              entry.levelId !== undefined
+                ? PRESET_LEVELS.find((p) => p.id === entry.levelId) || PRESET_LEVELS[0]
+                : PRESET_LEVELS[0];
+            const initialGridState = lessonAct?.grid
+              ? createCurriculumGridState(lessonAct.grid, false)
+              : decoded.gridState
+              ? getInitialGridState(decoded.gridState)
+              : createGridFromPreset(preset, false);
+            const run = runHeadlessSimulation(decoded.workspace, 'grid', initialGridState, 250);
+            const screenshot = generateSimulationThumbnail('grid', run.finalState);
+            saveProgram({ ...entry, screenshot });
+          } else if (entry.simId === 'beat') {
+            const run = runHeadlessSimulation(decoded.workspace, 'beat', resetBeatState(), 250);
+            const screenshot = generateSimulationThumbnail('beat', run.finalState);
+            saveProgram({ ...entry, screenshot });
+          } else {
+            const run = runHeadlessSimulation(
+              decoded.workspace,
+              'turtle',
+              createInitialTurtleState(),
+              250
+            );
+            const screenshot = generateSimulationThumbnail('turtle', run.finalState);
+            saveProgram({ ...entry, screenshot });
+          }
+        }
+      } catch {
+        // Non-fatal thumbnail regeneration fallback
+      }
+
+      get().reloadActiveProfileState();
+      const displayName = getProfileDisplayName(res.profile);
+      set({
+        statusAnnouncement:
+          mode === 'new'
+            ? `Imported backup as new profile ${displayName}.`
+            : `Replaced active profile with backup (${displayName}).`,
+      });
+
+      return {
+        success: true,
+        profile: res.profile,
+        importedSlotCount: res.importedSlotCount,
+        importedAutosaveCount: res.importedAutosaveCount,
+      };
     },
 
     switchProfile: (profileId) => {
@@ -1813,7 +2014,35 @@ export const useAppStore = create<AppState>((set, get) => {
     setLoadModalOpen: (open) => set({ isLoadModalOpen: open }),
 
     exportCode: (includeMap = true) => {
-      const { activeSimId, workspace, grid, turtleState, beatState } = get();
+      const {
+        appMode,
+        activeActivityId,
+        activeActivityVersion,
+        activeSimId,
+        workspace,
+        grid,
+        turtleState,
+        beatState,
+      } = get();
+
+      if (appMode === 'curriculum') {
+        if (includeMap) {
+          return exportLessonToString(
+            workspace,
+            activeSimId,
+            activeActivityId,
+            activeActivityVersion
+          );
+        }
+        if (activeSimId === 'grid') {
+          return exportToString(workspace, 'generic');
+        }
+        if (activeSimId === 'beat') {
+          return exportToString(workspace, 'beat', beatState);
+        }
+        return exportToString(workspace, 'turtle', turtleState);
+      }
+
       if (activeSimId === 'grid') {
         if (includeMap) {
           return exportToString(workspace, 'grid', grid);
@@ -1828,7 +2057,35 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     exportBinary: (includeMap = true) => {
-      const { activeSimId, workspace, grid, turtleState, beatState } = get();
+      const {
+        appMode,
+        activeActivityId,
+        activeActivityVersion,
+        activeSimId,
+        workspace,
+        grid,
+        turtleState,
+        beatState,
+      } = get();
+
+      if (appMode === 'curriculum') {
+        if (includeMap) {
+          return exportLessonToBinary(
+            workspace,
+            activeSimId,
+            activeActivityId,
+            activeActivityVersion
+          );
+        }
+        if (activeSimId === 'grid') {
+          return exportToBinary(workspace, 'generic');
+        }
+        if (activeSimId === 'beat') {
+          return exportToBinary(workspace, 'beat', beatState);
+        }
+        return exportToBinary(workspace, 'turtle', turtleState);
+      }
+
       if (activeSimId === 'grid') {
         if (includeMap) {
           return exportToBinary(workspace, 'grid', grid);
@@ -1850,6 +2107,39 @@ export const useAppStore = create<AppState>((set, get) => {
       const res = typeof data === 'string' ? importFromString(data) : importFromBinary(data);
       if (!res.success) {
         return { success: false, error: res.error || 'Failed to import code' };
+      }
+
+      // Path B: Standalone Curriculum Lesson Envelope (`ENV_ID_LESSON = 0x04`)
+      if (res.envId === 'lesson') {
+        const lessonId = res.lessonId || '';
+        const latest = getActivityLatest(lessonId);
+        if (!latest) {
+          return { success: false, error: `Unknown curriculum lesson: ${lessonId}` };
+        }
+
+        const savedVersion = res.lessonVersion ?? 1;
+        const loadedWorkspace = res.workspace || createEmptyWorkspace();
+
+        if (savedVersion !== latest.version) {
+          const hasHistorical = Boolean(getActivityAtVersion(lessonId, savedVersion));
+          get().pause();
+          set({
+            pendingVersionMismatch: {
+              source: 'share',
+              lessonId,
+              savedVersion,
+              latestVersion: latest.version,
+              workspace: cloneWorkspace(loadedWorkspace),
+              hasHistoricalVersion: hasHistorical,
+            },
+            isExportImportOpen: false,
+            isLoadModalOpen: false,
+            statusAnnouncement: `Lesson version mismatch for Activity ${lessonId}: saved at v${savedVersion}, latest is v${latest.version}. Choose how to open it.`,
+          });
+          return { success: true, versionMismatchPending: true };
+        }
+
+        return applyLessonWorkspaceLoad(lessonId, latest.version, loadedWorkspace);
       }
 
       // Importing a full environment snapshot (custom Grid map, Turtle drawing, or Beat program)
@@ -1953,6 +2243,105 @@ export const useAppStore = create<AppState>((set, get) => {
       get().reset();
       get().runInstantIfActive();
       return { success: true };
+    },
+
+    loadSavedProgram: (entry) => {
+      if (entry.lessonId) {
+        const res = importFromString(entry.code);
+        if (!res.success) {
+          return { success: false, error: res.error || 'Failed to decode saved lesson program' };
+        }
+
+        const latest = getActivityLatest(entry.lessonId);
+        if (!latest) {
+          return { success: false, error: `Unknown curriculum lesson: ${entry.lessonId}` };
+        }
+
+        const savedVersion = entry.lessonVersion ?? 1;
+        const loadedWorkspace = res.workspace || createEmptyWorkspace();
+
+        if (savedVersion !== latest.version) {
+          const hasHistorical = Boolean(getActivityAtVersion(entry.lessonId, savedVersion));
+          get().pause();
+          set({
+            pendingVersionMismatch: {
+              source: 'slot',
+              lessonId: entry.lessonId,
+              savedVersion,
+              latestVersion: latest.version,
+              workspace: cloneWorkspace(loadedWorkspace),
+              hasHistoricalVersion: hasHistorical,
+              title: entry.title,
+              slotIndex: entry.slotIndex,
+            },
+            isLoadModalOpen: false,
+            statusAnnouncement: `Lesson version mismatch for ${entry.title}: saved at v${savedVersion}, latest is v${latest.version}. Choose how to open it.`,
+          });
+          return { success: true, versionMismatchPending: true };
+        }
+
+        return applyLessonWorkspaceLoad(
+          entry.lessonId,
+          latest.version,
+          loadedWorkspace,
+          `Loaded "${entry.title}" into Activity ${latest.id} (v${latest.version}): ${latest.title}.`
+        );
+      }
+
+      // Legacy v1 save or Free-Play Sandbox save (no `lessonId`):
+      // Always open in Free-Play Sandbox with embedded state intact.
+      const decoded = importFromString(entry.code);
+      if (!decoded.success) {
+        return { success: false, error: decoded.error || 'Failed to decode saved program' };
+      }
+
+      if (get().appMode === 'curriculum') {
+        get().setAppMode('sandbox');
+      }
+
+      if (entry.simId === 'grid' && entry.levelId !== undefined && !decoded.gridState) {
+        get().setLevel(entry.levelId);
+      } else if (decoded.envId === 'generic' && entry.simId !== get().activeSimId) {
+        get().setSimEnvironment(entry.simId);
+      }
+
+      const importRes = get().importCode(entry.code);
+      if (importRes.success && entry.simId === 'grid' && entry.levelId !== undefined) {
+        set({ currentLevel: entry.levelId });
+      }
+      return importRes;
+    },
+
+    resolveVersionMismatch: (choice) => {
+      const pending = get().pendingVersionMismatch;
+      if (!pending) return false;
+
+      if (choice === 'original') {
+        if (!pending.hasHistoricalVersion) return false;
+        const res = applyLessonWorkspaceLoad(
+          pending.lessonId,
+          pending.savedVersion,
+          pending.workspace,
+          `Opened Activity ${pending.lessonId} in original version v${pending.savedVersion}.`
+        );
+        return res.success;
+      }
+
+      const res = applyLessonWorkspaceLoad(
+        pending.lessonId,
+        pending.latestVersion,
+        pending.workspace,
+        `Loaded saved v${pending.savedVersion} blocks into latest Activity ${pending.lessonId} (v${pending.latestVersion}).`
+      );
+      return res.success;
+    },
+
+    dismissVersionMismatch: () => {
+      if (!get().pendingVersionMismatch) return;
+      set({
+        pendingVersionMismatch: null,
+        statusAnnouncement: 'Cancelled loading mismatched lesson version.',
+      });
     },
 
     loadSolution: (lessonId) => {

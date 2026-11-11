@@ -4,14 +4,24 @@ import { BinaryReader, base64URLToUint8Array } from '../src/engine/serialization
 import {
   exportToString,
   importFromString,
+  exportLessonCodeOnly,
+  exportLessonToBinary,
+  exportLessonToString,
 } from '../src/engine/serialization/codeSerializer';
 import {
   FORMAT_VERSION,
   ENV_ID_GRID,
   ENV_ID_TURTLE,
+  ENV_ID_BEAT,
+  ENV_ID_LESSON,
   ENV_ID_GENERIC,
   TURTLE_COLOR_PALETTE,
 } from '../src/engine/serialization/types';
+import {
+  saveProgram,
+  getProgramById,
+  clearAllSavedPrograms,
+} from '../src/services/localSaveService';
 import { GridState, WorkspaceState, Direction, WallEdge, FlagObjective } from '../src/types';
 import { useAppStore } from '../src/store/useAppStore';
 
@@ -476,13 +486,21 @@ describe('Binary Serialization', () => {
       expect(res.workspace?.MAIN[1].repeatCount).toBe(2);
     });
 
-    it('decodes existing real-world v1 turtle strings containing legacy FORWARD/BACKWARD opcodes', () => {
+    it('decodes existing real-world v1 turtle strings from TODO.md containing legacy FORWARD/BACKWARD opcodes', () => {
       const legacy1 = importFromString('AQIBAQALUAIUZI4CUAIWEBJaERdQAxSWAY4CUAM');
       expect(legacy1.success).toBe(true);
       expect(legacy1.envId).toBe('turtle');
       expect(legacy1.envVersion).toBe(1);
       expect(legacy1.workspace?.MAIN.some((b) => b.type === 'FORWARD')).toBe(true);
       expect(legacy1.workspace?.MAIN.some((b) => b.type === 'BACKWARD')).toBe(true);
+
+      const legacy2 = importFromString(
+        'AQIBAQATAUEGVAQyWhIeAgIYA0EEQQYWUAMXVAQyWhZRAxIPAgIX'
+      );
+      expect(legacy2.success).toBe(true);
+      expect(legacy2.envId).toBe('turtle');
+      expect(legacy2.envVersion).toBe(1);
+      expect((legacy2.workspace?.MAIN.length ?? 0)).toBeGreaterThan(0);
     });
   });
 
@@ -667,6 +685,189 @@ describe('Binary Serialization', () => {
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(3);
       expect(useAppStore.getState().workspace.MAIN[1].params?.angle).toBe(45);
       expect(useAppStore.getState().workspace.MAIN[2].params?.color).toBe('#ef4444');
+    });
+  });
+
+  describe('Dual-Path Curriculum Lesson Serialization (Path A vs Path B, ENV_ID_LESSON = 0x04)', () => {
+    const stripWorkspaceIds = (ws?: WorkspaceState) => ({
+      MAIN: (ws?.MAIN || []).map(({ id: _id, ...rest }) => rest),
+      F1: (ws?.F1 || []).map(({ id: _id, ...rest }) => rest),
+      F2: (ws?.F2 || []).map(({ id: _id, ...rest }) => rest),
+      F3: (ws?.F3 || []).map(({ id: _id, ...rest }) => rest),
+    });
+
+    it('encodes ENV_ID_LESSON = 0x04 header bytes [1, 0x04, innerEnvByte, lessonIdLen, ...utf8, lessonVersion] without map geometry', () => {
+      const workspace: WorkspaceState = {
+        MAIN: [
+          { id: '1', type: 'LOOP_START', repeatCount: 3 },
+          { id: '2', type: 'MOVE_FWD', repeatCount: 2 },
+          { id: '3', type: 'PLACEHOLDER', params: { hintCategory: 'turn' } },
+          { id: '4', type: 'LOOP_END' },
+        ],
+        F1: [{ id: '5', type: 'TURN_RIGHT' }],
+        F2: [],
+        F3: [],
+      };
+
+      const bytes = exportLessonToBinary(workspace, 'grid', '1.4', 2);
+      expect(bytes[0]).toBe(FORMAT_VERSION);
+      expect(bytes[1]).toBe(ENV_ID_LESSON);
+      expect(bytes[2]).toBe(ENV_ID_GENERIC); // Grid lessons serialize code-only (0x00)
+      expect(bytes[3]).toBe(3); // '1.4'.length
+      expect(new TextDecoder().decode(bytes.slice(4, 7))).toBe('1.4');
+      expect(bytes[7]).toBe(2); // lessonVersion = 2
+
+      const res = importFromString(uint8ArrayToBase64URL(bytes));
+      expect(res.success).toBe(true);
+      expect(res.envId).toBe('lesson');
+      expect(res.innerEnvId).toBe('generic');
+      expect(res.lessonId).toBe('1.4');
+      expect(res.lessonVersion).toBe(2);
+      expect(res.gridState).toBeUndefined();
+      expect(stripWorkspaceIds(res.workspace)).toEqual(stripWorkspaceIds(workspace));
+    });
+
+    it('roundtrips ENV_ID_LESSON = 0x04 for Turtle (0x02) and Beat (0x03) lessons', () => {
+      const turtleWs: WorkspaceState = {
+        MAIN: [
+          { id: 't1', type: 'FORWARD', params: { length: 80 } },
+          { id: 't2', type: 'TURN_LEFT', params: { angle: 90 } },
+          { id: 't3', type: 'SET_PEN_COLOR', params: { color: TURTLE_COLOR_PALETTE[2] } },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const turtleBytes = exportLessonToBinary(turtleWs, 'turtle', '1.9', 1);
+      expect(turtleBytes[1]).toBe(ENV_ID_LESSON);
+      expect(turtleBytes[2]).toBe(ENV_ID_TURTLE);
+      const decodedTurtle = importFromString(uint8ArrayToBase64URL(turtleBytes));
+      expect(decodedTurtle.success).toBe(true);
+      expect(decodedTurtle.envId).toBe('lesson');
+      expect(decodedTurtle.innerEnvId).toBe('turtle');
+      expect(decodedTurtle.lessonId).toBe('1.9');
+      expect(decodedTurtle.lessonVersion).toBe(1);
+      expect(decodedTurtle.workspace?.MAIN[0].params?.length).toBe(80);
+      expect(decodedTurtle.workspace?.MAIN[1].params?.angle).toBe(90);
+
+      const beatWs: WorkspaceState = {
+        MAIN: [
+          { id: 'b1', type: 'DRUM_KICK', repeatCount: 2 },
+          { id: 'b2', type: 'STAMP_PRESET', params: { preset: 'HEART' } },
+          { id: 'b3', type: 'WAIT_BEAT' },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+
+      const beatBytes = exportLessonToBinary(beatWs, 'beat', '1.11', 3);
+      expect(beatBytes[1]).toBe(ENV_ID_LESSON);
+      expect(beatBytes[2]).toBe(ENV_ID_BEAT);
+      const decodedBeat = importFromString(uint8ArrayToBase64URL(beatBytes));
+      expect(decodedBeat.success).toBe(true);
+      expect(decodedBeat.envId).toBe('lesson');
+      expect(decodedBeat.innerEnvId).toBe('beat');
+      expect(decodedBeat.lessonId).toBe('1.11');
+      expect(decodedBeat.lessonVersion).toBe(3);
+      expect(decodedBeat.workspace?.MAIN).toHaveLength(3);
+      expect(decodedBeat.workspace?.MAIN[1].params?.preset).toBe('HEART');
+    });
+
+    it('produces identical (lessonId, lessonVersion, workspace) across Path A (SavedProgramEntry) and Path B (ENV_ID_LESSON = 0x04)', () => {
+      clearAllSavedPrograms();
+
+      const attemptWorkspace: WorkspaceState = {
+        MAIN: [
+          { id: 'a1', type: 'VAR_ASSIGN', params: { a: 'x', b: 3 } },
+          { id: 'a2', type: 'LOOP_START', repeatCount: 'x' },
+          { id: 'a3', type: 'CALL_F1' },
+          { id: 'a4', type: 'LOOP_END' },
+        ],
+        F1: [
+          { id: 'f1', type: 'MOVE_FWD', repeatCount: 2 },
+          { id: 'f2', type: 'TURN_LEFT' },
+          { id: 'f3', type: 'PLACEHOLDER', params: { hintCategory: 'motion' } },
+        ],
+        F2: [],
+        F3: [],
+      };
+
+      // Path A: Local Storage manual slot (`SavedProgramEntry` JSON + code-only payload)
+      const pathACode = exportLessonCodeOnly(attemptWorkspace, 'grid');
+      const savedSlot = saveProgram({
+        title: 'Activity 1.3 — Slot 1',
+        profileId: 'default',
+        simId: 'grid',
+        code: pathACode,
+        screenshot: 'data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E',
+        status: 'SUCCESS',
+        stepCount: 9,
+        lessonId: '1.3',
+        lessonVersion: 2,
+        slotIndex: 1,
+      });
+      const loadedSlot = getProgramById(savedSlot.id)!;
+      const decodedPathA = importFromString(loadedSlot.code);
+
+      // Path B: Self-contained share string (`ENV_ID_LESSON = 0x04`)
+      const pathBString = exportLessonToString(attemptWorkspace, 'grid', '1.3', 2);
+      const decodedPathB = importFromString(pathBString);
+
+      expect(decodedPathA.success).toBe(true);
+      expect(decodedPathB.success).toBe(true);
+      expect(decodedPathA.gridState).toBeUndefined();
+      expect(decodedPathB.gridState).toBeUndefined();
+
+      expect(loadedSlot.lessonId).toBe(decodedPathB.lessonId);
+      expect(loadedSlot.lessonVersion).toBe(decodedPathB.lessonVersion);
+      expect(stripWorkspaceIds(decodedPathA.workspace)).toEqual(
+        stripWorkspaceIds(decodedPathB.workspace)
+      );
+      expect(stripWorkspaceIds(decodedPathA.workspace)).toEqual(
+        stripWorkspaceIds(attemptWorkspace)
+      );
+    });
+
+    it('rejects malformed ENV_ID_LESSON = 0x04 payloads cleanly without throwing', () => {
+      // Bad inner envId (0x99)
+      const wBadEnv = new BinaryWriter();
+      wBadEnv.writeUint8(FORMAT_VERSION);
+      wBadEnv.writeUint8(ENV_ID_LESSON);
+      wBadEnv.writeUint8(0x99);
+      wBadEnv.writeVLE(3);
+      wBadEnv.writeBytes(new TextEncoder().encode('1.1'));
+      wBadEnv.writeVLE(1);
+      wBadEnv.writeVLE(0);
+      const badEnvRes = importFromString(wBadEnv.toBase64URL());
+      expect(badEnvRes.success).toBe(false);
+      expect(badEnvRes.error).toMatch(/Unsupported lesson inner environment ID/);
+
+      // Empty lessonId (len = 0)
+      const wEmptyId = new BinaryWriter();
+      wEmptyId.writeUint8(FORMAT_VERSION);
+      wEmptyId.writeUint8(ENV_ID_LESSON);
+      wEmptyId.writeUint8(ENV_ID_GENERIC);
+      wEmptyId.writeVLE(0);
+      wEmptyId.writeVLE(1);
+      wEmptyId.writeVLE(0);
+      const emptyIdRes = importFromString(wEmptyId.toBase64URL());
+      expect(emptyIdRes.success).toBe(false);
+      expect(emptyIdRes.error).toMatch(/Empty lessonId/);
+
+      // Zero lessonVersion
+      const wZeroVer = new BinaryWriter();
+      wZeroVer.writeUint8(FORMAT_VERSION);
+      wZeroVer.writeUint8(ENV_ID_LESSON);
+      wZeroVer.writeUint8(ENV_ID_GENERIC);
+      wZeroVer.writeVLE(3);
+      wZeroVer.writeBytes(new TextEncoder().encode('1.1'));
+      wZeroVer.writeVLE(0);
+      wZeroVer.writeVLE(0);
+      const zeroVerRes = importFromString(wZeroVer.toBase64URL());
+      expect(zeroVerRes.success).toBe(false);
+      expect(zeroVerRes.error).toMatch(/Invalid lessonVersion/);
     });
   });
 });

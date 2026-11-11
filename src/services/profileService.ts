@@ -1,10 +1,16 @@
 import { CodeBlock, WorkspaceState } from '../types';
 import { CURRICULUM_MODULES, getActivitiesForModule } from '../data/curriculum';
 import {
+  DEFAULT_FALLBACK_THUMBNAIL,
+  SavedProgramEntry,
+  appendSavedProgramsForProfile,
   deleteProgramsForProfile,
+  getSavedPrograms,
   getStorageItem,
   migrateLegacySavedProgramsToDefault,
+  migrateSavedEntry,
   removeStorageItem,
+  replaceSavedProgramsForProfile,
   setStorageItem,
 } from './localSaveService';
 
@@ -878,4 +884,346 @@ export function resetAllProfileDataForTests(): void {
   removeStorageItem(PROFILES_STORAGE_KEY);
   removeStorageItem(LESSON_AUTOSAVE_STORAGE_KEY);
   removeStorageItem(CURRICULUM_PROGRESS_STORAGE_KEY);
+}
+
+// ============================================================================
+// Whole-Profile Backup Export & Import (`ROBOTEMU_PROFILE_BACKUP` v1)
+// ============================================================================
+
+export const PROFILE_BACKUP_MAGIC = 'ROBOTEMU_PROFILE_BACKUP';
+export const PROFILE_BACKUP_VERSION = 1;
+
+export type ProfileBackupImportMode = 'new' | 'replace';
+
+export interface ProfileBackupEnvelopeV1 {
+  type: typeof PROFILE_BACKUP_MAGIC;
+  version: number;
+  exportedAt: number;
+  profile: {
+    id?: string;
+    avatarId: ProfileAvatarId;
+    colorId: ProfileColorId;
+    accentColor: string;
+    name: string;
+    createdAt: number;
+  };
+  progress: ProfileCurriculumProgress;
+  autosaves: ProfileAutosaveData;
+  savedPrograms: Array<
+    Omit<SavedProgramEntry, 'id' | 'profileId'> & {
+      id?: string;
+      profileId?: string;
+    }
+  >;
+}
+
+export interface ImportProfileBackupResult {
+  success: boolean;
+  profile?: UserProfile;
+  mode?: ProfileBackupImportMode;
+  importedSlotCount?: number;
+  importedAutosaveCount?: number;
+  error?: string;
+}
+
+const backupUtf8Encoder = new TextEncoder();
+const backupUtf8Decoder = new TextDecoder();
+
+function sanitizeAutosaveBundle(raw: unknown): ProfileAutosaveData {
+  const lessons: Record<string, LessonAutosaveEntry> = {};
+  const sandbox: Record<string, SandboxAutosaveEntry> = {};
+  if (!raw || typeof raw !== 'object') {
+    return { lessons, sandbox };
+  }
+
+  const b = raw as Record<string, unknown>;
+  if (b.lessons && typeof b.lessons === 'object') {
+    for (const [lessonId, rawEntry] of Object.entries(b.lessons as Record<string, unknown>)) {
+      if (!lessonId.trim() || !rawEntry || typeof rawEntry !== 'object') continue;
+      const e = rawEntry as Record<string, unknown>;
+      lessons[lessonId.trim()] = {
+        workspace: sanitizeAutosaveWorkspace(e.workspace),
+        lessonVersion:
+          typeof e.lessonVersion === 'number' &&
+          Number.isFinite(e.lessonVersion) &&
+          e.lessonVersion >= 1
+            ? Math.floor(e.lessonVersion)
+            : 1,
+        updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : 0,
+      };
+    }
+  }
+
+  if (b.sandbox && typeof b.sandbox === 'object') {
+    for (const [simId, rawEntry] of Object.entries(b.sandbox as Record<string, unknown>)) {
+      if (!simId.trim() || !rawEntry || typeof rawEntry !== 'object') continue;
+      const e = rawEntry as Record<string, unknown>;
+      sandbox[simId.trim()] = {
+        workspace: sanitizeAutosaveWorkspace(e.workspace),
+        updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : 0,
+      };
+    }
+  }
+
+  return { lessons, sandbox };
+}
+
+/**
+ * Exports a complete self-contained backup envelope for `profileId` (defaults to the active profile),
+ * including profile identity, curriculum progress & badges, lesson + sandbox auto-saves, and all
+ * profile-scoped manual `SavedProgramEntry` slots.
+ */
+export function exportProfileBackup(
+  profileId?: string,
+  options?: { stripScreenshots?: boolean; now?: number }
+): ProfileBackupEnvelopeV1 {
+  const state = ensureProfilesInitialized();
+  const targetId = profileId?.trim() || state.activeProfileId;
+  const profile =
+    state.profiles.find((p) => p.id === targetId) ??
+    state.profiles.find((p) => p.id === DEFAULT_PROFILE_ID) ??
+    state.profiles[0];
+
+  const progress = getProfileProgress(profile.id);
+  const rawAutosaves = getProfileAutosaveData(profile.id);
+  const autosaves = sanitizeAutosaveBundle(rawAutosaves);
+
+  const savedPrograms = getSavedPrograms(profile.id).map((entry) => {
+    const { profileId: _ignoredProfileId, id: _ignoredId, ...rest } = entry;
+    return {
+      ...rest,
+      screenshot: options?.stripScreenshots ? DEFAULT_FALLBACK_THUMBNAIL : entry.screenshot,
+    };
+  });
+
+  return {
+    type: PROFILE_BACKUP_MAGIC,
+    version: PROFILE_BACKUP_VERSION,
+    exportedAt: options?.now ?? Date.now(),
+    profile: {
+      id: profile.id,
+      avatarId: profile.avatarId,
+      colorId: profile.colorId,
+      accentColor: profile.accentColor,
+      name: profile.name,
+      createdAt: profile.createdAt,
+    },
+    progress,
+    autosaves,
+    savedPrograms,
+  };
+}
+
+/**
+ * Serializes a whole-profile backup to formatted UTF-8 JSON text (suitable for `.json` download or clipboard).
+ */
+export function exportProfileBackupToJson(profileId?: string): string {
+  return JSON.stringify(exportProfileBackup(profileId), null, 2);
+}
+
+/**
+ * Serializes a compact QR-ready UTF-8 byte payload for a whole-profile backup (omitting bulky SVG
+ * thumbnails so an entire profile fits comfortably inside `REQR` QR code chunks).
+ */
+export function exportProfileBackupToQrBytes(profileId?: string): Uint8Array {
+  const compactJson = JSON.stringify(exportProfileBackup(profileId, { stripScreenshots: true }));
+  return backupUtf8Encoder.encode(compactJson);
+}
+
+/**
+ * Detects whether a pasted string or scanned QR `Uint8Array` represents a `ROBOTEMU_PROFILE_BACKUP`
+ * envelope (as opposed to a binary `FORMAT_VERSION = 1` program payload).
+ */
+export function isProfileBackupPayload(input: string | Uint8Array): boolean {
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    return trimmed.startsWith('{') && trimmed.includes(PROFILE_BACKUP_MAGIC);
+  }
+  if (input instanceof Uint8Array && input.length > 2) {
+    let i = 0;
+    while (
+      i < input.length &&
+      (input[i] === 0x20 || input[i] === 0x09 || input[i] === 0x0a || input[i] === 0x0d)
+    ) {
+      i++;
+    }
+    if (i >= input.length || input[i] !== 0x7b) {
+      return false;
+    }
+    try {
+      const text = backupUtf8Decoder.decode(input);
+      return text.includes(PROFILE_BACKUP_MAGIC);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Parses and validates a `ProfileBackupEnvelopeV1` from an object, JSON string, or UTF-8 `Uint8Array`.
+ */
+export function parseProfileBackup(
+  input: ProfileBackupEnvelopeV1 | string | Uint8Array
+): { success: true; backup: ProfileBackupEnvelopeV1 } | { success: false; error: string } {
+  let rawObj: unknown = input;
+
+  if (input instanceof Uint8Array) {
+    if (input.length === 0) {
+      return { success: false, error: 'Empty profile backup payload.' };
+    }
+    try {
+      const decoded = backupUtf8Decoder.decode(input).trim();
+      rawObj = JSON.parse(decoded);
+    } catch {
+      return { success: false, error: 'Invalid UTF-8 or JSON in profile backup.' };
+    }
+  } else if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return { success: false, error: 'Empty profile backup string.' };
+    }
+    try {
+      rawObj = JSON.parse(trimmed);
+    } catch {
+      return { success: false, error: 'Invalid JSON in profile backup.' };
+    }
+  }
+
+  if (!rawObj || typeof rawObj !== 'object') {
+    return { success: false, error: 'Invalid profile backup format.' };
+  }
+
+  const obj = rawObj as Record<string, unknown>;
+  if (obj.type !== PROFILE_BACKUP_MAGIC) {
+    return {
+      success: false,
+      error: 'Not a valid Robot Emulator profile backup file.',
+    };
+  }
+
+  if (typeof obj.version !== 'number' || obj.version < 1 || obj.version > PROFILE_BACKUP_VERSION) {
+    return {
+      success: false,
+      error: `Unsupported profile backup version: ${String(obj.version)}`,
+    };
+  }
+
+  const rawProfile =
+    obj.profile && typeof obj.profile === 'object' ? (obj.profile as Record<string, unknown>) : {};
+  const avatarId: ProfileAvatarId =
+    typeof rawProfile.avatarId === 'string' && VALID_AVATAR_IDS.has(rawProfile.avatarId)
+      ? (rawProfile.avatarId as ProfileAvatarId)
+      : 'robot';
+  const colorId: ProfileColorId =
+    typeof rawProfile.colorId === 'string' && VALID_COLOR_IDS.has(rawProfile.colorId)
+      ? (rawProfile.colorId as ProfileColorId)
+      : 'sky';
+  const colorOpt = getProfileColor(colorId);
+  const name = typeof rawProfile.name === 'string' ? rawProfile.name.trim().slice(0, 24) : '';
+  const createdAt = typeof rawProfile.createdAt === 'number' ? rawProfile.createdAt : Date.now();
+
+  const progress = sanitizeProgress(obj.progress);
+  const autosaves = sanitizeAutosaveBundle(obj.autosaves);
+
+  const savedPrograms: ProfileBackupEnvelopeV1['savedPrograms'] = [];
+  if (Array.isArray(obj.savedPrograms)) {
+    for (const rawEntry of obj.savedPrograms) {
+      const migrated = migrateSavedEntry(rawEntry);
+      if (migrated) {
+        const { id: _id, profileId: _pid, ...rest } = migrated;
+        savedPrograms.push(rest);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    backup: {
+      type: PROFILE_BACKUP_MAGIC,
+      version: PROFILE_BACKUP_VERSION,
+      exportedAt: typeof obj.exportedAt === 'number' ? obj.exportedAt : Date.now(),
+      profile: {
+        id: typeof rawProfile.id === 'string' ? rawProfile.id : undefined,
+        avatarId,
+        colorId,
+        accentColor: colorOpt.accentColor,
+        name,
+        createdAt,
+      },
+      progress,
+      autosaves,
+      savedPrograms,
+    },
+  };
+}
+
+/**
+ * Imports a whole-profile backup with explicit user choice:
+ * - `'new'` (**Add as New Profile**): creates a new isolated profile and switches to it without touching existing profiles.
+ * - `'replace'` (**Replace Active Profile**): overwrites the target/active profile's progress, auto-saves, and manual slots.
+ */
+export function importProfileBackup(
+  input: ProfileBackupEnvelopeV1 | string | Uint8Array,
+  mode: ProfileBackupImportMode,
+  targetProfileId?: string
+): ImportProfileBackupResult {
+  const parsed = parseProfileBackup(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error };
+  }
+
+  const { backup } = parsed;
+  ensureProfilesInitialized();
+
+  let destinationProfile: UserProfile;
+
+  if (mode === 'new') {
+    destinationProfile = createProfile({
+      avatarId: backup.profile.avatarId,
+      colorId: backup.profile.colorId,
+      name: backup.profile.name,
+    });
+  } else {
+    const destId = targetProfileId?.trim() || getActiveProfileId();
+    const updated = updateProfile(destId, {
+      avatarId: backup.profile.avatarId,
+      colorId: backup.profile.colorId,
+      name: backup.profile.name,
+    });
+    if (!updated) {
+      return { success: false, error: `Target profile "${destId}" was not found.` };
+    }
+    destinationProfile = updated;
+  }
+
+  // Write curriculum progress & badges
+  const progressStore = readProgressStore();
+  progressStore.profiles[destinationProfile.id] = sanitizeProgress(backup.progress);
+  writeProgressStore(progressStore);
+
+  // Write lesson & sandbox auto-saves
+  const autosaveStore = readAutosaveStore();
+  const cleanAutosaves = sanitizeAutosaveBundle(backup.autosaves);
+  autosaveStore.profiles[destinationProfile.id] = cleanAutosaves;
+  writeAutosaveStore(autosaveStore);
+
+  // Write manual saved program slots with freshly minted IDs (zero collision across profiles)
+  const importedEntries =
+    mode === 'new'
+      ? appendSavedProgramsForProfile(destinationProfile.id, backup.savedPrograms)
+      : replaceSavedProgramsForProfile(destinationProfile.id, backup.savedPrograms);
+
+  setActiveProfileId(destinationProfile.id);
+
+  const importedAutosaveCount =
+    Object.keys(cleanAutosaves.lessons).length + Object.keys(cleanAutosaves.sandbox).length;
+
+  return {
+    success: true,
+    profile: destinationProfile,
+    mode,
+    importedSlotCount: importedEntries.length,
+    importedAutosaveCount,
+  };
 }

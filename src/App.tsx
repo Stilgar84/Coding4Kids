@@ -7,6 +7,7 @@ import { SolutionModal } from './components/SolutionModal';
 import { ExportImportModal } from './components/ExportImportModal';
 import { SaveProgramModal } from './components/SaveProgramModal';
 import { LoadProgramModal } from './components/LoadProgramModal';
+import { LessonVersionMismatchModal } from './components/LessonVersionMismatchModal';
 import { ProfileSwitcherModal } from './components/ProfileSwitcherModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStore } from './store/useAppStore';
@@ -68,6 +69,7 @@ export const App: React.FC = () => {
       {/* Local Save & Load Modals */}
       <SaveProgramModal />
       <LoadProgramModal />
+      <LessonVersionMismatchModal />
 
       {/* Kid-Friendly Multi-Profile Switcher Modal */}
       <ProfileSwitcherModal />
