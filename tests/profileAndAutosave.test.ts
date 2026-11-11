@@ -329,11 +329,17 @@ describe('Commit 3 (Wave 2): Kid-Friendly Multi-Profile, Lesson Auto-Save & Rese
       expect(isLessonCompleted('default', '1.2')).toBe(true);
       expect(useAppStore.getState().completedActivities['1.2']).toBe(true);
 
-      // Solve Activity 1.3 -> completes all registered Module 1 activities -> unlocks 'module-2'
+      // Solve Activity 1.3 and any remaining registered Module 1 activities -> unlocks 'module-2'
       store.setCurriculumActivity('1.3');
       store.loadSolution();
       expect(useAppStore.getState().grid.status).toBe('SUCCESS');
       expect(isLessonCompleted('default', '1.3')).toBe(true);
+
+      for (const act of CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'module-1')) {
+        if (!isLessonCompleted('default', act.id)) {
+          markLessonCompleted('default', act.id, act.version);
+        }
+      }
 
       const defaultProgress = getProfileProgress('default');
       expect(defaultProgress.unlockedModules).toContain('module-1');

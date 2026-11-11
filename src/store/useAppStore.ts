@@ -2186,9 +2186,12 @@ export const useAppStore = create<AppState>((set, get) => {
       const id = `${normalizedType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const simEnv = getSimEnvironment(currentState.activeSimId);
       const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === normalizedType);
-      const isVariableBlock = normalizedType === 'VAR_ASSIGN' || normalizedType === 'VAR_OP';
+      const isVariableOrPlaceholderBlock =
+        normalizedType === 'VAR_ASSIGN' ||
+        normalizedType === 'VAR_OP' ||
+        normalizedType === 'PLACEHOLDER';
       const resolvedParams =
-        !allowActionParams && !isVariableBlock
+        !allowActionParams && !isVariableOrPlaceholderBlock
           ? undefined
           : params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
       const newBlock: CodeBlock = { id, type: normalizedType, repeatCount, params: resolvedParams };
@@ -2230,8 +2233,11 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentState = get();
       const currentBlock = currentState.workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
-      const isVariableBlock = currentBlock.type === 'VAR_ASSIGN' || currentBlock.type === 'VAR_OP';
-      if (currentState.appMode === 'curriculum' && !isVariableBlock) {
+      const isVariableOrPlaceholderBlock =
+        currentBlock.type === 'VAR_ASSIGN' ||
+        currentBlock.type === 'VAR_OP' ||
+        currentBlock.type === 'PLACEHOLDER';
+      if (currentState.appMode === 'curriculum' && !isVariableOrPlaceholderBlock) {
         const activeActivity =
           getActivityAtVersion(currentState.activeActivityId, currentState.activeActivityVersion) ??
           getActivityLatest(currentState.activeActivityId);
