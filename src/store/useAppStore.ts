@@ -55,6 +55,7 @@ import {
   AppMode,
   CurriculumActivity,
   CURRICULUM_ACTIVITIES,
+  CURRICULUM_MODULES,
   createCurriculumGridState,
   getActivityAtVersion,
   getActivityLatest,
@@ -109,7 +110,9 @@ import {
   saveLessonAutosave,
   saveSandboxAutosave,
   setActiveProfileId,
+  setUnlockAllModules,
 } from '../services/profileService';
+import { playCelebrationAudio } from '../services/celebrationAudio';
 
 export type EditorTool =
   | 'NONE'
@@ -254,6 +257,8 @@ interface AppState {
   profiles: UserProfile[];
   activeProfileId: string;
   isProfileModalOpen: boolean;
+  isBadgeModalOpen: boolean;
+  unlockAllModules: boolean;
   completedActivities: Record<string, boolean>;
 
   // Mode & Curriculum selection
@@ -360,6 +365,8 @@ interface AppState {
   setSaveModalOpen: (open: boolean) => void;
   setLoadModalOpen: (open: boolean) => void;
   setLessonPickerOpen: (open: boolean) => void;
+  setBadgeModalOpen: (open: boolean) => void;
+  toggleUnlockAllModules: () => void;
   dismissVictoryModal: () => void;
   loadSolution: (lessonId?: number) => void;
   triggerGhostPreview: () => boolean;
@@ -1007,17 +1014,35 @@ export const useAppStore = create<AppState>((set, get) => {
     return simStatus === 'SUCCESS' || s.runtime?.status === 'SUCCESS';
   };
 
+  const formatEarnedBadgesAnnouncement = (
+    earnedBadges: string[],
+    act?: CurriculumActivity
+  ): string | undefined => {
+    if (earnedBadges.length === 0) return undefined;
+    const badgeTitles = earnedBadges.map((badgeId) => {
+      const mod = CURRICULUM_MODULES.find((m) => m.badgeId === badgeId);
+      return mod ? `${mod.badgeTitle} (${mod.shortTitle})` : badgeId;
+    });
+    const actPrefix = act ? `Completed Activity ${act.id}: ${act.title}! ` : '';
+    return `${actPrefix}Module Mastery Badge unlocked: ${badgeTitles.join(', ')}!`;
+  };
+
   const triggerVictoryModal = (earnedBadges: string[] = [], playAudio = true) => {
     if (isExplanationActivity()) return;
     const s = get();
     const act = getActiveCurriculumActivityObj();
     const isGrand = earnedBadges.length > 0 || Boolean(act && act.format === 'capstone');
+    const badgeAnnouncement = formatEarnedBadgesAnnouncement(earnedBadges, act);
     set({
       isVictoryModalOpen: true,
       victoryEarnedBadges: earnedBadges,
+      ...(badgeAnnouncement ? { statusAnnouncement: badgeAnnouncement } : {}),
     });
-    if (playAudio && s.speed !== 'instant' && (s.speed as any) !== 0 && !s.beatState.isMuted) {
-      beatSynth.playVictoryFanfare(isGrand);
+    if (playAudio) {
+      playCelebrationAudio(isGrand, {
+        speed: s.speed,
+        isMuted: s.beatState.isMuted,
+      });
     }
   };
 
@@ -1196,6 +1221,8 @@ export const useAppStore = create<AppState>((set, get) => {
     profiles: bootProfilesState.profiles,
     activeProfileId: bootActiveProfileId,
     isProfileModalOpen: false,
+    isBadgeModalOpen: false,
+    unlockAllModules: Boolean(getProfileProgress(bootActiveProfileId).unlockAllModules),
     completedActivities: buildCompletedMap(bootActiveProfileId),
 
     appMode: bootMode,
@@ -1429,6 +1456,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const profileId = profilesState.activeProfileId;
       const nextCurriculumWorkspaces = getProfileLessonWorkspaces(profileId);
       const nextSavedWorkspaces = getProfileSandboxWorkspaces(profileId);
+      const nextProgress = getProfileProgress(profileId);
       const nextCompleted = buildCompletedMap(profileId);
       const prevFitToView = state.grid.fitToView ?? false;
 
@@ -1458,6 +1486,8 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           profiles: profilesState.profiles,
           activeProfileId: profileId,
+          unlockAllModules: Boolean(nextProgress.unlockAllModules),
+          isBadgeModalOpen: false,
           completedActivities: nextCompleted,
           activeActivityId: activity.id,
           activeActivityVersion: activity.version,
@@ -1497,6 +1527,8 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           profiles: profilesState.profiles,
           activeProfileId: profileId,
+          unlockAllModules: Boolean(nextProgress.unlockAllModules),
+          isBadgeModalOpen: false,
           completedActivities: nextCompleted,
           activeDemoTabIndex: 0,
           demoTabIndexByActivity: {},
@@ -2062,13 +2094,18 @@ export const useAppStore = create<AppState>((set, get) => {
       });
 
       if (activity.format === 'capstone' || res.newlyEarnedBadges.length > 0) {
+        if (!state.beatState.isMuted && state.speed !== 'instant' && (state.speed as any) !== 0) {
+          beatSynth.unlockFromGesture();
+        }
         triggerVictoryModal(
           res.newlyEarnedBadges,
           state.speed !== 'instant' && (state.speed as any) !== 0
         );
-        set({
-          statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}!`,
-        });
+        if (res.newlyEarnedBadges.length === 0) {
+          set({
+            statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}!`,
+          });
+        }
         return activity.id;
       }
 
@@ -2255,6 +2292,21 @@ export const useAppStore = create<AppState>((set, get) => {
     setLoadModalOpen: (open) => set({ isLoadModalOpen: open }),
 
     setLessonPickerOpen: (open) => set({ isLessonPickerOpen: open }),
+
+    setBadgeModalOpen: (open) => set({ isBadgeModalOpen: open }),
+
+    toggleUnlockAllModules: () => {
+      const s = get();
+      const currentProgress = getProfileProgress(s.activeProfileId);
+      const nextUnlockAll = !currentProgress.unlockAllModules;
+      const updated = setUnlockAllModules(s.activeProfileId, nextUnlockAll);
+      set({
+        unlockAllModules: Boolean(updated.unlockAllModules),
+        statusAnnouncement: nextUnlockAll
+          ? 'All curriculum modules unlocked.'
+          : 'Sequential module unlock restored.',
+      });
+    },
 
     dismissVictoryModal: () => set({ isVictoryModalOpen: false, victoryEarnedBadges: [] }),
 
@@ -3921,6 +3973,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const { speed, activeSimId } = get();
       if (speed === 'instant' || (speed as any) === 0) return;
 
+      if (!get().isPlaying && !get().beatState.isMuted) {
+        beatSynth.unlockFromGesture();
+      }
+
       if (get().ghostPreview) {
         set({ ghostPreview: null });
       }
@@ -4154,7 +4210,7 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
-      if (activeSimId === 'beat') {
+      if (!get().beatState.isMuted) {
         beatSynth.unlockFromGesture();
       }
 
@@ -4337,6 +4393,8 @@ export const useAppStore = create<AppState>((set, get) => {
       set({
         profiles: profilesState.profiles,
         activeProfileId: resolvedProfileId,
+        unlockAllModules: Boolean(getProfileProgress(resolvedProfileId).unlockAllModules),
+        isBadgeModalOpen: false,
         completedActivities: buildCompletedMap(resolvedProfileId),
         appMode: restored.appMode ?? 'sandbox',
         activeActivityId: restored.activeActivityId ?? '1.1',

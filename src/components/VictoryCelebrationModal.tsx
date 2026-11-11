@@ -42,13 +42,25 @@ export const VictoryCelebrationModal: React.FC = () => {
       : undefined;
 
   const isCapstone = Boolean(activeActivity && activeActivity.format === 'capstone');
+  const earnedModules = CURRICULUM_MODULES.filter((m) =>
+    victoryEarnedBadges.includes(m.badgeId)
+  );
   const earnedModule =
-    victoryEarnedBadges.length > 0
-      ? CURRICULUM_MODULES.find((m) => victoryEarnedBadges.includes(m.badgeId))
+    earnedModules.length > 0
+      ? earnedModules[0]
       : isCapstone && activeActivity
       ? CURRICULUM_MODULES.find((m) => m.id === activeActivity.moduleId)
       : undefined;
   const isBadgeOrCapstone = victoryEarnedBadges.length > 0 || isCapstone;
+
+  const liveAnnouncementText =
+    earnedModules.length > 0
+      ? `Module Mastery Badge unlocked: ${earnedModules
+          .map((m) => m.badgeTitle)
+          .join(', ')}!${activeActivity ? ` Completed ${activeActivity.title}.` : ''}`
+      : isCapstone
+      ? `Capstone completed${activeActivity ? `: ${activeActivity.title}` : ''}!`
+      : `Puzzle completed${activeActivity ? `: ${activeActivity.title}` : ''}!`;
 
   const currentActivityIdx =
     appMode === 'curriculum' && activeActivity
@@ -74,13 +86,24 @@ export const VictoryCelebrationModal: React.FC = () => {
       onClick={() => dismissVictoryModal()}
       className={`fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md cursor-pointer select-none ${entranceClass}`}
     >
+      {/* Screen-reader polite completion & badge unlock announcement */}
+      <div
+        data-testid="victory-live-announcement"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveAnnouncementText}
+      </div>
+
       {/* Radial celebratory glow */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
       >
         <div
-          className={`w-[360px] h-[360px] sm:w-[480px] sm:h-[480px] rounded-full blur-3xl opacity-35 ${
+          className={`w-[360px] h-[360px] sm:w-[480px] sm:h-[480px] rounded-full blur-3xl opacity-35 animate-celebration-pulse ${
             isBadgeOrCapstone
               ? 'bg-gradient-to-tr from-amber-400 via-yellow-300 to-emerald-400'
               : 'bg-gradient-to-tr from-emerald-400 via-amber-300 to-sky-400'
@@ -94,16 +117,18 @@ export const VictoryCelebrationModal: React.FC = () => {
           <div className="relative flex flex-col items-center">
             <svg
               viewBox="0 0 240 210"
-              className="w-52 h-44 sm:w-64 sm:h-56 drop-shadow-[0_12px_28px_rgba(251,191,36,0.45)]"
+              className="w-52 h-44 sm:w-64 sm:h-56 drop-shadow-[0_12px_28px_rgba(251,191,36,0.45)] animate-celebration-float"
               aria-hidden="true"
             >
               {/* Confetti sparkles */}
-              <circle cx="34" cy="40" r="6" fill="#34d399" />
-              <circle cx="206" cy="36" r="7" fill="#60a5fa" />
-              <circle cx="26" cy="138" r="5" fill="#f472b6" />
-              <circle cx="214" cy="142" r="6" fill="#fbbf24" />
-              <polygon points="62,22 66,32 76,32 68,38 71,48 62,42 53,48 56,38 48,32 58,32" fill="#fde047" />
-              <polygon points="178,20 182,30 192,30 184,36 187,46 178,40 169,46 172,36 164,30 174,30" fill="#fde047" />
+              <g className="animate-confetti-sparkle">
+                <circle cx="34" cy="40" r="6" fill="#34d399" />
+                <circle cx="206" cy="36" r="7" fill="#60a5fa" />
+                <circle cx="26" cy="138" r="5" fill="#f472b6" />
+                <circle cx="214" cy="142" r="6" fill="#fbbf24" />
+                <polygon points="62,22 66,32 76,32 68,38 71,48 62,42 53,48 56,38 48,32 58,32" fill="#fde047" />
+                <polygon points="178,20 182,30 192,30 184,36 187,46 178,40 169,46 172,36 164,30 174,30" fill="#fde047" />
+              </g>
 
               {/* Golden Trophy Cup */}
               <defs>
@@ -178,16 +203,18 @@ export const VictoryCelebrationModal: React.FC = () => {
             {/* Cheering Robot Illustration */}
             <svg
               viewBox="0 0 220 180"
-              className="w-48 h-40 sm:w-56 sm:h-48 drop-shadow-[0_12px_24px_rgba(16,185,129,0.35)]"
+              className="w-48 h-40 sm:w-56 sm:h-48 drop-shadow-[0_12px_24px_rgba(16,185,129,0.35)] animate-celebration-float"
               aria-hidden="true"
             >
               {/* Confetti dots */}
-              <circle cx="28" cy="36" r="6" fill="#fbbf24" />
-              <circle cx="192" cy="34" r="6" fill="#34d399" />
-              <circle cx="24" cy="126" r="5" fill="#60a5fa" />
-              <circle cx="196" cy="124" r="6" fill="#f472b6" />
-              <rect x="48" y="18" width="8" height="8" rx="2" fill="#a78bfa" transform="rotate(20 48 18)" />
-              <rect x="166" y="18" width="8" height="8" rx="2" fill="#fb923c" transform="rotate(-20 166 18)" />
+              <g className="animate-confetti-sparkle">
+                <circle cx="28" cy="36" r="6" fill="#fbbf24" />
+                <circle cx="192" cy="34" r="6" fill="#34d399" />
+                <circle cx="24" cy="126" r="5" fill="#60a5fa" />
+                <circle cx="196" cy="124" r="6" fill="#f472b6" />
+                <rect x="48" y="18" width="8" height="8" rx="2" fill="#a78bfa" transform="rotate(20 48 18)" />
+                <rect x="166" y="18" width="8" height="8" rx="2" fill="#fb923c" transform="rotate(-20 166 18)" />
+              </g>
 
               {/* Antenna */}
               <line x1="110" y1="24" x2="110" y2="44" stroke="#38bdf8" strokeWidth="6" strokeLinecap="round" />

@@ -10,6 +10,7 @@ import { LoadProgramModal } from './components/LoadProgramModal';
 import { LessonVersionMismatchModal } from './components/LessonVersionMismatchModal';
 import { ProfileSwitcherModal } from './components/ProfileSwitcherModal';
 import { LessonPickerModal } from './components/LessonPickerModal';
+import { BadgeCollectionModal } from './components/BadgeCollectionModal';
 import { VictoryCelebrationModal } from './components/VictoryCelebrationModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStore } from './store/useAppStore';
@@ -100,6 +101,9 @@ export const App: React.FC = () => {
 
       {/* Lesson & World Picker Modal */}
       <LessonPickerModal />
+
+      {/* Collectible Module Badges & Trophies Modal */}
+      <BadgeCollectionModal />
 
       {/* Victory & Module Badge Celebration Modal */}
       <VictoryCelebrationModal />

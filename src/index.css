@@ -75,11 +75,56 @@
   animation: victory-modal-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
 }
 
+@keyframes celebration-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-celebration-float {
+  animation: celebration-float 2.4s ease-in-out infinite;
+}
+
+@keyframes celebration-pulse {
+  0%, 100% {
+    opacity: 0.32;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.48;
+    transform: scale(1.06);
+  }
+}
+
+.animate-celebration-pulse {
+  animation: celebration-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes confetti-sparkle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+.animate-confetti-sparkle {
+  animation: confetti-sparkle 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-slot-tray-shake,
   .animate-victory-enter,
-  .animate-victory-enter-delayed {
-    animation: none;
+  .animate-victory-enter-delayed,
+  .animate-celebration-float,
+  .animate-celebration-pulse,
+  .animate-confetti-sparkle {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

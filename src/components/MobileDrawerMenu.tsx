@@ -53,6 +53,7 @@ export const MobileDrawerMenu: React.FC = () => {
     setLoadModalOpen,
     setExportImportOpen,
     setLessonPickerOpen,
+    setBadgeModalOpen,
     isMapHidden,
     toggleMapHidden,
     beatState,
@@ -206,47 +207,65 @@ export const MobileDrawerMenu: React.FC = () => {
           </button>
         </div>
 
-        {/* Row 2: Active Player Profile Card with Stars & Badges */}
-        <button
-          type="button"
-          data-testid="drawer-btn-profile-switcher"
-          aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
-          onClick={() => {
-            setMobileMenuOpen(false);
-            setProfileModalOpen(true);
-          }}
-          className="flex items-center justify-between gap-2.5 w-full p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 transition-all active:scale-[0.99] shrink-0 cursor-pointer"
-          style={{ borderColor: `${activeColor.accentColor}99` }}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span
-              className="relative flex items-center justify-center w-11 h-11 rounded-xl border text-2xl shrink-0"
-              style={{
-                backgroundColor: `${activeColor.accentColor}26`,
-                borderColor: activeColor.accentColor,
-              }}
-            >
-              <span aria-hidden="true">{activeAvatar.emoji}</span>
+        {/* Row 2: Active Player Profile Card & Collectible Badges Button */}
+        <div className="flex items-stretch gap-2 shrink-0">
+          <button
+            type="button"
+            data-testid="drawer-btn-profile-switcher"
+            aria-label={`Active Profile: ${activeDisplayName}. Switch player profile`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setProfileModalOpen(true);
+            }}
+            className="flex-1 min-w-0 flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 transition-all active:scale-[0.99] cursor-pointer"
+            style={{ borderColor: `${activeColor.accentColor}99` }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
               <span
-                aria-hidden="true"
-                className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950 border border-slate-900"
-                style={{ backgroundColor: activeColor.accentColor }}
+                className="relative flex items-center justify-center w-11 h-11 rounded-xl border text-2xl shrink-0"
+                style={{
+                  backgroundColor: `${activeColor.accentColor}26`,
+                  borderColor: activeColor.accentColor,
+                }}
               >
-                {activeColor.shapeSymbol}
+                <span aria-hidden="true">{activeAvatar.emoji}</span>
+                <span
+                  aria-hidden="true"
+                  className="absolute -bottom-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black text-slate-950 border border-slate-900"
+                  style={{ backgroundColor: activeColor.accentColor }}
+                >
+                  {activeColor.shapeSymbol}
+                </span>
               </span>
-            </span>
-            <div className="flex flex-col text-left min-w-0">
-              <span className="font-black text-sm text-white truncate">{activeDisplayName}</span>
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-                <span>⭐ {completedCount}</span>
-                <span data-testid="drawer-profile-badge-count">🏅 {badgeCount}</span>
+              <div className="flex flex-col text-left min-w-0">
+                <span className="font-black text-sm text-white truncate">{activeDisplayName}</span>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <span>⭐ {completedCount}</span>
+                  <span data-testid="drawer-profile-badge-count">🏅 {badgeCount}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <span className="px-2.5 py-1 rounded-xl bg-violet-600/30 border border-violet-400/50 text-violet-200 font-extrabold text-xs shrink-0">
-            Players
-          </span>
-        </button>
+            <span className="px-2 py-1 rounded-xl bg-violet-600/30 border border-violet-400/50 text-violet-200 font-extrabold text-xs shrink-0">
+              Players
+            </span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="drawer-btn-badges"
+            aria-label={`Open Badges (${badgeCount} earned)`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setBadgeModalOpen(true);
+            }}
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border-2 border-amber-400/50 text-amber-200 active:scale-95 transition-all shrink-0 cursor-pointer"
+          >
+            <span className="text-xl leading-none" aria-hidden="true">
+              🏅
+            </span>
+            <span className="text-[11px] font-extrabold leading-none">Badges</span>
+          </button>
+        </div>
 
         {/* Row 3: Mode Switcher, Sandbox Worlds & Lessons/Maps Picker */}
         <div className="flex flex-col gap-2 shrink-0">

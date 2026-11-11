@@ -158,6 +158,7 @@ export interface ProfileCurriculumProgress {
   completedLessons: Record<string, LessonCompletionRecord>;
   unlockedModules: string[];
   earnedBadges: string[];
+  unlockAllModules?: boolean;
 }
 
 export interface CurriculumProgressStoreV1 {
@@ -685,6 +686,7 @@ function createDefaultProgress(): ProfileCurriculumProgress {
     completedLessons: {},
     unlockedModules: [firstModuleId],
     earnedBadges: [],
+    unlockAllModules: false,
   };
 }
 
@@ -724,10 +726,13 @@ function sanitizeProgress(raw: unknown): ProfileCurriculumProgress {
     }
   }
 
+  const unlockAllModules = obj.unlockAllModules === true;
+
   return {
     completedLessons,
     unlockedModules: Array.from(unlockedSet),
     earnedBadges: Array.from(badgeSet),
+    unlockAllModules,
   };
 }
 
@@ -829,6 +834,7 @@ export function markLessonCompleted(
     completedLessons: current.completedLessons,
     unlockedModules: Array.from(unlockedSet),
     earnedBadges: Array.from(badgeSet),
+    unlockAllModules: Boolean(current.unlockAllModules),
   };
 
   store.profiles[targetProfileId] = updated;
@@ -839,6 +845,22 @@ export function markLessonCompleted(
     newlyCompleted: !alreadyCompleted,
     newlyEarnedBadges,
   };
+}
+
+export function setUnlockAllModules(
+  profileId: string,
+  unlockAll: boolean
+): ProfileCurriculumProgress {
+  const targetProfileId = profileId || DEFAULT_PROFILE_ID;
+  const store = readProgressStore();
+  const current = store.profiles[targetProfileId]
+    ? sanitizeProgress(store.profiles[targetProfileId])
+    : createDefaultProgress();
+
+  current.unlockAllModules = Boolean(unlockAll);
+  store.profiles[targetProfileId] = current;
+  writeProgressStore(store);
+  return current;
 }
 
 export function unlockModuleForProfile(
