@@ -99,14 +99,17 @@ test.describe('Robot Emulator E2E Suite', () => {
   });
 
   test('supports Function 1 definition and call', async ({ page }) => {
-    // Switch to Function 1 tab
-    await page.getByTestId('tab-f1').click();
+    // Open collapsible function bar and switch to Function 1 tab
+    const toggleFuncBtn = page.getByTestId('btn-toggle-function-bar');
+    await toggleFuncBtn.click();
+    await page.getByTestId('palette-tab-f1').click();
 
     // Add Turn Left in F1
     await page.getByTestId('palette-turn-left').click();
 
-    // Switch back to Main tab
-    await page.getByTestId('tab-main').click();
+    // Switch back to Main tab and close function bar
+    await page.getByTestId('palette-tab-main').click();
+    await toggleFuncBtn.click();
 
     // Add Call F1 block in Main
     await page.getByTestId('palette-call-f1').click();
@@ -114,8 +117,8 @@ test.describe('Robot Emulator E2E Suite', () => {
     // Step: Calls F1
     await page.getByTestId('btn-step').click();
 
-    // Tab should automatically show F1 as active
-    await expect(page.getByTestId('tab-f1')).toBeVisible();
+    // Function indicator should automatically show F1 as active
+    await expect(toggleFuncBtn).toContainText('F1');
   });
 
   test('only shows number badge when repeatCount > 1 and hides when undefined or 1', async ({ page }) => {
@@ -335,7 +338,7 @@ test.describe('Robot Emulator E2E Suite', () => {
   });
 
   test('supports deleting only the current selected block via delete selected button', async ({ page }) => {
-    const deleteSelectedBtn = page.getByTestId('btn-delete-selected');
+    const deleteSelectedBtn = page.getByTestId('btn-palette-delete-block');
     const clearWorkspaceBtn = page.getByTestId('btn-clear-workspace');
 
     // Both buttons should be visible
@@ -877,46 +880,37 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(infoPill).toContainText('Y: -50');
   });
 
-  test('supports undo and redo via toolbar and workspace buttons for code edits', async ({ page }) => {
+  test('supports undo and redo via toolbar buttons for code edits', async ({ page }) => {
     // Toolbar buttons initially disabled
     const tbUndo = page.getByTestId('btn-undo');
     const tbRedo = page.getByTestId('btn-redo');
-    const wsUndo = page.getByTestId('btn-workspace-undo');
-    const wsRedo = page.getByTestId('btn-workspace-redo');
 
     await expect(tbUndo).toBeDisabled();
     await expect(tbRedo).toBeDisabled();
-    await expect(wsUndo).toBeDisabled();
-    await expect(wsRedo).toBeDisabled();
 
-    // Add block via palette
+    // Add two blocks via palette
     await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-turn-left').click();
     const blocks = page.locator('[data-testid^="block-"]');
-    await expect(blocks).toHaveCount(1);
+    await expect(blocks).toHaveCount(2);
     await expect(tbUndo).toBeEnabled();
     await expect(tbRedo).toBeDisabled();
 
-    // Click Toolbar Undo
+    // Click Toolbar Undo twice
+    await tbUndo.click();
+    await expect(blocks).toHaveCount(1);
     await tbUndo.click();
     await expect(blocks).toHaveCount(0);
     await expect(tbUndo).toBeDisabled();
     await expect(tbRedo).toBeEnabled();
 
-    // Click Workspace Redo
-    await wsRedo.click();
-    await expect(blocks).toHaveCount(1);
-    await expect(tbUndo).toBeEnabled();
-    await expect(tbRedo).toBeDisabled();
-
-    // Click Workspace Undo
-    await wsUndo.click();
-    await expect(blocks).toHaveCount(0);
-    await expect(tbUndo).toBeDisabled();
-    await expect(tbRedo).toBeEnabled();
-
-    // Click Toolbar Redo
+    // Click Toolbar Redo twice
     await tbRedo.click();
     await expect(blocks).toHaveCount(1);
+    await tbRedo.click();
+    await expect(blocks).toHaveCount(2);
+    await expect(tbUndo).toBeEnabled();
+    await expect(tbRedo).toBeDisabled();
   });
 
   test('supports undo and redo keyboard shortcuts (Ctrl+Z and Ctrl+Y)', async ({ page }) => {

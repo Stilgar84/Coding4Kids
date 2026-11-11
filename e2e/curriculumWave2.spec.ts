@@ -13,9 +13,20 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     await expect(page.getByTestId('palette-loop-start')).toHaveCount(0);
     await expect(page.getByTestId('palette-call-f1')).toHaveCount(0);
 
-    // 4-slot physical tray starts with 0 placed blocks and 4 empty slots
+    // 4-slot physical tray starts with 0 placed blocks and 4 empty slots, with slot counter inline in palette control row
+    const slotCounter = page.getByTestId('workspace-slot-counter');
+    const deleteBtn = page.getByTestId('btn-palette-delete-block');
+    await expect(slotCounter).toBeVisible();
     await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 4');
     await expect(page.getByTestId('workspace-empty-slot')).toHaveCount(4);
+    await expect(page.getByTestId('tab-main')).toHaveCount(0);
+    await expect(page.getByTestId('btn-workspace-undo')).toHaveCount(0);
+
+    const counterBox = await slotCounter.boundingBox();
+    const deleteBox = await deleteBtn.boundingBox();
+    expect(counterBox).not.toBeNull();
+    expect(deleteBox).not.toBeNull();
+    expect(Math.abs(counterBox!.y - deleteBox!.y)).toBeLessThan(8);
 
     // Trigger Tier 1 Ghost-Step Preview from Two-Tier Help Modal -> workspace blocks remain 0
     await page.getByTestId('btn-solution').click();
@@ -74,7 +85,7 @@ test.describe('Wave 2: Staged Palettes, Profiles, Padlocks, Placeholders, LOGO V
     // Reset to Starter clears blocks, and 1-tap Undo restores them!
     await page.getByTestId('btn-reset-to-starter').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(0);
-    await page.getByTestId('btn-workspace-undo').click();
+    await page.getByTestId('btn-undo').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(2);
   });
 

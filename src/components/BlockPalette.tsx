@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { SimPaletteItem } from '../engine/simulation/types';
@@ -20,10 +20,14 @@ import {
   getPlaceholderHintCategory,
 } from '../engine/placeholderHelpers';
 import {
+  computeSlotBudget,
   computeStagedPalettePolicy,
   getAllowedParamDefs,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
+
+const SLOT_SHAKE_DURATION_MS = 500;
+const MAX_RENDERED_COUNTER_PIPS = 12;
 
 interface CoreControlItem {
   type: string;
@@ -348,12 +352,15 @@ export const BlockPalette: React.FC = () => {
     appMode,
     activeActivityId,
     activeActivityVersion,
+    slotCapRejectionCount,
+    lastSlotCapRejectedAt,
     activeSimId,
     activeScope,
     setActiveScope,
     addBlock,
     replacePlaceholderBlock,
     workspace,
+    clearWorkspace,
     runtime,
     updateBlockRepeat,
     selectedBlockId,
@@ -366,6 +373,17 @@ export const BlockPalette: React.FC = () => {
   } = useAppStore.getState();
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
+  const [, setShakeTick] = useState(0);
+
+  useEffect(() => {
+    if (lastSlotCapRejectedAt === null) return;
+    const remaining = SLOT_SHAKE_DURATION_MS - (Date.now() - lastSlotCapRejectedAt);
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => {
+      setShakeTick((n) => n + 1);
+    }, remaining + 16);
+    return () => clearTimeout(timer);
+  }, [lastSlotCapRejectedAt, slotCapRejectionCount]);
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const simPaletteItems: SimPaletteItem[] = currentSimEnv?.paletteItems || [];
@@ -376,6 +394,15 @@ export const BlockPalette: React.FC = () => {
     activeActivityVersion
   );
   const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const budget = computeSlotBudget(workspace, activeScope, appMode, activeActivity?.slotCap);
+  const isSlotRejected =
+    budget.isCapped &&
+    lastSlotCapRejectedAt !== null &&
+    Date.now() - lastSlotCapRejectedAt < SLOT_SHAKE_DURATION_MS;
+  const counterPipTotal =
+    budget.isCapped && budget.counterMax !== null
+      ? Math.min(budget.counterMax, MAX_RENDERED_COUNTER_PIPS)
+      : 0;
   const visibleSimItems = policy.visibleSimItems;
   const visibleControlItems = CORE_CONTROL_ITEMS.filter((item) =>
     policy.allowedControlTypes.has(item.type)
@@ -754,7 +781,13 @@ export const BlockPalette: React.FC = () => {
             aria-label={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
             title={isFunctionBarOpen ? 'Hide function tabs' : 'Show function tabs'}
             className={`flex-shrink-0 flex items-center justify-center gap-1 px-1.5 md:px-2 h-8 md:h-10 rounded-lg md:rounded-xl border-2 transition-all active:scale-95 touch-none ${
-              isFunctionBarOpen
+              activeScope === 'F1'
+                ? 'bg-emerald-600/30 border-emerald-400 text-emerald-100 shadow-sm'
+                : activeScope === 'F2'
+                ? 'bg-blue-600/30 border-blue-400 text-blue-100 shadow-sm'
+                : activeScope === 'F3'
+                ? 'bg-rose-600/30 border-rose-400 text-rose-100 shadow-sm'
+                : isFunctionBarOpen
                 ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-md ring-2 ring-indigo-400/40'
                 : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
             }`}
@@ -785,6 +818,18 @@ export const BlockPalette: React.FC = () => {
           }`}
         >
           <Trash className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
+        </button>
+
+        {/* Clear Scope / Delete All Button */}
+        <button
+          type="button"
+          data-testid="btn-clear-workspace"
+          onClick={() => clearWorkspace(activeScope)}
+          title="Delete all"
+          aria-label="Delete all"
+          className="flex-shrink-0 flex items-center justify-center w-8 h-8 md:w-10 md:h-10 bg-slate-800 hover:bg-red-600/80 text-slate-400 hover:text-white rounded-lg md:rounded-xl border-2 border-slate-700 transition-colors active:scale-95"
+        >
+          <Trash2 className="w-4 h-4 md:w-5 md:h-5 stroke-[2.2]" />
         </button>
 
         {/* Divider & Number/Variable Multipliers Row */}
@@ -823,12 +868,60 @@ export const BlockPalette: React.FC = () => {
                   className="flex-shrink-0 flex items-center justify-center w-7 h-7 md:w-10 md:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black italic font-mono text-[11px] md:text-base border-2 border-amber-300 shadow-md cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none"
                   title={`Set repeat variable ${v}`}
                   aria-label={`Set repeat variable ${v}`}
-                >
+                  >
                   {v}
                 </button>
               ))}
             </PaletteScrollRow>
           </>
+        )}
+
+        {/* Physical Block-Budget Visual Slot Counter (inline in existing palette control row) */}
+        {budget.isCapped && budget.counterMax !== null && (
+          <div
+            data-testid="workspace-slot-counter"
+            data-slot-full={budget.isFull ? 'true' : 'false'}
+            data-slot-rejected={isSlotRejected ? 'true' : 'false'}
+            role="group"
+            aria-label={`Block slots: ${budget.counterUsed} of ${budget.counterMax} used${
+              budget.isFull ? ', tray full' : ''
+            }`}
+            className={`ml-auto flex-shrink-0 flex items-center gap-1.5 px-2 md:px-2.5 h-8 md:h-10 rounded-lg md:rounded-xl border-2 transition-colors select-none ${
+              isSlotRejected
+                ? 'animate-slot-tray-shake border-amber-400 bg-amber-500/20 text-amber-200 ring-2 ring-amber-400/50'
+                : budget.isFull
+                ? 'border-amber-500/70 bg-amber-950/40 text-amber-200'
+                : 'border-slate-700/90 bg-slate-950/70 text-slate-200'
+            }`}
+          >
+            <div
+              className={`${showBadgeRow ? 'hidden sm:flex' : 'flex'} items-center gap-1`}
+              aria-hidden="true"
+            >
+              {Array.from({ length: counterPipTotal }).map((_, pipIdx) => {
+                const isFilled = pipIdx < budget.counterUsed;
+                return (
+                  <span
+                    key={pipIdx}
+                    data-slot-pip={isFilled ? 'filled' : 'empty'}
+                    className={`w-2 h-2 md:w-2.5 md:h-2.5 rounded-[3px] transition-colors ${
+                      isFilled
+                        ? budget.isFull
+                          ? 'bg-amber-400 border border-amber-200 shadow-[0_0_6px_rgba(251,191,36,0.5)]'
+                          : 'bg-sky-400 border border-sky-200'
+                        : 'border border-dashed border-slate-500 bg-slate-900/60'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+            <span
+              data-testid="workspace-slot-count-label"
+              className="font-mono font-black text-xs md:text-sm tracking-tight whitespace-nowrap"
+            >
+              {budget.counterUsed} / {budget.counterMax}
+            </span>
+          </div>
         )}
       </div>
 

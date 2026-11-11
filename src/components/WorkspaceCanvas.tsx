@@ -1,56 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { ScopeType } from '../types';
 import { BlockItem } from './BlockItem';
-import { Trash, Trash2, Sparkles, AlertTriangle, Undo2, Redo2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { validateLoopStructure } from '../engine/interpreter';
 import {
   computeSlotBudget,
-  computeStagedPalettePolicy,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
 
 const SLOT_SHAKE_DURATION_MS = 500;
-const MAX_RENDERED_COUNTER_PIPS = 12;
-
-interface ScopeTab {
-  id: ScopeType;
-  label: string;
-  testId: string;
-  icon: React.ReactNode;
-  activeColor: string;
-}
-
-const SCOPE_TABS: ScopeTab[] = [
-  {
-    id: 'MAIN',
-    label: 'Main',
-    testId: 'tab-main',
-    icon: <Sparkles className="w-5 h-5 text-yellow-300" />,
-    activeColor: 'bg-indigo-600 border-indigo-400 text-white',
-  },
-  {
-    id: 'F1',
-    label: '1',
-    testId: 'tab-f1',
-    icon: <span className="font-black text-lg">1</span>,
-    activeColor: 'bg-emerald-600 border-emerald-400 text-white',
-  },
-  {
-    id: 'F2',
-    label: '2',
-    testId: 'tab-f2',
-    icon: <span className="font-black text-lg">2</span>,
-    activeColor: 'bg-blue-600 border-blue-400 text-white',
-  },
-  {
-    id: 'F3',
-    label: '3',
-    testId: 'tab-f3',
-    icon: <span className="font-black text-lg">3</span>,
-    activeColor: 'bg-rose-600 border-rose-400 text-white',
-  },
-];
 
 export const WorkspaceCanvas: React.FC = () => {
   useAppStore();
@@ -61,19 +19,13 @@ export const WorkspaceCanvas: React.FC = () => {
     slotCapRejectionCount,
     lastSlotCapRejectedAt,
     activeScope,
-    setActiveScope,
     workspace,
-    clearWorkspace,
     runtime,
     selectedBlockId,
     setSelectedBlockId,
     addBlock,
     reorderBlocks,
     removeBlock,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
   } = useAppStore.getState();
 
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
@@ -95,21 +47,13 @@ export const WorkspaceCanvas: React.FC = () => {
     activeActivityId,
     activeActivityVersion
   );
-  const policy = computeStagedPalettePolicy(appMode, activeActivity, []);
   const budget = computeSlotBudget(workspace, activeScope, appMode, activeActivity?.slotCap);
-  const visibleScopeTabs = SCOPE_TABS.filter((tab) => policy.allowedScopes.includes(tab.id));
   const isSlotRejected =
     budget.isCapped &&
     lastSlotCapRejectedAt !== null &&
     Date.now() - lastSlotCapRejectedAt < SLOT_SHAKE_DURATION_MS;
 
   const blocks = workspace[activeScope] || [];
-
-  const handleDeleteSelected = () => {
-    if (selectedBlockId) {
-      removeBlock(activeScope, selectedBlockId);
-    }
-  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -270,163 +214,12 @@ export const WorkspaceCanvas: React.FC = () => {
       );
     });
 
-  const counterPipTotal =
-    budget.isCapped && budget.counterMax !== null
-      ? Math.min(budget.counterMax, MAX_RENDERED_COUNTER_PIPS)
-      : 0;
-
   return (
     <div
       className="flex flex-col flex-1 h-full overflow-hidden bg-slate-950"
       onClick={handleCanvasClick}
       data-bg-canvas="true"
     >
-      {/* Scope Navigation Tabs, Visual Slot Counter & Actions */}
-      <div
-        className={`${
-          budget.isCapped ? 'flex' : 'hidden md:flex'
-        } items-center justify-between gap-2 px-2.5 py-1.5 md:p-2 bg-slate-900 border-b border-slate-800`}
-      >
-        <div className="flex items-center gap-2">
-          {policy.showScopeSelector && (
-            <div className="hidden md:flex items-center gap-2" role="tablist" aria-label="Program scopes">
-              {visibleScopeTabs.map((tab) => {
-                const isSelected = activeScope === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isSelected}
-                    aria-label={tab.id === 'MAIN' ? 'Main scope' : `Function ${tab.label} scope`}
-                    data-testid={tab.testId}
-                    onClick={() => setActiveScope(tab.id)}
-                    className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
-                      isSelected
-                        ? `${tab.activeColor} shadow-lg scale-105`
-                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
-                    }`}
-                  >
-                    {tab.icon}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Physical Block-Budget Visual Slot Counter (zero reading required) */}
-          {budget.isCapped && budget.counterMax !== null && (
-            <div
-              data-testid="workspace-slot-counter"
-              data-slot-full={budget.isFull ? 'true' : 'false'}
-              data-slot-rejected={isSlotRejected ? 'true' : 'false'}
-              role="group"
-              aria-label={`Block slots: ${budget.counterUsed} of ${budget.counterMax} used${
-                budget.isFull ? ', tray full' : ''
-              }`}
-              className={`flex items-center gap-2 px-2.5 py-1 md:px-3 md:py-1.5 rounded-xl border-2 transition-colors select-none ${
-                isSlotRejected
-                  ? 'animate-slot-tray-shake border-amber-400 bg-amber-500/20 text-amber-200 ring-2 ring-amber-400/50'
-                  : budget.isFull
-                  ? 'border-amber-500/70 bg-amber-950/40 text-amber-200'
-                  : 'border-slate-700/90 bg-slate-950/70 text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-1" aria-hidden="true">
-                {Array.from({ length: counterPipTotal }).map((_, pipIdx) => {
-                  const isFilled = pipIdx < budget.counterUsed;
-                  return (
-                    <span
-                      key={pipIdx}
-                      data-slot-pip={isFilled ? 'filled' : 'empty'}
-                      className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-[3px] transition-colors ${
-                        isFilled
-                          ? budget.isFull
-                            ? 'bg-amber-400 border border-amber-200 shadow-[0_0_6px_rgba(251,191,36,0.5)]'
-                            : 'bg-sky-400 border border-sky-200'
-                          : 'border border-dashed border-slate-500 bg-slate-900/60'
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-              <span
-                data-testid="workspace-slot-count-label"
-                className="font-mono font-black text-xs md:text-sm tracking-tight"
-              >
-                {budget.counterUsed} / {budget.counterMax}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Workspace Actions: Undo, Redo, Delete Selected & Clear All */}
-        <div className="hidden md:flex items-center gap-2">
-          {/* Workspace Undo Button */}
-          <button
-            type="button"
-            data-testid="btn-workspace-undo"
-            onClick={undo}
-            disabled={!canUndo}
-            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
-              canUndo
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 shadow-md cursor-pointer active:scale-95'
-                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
-            }`}
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
-          >
-            <Undo2 className="w-5 h-5" />
-          </button>
-
-          {/* Workspace Redo Button */}
-          <button
-            type="button"
-            data-testid="btn-workspace-redo"
-            onClick={redo}
-            disabled={!canRedo}
-            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
-              canRedo
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 shadow-md cursor-pointer active:scale-95'
-                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
-            }`}
-            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-            aria-label="Redo"
-          >
-            <Redo2 className="w-5 h-5" />
-          </button>
-
-          {/* Delete Current Selected Element Only */}
-          <button
-            type="button"
-            data-testid="btn-delete-selected"
-            onClick={handleDeleteSelected}
-            disabled={!selectedBlockId}
-            className={`flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-all ${
-              selectedBlockId
-                ? 'bg-slate-800 hover:bg-rose-600 text-rose-400 hover:text-white border-slate-700 shadow-md cursor-pointer active:scale-95'
-                : 'bg-slate-900/60 text-slate-600 border-slate-800/80 cursor-not-allowed opacity-40'
-            }`}
-            title={selectedBlockId ? 'Delete selected element' : 'Select an element to delete'}
-            aria-label="Delete selected element"
-          >
-            <Trash className="w-5 h-5" />
-          </button>
-
-          {/* Clear Scope / Delete All Button */}
-          <button
-            type="button"
-            data-testid="btn-clear-workspace"
-            onClick={() => clearWorkspace(activeScope)}
-            className="flex items-center justify-center w-12 h-12 bg-slate-800 hover:bg-red-600/80 text-slate-400 hover:text-white rounded-2xl border-2 border-slate-700 transition-colors active:scale-95"
-            title="Delete all"
-            aria-label="Delete all"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
       {/* Unclosed Loop Warning Banner */}
       {loopValidation.hasError && (
         <div

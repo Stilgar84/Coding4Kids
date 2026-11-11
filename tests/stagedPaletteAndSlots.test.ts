@@ -87,21 +87,22 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
         expect(paletteHtml).toContain(`data-testid="palette-number-var-${v}"`);
       }
 
-      // Action param toggle & Function bar with all 4 scopes
+      // Action param toggle, Delete/Clear controls & Function bar with all 4 scopes
       expect(paletteHtml).toContain('data-testid="palette-param-toggle-btn"');
       expect(paletteHtml).toContain('data-testid="btn-toggle-function-bar"');
+      expect(paletteHtml).toContain('data-testid="btn-palette-delete-block"');
+      expect(paletteHtml).toContain('data-testid="btn-clear-workspace"');
       expect(paletteHtml).toContain('data-testid="palette-function-bar"');
       expect(paletteHtml).toContain('data-testid="palette-tab-main"');
       expect(paletteHtml).toContain('data-testid="palette-tab-f1"');
       expect(paletteHtml).toContain('data-testid="palette-tab-f2"');
       expect(paletteHtml).toContain('data-testid="palette-tab-f3"');
+      expect(paletteHtml).not.toContain('data-testid="workspace-slot-counter"');
 
-      // WorkspaceCanvas in Sandbox has all 4 desktop scope tabs and NO slot cap tray
+      // WorkspaceCanvas has NO duplicate scope/action header row and NO slot cap tray in Sandbox
       const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(canvasHtml).toContain('data-testid="tab-main"');
-      expect(canvasHtml).toContain('data-testid="tab-f1"');
-      expect(canvasHtml).toContain('data-testid="tab-f2"');
-      expect(canvasHtml).toContain('data-testid="tab-f3"');
+      expect(canvasHtml).not.toContain('data-testid="tab-main"');
+      expect(canvasHtml).not.toContain('data-testid="btn-workspace-undo"');
       expect(canvasHtml).toContain('data-slot-capped="false"');
       expect(canvasHtml).not.toContain('data-testid="workspace-slot-counter"');
       expect(canvasHtml).not.toContain('data-testid="workspace-empty-slot"');
@@ -248,16 +249,16 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       expect(paletteHtml).not.toContain('data-testid="palette-call-f1"');
       expect(paletteHtml).not.toContain('data-testid="palette-var-assign"');
 
-      // Repeat badges 2..9 unlocked, variable repeat badges still locked
+      // Repeat badges 2..9 unlocked, variable repeat badges still locked, no slot counter
       expect(paletteHtml).toContain('data-testid="palette-number-2"');
       expect(paletteHtml).toContain('data-testid="palette-number-9"');
       expect(paletteHtml).not.toContain('data-testid="palette-number-var-a"');
+      expect(paletteHtml).not.toContain('data-testid="workspace-slot-counter"');
 
       // Uncapped curriculum activity renders standard workspace without slot tray
       const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(canvasHtml).toContain('data-slot-capped="false"');
       expect(canvasHtml).not.toContain('data-testid="workspace-empty-slot"');
-      expect(canvasHtml).not.toContain('data-testid="workspace-slot-counter"');
     });
 
     it('filters variable badges, subpalette variable selectors, and param popover variables by allowVariables & allowedVariableNames', () => {
@@ -459,11 +460,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       expect(paletteHtml).not.toContain('data-testid="palette-tab-f2"');
       expect(paletteHtml).not.toContain('data-testid="palette-tab-f3"');
 
+      // WorkspaceCanvas has no separate scope header row
       const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(canvasHtml).toContain('data-testid="tab-main"');
-      expect(canvasHtml).toContain('data-testid="tab-f1"');
-      expect(canvasHtml).not.toContain('data-testid="tab-f2"');
-      expect(canvasHtml).not.toContain('data-testid="tab-f3"');
+      expect(canvasHtml).not.toContain('data-testid="tab-main"');
+      expect(canvasHtml).not.toContain('data-testid="tab-f1"');
 
       // Store enforces allowedScopes
       store.setActiveScope('F1');
@@ -530,52 +530,57 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       const paletteV1 = renderToStaticMarkup(React.createElement(BlockPalette));
       expect(paletteV1).toContain('data-testid="palette-move-fwd"');
       expect(paletteV1).not.toContain('data-testid="palette-turn-left"');
+      expect(paletteV1).toContain('>0 / 3<');
 
       const canvasV1 = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(countMatches(canvasV1, /data-testid="workspace-empty-slot"/g)).toBe(3);
-      expect(canvasV1).toContain('>0 / 3<');
     });
   });
 
   describe('Physical Block-Budget Slot Trays & slotCap Enforcement', () => {
-    it('renders physical empty slots [□], updates visual pip counter, rejects overflow with shake + aria-live announcement, and preserves Undo stack', () => {
+    it('renders physical empty slots [□], updates inline palette visual pip counter, rejects overflow with shake + aria-live announcement, and preserves Undo stack', () => {
       const store = useAppStore.getState();
       // Activity 1.1 has slotCap: { maxTotal: 4 }
       store.setAppMode('curriculum');
       store.setCurriculumActivity('1.1');
       store.clearHistory();
 
-      // 0 / 4 slots used -> 4 empty slots [□][□][□][□]
+      // 0 / 4 slots used -> 4 empty slots [□][□][□][□] in WorkspaceCanvas & inline counter in BlockPalette
+      const palette0 = renderToStaticMarkup(React.createElement(BlockPalette));
       const html0 = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(html0).toContain('data-slot-capped="true"');
-      expect(html0).toContain('data-testid="workspace-slot-counter"');
-      expect(html0).toContain('data-slot-full="false"');
-      expect(html0).toContain('>0 / 4<');
+      expect(html0).not.toContain('data-testid="workspace-slot-counter"');
+      expect(palette0).toContain('data-testid="workspace-slot-counter"');
+      expect(palette0).toContain('data-slot-full="false"');
+      expect(palette0).toContain('>0 / 4<');
       expect(countMatches(html0, /data-testid="workspace-empty-slot"/g)).toBe(4);
-      expect(countMatches(html0, /data-slot-pip="filled"/g)).toBe(0);
-      expect(countMatches(html0, /data-slot-pip="empty"/g)).toBe(4);
+      expect(countMatches(palette0, /data-slot-pip="filled"/g)).toBe(0);
+      expect(countMatches(palette0, /data-slot-pip="empty"/g)).toBe(4);
 
       // Place 3 blocks -> [■][■][■][□] (3 / 4)
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'MOVE_FWD');
 
+      const palette3 = renderToStaticMarkup(React.createElement(BlockPalette));
       const html3 = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(html3).toContain('>3 / 4<');
-      expect(html3).toContain('data-slot-full="false"');
+      expect(palette3).toContain('>3 / 4<');
+      expect(palette3).toContain('data-slot-full="false"');
       expect(countMatches(html3, /data-testid="block-/g)).toBe(3);
       expect(countMatches(html3, /data-testid="workspace-empty-slot"/g)).toBe(1);
-      expect(countMatches(html3, /data-slot-pip="filled"/g)).toBe(3);
-      expect(countMatches(html3, /data-slot-pip="empty"/g)).toBe(1);
+      expect(countMatches(palette3, /data-slot-pip="filled"/g)).toBe(3);
+      expect(countMatches(palette3, /data-slot-pip="empty"/g)).toBe(1);
 
       // Place 4th block -> [■][■][■][■] (4 / 4, full)
       store.addBlock('MAIN', 'MOVE_FWD');
       const historyLengthAtCap = useAppStore.getState().past.length;
       expect(historyLengthAtCap).toBe(4);
 
+      const palette4 = renderToStaticMarkup(React.createElement(BlockPalette));
       const html4 = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(html4).toContain('>4 / 4<');
-      expect(html4).toContain('data-slot-full="true"');
+      expect(palette4).toContain('>4 / 4<');
+      expect(palette4).toContain('data-slot-full="true"');
+      expect(palette4).toContain('data-slot-rejected="false"');
       expect(html4).toContain('data-slot-rejected="false"');
       expect(countMatches(html4, /data-testid="block-/g)).toBe(4);
       expect(countMatches(html4, /data-testid="workspace-empty-slot"/g)).toBe(0);
@@ -591,8 +596,11 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
         'Block tray full (4 of 4 slots used). Remove a block to add another.'
       );
 
-      // WorkspaceCanvas renders gentle CSS shake + amber highlight
+      // Both BlockPalette counter and WorkspaceCanvas tray render gentle CSS shake + amber highlight
+      const paletteRejected = renderToStaticMarkup(React.createElement(BlockPalette));
       const htmlRejected = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+      expect(paletteRejected).toContain('data-slot-rejected="true"');
+      expect(paletteRejected).toContain('animate-slot-tray-shake');
       expect(htmlRejected).toContain('data-slot-rejected="true"');
       expect(htmlRejected).toContain('animate-slot-tray-shake');
 
@@ -619,8 +627,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       const blockToRemove = useAppStore.getState().workspace.MAIN[0].id;
       store.removeBlock('MAIN', blockToRemove);
       expect(useAppStore.getState().lastSlotCapRejectedAt).toBeNull();
+      const paletteAfterRemove = renderToStaticMarkup(React.createElement(BlockPalette));
       const htmlAfterRemove = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(htmlAfterRemove).toContain('>3 / 4<');
+      expect(paletteAfterRemove).toContain('>3 / 4<');
+      expect(paletteAfterRemove).toContain('data-slot-rejected="false"');
       expect(htmlAfterRemove).toContain('data-slot-rejected="false"');
       expect(countMatches(htmlAfterRemove, /data-testid="workspace-empty-slot"/g)).toBe(1);
     });
@@ -662,8 +672,9 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       store.setCurriculumActivity('test-perscope-cap');
 
       // MAIN starts with 0 / 2 (2 empty slots)
+      const mainEmptyPalette = renderToStaticMarkup(React.createElement(BlockPalette));
       const mainEmptyHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(mainEmptyHtml).toContain('>0 / 2<');
+      expect(mainEmptyPalette).toContain('>0 / 2<');
       expect(countMatches(mainEmptyHtml, /data-testid="workspace-empty-slot"/g)).toBe(2);
 
       // Fill MAIN to 2 / 2
@@ -680,8 +691,9 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
 
       // Switch to F1: perScope.F1 is 3, but global remaining is 4 - 2 = 2!
       store.setActiveScope('F1');
+      const f1InitialPalette = renderToStaticMarkup(React.createElement(BlockPalette));
       const f1InitialHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
-      expect(f1InitialHtml).toContain('>0 / 2<');
+      expect(f1InitialPalette).toContain('>0 / 2<');
       expect(countMatches(f1InitialHtml, /data-testid="workspace-empty-slot"/g)).toBe(2);
 
       // Place 2 blocks in F1 -> hits global maxTotal: 4
@@ -717,8 +729,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       // Now unrestricted in Sandbox: 5th block succeeds and slot counter disappears
       store.addBlock('MAIN', 'MOVE_FWD');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(5);
+      const sandboxPaletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
       const sandboxCanvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(sandboxCanvasHtml).toContain('data-slot-capped="false"');
+      expect(sandboxPaletteHtml).not.toContain('data-testid="workspace-slot-counter"');
       expect(sandboxCanvasHtml).not.toContain('data-testid="workspace-slot-counter"');
     });
 
@@ -728,11 +742,12 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       store.setCurriculumActivity('1.2'); // maxTotal: 6
       store.addBlock('MAIN', 'MOVE_FWD');
 
+      const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
       const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(canvasHtml).toContain('tabindex="0"');
       expect(canvasHtml).toContain('aria-label="Move Forward, slot 1"');
       expect(canvasHtml).toContain('aria-label="Empty block slot 2 of 6"');
-      expect(canvasHtml).toContain('aria-label="Block slots: 1 of 6 used"');
+      expect(paletteHtml).toContain('aria-label="Block slots: 1 of 6 used"');
     });
 
     it('computes pure helper edge cases accurately in curriculumStagePolicy', () => {
