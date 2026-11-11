@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { WallEdge, Direction } from '../types';
 import { Trophy, Footprints, Maximize2, Minimize2, Lock } from 'lucide-react';
 import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
+import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOverlay';
 
 const CELL_SIZE = 72; // pixels per cell
 
@@ -761,6 +762,13 @@ export const GridCanvas: React.FC = () => {
             isInstant={isInstant}
             isReadOnly={isReadOnly}
             layer="over-robot"
+            flagPadlockSlot={
+              <FlagPadlockOverlay
+                grid={grid}
+                cellSize={CELL_SIZE}
+                isInstant={isInstant}
+              />
+            }
           />
         </svg>
             </div>

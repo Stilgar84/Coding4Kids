@@ -57,6 +57,67 @@ export function hasWallBetween(
   return false;
 }
 
+/**
+ * Determines whether a given flag or goal objective is currently padlocked
+ * (cannot be collected yet because an earlier prerequisite waypoint remains uncollected).
+ *
+ * Rules:
+ * - Already-collected flags (`flag.collected === true`) are never padlocked.
+ * - A non-goal numbered flag (`!flag.isGoal`) with `order = k` is padlocked iff
+ *   at least one uncollected non-goal flag has `order < k`.
+ * - A goal flag (`flag.isGoal === true`) is padlocked iff at least one
+ *   non-goal flag remains uncollected.
+ */
+export function isFlagPadlocked(
+  flag: FlagObjective,
+  allFlags: readonly FlagObjective[]
+): boolean {
+  if (flag.collected) {
+    return false;
+  }
+
+  if (flag.isGoal) {
+    return allFlags.some((other) => !other.isGoal && !other.collected);
+  }
+
+  return allFlags.some(
+    (other) => !other.isGoal && !other.collected && other.order < flag.order
+  );
+}
+
+/**
+ * Returns the smallest `order` among currently uncollected non-goal flags,
+ * or `null` if all non-goal waypoints have already been collected.
+ */
+export function getNextRequiredWaypointOrder(
+  allFlags: readonly FlagObjective[]
+): number | null {
+  let minOrder: number | null = null;
+  for (const f of allFlags) {
+    if (!f.isGoal && !f.collected) {
+      if (minOrder === null || f.order < minOrder) {
+        minOrder = f.order;
+      }
+    }
+  }
+  return minOrder;
+}
+
+/**
+ * Returns the set of `flag.id` values for all flags/goals currently padlocked.
+ */
+export function getPadlockedFlagIds(
+  allFlags: readonly FlagObjective[]
+): Set<string> {
+  const lockedIds = new Set<string>();
+  for (const flag of allFlags) {
+    if (isFlagPadlocked(flag, allFlags)) {
+      lockedIds.add(flag.id);
+    }
+  }
+  return lockedIds;
+}
+
 export interface MoveResult {
   valid: boolean;
   newX: number;
@@ -136,9 +197,31 @@ export function executeRobotAction(
     };
   }
 
-  // Move is valid! Update trace and flags
-  const updatedFlags = flags.map((f) => {
-    if (f.x === targetX && f.y === targetY && !f.collected) {
+  // Move is valid! Update trace and sequentially-gated flags (1 -> 2 -> ... -> Goal).
+  // Stepping onto a locked flag or locked goal is safe (not a collision) and leaves it uncollected.
+  const afterNonGoalFlags = flags.map((f) => {
+    if (
+      !f.isGoal &&
+      !f.collected &&
+      f.x === targetX &&
+      f.y === targetY &&
+      !isFlagPadlocked(f, flags)
+    ) {
+      return { ...f, collected: true };
+    }
+    return f;
+  });
+
+  const allIntermediateCollected = afterNonGoalFlags.every((f) => f.isGoal || f.collected);
+
+  const updatedFlags = afterNonGoalFlags.map((f) => {
+    if (
+      f.isGoal &&
+      !f.collected &&
+      f.x === targetX &&
+      f.y === targetY &&
+      allIntermediateCollected
+    ) {
       return { ...f, collected: true };
     }
     return f;
@@ -147,8 +230,6 @@ export function executeRobotAction(
   const updatedTrace = [...trace, { x: targetX, y: targetY }];
 
   // Check victory condition: all non-goal flags collected AND on a goal flag
-  const nonGoalFlags = updatedFlags.filter((f) => !f.isGoal);
-  const allIntermediateCollected = nonGoalFlags.every((f) => f.collected);
   const onGoal = updatedFlags.some((f) => f.isGoal && f.x === targetX && f.y === targetY);
   const isSuccess = onGoal && allIntermediateCollected;
 

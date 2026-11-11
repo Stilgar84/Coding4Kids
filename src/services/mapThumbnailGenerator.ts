@@ -1,4 +1,5 @@
 import { GridState, Direction } from '../types';
+import { isFlagPadlocked } from '../engine/physics';
 import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
 
@@ -134,6 +135,42 @@ export function renderGridMapSvg(grid: GridState): string {
         </g>
       </g>`
     );
+  }
+
+  // Padlock rings & lock badges on locked ordered flags (2+, Goal when prerequisites exist)
+  if (grid.flags) {
+    for (const flag of grid.flags) {
+      if (!isFlagPadlocked(flag, grid.flags)) continue;
+      const cx = flag.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = flag.y * CELL_SIZE + CELL_SIZE / 2;
+      const isRobotHere =
+        Boolean(grid.robot) && grid.robot.x === flag.x && grid.robot.y === flag.y;
+      const baseRadius = flag.isGoal ? 12 : 10;
+      const ringRadius = isRobotHere ? 15 : flag.isGoal ? 14 : 12.5;
+      const badgeX = isRobotHere ? 10 : flag.isGoal ? 9 : 8;
+      const badgeY = -(isRobotHere ? 10 : flag.isGoal ? 9 : 8);
+      const targetId = flag.isGoal ? `goal-${flag.x}-${flag.y}` : `flag-${flag.order}`;
+      const veilSvg = isRobotHere
+        ? ''
+        : `<circle r="${baseRadius}" fill="#0f172a" fill-opacity="0.42" />`;
+
+      elements.push(
+        `<g data-padlocked="true" data-padlock-target="${targetId}" transform="translate(${cx}, ${cy})">
+          ${veilSvg}
+          <circle r="${ringRadius}" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-opacity="0.8" />
+          <circle r="${ringRadius}" fill="none" stroke="${
+            isRobotHere ? '#fbbf24' : '#cbd5e1'
+          }" stroke-width="1.5" stroke-dasharray="3 2.5" stroke-linecap="round" />
+          <g transform="translate(${badgeX}, ${badgeY})">
+            <circle r="5.5" fill="#0f172a" stroke="${
+              isRobotHere ? '#fbbf24' : '#cbd5e1'
+            }" stroke-width="1" />
+            <path d="M -1.8 -0.5 V -2 A 1.8 1.8 0 0 1 1.8 -2 V -0.5" fill="none" stroke="#f8fafc" stroke-width="1.1" stroke-linecap="round" />
+            <rect x="-2.6" y="-0.6" width="5.2" height="4" rx="1" fill="#fbbf24" />
+          </g>
+        </g>`
+      );
+    }
   }
 
   elements.push(`</g>`);
