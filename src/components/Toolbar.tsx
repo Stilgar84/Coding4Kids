@@ -132,7 +132,10 @@ export const Toolbar: React.FC = () => {
   const handleMobileNext = appMode === 'curriculum' ? handleNextActivity : handleNextLevel;
   const canShowSolution =
     appMode === 'curriculum'
-      ? Boolean(currentCurriculumActivity?.referenceSolution)
+      ? Boolean(
+          currentCurriculumActivity?.referenceSolution ||
+            currentCurriculumActivity?.partialHelp
+        )
       : activeSimId === 'grid';
   const { needRefresh, isPromptDismissed } = usePwaUpdateStore();
 

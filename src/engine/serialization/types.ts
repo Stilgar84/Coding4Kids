@@ -1,5 +1,6 @@
-import { WorkspaceState, GridState, VariableName, toVariableName, BinaryOp } from '../../types';
+import { WorkspaceState, GridState, VariableName, toVariableName, BinaryOp, CodeBlock } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
+import { PlaceholderHintCategory } from '../../data/curriculum/types';
 
 // Format versions
 export const FORMAT_VERSION = 1;
@@ -29,6 +30,63 @@ export const OP_ELSE = 0x05;
 export const OP_END_IF = 0x06;
 export const OP_VAR_ASSIGN = 0x07;
 export const OP_VAR_OP = 0x08;
+export const OP_PLACEHOLDER = 0x09;
+
+export const PLACEHOLDER_HINT_CATEGORIES: readonly PlaceholderHintCategory[] = [
+  'any',         // 0
+  'motion',      // 1
+  'turn',        // 2
+  'item',        // 3
+  'loop',        // 4
+  'function',    // 5
+  'conditional', // 6
+  'sensor',      // 7
+  'variable',    // 8
+  'operator',    // 9
+  'socket',      // 10
+];
+
+export function placeholderHintCategoryToCode(category?: unknown, rawCode?: unknown): number {
+  const safeRaw =
+    typeof rawCode === 'number' && Number.isInteger(rawCode) && rawCode >= 0
+      ? rawCode
+      : undefined;
+
+  if (typeof category === 'string') {
+    const idx = PLACEHOLDER_HINT_CATEGORIES.indexOf(category as PlaceholderHintCategory);
+    if (idx > 0) {
+      return idx;
+    }
+    if (idx === 0) {
+      return safeRaw !== undefined && safeRaw >= PLACEHOLDER_HINT_CATEGORIES.length ? safeRaw : 0;
+    }
+    return safeRaw ?? 0;
+  }
+
+  return safeRaw ?? 0;
+}
+
+export function codeToPlaceholderHintCategory(code: number): {
+  hintCategory: PlaceholderHintCategory;
+  rawHintCategoryCode?: number;
+} {
+  if (Number.isInteger(code) && code >= 0 && code < PLACEHOLDER_HINT_CATEGORIES.length) {
+    return { hintCategory: PLACEHOLDER_HINT_CATEGORIES[code] };
+  }
+  return {
+    hintCategory: 'any',
+    rawHintCategoryCode: Math.max(0, Math.trunc(code)),
+  };
+}
+
+export function getPlaceholderHintCategory(block?: CodeBlock | null): PlaceholderHintCategory {
+  if (!block || block.type !== 'PLACEHOLDER') return 'any';
+  const cat = block.params?.hintCategory;
+  if (typeof cat === 'string' && PLACEHOLDER_HINT_CATEGORIES.includes(cat as PlaceholderHintCategory)) {
+    return cat as PlaceholderHintCategory;
+  }
+  return 'any';
+}
 
 // Block Header Bitmasks
 export const MASK_HAS_VAR_PARAM = 0x80; // Bit 7 of block header byte

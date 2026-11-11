@@ -292,7 +292,7 @@ export const WorkspaceCanvas: React.FC = () => {
             const isLoopError = unclosedSet.has(block.id);
             const showDropBefore = dropIndicatorIndex === idx && idx === 0;
             const showDropAfter = dropIndicatorIndex === idx + 1;
-            const showCaretAfter = isSelected && !showDropAfter;
+            const showCaretAfter = isSelected && block.type !== 'PLACEHOLDER' && !showDropAfter;
 
             let iterationProgress: { current: number; total: number } | null = null;
             if (block.type === 'LOOP_START') {
@@ -339,6 +339,7 @@ export const WorkspaceCanvas: React.FC = () => {
                   onDragEndBlock={handleDragEnd}
                   onDragOverSlot={handleSlotDragOver}
                   onDropAtSlot={handleDropAtSlot}
+                  onClearDropIndicator={() => setDropIndicatorIndex(null)}
                 />
 
                 {/* Insertion caret or drop indicator after block - ONLY rendered when active, no phantom space! */}

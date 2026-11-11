@@ -14,7 +14,11 @@ import {
 } from 'lucide-react';
 import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
 import { BlockSubpalette } from './BlockSubpalette';
-import { ScopeType } from '../types';
+import { CodeBlock, ScopeType } from '../types';
+import {
+  doesBlockMatchHintCategory,
+  getPlaceholderHintCategory,
+} from '../engine/placeholderHelpers';
 
 interface CoreControlItem {
   type: string;
@@ -326,12 +330,15 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
 };
 
 export const BlockPalette: React.FC = () => {
+  const subscribedStore = useAppStore();
   const {
     activeSimId,
     activeScope,
     setActiveScope,
     addBlock,
+    replacePlaceholderBlock,
     workspace,
+    runtime,
     updateBlockRepeat,
     selectedBlockId,
     setSelectedBlockId,
@@ -340,7 +347,7 @@ export const BlockPalette: React.FC = () => {
     toggleSubpalette,
     isFunctionBarOpen,
     toggleFunctionBar,
-  } = useAppStore();
+  } = typeof window === 'undefined' ? useAppStore.getState() : subscribedStore;
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
 
@@ -348,7 +355,33 @@ export const BlockPalette: React.FC = () => {
   const simPaletteItems: SimPaletteItem[] = currentSimEnv?.paletteItems || [];
 
   const blocks = workspace[activeScope] || [];
-  let targetBlock = selectedBlockId ? blocks.find((b) => b.id === selectedBlockId) : null;
+  const explicitlySelectedBlock = selectedBlockId
+    ? blocks.find((b) => b.id === selectedBlockId) ?? null
+    : null;
+
+  const activePlaceholderTarget: { scope: ScopeType; block: CodeBlock } | null = (() => {
+    if (explicitlySelectedBlock) {
+      return explicitlySelectedBlock.type === 'PLACEHOLDER'
+        ? { scope: activeScope, block: explicitlySelectedBlock }
+        : null;
+    }
+    if (runtime?.status === 'PAUSED' && runtime.activeBlockId) {
+      const pausedScope = runtime.activeScope || activeScope;
+      const pausedBlock = (workspace[pausedScope] || []).find(
+        (b) => b.id === runtime.activeBlockId && b.type === 'PLACEHOLDER'
+      );
+      if (pausedBlock) {
+        return { scope: pausedScope, block: pausedBlock };
+      }
+    }
+    return null;
+  })();
+
+  const activeHintCategory = activePlaceholderTarget
+    ? getPlaceholderHintCategory(activePlaceholderTarget.block)
+    : null;
+
+  let targetBlock = explicitlySelectedBlock;
   if (!targetBlock && blocks.length > 0) {
     const last = blocks[blocks.length - 1];
     const lastPaletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === last.type);
@@ -377,6 +410,15 @@ export const BlockPalette: React.FC = () => {
   };
 
   const handleAddSimBlock = (item: SimPaletteItem) => {
+    if (activePlaceholderTarget) {
+      replacePlaceholderBlock(
+        activePlaceholderTarget.scope,
+        activePlaceholderTarget.block.id,
+        item.actionType,
+        item.params
+      );
+      return;
+    }
     const blocks = workspace[activeScope] || [];
     if (selectedBlockId) {
       const idx = blocks.findIndex((b) => b.id === selectedBlockId);
@@ -390,6 +432,15 @@ export const BlockPalette: React.FC = () => {
   };
 
   const handleAddCoreBlock = (item: CoreControlItem) => {
+    if (activePlaceholderTarget) {
+      replacePlaceholderBlock(
+        activePlaceholderTarget.scope,
+        activePlaceholderTarget.block.id,
+        item.type,
+        item.params
+      );
+      return;
+    }
     const blocks = workspace[activeScope] || [];
     if (selectedBlockId) {
       const idx = blocks.findIndex((b) => b.id === selectedBlockId);
@@ -442,6 +493,7 @@ export const BlockPalette: React.FC = () => {
       })
     );
     e.dataTransfer.setData('application/x-robotemu-block', item.actionType);
+    e.dataTransfer.setData('application/x-robotemu-palette-block', item.actionType);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -455,6 +507,7 @@ export const BlockPalette: React.FC = () => {
       })
     );
     e.dataTransfer.setData('application/x-robotemu-block', item.type);
+    e.dataTransfer.setData('application/x-robotemu-palette-block', item.type);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -519,19 +572,27 @@ export const BlockPalette: React.FC = () => {
       )}
 
       {/* Draggable/Tappable Action & Control Blocks */}
-      <PaletteScrollRow testId="palette-action-row">
+      <PaletteScrollRow testId="palette-action-row" className="pt-1 px-0.5">
         {/* Dynamic Simulation Palette Blocks */}
         {simPaletteItems.map((item) => {
           const testId = `palette-${item.id}`;
+          const isHintHighlighted =
+            activeHintCategory !== null &&
+            doesBlockMatchHintCategory(item.actionType, item.category, activeHintCategory);
           return (
             <button
               key={item.id}
               data-testid={testId}
+              data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
               draggable
               onDragStart={(e) => handlePaletteBlockDragStart(e, item)}
               onClick={() => handleAddSimBlock(item)}
               title={item.name}
-              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass}`}
+              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-all active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
+                isHintHighlighted
+                  ? 'ring-3 ring-amber-300 shadow-[0_0_16px_rgba(34,211,238,0.75)] scale-[1.03]'
+                  : ''
+              }`}
             >
               {item.icon({ isActive: false, className: 'w-5 h-5 md:w-8 md:h-8 text-white stroke-[3]' })}
             </button>
@@ -542,18 +603,28 @@ export const BlockPalette: React.FC = () => {
         <div className="w-[1px] h-6 md:h-9 bg-slate-700/60 mx-1 flex-shrink-0" />
 
         {/* Core Control Structure Blocks (LOOP, Functions) */}
-        {CORE_CONTROL_ITEMS.map((item) => (
-          <button
-            key={item.type}
-            data-testid={item.testId}
-            draggable
-            onDragStart={(e) => handleCoreControlDragStart(e, item)}
-            onClick={() => handleAddCoreBlock(item)}
-            className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-transform active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass}`}
-          >
-            {item.icon}
-          </button>
-        ))}
+        {CORE_CONTROL_ITEMS.map((item) => {
+          const isHintHighlighted =
+            activeHintCategory !== null &&
+            doesBlockMatchHintCategory(item.type, undefined, activeHintCategory);
+          return (
+            <button
+              key={item.type}
+              data-testid={item.testId}
+              data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
+              draggable
+              onDragStart={(e) => handleCoreControlDragStart(e, item)}
+              onClick={() => handleAddCoreBlock(item)}
+              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-all active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
+                isHintHighlighted
+                  ? 'ring-3 ring-amber-300 shadow-[0_0_16px_rgba(34,211,238,0.75)] scale-[1.03]'
+                  : ''
+              }`}
+            >
+              {item.icon}
+            </button>
+          );
+        })}
       </PaletteScrollRow>
 
       {/* Repeat Tags & Action Param Toggle Row */}

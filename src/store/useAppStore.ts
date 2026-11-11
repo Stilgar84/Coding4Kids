@@ -38,6 +38,13 @@ import {
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
+import {
+  GhostPreviewState,
+  computeGhostPreviewSteps,
+  getPlaceholderHintCategory,
+  getPlaceholderHintLabel,
+  resolveActivityScaffoldWorkspace,
+} from '../engine/placeholderHelpers';
 import { exportToString, importFromString, exportToBinary, importFromBinary } from '../engine/serialization/codeSerializer';
 import {
   saveStateBeforeUpdate,
@@ -166,6 +173,7 @@ interface AppState {
   curriculumWorkspaces: Record<string, WorkspaceState>;
   sandboxSnapshot: SandboxModeSnapshot | null;
   statusAnnouncement: string;
+  ghostPreview: GhostPreviewState | null;
 
   // Environment selection
   activeSimId: 'grid' | 'turtle';
@@ -228,6 +236,16 @@ interface AppState {
   setSaveModalOpen: (open: boolean) => void;
   setLoadModalOpen: (open: boolean) => void;
   loadSolution: (lessonId?: number) => void;
+  triggerGhostPreview: () => boolean;
+  stopGhostPreview: () => void;
+  advanceGhostPreviewStep: () => void;
+  loadPartialScaffold: () => boolean;
+  replacePlaceholderBlock: (
+    scope: ScopeType,
+    placeholderBlockId: string,
+    newType: string,
+    params?: Record<string, any>
+  ) => boolean;
   exportCode: (includeMap?: boolean) => string;
   exportBinary: (includeMap?: boolean) => Uint8Array;
   importCode: (data: string | Uint8Array) => { success: boolean; error?: string };
@@ -432,10 +450,17 @@ export const useAppStore = create<AppState>((set, get) => {
           ? runtime.callStack[runtime.callStack.length - 1].scope
           : get().activeScope;
 
+        const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
           runtime,
           turtleState,
           activeScope,
+          ...(isPausedOnPlaceholder
+            ? {
+                selectedBlockId: runtime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, runtime),
+              }
+            : {}),
         });
 
         if (res.done) {
@@ -460,10 +485,17 @@ export const useAppStore = create<AppState>((set, get) => {
           ? runtime.callStack[runtime.callStack.length - 1].scope
           : get().activeScope;
 
+        const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
           runtime,
           turtleState,
           activeScope,
+          ...(isPausedOnPlaceholder
+            ? {
+                selectedBlockId: runtime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, runtime),
+              }
+            : {}),
         });
 
         if (res.done) {
@@ -630,6 +662,17 @@ export const useAppStore = create<AppState>((set, get) => {
     });
   };
 
+  const getPlaceholderPauseAnnouncement = (
+    ws: WorkspaceState,
+    rt: InterpreterRuntimeState
+  ): string => {
+    const pausedBlock = rt.activeBlockId
+      ? ws[rt.activeScope]?.find((b) => b.id === rt.activeBlockId)
+      : undefined;
+    const hintLabel = getPlaceholderHintLabel(getPlaceholderHintCategory(pausedBlock));
+    return `Execution paused on ? placeholder block (${hintLabel} hint). Choose a highlighted block from the palette to replace it.`;
+  };
+
   return {
     appMode: bootMode,
     activeActivityId: bootActivity?.id || '1.1',
@@ -640,6 +683,7 @@ export const useAppStore = create<AppState>((set, get) => {
         : {},
     sandboxSnapshot: null,
     statusAnnouncement: '',
+    ghostPreview: null,
 
     activeSimId: bootMode === 'curriculum' && bootActivity?.simId === 'turtle' ? 'turtle' : 'grid',
     currentLevel: 1,
@@ -853,6 +897,7 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: null,
           activeScope: 'MAIN',
           runtime: null,
+          ghostPreview: null,
           statusAnnouncement: `Learn mode: Activity ${activity.id} ${activity.title}. Map is read-only.`,
         });
 
@@ -904,6 +949,7 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedBlockId: null,
           activeScope: 'MAIN',
           runtime: null,
+          ghostPreview: null,
           statusAnnouncement: 'Sandbox mode: map and blocks are editable.',
         });
 
@@ -962,6 +1008,7 @@ export const useAppStore = create<AppState>((set, get) => {
         selectedBlockId: null,
         activeScope: 'MAIN',
         runtime: null,
+        ghostPreview: null,
         statusAnnouncement: `Activity ${activity.id}: ${activity.title}`,
       });
 
@@ -1011,6 +1058,7 @@ export const useAppStore = create<AppState>((set, get) => {
         selectedBlockId: null,
         activeScope: 'MAIN',
         runtime: null,
+        ghostPreview: null,
         isMobileMenuOpen: false,
         statusAnnouncement: `Opened editable copy of Activity ${state.activeActivityId} in Sandbox mode.`,
       });
@@ -1243,6 +1291,8 @@ export const useAppStore = create<AppState>((set, get) => {
           },
           activeScope: 'MAIN',
           selectedBlockId: null,
+          ghostPreview: null,
+          statusAnnouncement: `Loaded full reference solution for ${activity.title}. Press Undo to restore your previous blocks.`,
         }));
         get().runInstantIfActive();
         return;
@@ -1281,8 +1331,168 @@ export const useAppStore = create<AppState>((set, get) => {
         },
         activeScope: 'MAIN',
         selectedBlockId: null,
+        ghostPreview: null,
       });
       get().runInstantIfActive();
+    },
+
+    triggerGhostPreview: () => {
+      const { appMode, activeActivityId, activeActivityVersion, grid, ghostPreview } = get();
+      if (appMode !== 'curriculum') return false;
+
+      const activity =
+        getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+        getActivityLatest(activeActivityId);
+      if (!activity?.partialHelp?.ghostPreview) return false;
+
+      get().pause();
+      const poses = computeGhostPreviewSteps(grid, activity.partialHelp.ghostPreview);
+      const stepTotal = Math.max(0, poses.length - 1);
+
+      set({
+        isSolutionOpen: false,
+        ghostPreview: {
+          active: true,
+          activityId: activity.id,
+          poses,
+          currentStepIndex: 0,
+          runId: (ghostPreview?.runId ?? 0) + 1,
+        },
+        statusAnnouncement: `Ghost-step preview started (${stepTotal} ${
+          stepTotal === 1 ? 'step' : 'steps'
+        }) for ${activity.title}. Your workspace blocks are unchanged.`,
+      });
+      return true;
+    },
+
+    stopGhostPreview: () => {
+      if (get().ghostPreview) {
+        set({ ghostPreview: null });
+      }
+    },
+
+    advanceGhostPreviewStep: () => {
+      const gp = get().ghostPreview;
+      if (!gp || !gp.active || gp.poses.length === 0) return;
+      set({
+        ghostPreview: {
+          ...gp,
+          currentStepIndex: (gp.currentStepIndex + 1) % gp.poses.length,
+        },
+      });
+    },
+
+    loadPartialScaffold: () => {
+      if (get().appMode !== 'curriculum') return false;
+      const { activeActivityId, activeActivityVersion } = get();
+      const activity =
+        getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+        getActivityLatest(activeActivityId);
+      const scaffoldTemplate = resolveActivityScaffoldWorkspace(activity);
+      if (!scaffoldTemplate) return false;
+
+      recordMutation('Load starter scaffold');
+      get().reset();
+
+      const newWorkspace = cloneWorkspaceWithFreshIds(scaffoldTemplate);
+      let firstPlaceholderId: string | null = null;
+      let targetScope: ScopeType = 'MAIN';
+      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+        const found = newWorkspace[sc].find((b) => b.type === 'PLACEHOLDER');
+        if (found) {
+          firstPlaceholderId = found.id;
+          targetScope = sc;
+          break;
+        }
+      }
+
+      set((state) => ({
+        workspace: newWorkspace,
+        curriculumWorkspaces: {
+          ...state.curriculumWorkspaces,
+          [state.activeActivityId]: cloneWorkspace(newWorkspace),
+        },
+        activeScope: targetScope,
+        selectedBlockId: firstPlaceholderId,
+        isSolutionOpen: false,
+        ghostPreview: null,
+        statusAnnouncement: `Loaded starter ? scaffold${
+          activity?.title ? ` for ${activity.title}` : ''
+        }. Select a highlighted block in the palette to fill ?, or press Undo to restore your previous blocks.`,
+      }));
+      get().runInstantIfActive();
+      return true;
+    },
+
+    replacePlaceholderBlock: (scope, placeholderBlockId, newType, params) => {
+      const currentBlocks = get().workspace[scope] || [];
+      const targetIdx = currentBlocks.findIndex(
+        (b) => b.id === placeholderBlockId && b.type === 'PLACEHOLDER'
+      );
+      if (targetIdx === -1) return false;
+
+      recordMutation('Replace placeholder block');
+
+      const id = `${newType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const simEnv = getSimEnvironment(get().activeSimId);
+      const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === newType);
+      const resolvedParams =
+        params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
+      const newBlock: CodeBlock = { id, type: newType, params: resolvedParams };
+
+      const nextBlocks = [...currentBlocks];
+      if (newType === 'LOOP_START') {
+        const candidateSingle = [...currentBlocks];
+        candidateSingle.splice(targetIdx, 1, newBlock);
+        const loopCheck = validateLoopStructure(candidateSingle);
+        if (loopCheck.unclosedLoopStartIds.includes(newBlock.id)) {
+          const endBlock: CodeBlock = {
+            id: `LOOP_END_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            type: 'LOOP_END',
+          };
+          nextBlocks.splice(targetIdx, 1, newBlock, endBlock);
+        } else {
+          nextBlocks.splice(targetIdx, 1, newBlock);
+        }
+      } else {
+        nextBlocks.splice(targetIdx, 1, newBlock);
+      }
+
+      set((state) => {
+        const nextWorkspace: WorkspaceState = {
+          ...state.workspace,
+          [scope]: nextBlocks,
+        };
+        const updatedRuntime =
+          state.runtime && state.runtime.activeBlockId === placeholderBlockId
+            ? { ...state.runtime, activeBlockId: newBlock.id }
+            : state.runtime;
+
+        return {
+          workspace: nextWorkspace,
+          ...(state.appMode === 'curriculum'
+            ? {
+                curriculumWorkspaces: {
+                  ...state.curriculumWorkspaces,
+                  [state.activeActivityId]: cloneWorkspace(nextWorkspace),
+                },
+              }
+            : {
+                savedWorkspaces: {
+                  ...state.savedWorkspaces,
+                  [state.activeSimId]: cloneWorkspace(nextWorkspace),
+                },
+              }),
+          activeScope: scope,
+          selectedBlockId: newBlock.id,
+          runtime: updatedRuntime,
+          ghostPreview: null,
+          statusAnnouncement: 'Replaced ? placeholder block. Press Undo to restore ?.',
+        };
+      });
+
+      get().runInstantIfActive();
+      return true;
     },
 
     setLevel: (levelId) => {
@@ -1378,25 +1588,35 @@ export const useAppStore = create<AppState>((set, get) => {
       if (speed !== 'instant' && (speed as any) !== 0) return;
 
       const result = computeInstantSimulation(workspace, activeSimId, grid, turtleState);
+      const isPausedOnPlaceholder = result.status === 'PAUSED';
+      const nextRuntime: InterpreterRuntimeState = {
+        ...result.finalRuntime,
+        activeBlockId: isPausedOnPlaceholder ? result.finalRuntime.activeBlockId : null,
+        activeRepeatProgress: null,
+      };
+      const pauseUpdates = isPausedOnPlaceholder
+        ? {
+            activeScope: result.finalRuntime.activeScope,
+            selectedBlockId: result.finalRuntime.activeBlockId,
+            statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, result.finalRuntime),
+          }
+        : {};
+
       if (activeSimId === 'grid') {
         set({
           grid: result.finalState as GridState,
-          runtime: {
-            ...result.finalRuntime,
-            activeBlockId: null,
-            activeRepeatProgress: null,
-          },
+          runtime: nextRuntime,
           isPlaying: false,
+          ghostPreview: null,
+          ...pauseUpdates,
         });
       } else {
         set({
           turtleState: result.finalState as TurtleState,
-          runtime: {
-            ...result.finalRuntime,
-            activeBlockId: null,
-            activeRepeatProgress: null,
-          },
+          runtime: nextRuntime,
           isPlaying: false,
+          ghostPreview: null,
+          ...pauseUpdates,
         });
       }
     },
@@ -1929,6 +2149,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const { speed, activeSimId } = get();
       if (speed === 'instant' || (speed as any) === 0) return;
 
+      if (get().ghostPreview) {
+        set({ ghostPreview: null });
+      }
+
       if (activeSimId === 'grid') {
         const { runtime, workspace, grid } = get();
 
@@ -1953,14 +2177,22 @@ export const useAppStore = create<AppState>((set, get) => {
           ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
           : get().activeScope;
 
+        const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
+
         set({
           runtime: res.nextRuntime,
           grid: res.nextGrid as GridState,
           activeScope,
-          isPlaying: !res.done && get().isPlaying,
+          isPlaying: !res.done && !isPausedOnPlaceholder && get().isPlaying,
+          ...(isPausedOnPlaceholder
+            ? {
+                selectedBlockId: res.nextRuntime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
+              }
+            : {}),
         });
 
-        if (res.done && timerId) {
+        if ((res.done || isPausedOnPlaceholder) && timerId) {
           clearInterval(timerId);
           timerId = null;
           set({ isPlaying: false });
@@ -1994,6 +2226,9 @@ export const useAppStore = create<AppState>((set, get) => {
 
     play: () => {
       const { speed, workspace, activeSimId } = get();
+      if (get().ghostPreview) {
+        set({ ghostPreview: null });
+      }
       if (speed === 'instant' || (speed as any) === 0) {
         if (timerId) {
           clearInterval(timerId);
@@ -2044,6 +2279,9 @@ export const useAppStore = create<AppState>((set, get) => {
 
         // Run immediate first step
         get().step();
+        if (!get().isPlaying) {
+          return;
+        }
 
         timerId = setInterval(() => {
           if (!get().isPlaying) {
@@ -2092,12 +2330,14 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           isPlaying: false,
           runtime: null,
+          ghostPreview: null,
           grid: getInitialGridState(grid),
         });
       } else {
         set({
           isPlaying: false,
           runtime: null,
+          ghostPreview: null,
           turtleState: getInitialTurtleState(turtleState),
         });
       }

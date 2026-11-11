@@ -4,6 +4,7 @@ import { WallEdge, Direction } from '../types';
 import { Trophy, Footprints, Maximize2, Minimize2, Lock } from 'lucide-react';
 import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
 import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOverlay';
+import { GhostStepOverlay } from '../simulations/grid/components/GhostStepOverlay';
 
 const CELL_SIZE = 72; // pixels per cell
 
@@ -769,6 +770,7 @@ export const GridCanvas: React.FC = () => {
                 isInstant={isInstant}
               />
             }
+            ghostStepSlot={<GhostStepOverlay cellSize={CELL_SIZE} />}
           />
         </svg>
             </div>

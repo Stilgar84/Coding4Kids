@@ -237,7 +237,8 @@ export const MobileDrawerMenu: React.FC = () => {
                 <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
                   Curriculum Activities
                 </span>
-                {currentCurriculumActivity?.referenceSolution && (
+                {(currentCurriculumActivity?.referenceSolution ||
+                  currentCurriculumActivity?.partialHelp) && (
                   <button
                     data-testid="drawer-btn-solution"
                     onClick={() => {

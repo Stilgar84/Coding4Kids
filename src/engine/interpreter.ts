@@ -6,6 +6,7 @@ import {
   StackFrame,
   LoopFrame,
   GridState,
+  SimulationStatus,
   VariableName,
   BinaryOp,
 } from '../types';
@@ -204,6 +205,31 @@ export function tickInterpreter<TState = GridState>(
   const blockType = currentBlock.type;
   const activeBlockId = currentBlock.id;
   const activeScope = currentFrame.scope;
+  const runningStatus: SimulationStatus =
+    runtime.status === 'PAUSED' ? 'RUNNING' : runtime.status;
+
+  // Handle '?' Placeholder block (OP_PLACEHOLDER = 0x09):
+  // Pause cleanly on '?' without advancing PC or erroring out.
+  if (blockType === 'PLACEHOLDER') {
+    const nextSimState =
+      simState && typeof simState === 'object'
+        ? { ...simState, status: 'PAUSED' as SimulationStatus }
+        : simState;
+
+    return {
+      nextRuntime: {
+        ...runtime,
+        callStack,
+        loopStack,
+        activeBlockId,
+        activeScope,
+        status: 'PAUSED',
+        activeRepeatProgress: null,
+      },
+      nextGrid: nextSimState,
+      done: true,
+    };
+  }
 
   // Handle Function Calls
   if (blockType === 'CALL_F1' || blockType === 'CALL_F2' || blockType === 'CALL_F3') {
@@ -232,6 +258,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,
@@ -258,6 +285,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,
@@ -288,6 +316,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,
@@ -320,6 +349,7 @@ export function tickInterpreter<TState = GridState>(
       return {
         nextRuntime: {
           ...runtime,
+          status: runningStatus,
           callStack,
           loopStack,
           activeBlockId,
@@ -351,6 +381,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,
@@ -384,6 +415,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,
@@ -410,6 +442,7 @@ export function tickInterpreter<TState = GridState>(
     return {
       nextRuntime: {
         ...runtime,
+        status: runningStatus,
         callStack,
         loopStack,
         activeBlockId,

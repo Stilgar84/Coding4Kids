@@ -14,11 +14,16 @@ import {
   PenTool,
   Slash,
   Palette,
+  Sparkles,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
+import {
+  getPlaceholderHintCategory,
+  getPlaceholderHintLabel,
+} from '../engine/placeholderHelpers';
 
 interface BlockItemProps {
   block: CodeBlock;
@@ -34,6 +39,7 @@ interface BlockItemProps {
   onDragEndBlock?: () => void;
   onDragOverSlot?: (e: React.DragEvent, targetIndex: number) => void;
   onDropAtSlot?: (e: React.DragEvent, targetIndex: number) => void;
+  onClearDropIndicator?: () => void;
 }
 
 export const BlockItem: React.FC<BlockItemProps> = ({
@@ -50,8 +56,9 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   onDragEndBlock,
   onDragOverSlot,
   onDropAtSlot,
+  onClearDropIndicator,
 }) => {
-  const { updateBlockRepeat, updateBlockParams, runtime } = useAppStore();
+  const { updateBlockRepeat, updateBlockParams, replacePlaceholderBlock, runtime } = useAppStore();
   const subscribedSimId = useAppStore((state) => state.activeSimId);
   const subscribedAppMode = useAppStore((state) => state.appMode);
   const subscribedActivityId = useAppStore((state) => state.activeActivityId);
@@ -64,6 +71,10 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   const activeActivityVersion = storeSnapshot.activeActivityVersion || subscribedActivityVersion;
 
   const [isNumberHovered, setIsNumberHovered] = useState(false);
+  const [isReplaceHovered, setIsReplaceHovered] = useState(false);
+
+  const isPlaceholder = block.type === 'PLACEHOLDER';
+  const placeholderHintCategory = isPlaceholder ? getPlaceholderHintCategory(block) : 'any';
 
   const activeCurriculumActivity =
     appMode === 'curriculum'
@@ -82,10 +93,11 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       : block.type;
   const paletteItem = currentSimEnv?.paletteItems.find((p) => p.actionType === lookupActionType);
   const paramDefs = paletteItem?.paramDefs || [];
-  const hasParams = paramDefs.length > 0 && allowActionParams;
+  const hasParams = !isPlaceholder && paramDefs.length > 0 && allowActionParams;
 
   // Check if block type supports repeat multipliers
   const nonRepeatableTypes = [
+    'PLACEHOLDER',
     'PEN_UP',
     'PEN_DOWN',
     'SET_PEN_COLOR',
@@ -108,6 +120,15 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   // Theme & color classes for action and parameter container
   const getBlockTheme = () => {
     if (isActive) {
+      if (isPlaceholder) {
+        return {
+          bgClass: 'bg-amber-400',
+          borderClass: 'border-dashed border-amber-100',
+          iconColor: 'text-slate-950 stroke-[3]',
+          activeClass:
+            'animate-pulse bg-amber-400 border-dashed border-amber-100 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.9)]',
+        };
+      }
       return {
         bgClass: 'bg-yellow-400',
         borderClass: 'border-yellow-200',
@@ -121,6 +142,22 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     let borderClass = 'border-slate-500';
 
     switch (block.type) {
+      case 'PLACEHOLDER':
+        bgClass = 'bg-slate-900/90';
+        borderClass =
+          placeholderHintCategory === 'motion'
+            ? 'border-dashed border-sky-400'
+            : placeholderHintCategory === 'turn'
+            ? 'border-dashed border-amber-400'
+            : placeholderHintCategory === 'loop'
+            ? 'border-dashed border-purple-400'
+            : placeholderHintCategory === 'function'
+            ? 'border-dashed border-emerald-400'
+            : placeholderHintCategory === 'item'
+            ? 'border-dashed border-teal-400'
+            : 'border-dashed border-cyan-400';
+        break;
+
       case 'MOVE_FWD':
       case 'FORWARD':
         bgClass = 'bg-sky-600';
@@ -409,6 +446,36 @@ export const BlockItem: React.FC<BlockItemProps> = ({
           </div>
         );
 
+      case 'PLACEHOLDER': {
+        const cueColor = isActive ? 'text-slate-900' : 'text-cyan-300/90';
+        return (
+          <div className="relative w-full h-full flex items-center justify-center">
+            <span
+              className={`font-black text-lg md:text-2xl leading-none select-none ${
+                isActive ? 'text-slate-950' : 'text-amber-300'
+              }`}
+            >
+              ?
+            </span>
+            {placeholderHintCategory === 'motion' && (
+              <ArrowUp className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
+            )}
+            {placeholderHintCategory === 'turn' && (
+              <CornerUpRight className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
+            )}
+            {placeholderHintCategory === 'loop' && (
+              <Repeat className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
+            )}
+            {placeholderHintCategory === 'function' && (
+              <PhoneCall className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
+            )}
+            {placeholderHintCategory === 'item' && (
+              <Sparkles className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[2.5]`} />
+            )}
+          </div>
+        );
+      }
+
       default:
         return <span className="text-xs font-bold text-white truncate">{block.type}</span>;
     }
@@ -449,6 +516,7 @@ export const BlockItem: React.FC<BlockItemProps> = ({
 
   const handleDragEnd = () => {
     setIsNumberHovered(false);
+    setIsReplaceHovered(false);
     if (onDragEndBlock) {
       onDragEndBlock();
     }
@@ -459,10 +527,26 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     if (e.dataTransfer.types.includes('application/x-robotemu-number') && supportsMultiplier) {
       e.dataTransfer.dropEffect = 'copy';
       setIsNumberHovered(true);
+      setIsReplaceHovered(false);
+      return;
+    }
+
+    if (
+      isPlaceholder &&
+      e.dataTransfer.types.includes('application/x-robotemu-palette-block')
+    ) {
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsReplaceHovered(true);
+      setIsNumberHovered(false);
+      if (onClearDropIndicator) {
+        onClearDropIndicator();
+      }
       return;
     }
 
     setIsNumberHovered(false);
+    setIsReplaceHovered(false);
     // Dragging a block over this node: always calculate insertion slot (before or after)
     const rect = e.currentTarget.getBoundingClientRect();
     const isAfter = e.clientX - rect.left > rect.width / 2;
@@ -476,11 +560,13 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   const handleDragLeaveOnBlock = (e: React.DragEvent) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setIsNumberHovered(false);
+      setIsReplaceHovered(false);
     }
   };
 
   const handleDropOnBlock = (e: React.DragEvent) => {
     setIsNumberHovered(false);
+    setIsReplaceHovered(false);
     e.preventDefault();
     e.stopPropagation();
 
@@ -491,6 +577,11 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       const data = JSON.parse(dataStr);
       if (data.type === 'PALETTE_NUMBER' && supportsMultiplier) {
         updateBlockRepeat(scope, block.id, data.number);
+        return;
+      }
+
+      if (isPlaceholder && data.type === 'PALETTE_BLOCK' && data.blockType) {
+        replacePlaceholderBlock(scope, block.id, data.blockType, data.params);
         return;
       }
 
@@ -507,26 +598,47 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onSelect) onSelect();
+    }
+  };
+
   return (
     <div
       data-testid={`block-${block.id}`}
+      data-block-type={block.type}
+      data-placeholder-hint={isPlaceholder ? placeholderHintCategory : undefined}
       data-active={isActive ? 'true' : 'false'}
       data-selected={isSelected ? 'true' : 'false'}
+      tabIndex={0}
+      role={isPlaceholder ? 'button' : undefined}
+      aria-label={
+        isPlaceholder
+          ? `Placeholder ? block (${getPlaceholderHintLabel(
+              placeholderHintCategory
+            )} hint). Select and choose a palette block to replace.`
+          : undefined
+      }
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOverOnBlock}
       onDragLeave={handleDragLeaveOnBlock}
       onDrop={handleDropOnBlock}
+      onKeyDown={handleKeyDown}
       onClick={(e) => {
         e.stopPropagation();
         if (onSelect) onSelect();
       }}
-      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 touch-none ${
+      className={`relative flex items-center justify-center cursor-grab active:cursor-grabbing select-none transition-transform duration-150 flex-shrink-0 touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded-xl md:rounded-2xl ${
         isDragging ? 'opacity-40' : ''
       } ${
-        isNumberHovered
-          ? 'scale-105 z-20'
+        isNumberHovered || isReplaceHovered
+          ? 'scale-110 z-20'
           : isLoopError
           ? 'animate-pulse z-10'
           : 'hover:scale-105'
@@ -546,10 +658,14 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       {/* Main Block Visual & Attached Parameter Badges */}
       <div
         className={`flex items-center rounded-xl md:rounded-2xl transition-all ${
-          isNumberHovered
+          isReplaceHovered
+            ? 'ring-4 ring-cyan-400 shadow-[0_0_16px_rgba(34,211,238,0.8)]'
+            : isNumberHovered
             ? 'ring-4 ring-yellow-400'
             : isLoopError
             ? 'ring-2 ring-red-500'
+            : isSelected && isPlaceholder
+            ? 'ring-3 ring-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.65)]'
             : isSelected
             ? 'ring-2 ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)]'
             : ''

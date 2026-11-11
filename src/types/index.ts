@@ -68,7 +68,8 @@ export type BlockType =
   | 'CALL_F2'
   | 'CALL_F3'
   | 'VAR_ASSIGN'
-  | 'VAR_OP';
+  | 'VAR_OP'
+  | 'PLACEHOLDER';
 
 export interface CodeBlock {
   id: string;

@@ -101,7 +101,9 @@ export function runHeadlessSimulation<TState = any>(
 
   const rawStatus = (state as any)?.status || runtime.status;
   const status: SimulationStatus =
-    rawStatus === 'SUCCESS' || rawStatus === 'COLLISION' ? rawStatus : 'IDLE';
+    rawStatus === 'SUCCESS' || rawStatus === 'COLLISION' || rawStatus === 'PAUSED'
+      ? rawStatus
+      : 'IDLE';
 
   const finalState =
     state && typeof state === 'object' ? { ...state, status } : state;

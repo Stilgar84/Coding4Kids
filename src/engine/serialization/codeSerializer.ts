@@ -19,6 +19,9 @@ import {
   OP_CALL_FN,
   OP_VAR_ASSIGN,
   OP_VAR_OP,
+  OP_PLACEHOLDER,
+  placeholderHintCategoryToCode,
+  codeToPlaceholderHintCategory,
   MASK_HAS_VAR_PARAM,
   MASK_HAS_REP,
   OPERAND_TYPE_VAR,
@@ -182,6 +185,16 @@ export function exportToBinary(
         writer.writeUint8(opToByte(op));
         writeOperandData(writer, typeB, b);
         writeOperandData(writer, typeC, c);
+        continue;
+      }
+
+      if (block.type === 'PLACEHOLDER') {
+        const hintCode = placeholderHintCategoryToCode(
+          block.params?.hintCategory,
+          block.params?.rawHintCategoryCode
+        );
+        writer.writeUint8(OP_PLACEHOLDER);
+        writer.writeVLE(hintCode);
         continue;
       }
 
@@ -439,6 +452,17 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
           } else if (opcode === OP_CALL_FN) {
             const fnIndex = reader.readUint8();
             type = fnIndex === 1 ? 'CALL_F1' : fnIndex === 2 ? 'CALL_F2' : 'CALL_F3';
+          } else if (opcode === OP_PLACEHOLDER) {
+            type = 'PLACEHOLDER';
+            const hintCode = reader.readVLE();
+            const decodedHint = codeToPlaceholderHintCategory(hintCode);
+            params =
+              decodedHint.rawHintCategoryCode !== undefined
+                ? {
+                    hintCategory: decodedHint.hintCategory,
+                    rawHintCategoryCode: decodedHint.rawHintCategoryCode,
+                  }
+                : { hintCategory: decodedHint.hintCategory };
           } else if (envByte === ENV_ID_TURTLE) {
             switch (opcode) {
               case OP_TURTLE_FORWARD:
