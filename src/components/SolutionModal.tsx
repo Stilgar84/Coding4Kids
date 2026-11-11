@@ -1,16 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { LESSONS } from '../data/lessons';
 import {
   CURRICULUM_ACTIVITIES,
+  CurriculumActivity,
   getActivityAtVersion,
   getActivityLatest,
   getCurriculumModule,
+  isValidatedPuzzleActivity,
 } from '../data/curriculum';
 import {
   getPlaceholderHintCategory,
   resolveActivityScaffoldWorkspace,
 } from '../engine/placeholderHelpers';
+import {
+  ActivityConstraintReport,
+  verifyActivityConstraints,
+} from '../engine/verification/constraintSolver';
 import { CodeBlock, ScopeType, WorkspaceState } from '../types';
 import {
   X,
@@ -33,9 +39,43 @@ import {
   PenTool,
   Slash,
   Palette,
+  AlertTriangle,
 } from 'lucide-react';
 
-export const SolutionModal: React.FC = () => {
+/**
+ * Checks whether `?dev=1` is present in `window.location.search` (or an explicit search override).
+ */
+export function isDevProofInspectorEnabled(searchOverride?: string): boolean {
+  const rawSearch =
+    searchOverride !== undefined
+      ? searchOverride
+      : typeof window !== 'undefined' && window.location?.search
+      ? window.location.search
+      : '';
+  if (!rawSearch) return false;
+  const normalized = rawSearch.startsWith('?') ? rawSearch : `?${rawSearch}`;
+  const params = new URLSearchParams(normalized);
+  return params.get('dev') === '1';
+}
+
+/**
+ * Keyboard accessibility helper for the collapsible Constraint Proofs disclosure button.
+ */
+export function shouldToggleDisclosureOnKey(key: string): boolean {
+  return key === 'Enter' || key === ' ';
+}
+
+export interface SolutionModalProps {
+  /** Optional override for initial expanded state of the `?dev=1` Constraint Proofs disclosure */
+  defaultDevProofsExpanded?: boolean;
+  /** Optional activity override for inspecting/testing synthetic puzzle fixtures */
+  activityOverride?: CurriculumActivity;
+}
+
+export const SolutionModal: React.FC<SolutionModalProps> = ({
+  defaultDevProofsExpanded = true,
+  activityOverride,
+}) => {
   const subscribedStore = useAppStore();
   const {
     appMode,
@@ -49,15 +89,42 @@ export const SolutionModal: React.FC = () => {
     loadSolution,
     triggerGhostPreview,
     loadPartialScaffold,
-  } = typeof window === 'undefined' ? useAppStore.getState() : subscribedStore;
+  } =
+    typeof window === 'undefined' || typeof document === 'undefined'
+      ? useAppStore.getState()
+      : subscribedStore;
 
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [isTier2Revealed, setIsTier2Revealed] = useState(false);
+  const [isDevProofsOpen, setIsDevProofsOpen] = useState(defaultDevProofsExpanded);
+
+  const isCurriculum = appMode === 'curriculum';
+  const resolvedActivity =
+    activityOverride ??
+    getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+    getActivityLatest(activeActivityId) ??
+    CURRICULUM_ACTIVITIES[0];
+
+  const devProofEnabled = isDevProofInspectorEnabled();
+  const showDevProofs =
+    isSolutionOpen &&
+    isCurriculum &&
+    devProofEnabled &&
+    Boolean(resolvedActivity && isValidatedPuzzleActivity(resolvedActivity));
+
+  const constraintReport: ActivityConstraintReport | null = useMemo(() => {
+    if (!showDevProofs || !resolvedActivity) return null;
+    return verifyActivityConstraints(resolvedActivity);
+  }, [showDevProofs, resolvedActivity]);
 
   useEffect(() => {
     setIsTier2Revealed(false);
     setCopiedNotification(false);
   }, [activeActivityId, isSolutionOpen]);
+
+  useEffect(() => {
+    setIsDevProofsOpen(defaultDevProofsExpanded);
+  }, [defaultDevProofsExpanded, isSolutionOpen]);
 
   useEffect(() => {
     if (!isSolutionOpen) return;
@@ -73,12 +140,8 @@ export const SolutionModal: React.FC = () => {
 
   if (!isSolutionOpen) return null;
 
-  const isCurriculum = appMode === 'curriculum';
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
-  const currentActivity =
-    getActivityAtVersion(activeActivityId, activeActivityVersion) ??
-    getActivityLatest(activeActivityId) ??
-    CURRICULUM_ACTIVITIES[0];
+  const currentActivity = resolvedActivity;
   const currentModule = currentActivity
     ? getCurriculumModule(currentActivity.moduleId)
     : undefined;
@@ -622,6 +685,203 @@ export const SolutionModal: React.FC = () => {
                             </>
                           )}
                         </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* DEV INSPECTOR (?dev=1): Live Anti-Bypass Constraint Proofs */}
+              {showDevProofs && constraintReport && (
+                <section
+                  data-testid="dev-constraint-proofs-section"
+                  className={`rounded-2xl border-2 overflow-hidden ${
+                    constraintReport.passed
+                      ? 'border-emerald-500/40 bg-slate-950/80'
+                      : 'border-rose-500/60 border-dashed bg-rose-950/20'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    data-testid="btn-toggle-constraint-proofs"
+                    aria-expanded={isDevProofsOpen}
+                    aria-controls="dev-constraint-proofs-panel"
+                    onClick={() => setIsDevProofsOpen((prev) => !prev)}
+                    onKeyDown={(e) => {
+                      if (shouldToggleDisclosureOnKey(e.key)) {
+                        e.preventDefault();
+                        setIsDevProofsOpen((prev) => !prev);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-black text-white flex items-center gap-1.5">
+                        <span aria-hidden="true">🛡️</span>
+                        <span>Constraint Proofs</span>
+                      </span>
+                      {constraintReport.passed ? (
+                        <span
+                          data-testid="constraint-overall-badge"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40"
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          <span>Verified</span>
+                        </span>
+                      ) : (
+                        <span
+                          data-testid="constraint-overall-badge"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-dashed border-rose-400/60"
+                        >
+                          <AlertTriangle className="w-3 h-3 stroke-[2.5]" />
+                          <span>Bypass Found</span>
+                        </span>
+                      )}
+                      <span
+                        data-testid="constraint-total-ms"
+                        className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700"
+                      >
+                        {constraintReport.elapsedMs.toFixed(1)} ms
+                      </span>
+                    </div>
+
+                    {isDevProofsOpen ? (
+                      <ChevronUp className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                    )}
+                  </button>
+
+                  {isDevProofsOpen && (
+                    <div
+                      id="dev-constraint-proofs-panel"
+                      data-testid="dev-constraint-proofs-panel"
+                      className="p-4 pt-2 border-t border-slate-800/80 space-y-2.5"
+                    >
+                      {/* Positive Invariant Checks */}
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span
+                          data-testid="constraint-reference-badge"
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold border ${
+                            constraintReport.referenceCheck.passed
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border-dashed border-rose-400/50'
+                          }`}
+                        >
+                          {constraintReport.referenceCheck.passed ? (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          ) : (
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                          )}
+                          <span>
+                            Ref Solution: {constraintReport.referenceCheck.blockCount}
+                            {constraintReport.slotCap !== undefined
+                              ? `/${constraintReport.slotCap}`
+                              : ''}{' '}
+                            slots
+                          </span>
+                        </span>
+
+                        {constraintReport.scaffoldCheck.applicable && (
+                          <span
+                            data-testid="constraint-scaffold-badge"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold border ${
+                              constraintReport.scaffoldCheck.passed
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border-dashed border-rose-400/50'
+                            }`}
+                          >
+                            {constraintReport.scaffoldCheck.passed ? (
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            ) : (
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                            )}
+                            <span>
+                              ? Scaffold ({constraintReport.scaffoldCheck.placeholderCount} ?)
+                            </span>
+                          </span>
+                        )}
+                      </div>
+
+                      {!constraintReport.referenceCheck.passed &&
+                        constraintReport.referenceCheck.reason && (
+                          <div className="p-2.5 rounded-xl bg-rose-950/60 border border-dashed border-rose-400/50 text-xs text-rose-200 font-semibold">
+                            Reference Error: {constraintReport.referenceCheck.reason}
+                          </div>
+                        )}
+
+                      {/* Anti-Bypass Rule Proofs */}
+                      <div className="space-y-2">
+                        {constraintReport.ruleResults.map((ruleRes) => (
+                          <div
+                            key={ruleRes.ruleId}
+                            data-testid={`constraint-rule-${ruleRes.ruleId}`}
+                            data-rule-passed={String(ruleRes.passed)}
+                            className={`p-3 rounded-xl border space-y-2 ${
+                              ruleRes.passed
+                                ? 'bg-slate-900/90 border-slate-800'
+                                : 'bg-rose-950/40 border-dashed border-rose-500/60'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                {ruleRes.passed ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                    <span>PASS</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-black uppercase bg-rose-500/25 text-rose-200 border border-dashed border-rose-400/60">
+                                    <AlertTriangle className="w-3 h-3 stroke-[2.5]" />
+                                    <span>FAIL</span>
+                                  </span>
+                                )}
+                                <span className="text-xs font-bold text-slate-200">
+                                  {ruleRes.description}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400">
+                                {ruleRes.minWinningBlocks !== null && (
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300">
+                                    min: {ruleRes.minWinningBlocks} blk
+                                  </span>
+                                )}
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700">
+                                  {ruleRes.elapsedMs.toFixed(1)} ms
+                                </span>
+                              </div>
+                            </div>
+
+                            {ruleRes.diagnostic && (
+                              <div className="text-[11px] text-slate-400">
+                                {ruleRes.diagnostic}
+                              </div>
+                            )}
+
+                            {!ruleRes.passed && ruleRes.formattedCounterexample && (
+                              <div
+                                data-testid="constraint-counterexample"
+                                className="p-2.5 rounded-lg bg-slate-950/90 border border-rose-500/40 space-y-2"
+                              >
+                                <div className="text-[11px] font-bold text-rose-300">
+                                  Offending Bypass Counterexample:{' '}
+                                  <code className="font-mono text-rose-100">
+                                    {ruleRes.formattedCounterexample}
+                                  </code>
+                                </div>
+                                {ruleRes.counterexampleWorkspace?.MAIN &&
+                                  ruleRes.counterexampleWorkspace.MAIN.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {ruleRes.counterexampleWorkspace.MAIN.map((blk, bIdx) =>
+                                        renderBlockMini(blk, bIdx)
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
