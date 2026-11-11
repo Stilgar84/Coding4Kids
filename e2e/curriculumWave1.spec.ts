@@ -21,10 +21,12 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await expect(page.getByTestId('grid-slot-ghost-preview')).toBeAttached();
     await expect(page.getByTestId('grid-slot-demo-spotlights')).toBeAttached();
 
-    // Switch to Learn mode -> loads Activity 1.1 (4 × 3)
+    // Switch to Learn mode -> loads canonical first Module 1 Activity 1.0, then switch to 1.1 (4 × 3)
     await learnBtn.click();
     await expect(learnBtn).toHaveAttribute('aria-pressed', 'true');
     await expect(sandboxBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('mode-status-announcer')).toContainText('1.0');
+    await page.getByTestId('btn-activity-1.1').click();
     await expect(page.getByTestId('mode-status-announcer')).toContainText('1.1');
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('4 × 3');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
@@ -114,7 +116,8 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await page.keyboard.press('Enter');
     await expect(learnBtn).toHaveAttribute('aria-pressed', 'true');
 
-    // Open Solution modal and close with Escape
+    // Select validated puzzle 1.1, open Solution modal and close with Escape
+    await page.getByTestId('btn-activity-1.1').click();
     await page.getByTestId('btn-solution').click();
     await expect(page.getByTestId('solution-modal')).toBeVisible();
     await page.keyboard.press('Escape');
