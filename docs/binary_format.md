@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-This document specifies the compact binary format (`FORMAT_VERSION = 1`) for serializing RobotEmu programs (code workspace), environment states (such as Grid world layouts), and standalone curriculum lesson attempts.
+This document specifies the compact binary format (`FORMAT_VERSION = 1`) for serializing RobotEmu programs (code workspace), environment states (such as Grid world layouts), standalone curriculum lesson attempts, and whole-profile player backups (`ENV_ID_PROFILE = 0x06`).
 
 The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §5, characters `A-Z`, `a-z`, `0-9`, `-`, `_`, no padding `=`). No external text prefixes (like `rb1:`) are used; format versioning and payload deduction are resolved internally by the first three bytes of the binary payload.
 
@@ -23,8 +23,8 @@ The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation Environment ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`+: Reserved for future environments (e.g., `0x05` = `switchyard` in Module 5) |
-| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1` or `2` for `grid`; `1` for `turtle` and `beat`). Governs env-specific opcode mapping and env state layout. |
+| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`+: Reserved for future environments |
+| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1` or `2` for `grid`; `1` for `turtle`, `beat`, and `profile`). Governs env-specific opcode mapping and payload layout. |
 
 > **Environment State Deduction:**
 > For `envId = 0x01` (`grid`), the Grid map payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
@@ -44,19 +44,58 @@ Used when exporting or sharing a curriculum attempt as a self-contained Base64UR
 - `lessonIdLen` (`VLE`, `> 0`) + `lessonId` (`UTF-8` bytes): Canonical activity ID (e.g., `"1.2"`, `"2A"`, `"3A"`, `"3C"`).
 - `lessonVersion` (`VLE`, `≥ 1`): Integer version of the curriculum activity definition against which the attempt was authored (`getActivityAtVersion(lessonId, lessonVersion)` reconstructs the matching map/palette).
 
-### 2.3 Local Storage Dual-Path (`SavedProgramEntry` JSON vs. `ENV_ID_LESSON = 0x04`)
+### 2.3 Whole-Profile Backup Envelope (`ENV_ID_PROFILE = 0x06`, `ENV_VERSION_PROFILE = 1`) & Local Storage Dual-Path
 
-Curriculum attempts support two complementary, lossless representations sharing the exact same inner `writeCodeScopes` / `readCodeScopes` payload:
+Curriculum attempts support complementary, lossless representations sharing the exact same inner `writeCodeScopes` / `readCodeScopes` payload:
 1. **Local Storage Code-Only Path (`robotemu_saved_programs`):** `SavedProgramEntry` JSON records store `{ profileId, lessonId, lessonVersion, simId, code, ... }`, where `code` is a §2.1 code-only Base64URL stream (`envId = 0x00` for Grid, `0x02` for Turtle, `0x03` for Beat). Legacy v1 entries missing `profileId` migrate non-destructively to `'default'`.
 2. **Standalone Share String Path (`ENV_ID_LESSON = 0x04`):** Embeds `(innerEnvByte, lessonId, lessonVersion)` directly inside the binary header (§2.2) so a single copied Base64URL string or QR code restores both the curriculum activity context and all code scopes without external JSON metadata.
+3. **Whole-Profile Backup Envelope (`ENV_ID_PROFILE = 0x06`):** Packs an entire student profile—identity, curriculum progress, lesson/sandbox autosaves, and manual save slots—into a single QR-friendly binary stream (`Base64URL` prefix `AQYB...`; legacy `ROBOTEMU_PROFILE_BACKUP` v1 JSON remains accepted on import):
+
+```
++--------------------------------------------------------------------------------------------------------+
+| Header: 0x01 | 0x06 | 0x01 (3B)                                                                        |
+| Identity: avatarColorByte (1B) | nameLen (VLE) + UTF-8 | exportedAtSec (VLE) | createdAtDelta (ZigZag) |
+| Progress: progressFlags (1B) | [gated completions, module masks, badges, earnedMedals]                 |
+| Saves: saveRecordCount (VLE) | ... Framed Save Records [recordHeader | short meta | binary payload] ...|
++--------------------------------------------------------------------------------------------------------+
+```
+
+#### 2.3.1 Profile Identity
+- `avatarColorByte: uint8`: `(colorIdx << 4) | avatarIdx` (`avatarIdx` `0..7`, `colorIdx` `0..5`; unknown future indices fall back to `'robot'` / `'sky'`).
+- `name`: `nameByteLen: VLE` + UTF-8 nickname (`0..24` UTF-16 code units, truncated cleanly on codepoint boundaries).
+- `exportedAtSec: VLE`: Export Unix timestamp in whole seconds (`Math.floor(exportedAt / 1000)`).
+- `createdAtDelta: ZigZag VLE`: Signed offset `createdAtSec - exportedAtSec`.
+
+#### 2.3.2 Compact Lesson Identifier (`CompactLessonId`)
+- `0x80..0xFD` (**1 byte**): Canonical Modules `1..9` × 14 sub-codes (`0..10` for numbered lessons `M.0`–`M.10`, `11..13` for capstones `MA`–`MC`): `0x80 + (moduleNum - 1) * 14 + subCode`.
+- `0xFE` (**2 bytes**): Canonical Mastery Challenges `C1.1`–`C16.16`: `[0xFE, ((modNum - 1) << 4) | (chalNum - 1)]`.
+- `0x01..0x7F`: Short UTF-8 lesson ID (`tag = utf8Len` `1..127` + UTF-8 bytes).
+- `0x00`: Long (`>= 128` bytes) or empty UTF-8 escape: `[0x00, utf8Len: VLE, ...utf8Bytes]`. (`0xFF` reserved.)
+
+#### 2.3.3 Compact Curriculum Progress (`progressFlags: uint8`)
+- `bit 0 (0x01)`: `unlockAllModules === true`.
+- `bit 1 (0x02)`: `hasV1Completions` -> `v1Count: VLE` + `v1Count × CompactLessonId` (hydrates `completedAt = exportedAt`, `version = 1`).
+- `bit 2 (0x04)`: `hasVersionedCompletions` -> `verCount: VLE` + `verCount × (CompactLessonId + version: VLE)` (`version > 1`).
+- `bit 3 (0x08)`: `hasNonDefaultModuleUnlocks` -> `moduleUnlockMask: VLE` (bit `k - 1` for `/^module-([1-9]|[1-4][0-9])$/`) + `extraUnlockedCount: VLE` + UTF-8 strings (`bit 3 == 0` implies default `['module-1']` in 0 bytes).
+- `bit 4 (0x10)`: `hasBadges` -> `moduleBadgeMask: VLE` (bit `k - 1` for `/^badge-module-([1-9]|[1-4][0-9])$/`) + `extraBadgeCount: VLE` + UTF-8 strings.
+- `bit 5 (0x20)`: `hasEarnedMedals` -> `medalCount: VLE` + UTF-8 strings (forward-compatible hook for Module 6 Mastery Challenge medals).
+- `bits 7..6`: Reserved (`0`).
+
+#### 2.3.4 Framed Save Records (`saveRecordCount: VLE`)
+Each record begins with `recordHeader: uint8` (`bits 1..0 = entryKind`):
+- **`entryKind = 0` (Lesson Autosave):** `b2`=`lessonVer > 1`, `b3`=`updatedAt > 0`, `b4`=`isEmptyWorkspace`, `b7..b5`=`0`; followed by `CompactLessonId`, `[lessonVer: VLE]`, `[updatedAtDelta: ZigZag VLE]`, and (`0B` if `isEmptyWorkspace`, else `payloadLen: VLE` + §2.1 code-only binary stream).
+- **`entryKind = 1` (Sandbox Autosave):** `b4..b2`=`simCode` (`0`=grid, `1`=turtle, `2`=beat, `3`=switchyard, `7`=UTF-8 string), `b5`=`updatedAt > 0`, `b6`=`isEmptyWorkspace`, `b7`=`0`; followed by `[customSimId]`, `[updatedAtDelta: ZigZag VLE]`, and (`0B` if `isEmptyWorkspace`, else `payloadLen: VLE` + §2.1 code-only binary stream).
+- **`entryKind = 2` (Manual Lesson Save):** `b3..b2`=`status` (`0`=`IDLE`, `1`=`SUCCESS`, `2`=`COLLISION`, `3`=`PAUSED`), `b4`=`hasCustomTitle`, `b5`=`lessonVer > 1`, `b6`=`slotNotOne`, `b7`=`hasExtraFlags`; followed by `CompactLessonId`, `[extraFlags: uint8 (b0=noSlotIndex, b1=hasLevelId, b2=hasExplicitSimId, b3=isRawUtf8Code)]`, `[slotIndex: VLE (if slotNotOne && !noSlotIndex)]`, `[lessonVer: VLE]`, `[title]`, `[levelId: VLE]`, `[simCode]`, `stepCount: VLE`, `createdAtDelta: ZigZag VLE`, and `payloadLen: VLE` + raw original `entry.code` bytes (`simId` deduced from `payload[1]` unless `hasExplicitSimId == 1`; non-canonical strings preserved losslessly via `isRawUtf8Code == 1`).
+- **`entryKind = 3` (Manual Sandbox Save):** `b3..b2`=`status` (`0..3`), `b4`=`hasCustomTitle`, `b5`=`hasLevelId`, `b6`=`0`, `b7`=`hasExtraFlags`; followed by `[extraFlags: uint8 (b0=hasSlotIndex, b1=hasExplicitSimId, b2=isRawUtf8Code)]`, `[slotIndex: VLE]`, `[levelId: VLE]`, `[title]`, `[simCode]`, `stepCount: VLE`, `createdAtDelta: ZigZag VLE`, and `payloadLen: VLE` + raw original `entry.code` bytes (preserving embedded Grid v1/v2 maps).
 
 ---
 
-## 3. Variable-Length Encoding (VLE / LEB128) & Variable Indices
+## 3. Variable-Length Encoding (VLE / ZigZag VLE) & Variable Indices
 
-- **Unsigned VLE (LEB128):** Counts, lengths, coordinates, angles, radii, and hint categories use standard 7-bit continuation LEB128:
+- **Unsigned VLE (LEB128, up to 53-bit `Number.MAX_SAFE_INTEGER`):** Counts, lengths, Unix timestamps, module bitmasks, coordinates, angles, radii, and hint categories use 7-bit continuation LEB128 accumulated via safe power-of-128 arithmetic up to $2^{53} - 1$ (throwing on overflow if `shift >= 56` or value exceeds `Number.MAX_SAFE_INTEGER`):
   - Values $V < 128$: single byte `V` (`bit 7 = 0`).
-  - Values $V \ge 128$: byte is `(V & 0x7F) | 0x80`, followed by remaining bits shifted right by 7.
+  - Values $V \ge 128$: byte is `(V % 128) | 0x80`, followed by `Math.floor(V / 128)`.
+- **Signed ZigZag VLE (`writeSignedVLE` / `readSignedVLE`):** Signed timestamp deltas and offsets map signed integers to small non-negative integers via float-safe ZigZag encoding ($s \ge 0 \mapsto 2s$, $s < 0 \mapsto -2s - 1$, normalizing `-0` to `0`) before encoding as unsigned VLE.
 - **Variable Index (`varIdx: uint8`):** Single-letter variable names `'a'..'z'` encode as 1 byte `0..25` (`'a' = 0`, `'b' = 1`, ..., `'z' = 25`).
 
 ---

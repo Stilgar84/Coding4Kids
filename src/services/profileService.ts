@@ -13,6 +13,14 @@ import {
   replaceSavedProgramsForProfile,
   setStorageItem,
 } from './localSaveService';
+import { base64URLToUint8Array } from '../engine/serialization/binaryReader';
+import { uint8ArrayToBase64URL } from '../engine/serialization/binaryWriter';
+import {
+  deserializeProfileBackupFromBinary,
+  isBinaryProfileBackupBytes,
+  serializeProfileBackupToBinary,
+} from '../engine/serialization/profileSerializer';
+import { ENV_ID_PROFILE, FORMAT_VERSION } from '../engine/serialization/types';
 
 export const PROFILES_STORAGE_KEY = 'robotemu_profiles_v1';
 export const LESSON_AUTOSAVE_STORAGE_KEY = 'robotemu_lesson_autosave_v1';
@@ -159,6 +167,7 @@ export interface ProfileCurriculumProgress {
   unlockedModules: string[];
   earnedBadges: string[];
   unlockAllModules?: boolean;
+  earnedMedals?: string[];
 }
 
 export interface CurriculumProgressStoreV1 {
@@ -201,6 +210,17 @@ function createDefaultProfile(now: number = Date.now()): UserProfile {
   };
 }
 
+function sliceProfileNameSafe(raw: string, maxCodeUnits = 24): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= maxCodeUnits) return trimmed;
+  let sliced = trimmed.slice(0, maxCodeUnits);
+  const lastCode = sliced.charCodeAt(sliced.length - 1);
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    sliced = sliced.slice(0, -1);
+  }
+  return sliced;
+}
+
 function sanitizeProfile(raw: unknown, fallbackNow: number = Date.now()): UserProfile | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
@@ -222,7 +242,7 @@ function sanitizeProfile(raw: unknown, fallbackNow: number = Date.now()): UserPr
       ? obj.accentColor.trim()
       : colorOpt.accentColor;
 
-  const name = typeof obj.name === 'string' ? obj.name.trim().slice(0, 24) : '';
+  const name = typeof obj.name === 'string' ? sliceProfileNameSafe(obj.name) : '';
   const createdAt = typeof obj.createdAt === 'number' ? obj.createdAt : fallbackNow;
 
   return {
@@ -370,7 +390,7 @@ export function createProfile(input: CreateProfileInput, now: number = Date.now(
   }
 
   const colorOption = getProfileColor(chosenColorId);
-  const trimmedName = typeof input.name === 'string' ? input.name.trim().slice(0, 24) : '';
+  const trimmedName = typeof input.name === 'string' ? sliceProfileNameSafe(input.name) : '';
   const id = `profile_${now}_${Math.random().toString(36).substring(2, 7)}`;
 
   const newProfile: UserProfile = {
@@ -406,7 +426,7 @@ export function updateProfile(
     ? getProfileColor(updates.colorId)
     : getProfileColor(existing.colorId);
   const nextName =
-    updates.name !== undefined ? updates.name.trim().slice(0, 24) : existing.name;
+    updates.name !== undefined ? sliceProfileNameSafe(updates.name) : existing.name;
 
   const updated: UserProfile = {
     ...existing,
@@ -726,6 +746,15 @@ function sanitizeProgress(raw: unknown): ProfileCurriculumProgress {
     }
   }
 
+  const medalSet = new Set<string>();
+  if (Array.isArray(obj.earnedMedals)) {
+    for (const m of obj.earnedMedals) {
+      if (typeof m === 'string' && m.trim()) {
+        medalSet.add(m.trim());
+      }
+    }
+  }
+
   const unlockAllModules = obj.unlockAllModules === true;
 
   return {
@@ -733,6 +762,7 @@ function sanitizeProgress(raw: unknown): ProfileCurriculumProgress {
     unlockedModules: Array.from(unlockedSet),
     earnedBadges: Array.from(badgeSet),
     unlockAllModules,
+    ...(medalSet.size > 0 ? { earnedMedals: Array.from(medalSet) } : {}),
   };
 }
 
@@ -835,6 +865,9 @@ export function markLessonCompleted(
     unlockedModules: Array.from(unlockedSet),
     earnedBadges: Array.from(badgeSet),
     unlockAllModules: Boolean(current.unlockAllModules),
+    ...(current.earnedMedals && current.earnedMedals.length > 0
+      ? { earnedMedals: [...current.earnedMedals] }
+      : {}),
   };
 
   store.profiles[targetProfileId] = updated;
@@ -948,7 +981,6 @@ export interface ImportProfileBackupResult {
   error?: string;
 }
 
-const backupUtf8Encoder = new TextEncoder();
 const backupUtf8Decoder = new TextDecoder();
 
 function sanitizeAutosaveBundle(raw: unknown): ProfileAutosaveData {
@@ -1037,81 +1069,98 @@ export function exportProfileBackup(
 }
 
 /**
- * Serializes a whole-profile backup to formatted UTF-8 JSON text (suitable for `.json` download or clipboard).
+ * Serializes a whole-profile backup to compact binary (`ENV_ID_PROFILE = 0x06`, `profileVersion = 1`).
+ */
+export function exportProfileBackupToBinary(
+  profileId?: string,
+  options?: { now?: number }
+): Uint8Array {
+  const envelope = exportProfileBackup(profileId, {
+    stripScreenshots: true,
+    now: options?.now,
+  });
+  return serializeProfileBackupToBinary(envelope);
+}
+
+/**
+ * Serializes a whole-profile backup to a compact Base64URL string (`ENV_ID_PROFILE = 0x06`).
+ */
+export function exportProfileBackupToString(
+  profileId?: string,
+  options?: { now?: number }
+): string {
+  return uint8ArrayToBase64URL(exportProfileBackupToBinary(profileId, options));
+}
+
+/**
+ * Serializes a whole-profile backup to formatted UTF-8 JSON text (kept for legacy backward-compatibility tests).
  */
 export function exportProfileBackupToJson(profileId?: string): string {
   return JSON.stringify(exportProfileBackup(profileId), null, 2);
 }
 
 /**
- * Serializes a compact QR-ready UTF-8 byte payload for a whole-profile backup (omitting bulky SVG
- * thumbnails so an entire profile fits comfortably inside `REQR` QR code chunks).
+ * Serializes a compact QR-ready binary payload (`ENV_ID_PROFILE = 0x06`) for a whole-profile backup.
  */
 export function exportProfileBackupToQrBytes(profileId?: string): Uint8Array {
-  const compactJson = JSON.stringify(exportProfileBackup(profileId, { stripScreenshots: true }));
-  return backupUtf8Encoder.encode(compactJson);
+  return exportProfileBackupToBinary(profileId);
+}
+
+function isBase64UrlProfileBackupString(trimmed: string): boolean {
+  if (!trimmed || trimmed.startsWith('{')) return false;
+  try {
+    const bytes = base64URLToUint8Array(trimmed);
+    return isBinaryProfileBackupBytes(bytes);
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Detects whether a pasted string or scanned QR `Uint8Array` represents a `ROBOTEMU_PROFILE_BACKUP`
- * envelope (as opposed to a binary `FORMAT_VERSION = 1` program payload).
+ * Detects whether a pasted string, scanned QR `Uint8Array`, or parsed object represents a whole-profile
+ * backup (`ENV_ID_PROFILE = 0x06` binary / Base64URL or legacy `ROBOTEMU_PROFILE_BACKUP` JSON),
+ * as opposed to a single-level program share payload.
  */
-export function isProfileBackupPayload(input: string | Uint8Array): boolean {
+export function isProfileBackupPayload(input: unknown): boolean {
   if (typeof input === 'string') {
-    const trimmed = input.trim();
-    return trimmed.startsWith('{') && trimmed.includes(PROFILE_BACKUP_MAGIC);
-  }
-  if (input instanceof Uint8Array && input.length > 2) {
-    let i = 0;
-    while (
-      i < input.length &&
-      (input[i] === 0x20 || input[i] === 0x09 || input[i] === 0x0a || input[i] === 0x0d)
-    ) {
-      i++;
+    const trimmed = input.replace(/^\uFEFF/, '').trim();
+    if (!trimmed) return false;
+    if (trimmed.startsWith('{')) {
+      return trimmed.includes(PROFILE_BACKUP_MAGIC);
     }
-    if (i >= input.length || input[i] !== 0x7b) {
+    return isBase64UrlProfileBackupString(trimmed);
+  }
+
+  if (input instanceof Uint8Array) {
+    if (input.length < 3) return false;
+    if (isBinaryProfileBackupBytes(input)) {
+      return true;
+    }
+    if (input[0] === FORMAT_VERSION) {
       return false;
     }
     try {
-      const text = backupUtf8Decoder.decode(input);
-      return text.includes(PROFILE_BACKUP_MAGIC);
+      const text = backupUtf8Decoder.decode(input).replace(/^\uFEFF/, '').trim();
+      if (!text) return false;
+      if (text.startsWith('{')) {
+        return text.includes(PROFILE_BACKUP_MAGIC);
+      }
+      return isBase64UrlProfileBackupString(text);
     } catch {
       return false;
     }
   }
+
+  if (input && typeof input === 'object') {
+    return (input as Record<string, unknown>).type === PROFILE_BACKUP_MAGIC;
+  }
+
   return false;
 }
 
-/**
- * Parses and validates a `ProfileBackupEnvelopeV1` from an object, JSON string, or UTF-8 `Uint8Array`.
- */
-export function parseProfileBackup(
-  input: ProfileBackupEnvelopeV1 | string | Uint8Array
+function normalizeProfileBackupEnvelope(
+  rawObj: unknown
 ): { success: true; backup: ProfileBackupEnvelopeV1 } | { success: false; error: string } {
-  let rawObj: unknown = input;
-
-  if (input instanceof Uint8Array) {
-    if (input.length === 0) {
-      return { success: false, error: 'Empty profile backup payload.' };
-    }
-    try {
-      const decoded = backupUtf8Decoder.decode(input).trim();
-      rawObj = JSON.parse(decoded);
-    } catch {
-      return { success: false, error: 'Invalid UTF-8 or JSON in profile backup.' };
-    }
-  } else if (typeof input === 'string') {
-    const trimmed = input.trim();
-    if (!trimmed) {
-      return { success: false, error: 'Empty profile backup string.' };
-    }
-    try {
-      rawObj = JSON.parse(trimmed);
-    } catch {
-      return { success: false, error: 'Invalid JSON in profile backup.' };
-    }
-  }
-
   if (!rawObj || typeof rawObj !== 'object') {
     return { success: false, error: 'Invalid profile backup format.' };
   }
@@ -1142,7 +1191,7 @@ export function parseProfileBackup(
       ? (rawProfile.colorId as ProfileColorId)
       : 'sky';
   const colorOpt = getProfileColor(colorId);
-  const name = typeof rawProfile.name === 'string' ? rawProfile.name.trim().slice(0, 24) : '';
+  const name = typeof rawProfile.name === 'string' ? sliceProfileNameSafe(rawProfile.name) : '';
   const createdAt = typeof rawProfile.createdAt === 'number' ? rawProfile.createdAt : Date.now();
 
   const progress = sanitizeProgress(obj.progress);
@@ -1178,6 +1227,100 @@ export function parseProfileBackup(
       savedPrograms,
     },
   };
+}
+
+function parseBinaryOrBase64ProfileString(
+  trimmed: string
+): { success: true; backup: ProfileBackupEnvelopeV1 } | { success: false; error: string } {
+  let bytes: Uint8Array;
+  try {
+    bytes = base64URLToUint8Array(trimmed);
+  } catch {
+    return { success: false, error: 'Invalid profile backup code.' };
+  }
+
+  if (bytes.length < 3) {
+    return { success: false, error: 'Profile backup code is too short.' };
+  }
+
+  if (bytes[0] !== FORMAT_VERSION || bytes[1] !== ENV_ID_PROFILE) {
+    return { success: false, error: 'Not a valid Robot Emulator profile backup file.' };
+  }
+
+  try {
+    const deserialized = deserializeProfileBackupFromBinary(bytes);
+    return normalizeProfileBackupEnvelope(deserialized);
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Failed to decode binary profile backup.',
+    };
+  }
+}
+
+/**
+ * Parses and validates a `ProfileBackupEnvelopeV1` from compact binary `Uint8Array`,
+ * compact `Base64URL` string, legacy `ROBOTEMU_PROFILE_BACKUP` JSON string/bytes, or object.
+ */
+export function parseProfileBackup(
+  input: unknown
+): { success: true; backup: ProfileBackupEnvelopeV1 } | { success: false; error: string } {
+  if (input instanceof Uint8Array) {
+    if (input.length === 0) {
+      return { success: false, error: 'Empty profile backup payload.' };
+    }
+
+    if (isBinaryProfileBackupBytes(input)) {
+      try {
+        const deserialized = deserializeProfileBackupFromBinary(input);
+        return normalizeProfileBackupEnvelope(deserialized);
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err?.message || 'Failed to decode binary profile backup.',
+        };
+      }
+    }
+
+    if (input[0] === FORMAT_VERSION) {
+      return {
+        success: false,
+        error: 'Not a valid Robot Emulator profile backup file.',
+      };
+    }
+
+    try {
+      const decodedText = backupUtf8Decoder.decode(input).replace(/^\uFEFF/, '').trim();
+      if (!decodedText) {
+        return { success: false, error: 'Empty profile backup payload.' };
+      }
+      if (decodedText.startsWith('{')) {
+        const parsedJson = JSON.parse(decodedText);
+        return normalizeProfileBackupEnvelope(parsedJson);
+      }
+      return parseBinaryOrBase64ProfileString(decodedText);
+    } catch {
+      return { success: false, error: 'Invalid UTF-8 or JSON in profile backup.' };
+    }
+  }
+
+  if (typeof input === 'string') {
+    const trimmed = input.replace(/^\uFEFF/, '').trim();
+    if (!trimmed) {
+      return { success: false, error: 'Empty profile backup string.' };
+    }
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsedJson = JSON.parse(trimmed);
+        return normalizeProfileBackupEnvelope(parsedJson);
+      } catch {
+        return { success: false, error: 'Invalid JSON in profile backup.' };
+      }
+    }
+    return parseBinaryOrBase64ProfileString(trimmed);
+  }
+
+  return normalizeProfileBackupEnvelope(input);
 }
 
 /**

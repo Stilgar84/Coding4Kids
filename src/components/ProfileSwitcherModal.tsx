@@ -7,12 +7,15 @@ import {
   ProfileAvatarId,
   ProfileBackupImportMode,
   ProfileColorId,
-  exportProfileBackupToJson,
+  exportProfileBackupToString,
   getProfileAvatar,
   getProfileColor,
   getProfileDisplayName,
   getProfileProgress,
+  isProfileBackupPayload,
 } from '../services/profileService';
+import { uint8ArrayToBase64URL } from '../engine/serialization/binaryWriter';
+import { isBinaryProfileBackupBytes } from '../engine/serialization/profileSerializer';
 import {
   AlertCircle,
   Award,
@@ -150,9 +153,9 @@ export const ProfileSwitcherModal: React.FC = () => {
     : 'Player 1';
 
   const handleCopyBackup = async () => {
-    const json = exportProfileBackupToJson(activeProfileId);
+    const backupCode = exportProfileBackupToString(activeProfileId);
     try {
-      await navigator.clipboard.writeText(json);
+      await navigator.clipboard.writeText(backupCode);
     } catch {
       // Fallback in restricted environments
     }
@@ -165,17 +168,17 @@ export const ProfileSwitcherModal: React.FC = () => {
   };
 
   const handleDownloadBackup = () => {
-    const json = exportProfileBackupToJson(activeProfileId);
+    const backupCode = exportProfileBackupToString(activeProfileId);
     const safeSlug =
       activeDisplayName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') || 'player';
-    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const blob = new Blob([backupCode], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `robotemu-profile-${safeSlug}.json`;
+    a.download = `robotemu-profile-${safeSlug}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -191,18 +194,29 @@ export const ProfileSwitcherModal: React.FC = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setBackupImportText(reader.result);
-        setBackupStatus({
-          type: 'success',
-          text: `Loaded "${file.name}". Choose New Player or Replace below.`,
-        });
+      if (reader.result instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(reader.result);
+        const decodedText = isBinaryProfileBackupBytes(bytes)
+          ? uint8ArrayToBase64URL(bytes)
+          : new TextDecoder().decode(bytes).replace(/^\uFEFF/, '').trim();
+        setBackupImportText(decodedText);
+        if (isProfileBackupPayload(bytes) || isProfileBackupPayload(decodedText)) {
+          setBackupStatus({
+            type: 'success',
+            text: `Loaded "${file.name}". Choose New Player or Replace below.`,
+          });
+        } else {
+          setBackupStatus({
+            type: 'error',
+            text: `"${file.name}" is not a valid player backup file.`,
+          });
+        }
       }
     };
     reader.onerror = () => {
       setBackupStatus({ type: 'error', text: 'Could not read selected backup file.' });
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -620,7 +634,7 @@ export const ProfileSwitcherModal: React.FC = () => {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".json,application/json"
+                      accept=".txt,.rprof,.bin,.json,text/plain,application/json"
                       data-testid="input-profile-backup-file"
                       onChange={handleFileUpload}
                       className="hidden"

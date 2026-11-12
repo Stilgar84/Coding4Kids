@@ -87,7 +87,9 @@ export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
       ? raw.screenshot.trim()
       : DEFAULT_FALLBACK_THUMBNAIL;
   const status: SimulationStatus =
-    raw.status === 'SUCCESS' || raw.status === 'COLLISION' ? raw.status : 'IDLE';
+    raw.status === 'SUCCESS' || raw.status === 'COLLISION' || raw.status === 'PAUSED'
+      ? raw.status
+      : 'IDLE';
   const stepCount = typeof raw.stepCount === 'number' ? raw.stepCount : 0;
   const levelId = typeof raw.levelId === 'number' ? raw.levelId : undefined;
   const profileId =

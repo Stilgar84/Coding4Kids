@@ -9,6 +9,7 @@ export const ENV_VERSION_GRID = 1;
 export const ENV_VERSION_GRID_V2 = 2;
 export const ENV_VERSION_TURTLE = 1;
 export const ENV_VERSION_BEAT = 1;
+export const ENV_VERSION_PROFILE = 1;
 
 // Environment IDs
 export const ENV_ID_GENERIC = 0x00;
@@ -16,6 +17,8 @@ export const ENV_ID_GRID = 0x01;
 export const ENV_ID_TURTLE = 0x02;
 export const ENV_ID_BEAT = 0x03;
 export const ENV_ID_LESSON = 0x04;
+// 0x05 is reserved for Module 5 Switchyard ('switchyard')
+export const ENV_ID_PROFILE = 0x06;
 
 export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat';
 export type EnvIdName = InnerLessonEnvIdName | 'lesson';

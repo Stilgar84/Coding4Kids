@@ -106,25 +106,37 @@ export class BinaryReader {
   }
 
   /**
-   * Reads an unsigned integer encoded with 7-bit continuation VLE (LEB128).
+   * Reads an unsigned integer encoded with 7-bit continuation VLE (LEB128)
+   * up to Number.MAX_SAFE_INTEGER (2^53 - 1).
    */
   readVLE(): number {
     let result = 0;
     let shift = 0;
+    let multiplier = 1;
     while (true) {
       if (this.offset >= this.buffer.length) {
         throw new Error(`Unexpected end of data reading VLE at offset ${this.offset}`);
       }
       const byte = this.readUint8();
-      result |= (byte & 0x7f) << shift;
-      if ((byte & 0x80) === 0) {
-        return result >>> 0;
-      }
-      shift += 7;
-      if (shift > 35) {
+      const next = result + (byte & 0x7f) * multiplier;
+      if (shift >= 56 || next > Number.MAX_SAFE_INTEGER) {
         throw new Error(`VLE integer overflow at offset ${this.offset}`);
       }
+      result = next;
+      if ((byte & 0x80) === 0) {
+        return result;
+      }
+      shift += 7;
+      multiplier *= 128;
     }
+  }
+
+  /**
+   * Reads a ZigZag-encoded signed integer using safe float arithmetic.
+   */
+  readSignedVLE(): number {
+    const u = this.readVLE();
+    return u % 2 === 0 ? u / 2 : -((u + 1) / 2);
   }
 
   /**

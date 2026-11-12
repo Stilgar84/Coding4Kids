@@ -3,14 +3,16 @@ import QRCode from 'qrcode';
 import { useAppStore } from '../store/useAppStore';
 import {
   ProfileBackupImportMode,
-  exportProfileBackupToJson,
   exportProfileBackupToQrBytes,
+  exportProfileBackupToString,
   getProfileAvatar,
   getProfileDisplayName,
   getProfileProgress,
   isProfileBackupPayload,
 } from '../services/profileService';
 import { getSavedPrograms } from '../services/localSaveService';
+import { uint8ArrayToBase64URL } from '../engine/serialization/binaryWriter';
+import { isBinaryProfileBackupBytes } from '../engine/serialization/profileSerializer';
 import { splitIntoQrChunks } from '../engine/serialization/qrChunker';
 import {
   X,
@@ -120,10 +122,26 @@ export const ExportImportModal: React.FC = () => {
 
   const binaryPayload = useMemo(() => {
     if (!isExportImportOpen) return new Uint8Array(0);
-    return shareScope === 'profile'
-      ? exportProfileBackupToQrBytes(activeProfileId)
-      : exportBinary(includeMap);
+    try {
+      return shareScope === 'profile'
+        ? exportProfileBackupToQrBytes(activeProfileId)
+        : exportBinary(includeMap);
+    } catch {
+      return new Uint8Array(0);
+    }
   }, [isExportImportOpen, shareScope, activeProfileId, includeMap, exportBinary]);
+
+  const exportedString = useMemo(() => {
+    if (!isExportImportOpen) return '';
+    if (shareScope === 'profile') {
+      return binaryPayload.length > 0 ? uint8ArrayToBase64URL(binaryPayload) : '';
+    }
+    try {
+      return exportCode(includeMap);
+    } catch {
+      return '';
+    }
+  }, [isExportImportOpen, shareScope, binaryPayload, includeMap, exportCode]);
 
   const qrChunks = useMemo(() => {
     if (!binaryPayload || binaryPayload.length === 0) return [];
@@ -167,11 +185,6 @@ export const ExportImportModal: React.FC = () => {
     ? getProfileAvatar(activeProfile.avatarId)
     : null;
 
-  const exportedString =
-    shareScope === 'profile'
-      ? exportProfileBackupToJson(activeProfileId)
-      : exportCode(includeMap);
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(exportedString);
@@ -184,17 +197,17 @@ export const ExportImportModal: React.FC = () => {
   };
 
   const handleDownloadProfileJson = () => {
-    const json = exportProfileBackupToJson(activeProfileId);
+    const backupText = exportedString || exportProfileBackupToString(activeProfileId);
     const safeSlug =
       activeProfileName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') || 'player';
-    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const blob = new Blob([backupText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `robotemu-profile-${safeSlug}.json`;
+    a.download = `robotemu-profile-${safeSlug}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -206,20 +219,31 @@ export const ExportImportModal: React.FC = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImportText(reader.result);
-        setShareScope('profile');
-        setTab('import');
-        setStatusMessage({
-          type: 'success',
-          text: `Loaded "${file.name}". Choose New Player or Replace below.`,
-        });
+      if (reader.result instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(reader.result);
+        const decodedText = isBinaryProfileBackupBytes(bytes)
+          ? uint8ArrayToBase64URL(bytes)
+          : new TextDecoder().decode(bytes).replace(/^\uFEFF/, '').trim();
+        setImportText(decodedText);
+        if (isProfileBackupPayload(bytes) || isProfileBackupPayload(decodedText)) {
+          setShareScope('profile');
+          setTab('import');
+          setStatusMessage({
+            type: 'success',
+            text: `Loaded "${file.name}". Choose New Player or Replace below.`,
+          });
+        } else {
+          setStatusMessage({
+            type: 'error',
+            text: `"${file.name}" is not a valid player backup file.`,
+          });
+        }
       }
     };
     reader.onerror = () => {
       setStatusMessage({ type: 'error', text: 'Could not read backup file.' });
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -290,7 +314,9 @@ export const ExportImportModal: React.FC = () => {
     setShowScannerModal(false);
 
     if (isProfileBackupPayload(scannedBinary)) {
-      const decodedText = new TextDecoder().decode(scannedBinary);
+      const decodedText = isBinaryProfileBackupBytes(scannedBinary)
+        ? uint8ArrayToBase64URL(scannedBinary)
+        : new TextDecoder().decode(scannedBinary).replace(/^\uFEFF/, '').trim();
       setShareScope('profile');
       setTab('import');
       setImportText(decodedText);
@@ -736,7 +762,7 @@ export const ExportImportModal: React.FC = () => {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".json,application/json"
+                    accept=".txt,.rprof,.bin,.json,text/plain,application/json"
                     data-testid="input-share-profile-file"
                     onChange={handleFileUpload}
                     className="hidden"

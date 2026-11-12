@@ -66,15 +66,27 @@ export class BinaryWriter {
 
   /**
    * Writes an unsigned integer using 7-bit continuation VLE (LEB128).
-   * Values < 128 consume 1 byte.
+   * Values < 128 consume 1 byte. Supports safe integers up to Number.MAX_SAFE_INTEGER.
    */
   writeVLE(value: number): void {
-    let v = Math.floor(Math.max(0, value));
+    let v = Number.isFinite(value) ? Math.floor(Math.max(0, value)) : 0;
     while (v >= 0x80) {
-      this.writeUint8((v & 0x7f) | 0x80);
+      this.writeUint8((v % 128) | 0x80);
       v = Math.floor(v / 128);
     }
-    this.writeUint8(v & 0x7f);
+    this.writeUint8(v % 128);
+  }
+
+  /**
+   * Writes a signed integer using ZigZag + unsigned VLE encoding:
+   * 0 -> 0, -1 -> 1, 1 -> 2, -2 -> 3, 2 -> 4, ...
+   * Uses safe float arithmetic without 32-bit bitwise shift overflow.
+   */
+  writeSignedVLE(val: number): void {
+    const raw = Number.isFinite(val) ? Math.trunc(val) : 0;
+    const s = raw === 0 ? 0 : raw; // normalize -0 to 0
+    const u = s >= 0 ? s * 2 : (-s) * 2 - 1;
+    this.writeVLE(u);
   }
 
   /**

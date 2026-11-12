@@ -16,8 +16,10 @@ import {
   awardBadgeForProfile,
   ensureProfilesInitialized,
   exportProfileBackup,
+  exportProfileBackupToBinary,
   exportProfileBackupToJson,
   exportProfileBackupToQrBytes,
+  exportProfileBackupToString,
   getLessonAutosave,
   getProfileProgress,
   getProfiles,
@@ -461,19 +463,27 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       });
 
       const backupJson = exportProfileBackupToJson(leo.id);
+      const backupBinary = exportProfileBackupToBinary(leo.id);
+      const backupString = exportProfileBackupToString(leo.id);
       const backupQrBytes = exportProfileBackupToQrBytes(leo.id);
 
+      expect(backupString.startsWith('AQYB')).toBe(true);
+      expect(backupQrBytes.length).toBeLessThan(200);
       expect(isProfileBackupPayload(backupJson)).toBe(true);
+      expect(isProfileBackupPayload(backupBinary)).toBe(true);
+      expect(isProfileBackupPayload(backupString)).toBe(true);
       expect(isProfileBackupPayload(backupQrBytes)).toBe(true);
       expect(isProfileBackupPayload(exportLessonToString(lessonWs, 'grid', '1.2', 1))).toBe(false);
       expect(isProfileBackupPayload(exportLessonToBinary(lessonWs, 'grid', '1.2', 1))).toBe(false);
 
-      const parsed = parseProfileBackup(backupJson);
-      expect(parsed.success).toBe(true);
+      const parsedJson = parseProfileBackup(backupJson);
+      expect(parsedJson.success).toBe(true);
+      const parsedCompact = parseProfileBackup(backupString);
+      expect(parsedCompact.success).toBe(true);
       expect(exportProfileBackup(leo.id).savedPrograms).toHaveLength(1);
 
-      // 1) Import as NEW profile on the SAME browser where Leo still exists
-      const importNewRes = useAppStore.getState().importUserProfileBackup(backupJson, 'new');
+      // 1) Import compact Base64URL string as NEW profile on the SAME browser where Leo still exists
+      const importNewRes = useAppStore.getState().importUserProfileBackup(backupString, 'new');
       expect(importNewRes.success).toBe(true);
       const clonedProfile = importNewRes.profile!;
       expect(clonedProfile.id).not.toBe(leo.id);
@@ -498,6 +508,12 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       expect(clonedSaves).toHaveLength(1);
       expect(clonedSaves[0].id).not.toBe(leoSlot.id);
       expect(clonedSaves[0].slotIndex).toBe(1);
+      expect(clonedSaves[0].code).toBe(leoSlot.code);
+
+      // Legacy v1 JSON backup also continues to import cleanly as NEW profile
+      const legacyImportRes = useAppStore.getState().importUserProfileBackup(backupJson, 'new');
+      expect(legacyImportRes.success).toBe(true);
+      expect(legacyImportRes.profile?.name).toBe('Leo');
 
       // 2) Switch to `'default'` profile, add a dummy save, then REPLACE `'default'` using QR bytes
       useAppStore.getState().switchProfile(DEFAULT_PROFILE_ID);
