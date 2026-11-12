@@ -1208,19 +1208,95 @@ export function checkScaffoldWorkspace(
   };
 }
 
+interface IndexedBlockTransition {
+  /** 0 = RUNNING, 1 = SUCCESS, 2 = COLLISION */
+  statusCode: 0 | 1 | 2;
+  nextStateId: number;
+  executedTicks: number;
+}
+
 /**
  * Memoized single-step & single-block physics transition engine delegating directly
  * to `simEnv.executeAction` so solver transitions match `tickInterpreter` 100%.
+ * Also maintains an exact 1-to-1 integer `stateId` bijection (`baseKey <-> stateId`)
+ * for zero-allocation flat-array transitions inside structural loop search.
  */
 class GridTransitionEvaluator {
   private readonly singleStepCache = new Map<string, SingleStepTransition>();
   private readonly blockCache = new Map<string, ActionBlockTransition>();
+  private readonly stateIdByKey = new Map<string, number>();
+  private readonly gridByStateId: GridState[] = [];
+  private readonly keyByStateId: string[] = [];
+  private indexedStride = 0;
+  private indexedCache: Array<IndexedBlockTransition | undefined> = [];
+
+  public readonly initialStateId: number;
 
   constructor(
     public readonly initialGrid: GridState,
     public readonly initialBaseKey: string,
     private readonly simEnv: SimulationEnvironment<GridState>
-  ) {}
+  ) {
+    this.initialStateId = this.getOrAssignStateId(initialBaseKey, initialGrid);
+  }
+
+  public initIndexedTable(numSpecs: number): void {
+    if (this.indexedStride !== numSpecs) {
+      this.indexedStride = numSpecs;
+      this.indexedCache = [];
+    }
+  }
+
+  public getOrAssignStateId(baseKey: string, grid: GridState): number {
+    const existing = this.stateIdByKey.get(baseKey);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const id = this.gridByStateId.length;
+    this.stateIdByKey.set(baseKey, id);
+    this.gridByStateId.push(grid);
+    this.keyByStateId.push(baseKey);
+    return id;
+  }
+
+  public getGridById(stateId: number): GridState {
+    return this.gridByStateId[stateId];
+  }
+
+  public getKeyById(stateId: number): string {
+    return this.keyByStateId[stateId];
+  }
+
+  public executeBlockById(
+    stateId: number,
+    spec: CandidateActionSpec
+  ): IndexedBlockTransition {
+    const slot = stateId * this.indexedStride + spec.idx;
+    const hit = this.indexedCache[slot];
+    if (hit !== undefined) {
+      return hit;
+    }
+
+    const res = this.executeBlock(
+      this.gridByStateId[stateId],
+      this.keyByStateId[stateId],
+      spec
+    );
+    const statusCode: 0 | 1 | 2 =
+      res.status === 'RUNNING' ? 0 : res.status === 'SUCCESS' ? 1 : 2;
+    const nextStateId =
+      statusCode === 2
+        ? stateId
+        : this.getOrAssignStateId(res.nextBaseKey, res.nextGrid);
+
+    const entry: IndexedBlockTransition = {
+      statusCode,
+      nextStateId,
+      executedTicks: res.executedTicks,
+    };
+    this.indexedCache[slot] = entry;
+    return entry;
+  }
 
   public stepOnce(
     state: GridState,
@@ -1363,23 +1439,49 @@ function isTurnAction(actionType: string): boolean {
   return actionType === 'TURN_LEFT' || actionType === 'TURN_RIGHT';
 }
 
+interface RedundancyContext {
+  canUseRepeatBadges: boolean;
+  maxGridDim: number;
+  /** True when `tracker === null` (no `maxActionExecutions` cap). */
+  noExecTracker?: boolean;
+  /** True when `tracker === null` and all flags on the grid have `isGoal === true` (0 intermediate waypoints). */
+  hasZeroNonGoalFlags?: boolean;
+  /** True when `tracker === null` and every item on the grid (and initial carried item, if any) is a `'crate'`. */
+  hasOnlyCrateItems?: boolean;
+}
+
 /**
  * Prunes universal state-independent redundant adjacent action pairs `(prev, next)`:
  * - When `canUseRepeatBadges` is true:
  *   - Two adjacent turns can always be combined into 0 or 1 turn block.
  *   - Two adjacent `MOVE_FWD` (or two adjacent `MOVE_BACK`) on grids `<= 10×10` can always
  *     be combined into a single `MOVE_FWD ×(a+b)` block in 1 fewer slot.
+ * - When `hasZeroNonGoalFlags` is true (`tracker === null` and 0 non-goal waypoint flags):
+ *   - Moving never mutates switches, items, gates, water, or waypoint flags unless it immediately wins on `isGoal`.
+ *   - When `canUseRepeatBadges && maxGridDim <= 10`, `MOVE_FWD ×a` followed by `MOVE_BACK ×b` (or vice versa)
+ *     always reduces to 0 or 1 block (`MOVE_FWD ×(a-b)` or `MOVE_BACK ×(b-a)`), saving 1–2 slots.
+ *   - Even without repeat badges, `MOVE_FWD ×1` followed by `MOVE_BACK ×1` (or vice versa) cancels in 2 fewer slots.
+ * - When `hasOnlyCrateItems` is true (`tracker === null` and all world items are crates):
+ *   - `PICK_UP` followed immediately by `USE_DROP` or `USE_DROP` followed immediately by `PICK_UP`
+ *     lifts and re-drops (or drops and re-lifts) the exact same crate on the current tile, saving 2 slots.
  * - Regardless of repeat badges:
  *   - `TURN_LEFT` followed immediately by `TURN_RIGHT` (or vice versa) cancels out in every state.
  *   - `PICK_UP` followed immediately by `PICK_UP` or `USE_DROP` followed immediately by `USE_DROP`
- *     always collides on a 1-slot backpack.
+ *     always no-ops/collides on a 1-slot backpack.
  */
 function isRedundantAdjacentActionPair(
   prev: CandidateActionSpec,
   next: CandidateActionSpec,
-  canUseRepeatBadges: boolean,
-  maxGridDim: number
+  ctx: RedundancyContext
 ): boolean {
+  const {
+    canUseRepeatBadges,
+    maxGridDim,
+    noExecTracker,
+    hasZeroNonGoalFlags,
+    hasOnlyCrateItems,
+  } = ctx;
+
   if (isTurnAction(prev.actionType) && isTurnAction(next.actionType)) {
     if (canUseRepeatBadges) {
       return true;
@@ -1387,6 +1489,21 @@ function isRedundantAdjacentActionPair(
     if (prev.actionType !== next.actionType) {
       return true;
     }
+  }
+
+  // Canonical commutativity order: `PICK_UP` operates strictly on `(robot.x, robot.y)` independent
+  // of `robot.dir`, so `[TURN, PICK_UP]` is universally identical to `[PICK_UP, TURN]`.
+  if (noExecTracker && isTurnAction(prev.actionType) && next.actionType === 'PICK_UP') {
+    return true;
+  }
+
+  // On crate-only maps, `USE_DROP` also operates strictly on `(robot.x, robot.y)` independent of `robot.dir`.
+  if (
+    hasOnlyCrateItems &&
+    isTurnAction(prev.actionType) &&
+    next.actionType === 'USE_DROP'
+  ) {
+    return true;
   }
 
   if (canUseRepeatBadges && maxGridDim <= 10) {
@@ -1398,11 +1515,34 @@ function isRedundantAdjacentActionPair(
     }
   }
 
+  if (hasZeroNonGoalFlags) {
+    const isOppositeMove =
+      (prev.actionType === 'MOVE_FWD' && next.actionType === 'MOVE_BACK') ||
+      (prev.actionType === 'MOVE_BACK' && next.actionType === 'MOVE_FWD');
+    if (isOppositeMove) {
+      if (canUseRepeatBadges && maxGridDim <= 10) {
+        return true;
+      }
+      if (prev.repeatCount === next.repeatCount) {
+        return true;
+      }
+    }
+  }
+
   if (prev.actionType === 'PICK_UP' && next.actionType === 'PICK_UP') {
     return true;
   }
   if (prev.actionType === 'USE_DROP' && next.actionType === 'USE_DROP') {
     return true;
+  }
+
+  if (hasOnlyCrateItems) {
+    if (
+      (prev.actionType === 'PICK_UP' && next.actionType === 'USE_DROP') ||
+      (prev.actionType === 'USE_DROP' && next.actionType === 'PICK_UP')
+    ) {
+      return true;
+    }
   }
 
   return false;
@@ -1712,6 +1852,118 @@ function solveStructuralLoopSearch(
   const tracker = buildExecCountTracker(maxActionExecutions);
   const initCounts = tracker ? new Array<number>(tracker.keys.length).fill(0) : null;
   const maxGridDim = Math.max(gridDef.width, gridDef.height);
+  evaluator.initIndexedTable(actions.length);
+
+  const rawDef = gridDef as unknown as Record<string, unknown>;
+  const rawRobot = gridDef.robot as unknown as Record<string, unknown>;
+  const initCarried = rawRobot.carriedItem as Record<string, unknown> | null | undefined;
+  const hasZeroNonGoalFlags =
+    tracker === null && gridDef.flags.every((f) => f.isGoal === true);
+  const hasOnlyCrateItems =
+    tracker === null &&
+    rawDef.items === undefined &&
+    (gridDef.worldItems?.length ?? 0) > 0 &&
+    gridDef.worldItems!.every((it) => it.type === 'crate') &&
+    (initCarried === undefined || initCarried === null || initCarried.type === 'crate');
+
+  const hasGoalSwitches =
+    tracker === null &&
+    Boolean(gridDef.floorSwitches?.some((sw) => sw.requiredForGoal === true));
+
+  /**
+   * Exact admissible lower bound when `remAfter < minLoopCost` (so 0 further loops can fit in `remAfter` slots):
+   * 1. Switch bound: activating `u >= 1` unsatisfied goal-required floor switches without loops requires
+   *    at least `3 * u - 1 - (carried ? 1 : 0)` blocks.
+   * 2. Bounding-box axis bound (pass-through safe!): visiting `{robot, ...uncollectedFlags}` of span `(spanX, spanY)`
+   *    requires `>= 1` H-move if `spanX > 0` (`>= 2` if `minX < robot.x < maxX`), `>= 1` V-move if `spanY > 0`
+   *    (`>= 2` if `minY < robot.y < maxY`), plus `>= 1` TURN whenever both axes move (or current axis != needed axis).
+   */
+  const isImpossibleInRemainingSlots = (
+    grid: GridState,
+    remAfter: number,
+    minLoopCostForCheck: number
+  ): boolean => {
+    if (tracker !== null || remAfter >= minLoopCostForCheck) {
+      return false;
+    }
+
+    if (hasGoalSwitches) {
+      const switches = (grid as unknown as Record<string, unknown>).floorSwitches as
+        | Array<Record<string, unknown>>
+        | undefined;
+      if (switches) {
+        let unsatisfied = 0;
+        for (let i = 0; i < switches.length; i++) {
+          const sw = switches[i];
+          if (
+            sw.requiredForGoal === true &&
+            !(sw.active || sw.pressed || sw.isPressed || sw.triggered || sw.satisfied)
+          ) {
+            unsatisfied++;
+          }
+        }
+        if (unsatisfied > 0) {
+          const rCarry = (grid.robot as unknown as Record<string, unknown>).carriedItem;
+          const hasCarry = rCarry !== undefined && rCarry !== null ? 1 : 0;
+          if (3 * unsatisfied - 1 - hasCarry > remAfter) {
+            return true;
+          }
+        }
+      }
+    }
+
+    const flags = grid.flags;
+    if (flags.length > 0) {
+      const rx = grid.robot.x;
+      const ry = grid.robot.y;
+      let minX = rx;
+      let maxX = rx;
+      let minY = ry;
+      let maxY = ry;
+      let hasUncollected = false;
+      for (let i = 0; i < flags.length; i++) {
+        const f = flags[i];
+        if (!f.collected) {
+          hasUncollected = true;
+          if (f.x < minX) minX = f.x;
+          if (f.x > maxX) maxX = f.x;
+          if (f.y < minY) minY = f.y;
+          if (f.y > maxY) maxY = f.y;
+        }
+      }
+      if (hasUncollected) {
+        const hMoves = maxX > minX ? (rx > minX && rx < maxX ? 2 : 1) : 0;
+        const vMoves = maxY > minY ? (ry > minY && ry < maxY ? 2 : 1) : 0;
+        let turns = 0;
+        if (hMoves > 0 && vMoves > 0) {
+          turns = 1;
+        } else if (hMoves > 0) {
+          turns = grid.robot.dir === 'NORTH' || grid.robot.dir === 'SOUTH' ? 1 : 0;
+        } else if (vMoves > 0) {
+          turns = grid.robot.dir === 'EAST' || grid.robot.dir === 'WEST' ? 1 : 0;
+        }
+        if (hMoves + vMoves + turns > remAfter) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const redundancyCtx: RedundancyContext = {
+    canUseRepeatBadges,
+    maxGridDim,
+    noExecTracker: tracker === null,
+    hasZeroNonGoalFlags,
+    hasOnlyCrateItems,
+  };
+
+  const actionNodeByIdx: AstNode[] = actions.map((spec) => ({
+    kind: 'action',
+    spec,
+    slotCost: 1,
+  }));
 
   let exploredStates = 0;
 
@@ -1735,7 +1987,12 @@ function solveStructuralLoopSearch(
     currentDepth: number,
     isRootPureSingleLoop: boolean,
     onLoopTransition: (cand: LoopCandidateTransition) => boolean,
-    getDynamicMaxLoopSlots?: () => number
+    getDynamicMaxLoopSlots?: () => number,
+    canAcceptRunningKey?: (
+      loopSlotCost: number,
+      outBaseKey: string,
+      outGrid: GridState
+    ) => boolean
   ): boolean => {
     const initialMaxBodySlots = maxLoopSlots - 2;
     if (initialMaxBodySlots < 1) return false;
@@ -1744,11 +2001,18 @@ function solveStructuralLoopSearch(
       isRootPureSingleLoop || !canUseRepeatBadges || maxGridDim > 10 ? 1 : 2;
     if (initialMaxBodySlots < minBodySlots) return false;
 
+    const originStateId =
+      tracker === null ? evaluator.getOrAssignStateId(originBaseKey, originGrid) : -1;
+
     const bodyStack: AstNode[] = [];
+    const flatBodySpecs: CandidateActionSpec[] = [];
+    let nestedLoopNodesInBody = 0;
+    let goalCapableActionsInBody = 0;
 
     const buildBody = (
       iter1Grid: GridState,
       iter1Key: string,
+      iter1StateId: number,
       iter1Counts: number[] | null,
       usedSlots: number,
       lastActionSpec: CandidateActionSpec | null
@@ -1760,85 +2024,201 @@ function solveStructuralLoopSearch(
       if (usedSlots > maxBodySlots) {
         return false;
       }
-      if (usedSlots >= minBodySlots) {
+
+      // True when this outer loop uses ALL remaining MAIN slots (0 slots left after LOOP_END),
+      // so only `status === 'SUCCESS'` transitions can ever be useful!
+      const isTerminalFullBudgetLoop =
+        (currentDepth === 0 || isRootPureSingleLoop) && usedSlots === maxBodySlots;
+
+      if (
+        usedSlots >= minBodySlots &&
+        (!isTerminalFullBudgetLoop || goalCapableActionsInBody > 0)
+      ) {
+        const useFastFlatIds = tracker === null && nestedLoopNodesInBody === 0;
         // A body whose Iteration 1 returns to the exact origin state & counts is a complete no-op for all N
-        const isStateNoOp =
-          iter1Key === originBaseKey && iter1Counts === originCounts;
+        const isStateNoOp = useFastFlatIds
+          ? iter1StateId === originStateId
+          : iter1Key === originBaseKey && iter1Counts === originCounts;
+
         if (!isStateNoOp) {
-          // Evaluate Iterations 2..maxCount incrementally starting from Iteration 1's end state
-          let curGrid = iter1Grid;
-          let curKey = iter1Key;
-          let curCounts = iter1Counts;
+          if (useFastFlatIds) {
+            let curStateId = iter1StateId;
+            const bodyLen = flatBodySpecs.length;
+            let iterDone = 1;
+            let hitFixedPoint = false;
 
-          // Note: loopCounts is sorted [2, 3, ..., 9] (or [2])
-          let iterDone = 1;
-          let hitFixedPoint = false;
-          for (let ci = 0; ci < loopCounts.length; ci++) {
-            const targetCount = loopCounts[ci];
-            let collided = false;
-            let succeeded = false;
+            for (let ci = 0; ci < loopCounts.length; ci++) {
+              const targetCount = loopCounts[ci];
+              let collided = false;
+              let succeeded = false;
+              let winGrid: GridState | null = null;
+              let winKey = '';
 
-            while (iterDone < targetCount) {
-              if (hitFixedPoint) {
-                iterDone = targetCount;
+              while (iterDone < targetCount) {
+                if (hitFixedPoint) {
+                  iterDone = targetCount;
+                  break;
+                }
+                const prevStateId = curStateId;
+                let stepStatus: 0 | 1 | 2 = 0;
+                for (let bi = 0; bi < bodyLen; bi++) {
+                  const tr = evaluator.executeBlockById(curStateId, flatBodySpecs[bi]);
+                  if (tr.statusCode === 2) {
+                    stepStatus = 2;
+                    break;
+                  }
+                  curStateId = tr.nextStateId;
+                  if (tr.statusCode === 1) {
+                    stepStatus = 1;
+                    winGrid = evaluator.getGridById(curStateId);
+                    winKey = evaluator.getKeyById(curStateId);
+                    break;
+                  }
+                }
+                exploredStates++;
+                iterDone++;
+
+                if (stepStatus === 2) {
+                  collided = true;
+                  break;
+                }
+                if (stepStatus === 1) {
+                  succeeded = true;
+                  break;
+                }
+                if (curStateId === prevStateId) {
+                  hitFixedPoint = true;
+                }
+              }
+
+              if (collided) {
                 break;
               }
-              const prevKey = curKey;
-              const prevCounts = curCounts;
-              const stepRes = executeAstSequence(
-                bodyStack,
-                curGrid,
-                curKey,
-                curCounts,
-                evaluator,
-                tracker
-              );
-              exploredStates++;
-              iterDone++;
 
-              if (stepRes.status === 'COLLISION') {
-                collided = true;
-                break;
+              if (isTerminalFullBudgetLoop && !succeeded) {
+                if (hitFixedPoint) {
+                  break;
+                }
+                continue;
               }
-              curGrid = stepRes.nextGrid;
-              curKey = stepRes.nextBaseKey;
-              curCounts = stepRes.nextCounts;
-              if (stepRes.status === 'SUCCESS') {
-                succeeded = true;
-                break;
+
+              const outKey = succeeded ? winKey : evaluator.getKeyById(curStateId);
+              const outGrid = succeeded ? winGrid! : evaluator.getGridById(curStateId);
+              const loopSlotCost = 2 + usedSlots;
+              if (
+                !succeeded &&
+                canAcceptRunningKey !== undefined &&
+                !canAcceptRunningKey(loopSlotCost, outKey, outGrid)
+              ) {
+                if (hitFixedPoint) {
+                  break;
+                }
+                continue;
               }
-              if (curKey === prevKey && curCounts === prevCounts) {
-                hitFixedPoint = true;
+
+              const loopNode: AstNode = {
+                kind: 'loop',
+                count: targetCount,
+                body: bodyStack.slice(),
+                slotCost: loopSlotCost,
+              };
+
+              const shouldStop = onLoopTransition({
+                loopNode,
+                slotCost: loopSlotCost,
+                result: {
+                  status: succeeded ? 'SUCCESS' : 'RUNNING',
+                  nextGrid: outGrid,
+                  nextBaseKey: outKey,
+                  nextCounts: null,
+                },
+              });
+              if (shouldStop) return true;
+
+              if (succeeded || hitFixedPoint) {
+                break;
               }
             }
+          } else {
+            // General path (with exec count tracker or nested inner loops)
+            let curGrid = iter1Grid;
+            let curKey = iter1Key;
+            let curCounts = iter1Counts;
 
-            if (collided) {
-              // Larger loop counts >= targetCount will also collide on the exact same iteration!
-              break;
-            }
+            let iterDone = 1;
+            let hitFixedPoint = false;
+            for (let ci = 0; ci < loopCounts.length; ci++) {
+              const targetCount = loopCounts[ci];
+              let collided = false;
+              let succeeded = false;
 
-            const loopNode: AstNode = {
-              kind: 'loop',
-              count: targetCount,
-              body: bodyStack.slice(),
-              slotCost: 2 + usedSlots,
-            };
+              while (iterDone < targetCount) {
+                if (hitFixedPoint) {
+                  iterDone = targetCount;
+                  break;
+                }
+                const prevKey = curKey;
+                const prevCounts = curCounts;
+                const stepRes = executeAstSequence(
+                  bodyStack,
+                  curGrid,
+                  curKey,
+                  curCounts,
+                  evaluator,
+                  tracker
+                );
+                exploredStates++;
+                iterDone++;
 
-            const shouldStop = onLoopTransition({
-              loopNode,
-              slotCost: 2 + usedSlots,
-              result: {
-                status: succeeded ? 'SUCCESS' : 'RUNNING',
-                nextGrid: curGrid,
-                nextBaseKey: curKey,
-                nextCounts: curCounts,
-              },
-            });
-            if (shouldStop) return true;
+                if (stepRes.status === 'COLLISION') {
+                  collided = true;
+                  break;
+                }
+                curGrid = stepRes.nextGrid;
+                curKey = stepRes.nextBaseKey;
+                curCounts = stepRes.nextCounts;
+                if (stepRes.status === 'SUCCESS') {
+                  succeeded = true;
+                  break;
+                }
+                if (curKey === prevKey && curCounts === prevCounts) {
+                  hitFixedPoint = true;
+                }
+              }
 
-            if (succeeded || hitFixedPoint) {
-              // If Iteration k already hit SUCCESS (or stabilized), larger counts behave identically
-              break;
+              if (collided) {
+                break;
+              }
+
+              if (isTerminalFullBudgetLoop && !succeeded) {
+                if (hitFixedPoint) {
+                  break;
+                }
+                continue;
+              }
+
+              const loopNode: AstNode = {
+                kind: 'loop',
+                count: targetCount,
+                body: bodyStack.slice(),
+                slotCost: 2 + usedSlots,
+              };
+
+              const shouldStop = onLoopTransition({
+                loopNode,
+                slotCost: 2 + usedSlots,
+                result: {
+                  status: succeeded ? 'SUCCESS' : 'RUNNING',
+                  nextGrid: curGrid,
+                  nextBaseKey: curKey,
+                  nextCounts: curCounts,
+                },
+              });
+              if (shouldStop) return true;
+
+              if (succeeded || hitFixedPoint) {
+                break;
+              }
             }
           }
         }
@@ -1848,25 +2228,99 @@ function solveStructuralLoopSearch(
         return false;
       }
 
+      const willFillTerminalOuterLoop =
+        currentDepth === 0 && !isRootPureSingleLoop && usedSlots + 1 === maxBodySlots;
+      const firstBodyAction =
+        bodyStack.length > 0 && bodyStack[0].kind === 'action' ? bodyStack[0].spec : null;
+      const useFastIter1 = tracker === null && nestedLoopNodesInBody === 0;
+
       // Option 1: Append 1 allowed Action block to Body
       for (let i = 0; i < actions.length; i++) {
         const spec = actions[i];
         if (
           lastActionSpec &&
-          isRedundantAdjacentActionPair(
-            lastActionSpec,
-            spec,
-            canUseRepeatBadges,
-            maxGridDim
-          )
+          isRedundantAdjacentActionPair(lastActionSpec, spec, redundancyCtx)
         ) {
+          continue;
+        }
+
+        const isGoalCapable =
+          !isTurnAction(spec.actionType) && spec.actionType !== 'PICK_UP';
+
+        if (willFillTerminalOuterLoop) {
+          if (goalCapableActionsInBody === 0 && !isGoalCapable) {
+            continue;
+          }
+          if (
+            canUseRepeatBadges &&
+            firstBodyAction !== null &&
+            isTurnAction(firstBodyAction.actionType) &&
+            isTurnAction(spec.actionType)
+          ) {
+            continue;
+          }
+        }
+
+        if (useFastIter1) {
+          const tr = evaluator.executeBlockById(iter1StateId, spec);
+          exploredStates++;
+          if (tr.statusCode === 2 || tr.nextStateId === iter1StateId) {
+            continue;
+          }
+          if (tr.statusCode === 1) {
+            if (isRootPureSingleLoop && usedSlots + 1 >= minBodySlots) {
+              const winGrid = evaluator.getGridById(tr.nextStateId);
+              const winKey = evaluator.getKeyById(tr.nextStateId);
+              const winBody: AstNode[] = [
+                ...bodyStack,
+                { kind: 'action', spec, slotCost: 1 },
+              ];
+              const loopNode: AstNode = {
+                kind: 'loop',
+                count: loopCounts[0],
+                body: winBody,
+                slotCost: 2 + usedSlots + 1,
+              };
+              const shouldStop = onLoopTransition({
+                loopNode,
+                slotCost: 2 + usedSlots + 1,
+                result: {
+                  status: 'SUCCESS',
+                  nextGrid: winGrid,
+                  nextBaseKey: winKey,
+                  nextCounts: null,
+                },
+              });
+              if (shouldStop) return true;
+            }
+            continue;
+          }
+
+          const nextGrid = evaluator.getGridById(tr.nextStateId);
+          const nextKey = evaluator.getKeyById(tr.nextStateId);
+          bodyStack.push(actionNodeByIdx[spec.idx]);
+          flatBodySpecs.push(spec);
+          if (isGoalCapable) goalCapableActionsInBody++;
+          const found = buildBody(
+            nextGrid,
+            nextKey,
+            tr.nextStateId,
+            null,
+            usedSlots + 1,
+            spec
+          );
+          if (isGoalCapable) goalCapableActionsInBody--;
+          flatBodySpecs.pop();
+          bodyStack.pop();
+          if (found) {
+            return true;
+          }
           continue;
         }
 
         const trans = evaluator.executeBlock(iter1Grid, iter1Key, spec);
         exploredStates++;
         if (trans.status === 'COLLISION') {
-          // Collides on Iteration 1 -> impossible for any completion of Body!
           continue;
         }
 
@@ -1880,15 +2334,11 @@ function solveStructuralLoopSearch(
           continue;
         }
 
-        // Prune action blocks that are pure state no-ops on Iteration 1
         if (trans.nextBaseKey === iter1Key && nextCounts === iter1Counts) {
           continue;
         }
 
         if (trans.status === 'SUCCESS') {
-          // Hit SUCCESS during Iteration 1!
-          // Only relevant if `isRootPureSingleLoop` requires an outer loop wrapper;
-          // otherwise the bare body without `LOOP_START..LOOP_END` already wins in 2 fewer slots.
           if (isRootPureSingleLoop && usedSlots + 1 >= minBodySlots) {
             const winBody: AstNode[] = [
               ...bodyStack,
@@ -1916,10 +2366,20 @@ function solveStructuralLoopSearch(
         }
 
         bodyStack.push({ kind: 'action', spec, slotCost: 1 });
-        if (buildBody(trans.nextGrid, trans.nextBaseKey, nextCounts, usedSlots + 1, spec)) {
+        if (isGoalCapable) goalCapableActionsInBody++;
+        const found = buildBody(
+          trans.nextGrid,
+          trans.nextBaseKey,
+          -1,
+          nextCounts,
+          usedSlots + 1,
+          spec
+        );
+        if (isGoalCapable) goalCapableActionsInBody--;
+        bodyStack.pop();
+        if (found) {
           return true;
         }
-        bodyStack.pop();
       }
 
       // Option 2: Append a nested inner Loop node if nesting depth allows
@@ -1953,13 +2413,18 @@ function solveStructuralLoopSearch(
             }
 
             bodyStack.push(innerCand.loopNode);
+            nestedLoopNodesInBody++;
+            goalCapableActionsInBody++;
             const aborted = buildBody(
               innerCand.result.nextGrid,
               innerCand.result.nextBaseKey,
+              -1,
               innerCand.result.nextCounts,
               usedSlots + innerCand.slotCost,
               null
             );
+            goalCapableActionsInBody--;
+            nestedLoopNodesInBody--;
             bodyStack.pop();
             return aborted;
           }
@@ -1970,7 +2435,7 @@ function solveStructuralLoopSearch(
       return false;
     };
 
-    return buildBody(originGrid, originBaseKey, originCounts, 0, null);
+    return buildBody(originGrid, originBaseKey, originStateId, originCounts, 0, null);
   };
 
   // Special case: `pureSingleLoopOnly: true` -> MAIN must be `[LOOP_START(n), ...Body, LOOP_END]`
@@ -2058,8 +2523,9 @@ function solveStructuralLoopSearch(
         break;
       }
 
-      const remSlots =
-        bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) - cost : slotLimit - cost;
+      const effectiveLimit =
+        bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) : slotLimit;
+      const remSlots = effectiveLimit - cost;
       if (remSlots <= 0) {
         continue;
       }
@@ -2069,17 +2535,15 @@ function solveStructuralLoopSearch(
         const spec = actions[i];
         if (
           cur.lastActionSpec &&
-          isRedundantAdjacentActionPair(
-            cur.lastActionSpec,
-            spec,
-            canUseRepeatBadges,
-            maxGridDim
-          )
+          isRedundantAdjacentActionPair(cur.lastActionSpec, spec, redundancyCtx)
         ) {
           continue;
         }
-        // Final-slot pruning: a trailing TURN can never trigger SUCCESS in Grid
-        if (remSlots === 1 && isTurnAction(spec.actionType)) {
+        // Final-slot pruning: a trailing TURN or PICK_UP can never trigger SUCCESS in Grid
+        if (
+          remSlots === 1 &&
+          (isTurnAction(spec.actionType) || spec.actionType === 'PICK_UP')
+        ) {
           continue;
         }
 
@@ -2106,6 +2570,21 @@ function solveStructuralLoopSearch(
             { kind: 'action', spec, slotCost: 1 },
           ]);
           break;
+        }
+
+        // Do not store dead states that have 0 remaining slots left (or violate exact loop-free switch lower bound)
+        const nextEffectiveLimit =
+          bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) : slotLimit;
+        const minLoopCostCheck = !canUseRepeatBadges || maxGridDim > 10 ? 3 : 4;
+        if (
+          nextCost >= nextEffectiveLimit ||
+          isImpossibleInRemainingSlots(
+            trans.nextGrid,
+            nextEffectiveLimit - nextCost,
+            minLoopCostCheck
+          )
+        ) {
+          continue;
         }
 
         if (trans.nextBaseKey === cur.baseKey && nextCounts === cur.execCounts) {
@@ -2154,6 +2633,19 @@ function solveStructuralLoopSearch(
               return nextCost === cost + minLoopCost;
             }
 
+            const curEffectiveLimit =
+              bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) : slotLimit;
+            if (
+              nextCost >= curEffectiveLimit ||
+              isImpossibleInRemainingSlots(
+                cand.result.nextGrid,
+                curEffectiveLimit - nextCost,
+                minLoopCost
+              )
+            ) {
+              return false;
+            }
+
             const nextFullKey = tracker
               ? `${cand.result.nextBaseKey}|e:${encodeExecCounts(
                   cand.result.nextCounts!
@@ -2173,7 +2665,25 @@ function solveStructuralLoopSearch(
               });
             }
             return false;
-          }
+          },
+          () =>
+            bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) - cost : slotLimit - cost,
+          tracker === null
+            ? (loopSlotCost: number, outBaseKey: string, outGrid: GridState) => {
+                const nextCost = cost + loopSlotCost;
+                const curEffectiveLimit =
+                  bestWinCost !== null ? Math.min(slotLimit, bestWinCost - 1) : slotLimit;
+                return (
+                  nextCost < curEffectiveLimit &&
+                  nextCost < (bestCostByKey.get(outBaseKey) ?? Infinity) &&
+                  !isImpossibleInRemainingSlots(
+                    outGrid,
+                    curEffectiveLimit - nextCost,
+                    minLoopCost
+                  )
+                );
+              }
+            : undefined
         );
       }
     }

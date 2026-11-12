@@ -9,6 +9,7 @@ import { MODULE_2_PARAMS_ACTIVITIES } from './module2Params';
 import { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 import { MODULE_3_PART1_ACTIVITIES } from './module3Part1';
 import { MODULE_3_BEAT_ACTIVITIES } from './module3Beat';
+import { MODULE_3_PART2_ACTIVITIES } from './module3Part2';
 
 export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
@@ -18,6 +19,12 @@ export { MODULE_2_PARAMS_ACTIVITIES, MODULE_2_BEAT_ALLOWED_BLOCKS } from './modu
 export { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 export { MODULE_3_PART1_ACTIVITIES } from './module3Part1';
 export { MODULE_3_BEAT_ACTIVITIES, MODULE_3_BEAT_ALLOWED_BLOCKS } from './module3Beat';
+export {
+  MODULE_3_PART2_ACTIVITIES,
+  LESSON_3_5_GRID,
+  LESSON_3_6_GRID,
+  CAPSTONE_3A_GRID,
+} from './module3Part2';
 
 /**
  * Static Module catalog for Modules 1–3.
@@ -155,6 +162,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...MODULE_2_OBJECTS_ACTIVITIES,
   ...MODULE_3_PART1_ACTIVITIES,
   ...MODULE_3_BEAT_ACTIVITIES,
+  ...MODULE_3_PART2_ACTIVITIES,
 ]);
 
 export function getCurriculumModules(): CurriculumModule[] {
