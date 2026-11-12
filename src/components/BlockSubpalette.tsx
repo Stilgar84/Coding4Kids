@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { ParamVisual } from './params/VisualParamBadges';
 import { BinaryOp } from '../types';
@@ -12,8 +12,7 @@ import {
 const COMMON_NUMBERS = [0, 1, 2, 3, 5, 10, 45, 90, 180];
 const ALL_OPS: BinaryOp[] = ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'];
 
-export const BlockSubpalette: React.FC = () => {
-  useAppStore();
+export const BlockSubpalette: React.FC = React.memo(() => {
   const {
     appMode,
     activeActivityId,
@@ -24,7 +23,17 @@ export const BlockSubpalette: React.FC = () => {
     selectedBlockId,
     updateBlockParams,
     isSubpaletteCollapsed,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeSimId: s.activeSimId,
+    activeScope: s.activeScope,
+    workspace: s.workspace,
+    selectedBlockId: s.selectedBlockId,
+    updateBlockParams: s.updateBlockParams,
+    isSubpaletteCollapsed: s.isSubpaletteCollapsed,
+  }));
 
   if (isSubpaletteCollapsed) {
     return null;
@@ -406,4 +415,4 @@ export const BlockSubpalette: React.FC = () => {
       })}
     </div>
   );
-};
+});

@@ -35,7 +35,7 @@ import {
   renderBeatMapSvg,
   renderTurtleMapSvg,
 } from '../services/mapThumbnailGenerator';
-import { useAppStore } from '../store/useAppStore';
+import { isLowQualityActive, useAppStore, useAppStoreSelector } from '../store/useAppStore';
 
 export const BEAT_VARIATION_PREVIEW_TICK_MS = 320;
 const MAX_CONTROL_HOPS_PER_BEAT = 64;
@@ -507,14 +507,16 @@ interface VariationCardPreviewProps {
   card: CreativeVariationCard;
   liveBeatState?: BeatState | null;
   isPreviewPlaying?: boolean;
+  isLowQuality?: boolean;
   onToggleBeatPreview?: () => void;
 }
 
-const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
+const VariationCardPreview: React.FC<VariationCardPreviewProps> = React.memo(({
   simId,
   card,
   liveBeatState,
   isPreviewPlaying = false,
+  isLowQuality = false,
   onToggleBeatPreview,
 }) => {
   const turtlePreview = useMemo(() => {
@@ -558,24 +560,27 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
         onClick={onToggleBeatPreview}
         aria-hidden="true"
         style={
-          isPreviewPlaying
+          isPreviewPlaying && !isLowQuality
             ? {
                 boxShadow: `0 0 14px ${ringStyle.glowColor}, inset 0 1px 1px rgba(255,255,255,0.08)`,
               }
             : undefined
         }
-        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-950 p-1.5 shrink-0 flex items-center justify-center select-none cursor-pointer transition-all duration-150 ${
+        className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-950 p-1.5 shrink-0 flex items-center justify-center select-none cursor-pointer ${
+          isLowQuality ? '' : 'transition-colors duration-100'
+        } ${
           isPreviewPlaying
             ? `border-2 ${ringStyle.borderClass}`
             : 'border border-slate-700 hover:border-fuchsia-400/70 shadow-inner'
         }`}
       >
-        {isPreviewPlaying && displayState.beatIndex > 0 && (
+        {!isLowQuality && isPreviewPlaying && displayState.beatIndex > 0 && (
           <span
-            key={displayState.beatIndex}
             data-testid={`variation-beat-ring-pulse-${card.id}`}
             aria-hidden="true"
-            className={`pointer-events-none absolute -inset-1 rounded-xl border-2 opacity-75 animate-ping motion-reduce:animate-none [animation-iteration-count:1] [animation-duration:280ms] ${ringStyle.borderClass}`}
+            className={`pointer-events-none absolute -inset-1 rounded-xl border-2 opacity-0 ${
+              displayState.beatIndex % 2 === 0 ? 'animate-beat-ripple-a' : 'animate-beat-ripple-b'
+            } ${ringStyle.borderClass}`}
           />
         )}
 
@@ -599,13 +604,17 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
                   data-color={ledColor || ''}
                   style={
                     isLit && ledColor
-                      ? {
-                          backgroundColor: ledColor,
-                          boxShadow: `0 0 4px ${ledColor}b3`,
-                        }
+                      ? isLowQuality
+                        ? { backgroundColor: ledColor }
+                        : {
+                            backgroundColor: ledColor,
+                            boxShadow: `0 0 4px ${ledColor}b3`,
+                          }
                       : undefined
                   }
-                  className={`relative block w-full h-full rounded-[1.5px] transition-colors duration-100 ${
+                  className={`relative block w-full h-full rounded-[1.5px] ${
+                    isLowQuality ? '' : 'transition-colors duration-100'
+                  } ${
                     isCursorHere
                       ? 'ring-1 ring-white z-10'
                       : isLit
@@ -638,18 +647,28 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
       {card.icon || '✨'}
     </div>
   );
-};
+});
 
 export const VariationCardsPanel: React.FC = () => {
-  useAppStore();
-  const snapshot = useAppStore.getState();
-  const appMode = snapshot.appMode;
-  const activeActivityId = snapshot.activeActivityId;
-  const activeActivityVersion = snapshot.activeActivityVersion;
-  const mainIsPlaying = snapshot.isPlaying;
-  const completedActivities = snapshot.completedActivities;
-  const loadVariationWorkspace = snapshot.loadVariationWorkspace;
-  const completeCreativeActivity = snapshot.completeCreativeActivity;
+  const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    mainIsPlaying,
+    completedActivities,
+    loadVariationWorkspace,
+    completeCreativeActivity,
+    isLowQuality,
+  } = useAppStoreSelector((snapshot) => ({
+    appMode: snapshot.appMode,
+    activeActivityId: snapshot.activeActivityId,
+    activeActivityVersion: snapshot.activeActivityVersion,
+    mainIsPlaying: snapshot.isPlaying,
+    completedActivities: snapshot.completedActivities,
+    loadVariationWorkspace: snapshot.loadVariationWorkspace,
+    completeCreativeActivity: snapshot.completeCreativeActivity,
+    isLowQuality: isLowQualityActive(snapshot),
+  }));
 
   const previewSnapshot = useSyncExternalStore(
     beatVariationPreviewPlayer.subscribe,
@@ -814,6 +833,7 @@ export const VariationCardsPanel: React.FC = () => {
                   card={card}
                   liveBeatState={isThisCardPlaying ? previewSnapshot.currentState : null}
                   isPreviewPlaying={isThisCardPlaying}
+                  isLowQuality={isLowQuality}
                   onToggleBeatPreview={
                     isBeatActivity ? () => handleToggleCardPreview(card) : undefined
                   }

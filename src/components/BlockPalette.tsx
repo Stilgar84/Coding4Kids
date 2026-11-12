@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { SimPaletteItem } from '../engine/simulation/types';
 import {
@@ -345,8 +345,7 @@ export const PaletteScrollRow: React.FC<PaletteScrollRowProps> = ({
   );
 };
 
-export const BlockPalette: React.FC = () => {
-  useAppStore();
+export const BlockPalette: React.FC = React.memo(() => {
   const {
     appMode,
     activeActivityId,
@@ -369,7 +368,29 @@ export const BlockPalette: React.FC = () => {
     toggleSubpalette,
     isFunctionBarOpen,
     toggleFunctionBar,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    slotCapRejectionCount: s.slotCapRejectionCount,
+    lastSlotCapRejectedAt: s.lastSlotCapRejectedAt,
+    activeSimId: s.activeSimId,
+    activeScope: s.activeScope,
+    setActiveScope: s.setActiveScope,
+    addBlock: s.addBlock,
+    replacePlaceholderBlock: s.replacePlaceholderBlock,
+    workspace: s.workspace,
+    clearWorkspace: s.clearWorkspace,
+    runtime: s.runtime,
+    updateBlockRepeat: s.updateBlockRepeat,
+    selectedBlockId: s.selectedBlockId,
+    setSelectedBlockId: s.setSelectedBlockId,
+    removeBlock: s.removeBlock,
+    isSubpaletteCollapsed: s.isSubpaletteCollapsed,
+    toggleSubpalette: s.toggleSubpalette,
+    isFunctionBarOpen: s.isFunctionBarOpen,
+    toggleFunctionBar: s.toggleFunctionBar,
+  }));
 
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
   const [isTrashArmed, setIsTrashArmed] = useState(false);
@@ -1012,5 +1033,5 @@ export const BlockPalette: React.FC = () => {
       <BlockSubpalette />
     </div>
   );
-};
+});
 

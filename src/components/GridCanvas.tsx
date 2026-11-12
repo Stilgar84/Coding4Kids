@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
 import { WallEdge, Direction } from '../types';
 import { Trophy, Footprints, Maximize2, Minimize2, Lock } from 'lucide-react';
 import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
@@ -10,8 +10,204 @@ import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/Wor
 
 const CELL_SIZE = 72; // pixels per cell
 
+interface GridStaticBoardLayerProps {
+  width: number;
+  height: number;
+  barriers: WallEdge[];
+  isReadOnly: boolean;
+  isLowQuality: boolean;
+  setCellContent: (x: number, y: number) => void;
+  handleCellMouseDown: (x: number, y: number) => void;
+  handleCellMouseEnter: (x: number, y: number, e: React.MouseEvent) => void;
+  handleEdgeMouseDown: (edge: WallEdge, e: React.MouseEvent) => void;
+  handleEdgeMouseEnter: (edge: WallEdge, e: React.MouseEvent) => void;
+  handleEdgeClick: (edge: WallEdge, e: React.MouseEvent) => void;
+}
+
+const GridStaticBoardLayer = React.memo<GridStaticBoardLayerProps>(
+  ({
+    width,
+    height,
+    barriers,
+    isReadOnly,
+    isLowQuality,
+    setCellContent,
+    handleCellMouseDown,
+    handleCellMouseEnter,
+    handleEdgeMouseDown,
+    handleEdgeMouseEnter,
+    handleEdgeClick,
+  }) => {
+    const wallShadowClass = isLowQuality ? '' : 'filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] ';
+    return (
+      <>
+        {/* Grid Background cells */}
+        {Array.from({ length: height }).map((_, y) =>
+          Array.from({ length: width }).map((_, x) => (
+            <rect
+              key={`cell-${x}-${y}`}
+              data-testid={`cell-${x}-${y}`}
+              x={x * CELL_SIZE}
+              y={y * CELL_SIZE}
+              width={CELL_SIZE}
+              height={CELL_SIZE}
+              fill={(x + y) % 2 === 0 ? '#1e293b' : '#0f172a'}
+              stroke="#334155"
+              strokeWidth={1}
+              className={
+                isReadOnly
+                  ? undefined
+                  : 'cursor-pointer transition-colors hover:fill-slate-700/50'
+              }
+              onClick={isReadOnly ? undefined : () => setCellContent(x, y)}
+              onMouseDown={isReadOnly ? undefined : () => handleCellMouseDown(x, y)}
+              onMouseEnter={isReadOnly ? undefined : (e) => handleCellMouseEnter(x, y, e)}
+            />
+          ))
+        )}
+
+        {/* Horizontal Barrier Wall Hitboxes & Lines */}
+        {Array.from({ length: height - 1 }).map((_, row) =>
+          Array.from({ length: width }).map((_, col) => {
+            const y = row + 1;
+            const hasWall = barriers.some(
+              (b) => b.orientation === 'H' && b.x === col && b.y === y
+            );
+            if (isReadOnly && !hasWall) return null;
+            return (
+              <g key={`h-wall-${col}-${y}`}>
+                {!isReadOnly && (
+                  <rect
+                    data-testid={`wall-h-hitbox-${col}-${y}`}
+                    x={col * CELL_SIZE}
+                    y={y * CELL_SIZE - 14}
+                    width={CELL_SIZE}
+                    height={28}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)}
+                    onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)}
+                    onClick={(e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)}
+                  />
+                )}
+                {hasWall && (
+                  <rect
+                    data-testid={`wall-h-${col}-${y}`}
+                    x={col * CELL_SIZE + 2}
+                    y={y * CELL_SIZE - 4}
+                    width={CELL_SIZE - 4}
+                    height={8}
+                    rx={4}
+                    fill="#ef4444"
+                    className={`${wallShadowClass}${
+                      isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
+                    }`}
+                    onMouseDown={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)
+                    }
+                    onMouseEnter={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)
+                    }
+                    onClick={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)
+                    }
+                  />
+                )}
+              </g>
+            );
+          })
+        )}
+
+        {/* Vertical Barrier Wall Hitboxes & Lines */}
+        {Array.from({ length: height }).map((_, row) =>
+          Array.from({ length: width - 1 }).map((_, col) => {
+            const x = col + 1;
+            const hasWall = barriers.some(
+              (b) => b.orientation === 'V' && b.x === x && b.y === row
+            );
+            if (isReadOnly && !hasWall) return null;
+            return (
+              <g key={`v-wall-${x}-${row}`}>
+                {!isReadOnly && (
+                  <rect
+                    data-testid={`wall-v-hitbox-${x}-${row}`}
+                    x={x * CELL_SIZE - 14}
+                    y={row * CELL_SIZE}
+                    width={28}
+                    height={CELL_SIZE}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)}
+                    onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)}
+                    onClick={(e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)}
+                  />
+                )}
+                {hasWall && (
+                  <rect
+                    data-testid={`wall-v-${x}-${row}`}
+                    x={x * CELL_SIZE - 4}
+                    y={row * CELL_SIZE + 2}
+                    width={8}
+                    height={CELL_SIZE - 4}
+                    rx={4}
+                    fill="#ef4444"
+                    className={`${wallShadowClass}${
+                      isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
+                    }`}
+                    onMouseDown={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)
+                    }
+                    onMouseEnter={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)
+                    }
+                    onClick={
+                      isReadOnly
+                        ? undefined
+                        : (e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)
+                    }
+                  />
+                )}
+              </g>
+            );
+          })
+        )}
+      </>
+    );
+  },
+  (prev, next) => {
+    if (
+      prev.width !== next.width ||
+      prev.height !== next.height ||
+      prev.barriers !== next.barriers ||
+      prev.isReadOnly !== next.isReadOnly ||
+      prev.isLowQuality !== next.isLowQuality
+    ) {
+      return false;
+    }
+    // In read-only mode (curriculum / running playback), handlers are unused.
+    if (next.isReadOnly) return true;
+    return (
+      prev.setCellContent === next.setCellContent &&
+      prev.handleCellMouseDown === next.handleCellMouseDown &&
+      prev.handleCellMouseEnter === next.handleCellMouseEnter &&
+      prev.handleEdgeMouseDown === next.handleEdgeMouseDown &&
+      prev.handleEdgeMouseEnter === next.handleEdgeMouseEnter &&
+      prev.handleEdgeClick === next.handleEdgeClick
+    );
+  }
+);
+
 export const GridCanvas: React.FC = () => {
-  useAppStore();
   const {
     appMode,
     grid,
@@ -26,7 +222,23 @@ export const GridCanvas: React.FC = () => {
     speed,
     startHistoryBatch,
     endHistoryBatch,
-  } = useAppStore.getState();
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    grid: s.grid,
+    runtime: s.runtime,
+    toggleWall: s.toggleWall,
+    addWall: s.addWall,
+    resizeBoard: s.resizeBoard,
+    setCellContent: s.setCellContent,
+    toggleTrace: s.toggleTrace,
+    toggleFitToView: s.toggleFitToView,
+    editorTool: s.editorTool,
+    speed: s.speed,
+    startHistoryBatch: s.startHistoryBatch,
+    endHistoryBatch: s.endHistoryBatch,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const isReadOnly = appMode === 'curriculum';
   const isInstant = speed === 'instant' || (speed as any) === 0;
@@ -324,14 +536,17 @@ export const GridCanvas: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none">
+    <div
+      data-quality={isLowQuality ? 'low' : 'high'}
+      className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none"
+    >
       {/* Top-Left Non-Overlapping HUD Stack: 1-Slot Backpack + Runtime Variables */}
       <div className="absolute top-3 left-3 z-20 flex flex-col items-start gap-1.5 pointer-events-none">
         <BackpackHud grid={grid} stacked />
         {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
           <div
             data-testid="toolbar-variables"
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 backdrop-blur border border-indigo-500/50 rounded-xl text-xs shadow-lg"
+            className={`flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 ${isLowQuality ? '' : 'backdrop-blur '}border border-indigo-500/50 rounded-xl text-xs shadow-lg`}
           >
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">
               VARS
@@ -353,7 +568,7 @@ export const GridCanvas: React.FC = () => {
       {status === 'COLLISION' && (
         <div
           data-testid="status-collision"
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 animate-bounce flex items-center gap-2 pointer-events-none"
+          className={`absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 ${isLowQuality ? '' : 'animate-bounce '}flex items-center gap-2 pointer-events-none`}
         >
           <span className="text-xl">💥</span>
         </div>
@@ -362,7 +577,7 @@ export const GridCanvas: React.FC = () => {
       {status === 'SUCCESS' && (
         <div
           data-testid="status-success"
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 animate-pulse flex items-center gap-2 pointer-events-none"
+          className={`absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 ${isLowQuality ? '' : 'animate-pulse '}flex items-center gap-2 pointer-events-none`}
         >
           <Trophy className="w-6 h-6" />
           <span className="text-xl">⭐ ⭐ ⭐</span>
@@ -534,30 +749,19 @@ export const GridCanvas: React.FC = () => {
           height={svgHeight}
           className="overflow-visible block"
         >
-          {/* Grid Background cells */}
-          {Array.from({ length: height }).map((_, y) =>
-            Array.from({ length: width }).map((_, x) => (
-              <rect
-                key={`cell-${x}-${y}`}
-                data-testid={`cell-${x}-${y}`}
-                x={x * CELL_SIZE}
-                y={y * CELL_SIZE}
-                width={CELL_SIZE}
-                height={CELL_SIZE}
-                fill={(x + y) % 2 === 0 ? '#1e293b' : '#0f172a'}
-                stroke="#334155"
-                strokeWidth={1}
-                className={
-                  isReadOnly
-                    ? 'transition-colors'
-                    : 'cursor-pointer transition-colors hover:fill-slate-700/50'
-                }
-                onClick={isReadOnly ? undefined : () => setCellContent(x, y)}
-                onMouseDown={isReadOnly ? undefined : () => handleCellMouseDown(x, y)}
-                onMouseEnter={isReadOnly ? undefined : (e) => handleCellMouseEnter(x, y, e)}
-              />
-            ))
-          )}
+          <GridStaticBoardLayer
+            width={width}
+            height={height}
+            barriers={barriers}
+            isReadOnly={isReadOnly}
+            isLowQuality={isLowQuality}
+            setCellContent={setCellContent}
+            handleCellMouseDown={handleCellMouseDown}
+            handleCellMouseEnter={handleCellMouseEnter}
+            handleEdgeMouseDown={handleEdgeMouseDown}
+            handleEdgeMouseEnter={handleEdgeMouseEnter}
+            handleEdgeClick={handleEdgeClick}
+          />
 
           {/* Pluggable Under-Robot Overlay Slot (World Items — Commit 14) */}
           <GridOverlayLayer
@@ -601,11 +805,11 @@ export const GridCanvas: React.FC = () => {
                 key={flag.id}
                 data-testid={flag.isGoal ? `goal-flag-${flag.x}-${flag.y}` : `flag-${flag.order}`}
                 transform={`translate(${cx}, ${cy})`}
-                className={`pointer-events-none ${isInstant ? '' : 'transition-all duration-300'}`}
+                className={`pointer-events-none ${isInstant || isLowQuality ? '' : 'transition-transform duration-300'}`}
               >
                 {flag.isGoal ? (
-                  <g className={flag.collected ? 'scale-125 opacity-90' : (isInstant ? '' : 'animate-pulse')}>
-                    <circle r={22} fill="#eab308" className="shadow-lg" />
+                  <g className={flag.collected ? 'scale-125 opacity-90' : (isInstant || isLowQuality ? '' : 'animate-pulse')}>
+                    <circle r={22} fill="#eab308" className={isLowQuality ? undefined : 'shadow-lg'} />
                     <circle r={18} fill="#ca8a04" />
                     <foreignObject x={-14} y={-14} width={28} height={28}>
                       <div className="flex items-center justify-center w-full h-full text-slate-950 font-black">
@@ -636,133 +840,13 @@ export const GridCanvas: React.FC = () => {
             );
           })}
 
-          {/* Horizontal Barrier Wall Hitboxes & Lines */}
-          {Array.from({ length: height - 1 }).map((_, row) =>
-            Array.from({ length: width }).map((_, col) => {
-              const y = row + 1;
-              const hasWall = barriers.some(
-                (b) => b.orientation === 'H' && b.x === col && b.y === y
-              );
-              if (isReadOnly && !hasWall) return null;
-              return (
-                <g key={`h-wall-${col}-${y}`}>
-                  {/* Wide hitbox for touch / mouse drag (Sandbox mode only) */}
-                  {!isReadOnly && (
-                    <rect
-                      data-testid={`wall-h-hitbox-${col}-${y}`}
-                      x={col * CELL_SIZE}
-                      y={y * CELL_SIZE - 14}
-                      width={CELL_SIZE}
-                      height={28}
-                      fill="transparent"
-                      className="cursor-pointer"
-                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)}
-                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)}
-                      onClick={(e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)}
-                    />
-                  )}
-                  {/* Visible Wall Rectangle */}
-                  {hasWall && (
-                    <rect
-                      data-testid={`wall-h-${col}-${y}`}
-                      x={col * CELL_SIZE + 2}
-                      y={y * CELL_SIZE - 4}
-                      width={CELL_SIZE - 4}
-                      height={8}
-                      rx={4}
-                      fill="#ef4444"
-                      className={`filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] ${
-                        isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
-                      }`}
-                      onMouseDown={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeMouseDown({ orientation: 'H', x: col, y }, e)
-                      }
-                      onMouseEnter={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeMouseEnter({ orientation: 'H', x: col, y }, e)
-                      }
-                      onClick={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeClick({ orientation: 'H', x: col, y }, e)
-                      }
-                    />
-                  )}
-                </g>
-              );
-            })
-          )}
-
-          {/* Vertical Barrier Wall Hitboxes & Lines */}
-          {Array.from({ length: height }).map((_, row) =>
-            Array.from({ length: width - 1 }).map((_, col) => {
-              const x = col + 1;
-              const hasWall = barriers.some(
-                (b) => b.orientation === 'V' && b.x === x && b.y === row
-              );
-              if (isReadOnly && !hasWall) return null;
-              return (
-                <g key={`v-wall-${x}-${row}`}>
-                  {/* Wide hitbox for touch / mouse drag (Sandbox mode only) */}
-                  {!isReadOnly && (
-                    <rect
-                      data-testid={`wall-v-hitbox-${x}-${row}`}
-                      x={x * CELL_SIZE - 14}
-                      y={row * CELL_SIZE}
-                      width={28}
-                      height={CELL_SIZE}
-                      fill="transparent"
-                      className="cursor-pointer"
-                      onMouseDown={(e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)}
-                      onMouseEnter={(e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)}
-                      onClick={(e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)}
-                    />
-                  )}
-                  {/* Visible Wall Rectangle */}
-                  {hasWall && (
-                    <rect
-                      data-testid={`wall-v-${x}-${row}`}
-                      x={x * CELL_SIZE - 4}
-                      y={row * CELL_SIZE + 2}
-                      width={8}
-                      height={CELL_SIZE - 4}
-                      rx={4}
-                      fill="#ef4444"
-                      className={`filter drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] ${
-                        isReadOnly ? 'pointer-events-none' : 'cursor-pointer'
-                      }`}
-                      onMouseDown={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeMouseDown({ orientation: 'V', x, y: row }, e)
-                      }
-                      onMouseEnter={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeMouseEnter({ orientation: 'V', x, y: row }, e)
-                      }
-                      onClick={
-                        isReadOnly
-                          ? undefined
-                          : (e) => handleEdgeClick({ orientation: 'V', x, y: row }, e)
-                      }
-                    />
-                  )}
-                </g>
-              );
-            })
-          )}
-
           {/* Robot Representation */}
           <g
             data-testid="robot"
             transform={`translate(${robot.x * CELL_SIZE + CELL_SIZE / 2}, ${
               robot.y * CELL_SIZE + CELL_SIZE / 2
             })`}
-            className={`pointer-events-none ${isInstant ? '' : 'transition-all duration-300 ease-out'}`}
+            className={`pointer-events-none ${isInstant || isLowQuality ? '' : 'transition-transform duration-300 ease-out'}`}
           >
             {/* Rotate robot to face direction */}
             <g transform={`rotate(${getAngle(robot.dir)})`}>
@@ -770,7 +854,7 @@ export const GridCanvas: React.FC = () => {
               <circle
                 r={24}
                 fill="#0284c7"
-                className={`opacity-30 ${isInstant ? '' : 'animate-pulse'}`}
+                className={`opacity-30 ${isInstant || isLowQuality ? '' : 'animate-pulse'}`}
               />
               {/* Robot body base */}
               <circle
@@ -778,7 +862,7 @@ export const GridCanvas: React.FC = () => {
                 fill={status === 'COLLISION' ? '#dc2626' : '#0ea5e9'}
                 stroke="#ffffff"
                 strokeWidth={3}
-                className="drop-shadow-md"
+                className={isLowQuality ? undefined : 'drop-shadow-md'}
               />
               {/* Directional Arrow Pointer */}
               <polygon

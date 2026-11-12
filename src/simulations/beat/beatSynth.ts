@@ -28,9 +28,35 @@ function resolveAudioContextConstructor(): (new () => AudioContext) | null {
   return typeof ctor === 'function' ? ctor : null;
 }
 
+function hasNativeOfflineAudioContext(): boolean {
+  if (typeof globalThis === 'undefined') return false;
+  const g = globalThis as Record<string, any>;
+  return (
+    typeof g.OfflineAudioContext === 'function' ||
+    typeof g.webkitOfflineAudioContext === 'function'
+  );
+}
+
+function triangleWave(phase: number): number {
+  const p = phase - Math.floor(phase);
+  if (p < 0.25) return p * 4;
+  if (p < 0.75) return 2 - p * 4;
+  return p * 4 - 4;
+}
+
+const MAX_NOTE_CACHE_ENTRIES = 48;
+const MAX_ACTIVE_VOICES_STANDARD = 8;
+const MAX_ACTIVE_VOICES_LOW = 4;
+
 export class BeatSynthEngine {
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  private sampleCache = new Map<string, AudioBuffer>();
+  private noteCacheKeys: string[] = [];
+  private sampleCacheSampleRate: number = 0;
+  private sampleCacheEnabled: boolean = hasNativeOfflineAudioContext();
+  private lowQualityMode: boolean = false;
+  private prewarmScheduled: boolean = false;
   private muted: boolean = false;
   private blockedByAutoplay: boolean = false;
   private unavailable: boolean = false;
@@ -63,6 +89,27 @@ export class BeatSynthEngine {
 
   isMuted(): boolean {
     return this.muted;
+  }
+
+  isSampleCacheEnabled(): boolean {
+    return this.sampleCacheEnabled;
+  }
+
+  setSampleCacheEnabled(enabled: boolean): void {
+    this.sampleCacheEnabled = Boolean(enabled);
+  }
+
+  isLowQualityMode(): boolean {
+    return this.lowQualityMode;
+  }
+
+  setLowQualityMode(low: boolean): void {
+    this.lowQualityMode = Boolean(low);
+    this.enforceVoiceCap();
+  }
+
+  getCachedSampleCount(): number {
+    return this.sampleCache.size;
   }
 
   setMuted(muted: boolean): void {
@@ -158,6 +205,7 @@ export class BeatSynthEngine {
       if (this.ctx.state === 'running') {
         this.isResuming = false;
         this.blockedByAutoplay = false;
+        this.schedulePrewarm(this.ctx);
         this.flushPendingGestureQueue();
       }
       this.notify();
@@ -257,9 +305,29 @@ export class BeatSynthEngine {
     }
   }
 
+  private enforceVoiceCap(): void {
+    const cap = this.lowQualityMode ? MAX_ACTIVE_VOICES_LOW : MAX_ACTIVE_VOICES_STANDARD;
+    while (this.activeNodes.size > cap) {
+      const oldest = this.activeNodes.keys().next().value as StoppableNode | undefined;
+      if (!oldest) break;
+      this.activeNodes.delete(oldest);
+      try {
+        oldest.stop();
+      } catch {
+        // Ignore already-stopped nodes
+      }
+      try {
+        oldest.disconnect();
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
   private trackSource(node: AudioScheduledSourceNode | StoppableNode): void {
     const stoppable = node as StoppableNode;
     this.activeNodes.set(stoppable, this.currentSource);
+    this.enforceVoiceCap();
     const anyNode = node as any;
     if ('onended' in anyNode) {
       anyNode.onended = () => {
@@ -270,6 +338,268 @@ export class BeatSynthEngine {
           // Ignore
         }
       };
+    }
+  }
+
+  private schedulePrewarm(ctx: AudioContext): void {
+    if (!this.sampleCacheEnabled || this.prewarmScheduled) return;
+    this.prewarmScheduled = true;
+    const warm = () => {
+      if (!this.ctx || this.ctx !== ctx || this.muted || this.unavailable) return;
+      this.getOrCreateCachedSample(ctx, 'kick', () => this.renderKickBuffer(ctx));
+      this.getOrCreateCachedSample(ctx, 'snare', () => this.renderSnareBuffer(ctx));
+      this.getOrCreateCachedSample(ctx, 'clap', () => this.renderClapBuffer(ctx));
+      this.getOrCreateCachedSample(ctx, 'chime', () => this.renderChimeBuffer(ctx));
+    };
+    const g = globalThis as Record<string, any>;
+    if (typeof g.requestIdleCallback === 'function') {
+      g.requestIdleCallback(warm, { timeout: 300 });
+    } else if (typeof setTimeout === 'function') {
+      setTimeout(warm, 16);
+    }
+  }
+
+  private getOrCreateCachedSample(
+    ctx: AudioContext,
+    key: string,
+    builder: () => AudioBuffer | null,
+    isNoteKey: boolean = false
+  ): AudioBuffer | null {
+    const sr = ctx.sampleRate || 44100;
+    if (this.sampleCacheSampleRate !== sr) {
+      this.sampleCache.clear();
+      this.noteCacheKeys = [];
+      this.sampleCacheSampleRate = sr;
+    }
+    const existing = this.sampleCache.get(key);
+    if (existing) return existing;
+
+    const built = builder();
+    if (!built) return null;
+
+    if (isNoteKey) {
+      if (this.noteCacheKeys.length >= MAX_NOTE_CACHE_ENTRIES) {
+        const evictKey = this.noteCacheKeys.shift();
+        if (evictKey) this.sampleCache.delete(evictKey);
+      }
+      this.noteCacheKeys.push(key);
+    }
+    this.sampleCache.set(key, built);
+    return built;
+  }
+
+  private playCachedBuffer(ctx: AudioContext, buffer: AudioBuffer): void {
+    const now = this.getScheduleStartTime(ctx);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    this.trackSource(src);
+    src.start(now);
+    src.stop(now + buffer.length / (ctx.sampleRate || 44100));
+  }
+
+  private renderKickBuffer(ctx: AudioContext): AudioBuffer | null {
+    try {
+      const sr = ctx.sampleRate || 44100;
+      const length = Math.max(1, Math.floor(sr * 0.21));
+      const buffer = ctx.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+      let bodyPhase = 0;
+      let clickPhase = 0;
+
+      for (let i = 0; i < length; i++) {
+        const t = i / sr;
+        // Body sine sweep 155 -> 42 Hz
+        const bodyFreq = t < 0.16 ? 155 * Math.pow(42 / 155, t / 0.16) : 42;
+        bodyPhase += bodyFreq / sr;
+        const bodyEnv =
+          t < 0.005
+            ? 0.001 + (0.45 - 0.001) * (t / 0.005)
+            : 0.45 * Math.pow(0.001 / 0.45, Math.min(1, (t - 0.005) / 0.195));
+
+        let sample = Math.sin(bodyPhase * Math.PI * 2) * bodyEnv;
+
+        // Subtle beater click (first 35ms)
+        if (t < 0.035) {
+          const clickFreq = t < 0.025 ? 240 * Math.pow(65 / 240, t / 0.025) : 65;
+          clickPhase += clickFreq / sr;
+          const clickEnv = 0.18 * Math.pow(0.001 / 0.18, Math.min(1, t / 0.03));
+          sample += triangleWave(clickPhase) * clickEnv;
+        }
+
+        data[i] = Math.max(-1, Math.min(1, sample));
+      }
+      return buffer;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderSnareBuffer(ctx: AudioContext): AudioBuffer | null {
+    try {
+      const sr = ctx.sampleRate || 44100;
+      const length = Math.max(1, Math.floor(sr * 0.15));
+      const buffer = ctx.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+
+      // 2-pole Butterworth highpass at 950 Hz
+      const w0 = (2 * Math.PI * 950) / sr;
+      const cosW0 = Math.cos(w0);
+      const alpha = Math.sin(w0) / (2 * 0.7071);
+      const a0 = 1 + alpha;
+      const b0 = (1 + cosW0) / 2 / a0;
+      const b1 = -(1 + cosW0) / a0;
+      const b2 = b0;
+      const a1 = (-2 * cosW0) / a0;
+      const a2 = (1 - alpha) / a0;
+
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      let seed = 0x12345678;
+      let bodyPhase = 0;
+
+      for (let i = 0; i < length; i++) {
+        const t = i / sr;
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const x0 = (seed / 0xffffffff) * 2 - 1;
+        const hp = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = x0; y2 = y1; y1 = hp;
+
+        const noiseEnv = 0.28 * Math.pow(0.001 / 0.28, Math.min(1, t / 0.14));
+        let sample = hp * noiseEnv;
+
+        if (t < 0.1) {
+          const bodyFreq = t < 0.08 ? 190 * Math.pow(95 / 190, t / 0.08) : 95;
+          bodyPhase += bodyFreq / sr;
+          const bodyEnv = 0.26 * Math.pow(0.001 / 0.26, Math.min(1, t / 0.09));
+          sample += triangleWave(bodyPhase) * bodyEnv;
+        }
+
+        data[i] = Math.max(-1, Math.min(1, sample));
+      }
+      return buffer;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderClapBuffer(ctx: AudioContext): AudioBuffer | null {
+    try {
+      const sr = ctx.sampleRate || 44100;
+      const length = Math.max(1, Math.floor(sr * 0.16));
+      const buffer = ctx.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+
+      // 2-pole bandpass at 1350 Hz, Q = 1.4
+      const w0 = (2 * Math.PI * 1350) / sr;
+      const cosW0 = Math.cos(w0);
+      const alpha = Math.sin(w0) / (2 * 1.4);
+      const a0 = 1 + alpha;
+      const b0 = alpha / a0;
+      const b1 = 0;
+      const b2 = -alpha / a0;
+      const a1 = (-2 * cosW0) / a0;
+      const a2 = (1 - alpha) / a0;
+
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      let seed = 0x12345678;
+
+      for (let i = 0; i < length; i++) {
+        const t = i / sr;
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const x0 = (seed / 0xffffffff) * 2 - 1;
+        const bp = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = x0; y2 = y1; y1 = bp;
+
+        let env = 0.001;
+        if (t < 0.002) env = 0.001 + 0.319 * (t / 0.002);
+        else if (t < 0.01) env = 0.32 * Math.pow(0.05 / 0.32, (t - 0.002) / 0.008);
+        else if (t < 0.012) env = 0.05 + 0.25 * ((t - 0.01) / 0.002);
+        else if (t < 0.02) env = 0.3 * Math.pow(0.05 / 0.3, (t - 0.012) / 0.008);
+        else if (t < 0.023) env = 0.05 + 0.29 * ((t - 0.02) / 0.003);
+        else env = 0.34 * Math.pow(0.001 / 0.34, Math.min(1, (t - 0.023) / 0.127));
+
+        data[i] = Math.max(-1, Math.min(1, bp * env));
+      }
+      return buffer;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderArpeggioBuffer(
+    ctx: AudioContext,
+    notes: readonly number[],
+    spacing: number,
+    durations: readonly number[],
+    peaks: readonly number[]
+  ): AudioBuffer | null {
+    try {
+      const sr = ctx.sampleRate || 44100;
+      let totalSec = 0;
+      for (let n = 0; n < notes.length; n++) {
+        totalSec = Math.max(totalSec, n * spacing + durations[n] + 0.015);
+      }
+      const length = Math.max(1, Math.floor(sr * totalSec));
+      const buffer = ctx.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+
+      for (let n = 0; n < notes.length; n++) {
+        const freq = notes[n];
+        const startSample = Math.floor(n * spacing * sr);
+        const dur = durations[n];
+        const peak = peaks[n];
+        const endSample = Math.min(length, startSample + Math.floor((dur + 0.01) * sr));
+        let phase = 0;
+        for (let i = startSample; i < endSample; i++) {
+          const localT = (i - startSample) / sr;
+          phase += freq / sr;
+          const env =
+            localT < 0.01
+              ? 0.001 + (peak - 0.001) * (localT / 0.01)
+              : peak * Math.pow(0.001 / peak, Math.min(1, (localT - 0.01) / Math.max(0.01, dur - 0.01)));
+          data[i] += triangleWave(phase) * env;
+        }
+      }
+
+      for (let i = 0; i < length; i++) {
+        if (data[i] > 1) data[i] = 1;
+        else if (data[i] < -1) data[i] = -1;
+      }
+      return buffer;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderChimeBuffer(ctx: AudioContext): AudioBuffer | null {
+    return this.renderArpeggioBuffer(
+      ctx,
+      [1046.5, 1318.51, 1567.98],
+      0.035,
+      [0.28, 0.28, 0.28],
+      [0.2, 0.2, 0.2]
+    );
+  }
+
+  private renderNoteBuffer(ctx: AudioContext, freq: number, safeDur: number): AudioBuffer | null {
+    try {
+      const sr = ctx.sampleRate || 44100;
+      const length = Math.max(1, Math.floor(sr * (safeDur + 0.01)));
+      const buffer = ctx.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+      let phase = 0;
+      for (let i = 0; i < length; i++) {
+        const t = i / sr;
+        phase += freq / sr;
+        const env =
+          t < 0.01
+            ? 0.001 + (0.26 - 0.001) * (t / 0.01)
+            : 0.26 * Math.pow(0.001 / 0.26, Math.min(1, (t - 0.01) / Math.max(0.01, safeDur - 0.01)));
+        data[i] = triangleWave(phase) * env;
+      }
+      return buffer;
+    } catch {
+      return null;
     }
   }
 
@@ -324,6 +654,14 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
+      if (this.sampleCacheEnabled) {
+        const cached = this.getOrCreateCachedSample(ctx, 'kick', () => this.renderKickBuffer(ctx));
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
       const now = this.getScheduleStartTime(ctx);
 
       const osc = ctx.createOscillator();
@@ -372,6 +710,14 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
+      if (this.sampleCacheEnabled) {
+        const cached = this.getOrCreateCachedSample(ctx, 'snare', () => this.renderSnareBuffer(ctx));
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
       const now = this.getScheduleStartTime(ctx);
       const noiseBuf = this.getNoiseBuffer(ctx);
 
@@ -424,6 +770,14 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
+      if (this.sampleCacheEnabled) {
+        const cached = this.getOrCreateCachedSample(ctx, 'clap', () => this.renderClapBuffer(ctx));
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
       const now = this.getScheduleStartTime(ctx);
       const noiseBuf = this.getNoiseBuffer(ctx);
       if (!noiseBuf) return;
@@ -466,6 +820,14 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
+      if (this.sampleCacheEnabled) {
+        const cached = this.getOrCreateCachedSample(ctx, 'chime', () => this.renderChimeBuffer(ctx));
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
       const now = this.getScheduleStartTime(ctx);
       const notes = [1046.5, 1318.51, 1567.98]; // C6, E6, G6
 
@@ -502,11 +864,29 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
-      const now = this.getScheduleStartTime(ctx);
       const notes = isGrand
         ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98] // C5..G6 grand trophy fanfare
         : [523.25, 659.25, 783.99, 1046.5]; // C5..C6 puzzle win arpeggio
       const spacing = isGrand ? 0.085 : 0.075;
+
+      if (this.sampleCacheEnabled) {
+        const fanfareKey = isGrand ? 'fanfare:grand' : 'fanfare:std';
+        const cached = this.getOrCreateCachedSample(ctx, fanfareKey, () =>
+          this.renderArpeggioBuffer(
+            ctx,
+            notes,
+            spacing,
+            notes.map((_, idx) => (idx === notes.length - 1 ? (isGrand ? 0.55 : 0.4) : 0.2)),
+            notes.map((_, idx) => (idx === notes.length - 1 ? 0.24 : 0.18))
+          )
+        );
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
+      const now = this.getScheduleStartTime(ctx);
 
       notes.forEach((freq, idx) => {
         const isLast = idx === notes.length - 1;
@@ -542,10 +922,26 @@ export class BeatSynthEngine {
     if (!ctx) return;
 
     try {
-      const now = this.getScheduleStartTime(ctx);
       const clampedIdx = Math.max(0, Math.min(BEAT_SCALE_FREQUENCIES.length - 1, Math.round(pitch) - 1));
       const freq = BEAT_SCALE_FREQUENCIES[clampedIdx];
       const safeDur = Math.max(0.06, Math.min(2.0, durationSec));
+
+      if (this.sampleCacheEnabled) {
+        const bucketMs = Math.max(60, Math.round((safeDur * 1000) / 20) * 20);
+        const noteKey = `note:${clampedIdx}:${bucketMs}`;
+        const cached = this.getOrCreateCachedSample(
+          ctx,
+          noteKey,
+          () => this.renderNoteBuffer(ctx, freq, bucketMs / 1000),
+          true
+        );
+        if (cached) {
+          this.playCachedBuffer(ctx, cached);
+          return;
+        }
+      }
+
+      const now = this.getScheduleStartTime(ctx);
 
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -618,6 +1014,12 @@ export class BeatSynthEngine {
     }
     this.ctx = null;
     this.noiseBuffer = null;
+    this.sampleCache.clear();
+    this.noteCacheKeys = [];
+    this.sampleCacheSampleRate = 0;
+    this.sampleCacheEnabled = hasNativeOfflineAudioContext();
+    this.lowQualityMode = false;
+    this.prewarmScheduled = false;
     this.muted = false;
     this.blockedByAutoplay = false;
     this.unavailable = false;

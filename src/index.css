@@ -116,13 +116,47 @@
   animation: confetti-sparkle 1.6s ease-in-out infinite;
 }
 
+@keyframes beat-ring-ripple-a {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.035);
+  }
+}
+
+@keyframes beat-ring-ripple-b {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.035);
+  }
+}
+
+.animate-beat-ripple-a {
+  will-change: transform, opacity;
+  animation: beat-ring-ripple-a 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-beat-ripple-b {
+  will-change: transform, opacity;
+  animation: beat-ring-ripple-b 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-slot-tray-shake,
   .animate-victory-enter,
   .animate-victory-enter-delayed,
   .animate-celebration-float,
   .animate-celebration-pulse,
-  .animate-confetti-sparkle {
+  .animate-confetti-sparkle,
+  .animate-beat-ripple-a,
+  .animate-beat-ripple-b {
     animation: none !important;
     transition: none !important;
   }

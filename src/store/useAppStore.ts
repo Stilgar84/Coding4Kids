@@ -1,4 +1,11 @@
+import { useRef, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
+import { shallow } from 'zustand/shallow';
+import {
+  loadPersistedPerformanceMode,
+  savePersistedPerformanceMode,
+  type PerformanceMode,
+} from '../utils/performanceMonitor';
 import {
   GridState,
   WorkspaceState,
@@ -303,6 +310,8 @@ interface AppState {
   isFunctionBarOpen: boolean;
   isMobileMenuOpen: boolean;
   wasRestoredAfterUpdate: boolean;
+  performanceMode: PerformanceMode;
+  isAutoLowQuality: boolean;
 
   // History state & actions
   past: HistorySnapshot[];
@@ -430,6 +439,11 @@ interface AppState {
   dismissRestoredNotice: () => void;
   prepareStateForUpdate: () => boolean;
   hydrateFromUpdateIfPresent: () => boolean;
+
+  // Performance / Lite mode actions
+  setPerformanceMode: (mode: PerformanceMode) => void;
+  cyclePerformanceMode: () => void;
+  triggerAutoLowQuality: () => void;
 }
 
 let timerId: NodeJS.Timeout | null = null;
@@ -1268,6 +1282,8 @@ export const useAppStore = create<AppState>((set, get) => {
     isFunctionBarOpen: false,
     isMobileMenuOpen: false,
     wasRestoredAfterUpdate: false,
+    performanceMode: loadPersistedPerformanceMode(),
+    isAutoLowQuality: false,
 
     past: [],
     future: [],
@@ -2922,7 +2938,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       if (normalizedSpeed === 'instant') {
         if (timerId) {
-          clearInterval(timerId);
+          clearTimeout(timerId);
           timerId = null;
         }
         if (turtleRafId !== null) {
@@ -2948,15 +2964,22 @@ export const useAppStore = create<AppState>((set, get) => {
           get().reset();
         } else if (get().activeSimId === 'grid' || get().activeSimId === 'beat') {
           if (get().isPlaying && timerId) {
-            clearInterval(timerId);
-            timerId = setInterval(() => {
-              if (!get().isPlaying) {
-                if (timerId) clearInterval(timerId);
+            clearTimeout(timerId);
+            timerId = null;
+            const scheduleTick = (delay: number) => {
+              timerId = setTimeout(() => {
                 timerId = null;
-                return;
-              }
-              get().step();
-            }, normalizedSpeed);
+                if (!get().isPlaying) return;
+                get().step();
+                if (get().isPlaying) {
+                  const sp = get().speed;
+                  if (typeof sp === 'number' && sp > 0) {
+                    scheduleTick(sp);
+                  }
+                }
+              }, delay);
+            };
+            scheduleTick(normalizedSpeed as number);
           }
         } else {
           // Turtle mode: dynamically scale remaining duration of active animation
@@ -4055,7 +4078,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         if ((res.done || isPausedOnPlaceholder) && timerId) {
-          clearInterval(timerId);
+          clearTimeout(timerId);
           timerId = null;
           set({ isPlaying: false });
         }
@@ -4129,7 +4152,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         if ((res.done || isPausedOnPlaceholder) && timerId) {
-          clearInterval(timerId);
+          clearTimeout(timerId);
           timerId = null;
           set({ isPlaying: false });
         }
@@ -4178,7 +4201,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       if (speed === 'instant' || (speed as any) === 0) {
         if (timerId) {
-          clearInterval(timerId);
+          clearTimeout(timerId);
           timerId = null;
         }
         if (turtleRafId !== null) {
@@ -4243,7 +4266,10 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       if (activeSimId === 'grid' || activeSimId === 'beat') {
-        if (timerId) clearInterval(timerId);
+        if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
         set({ isPlaying: true });
 
         // Run immediate first step
@@ -4252,14 +4278,26 @@ export const useAppStore = create<AppState>((set, get) => {
           return;
         }
 
-        timerId = setInterval(() => {
-          if (!get().isPlaying) {
-            if (timerId) clearInterval(timerId);
+        const scheduleNextTick = (delayMs: number) => {
+          timerId = setTimeout(() => {
             timerId = null;
-            return;
-          }
-          get().step();
-        }, get().speed as number);
+            if (!get().isPlaying) {
+              return;
+            }
+            get().step();
+            if (get().isPlaying) {
+              const currentSpeed = get().speed;
+              if (typeof currentSpeed === 'number' && currentSpeed > 0) {
+                scheduleNextTick(currentSpeed);
+              }
+            }
+          }, delayMs);
+        };
+
+        const initialSpeed = get().speed;
+        if (typeof initialSpeed === 'number' && initialSpeed > 0) {
+          scheduleNextTick(initialSpeed);
+        }
       } else {
         // Turtle runner: RAF-driven constant speed loop
         set({ isPlaying: true });
@@ -4270,7 +4308,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     pause: () => {
       if (timerId) {
-        clearInterval(timerId);
+        clearTimeout(timerId);
         timerId = null;
       }
       if (turtleRafId !== null) {
@@ -4286,7 +4324,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     reset: () => {
       if (timerId) {
-        clearInterval(timerId);
+        clearTimeout(timerId);
         timerId = null;
       }
       if (turtleRafId !== null) {
@@ -4431,9 +4469,75 @@ export const useAppStore = create<AppState>((set, get) => {
       get().runInstantIfActive();
       return true;
     },
+
+    setPerformanceMode: (mode) => {
+      savePersistedPerformanceMode(mode);
+      const nextAuto = mode === 'auto' ? get().isAutoLowQuality : false;
+      const isLow = mode === 'low' || (mode === 'auto' && nextAuto);
+      beatSynth.setLowQualityMode(isLow);
+      set({
+        performanceMode: mode,
+        ...(mode !== 'auto' ? { isAutoLowQuality: false } : {}),
+      });
+    },
+
+    cyclePerformanceMode: () => {
+      const { performanceMode, isAutoLowQuality } = get();
+      let nextMode: PerformanceMode;
+      if (performanceMode === 'auto') {
+        nextMode = isAutoLowQuality ? 'high' : 'low';
+      } else if (performanceMode === 'low') {
+        nextMode = 'high';
+      } else {
+        nextMode = 'auto';
+      }
+      get().setPerformanceMode(nextMode);
+    },
+
+    triggerAutoLowQuality: () => {
+      const { performanceMode, isAutoLowQuality } = get();
+      if (performanceMode !== 'auto' || isAutoLowQuality) return;
+      beatSynth.setLowQualityMode(true);
+      set({
+        isAutoLowQuality: true,
+        statusAnnouncement: 'Lite visual mode enabled for smoother playback.',
+      });
+    },
   };
 });
 
-// Automatically restore workspace state if reloading immediately after a PWA update
+export function isLowQualityActive(
+  state: Pick<AppState, 'performanceMode' | 'isAutoLowQuality'>
+): boolean {
+  return state.performanceMode === 'low' || (state.performanceMode === 'auto' && state.isAutoLowQuality);
+}
+
+/**
+ * Zustand v5 SSR-safe selective subscription hook.
+ * Uses `useSyncExternalStore` with live `useAppStore.getState()` as both client and server snapshot
+ * and shallow equality caching so `renderToStaticMarkup` tests remain deterministic while client
+ * components only re-render when their selected slice actually changes.
+ */
+export function useAppStoreSelector<T>(selector: (state: AppState) => T): T {
+  const prevRef = useRef<{ hasValue: boolean; value: T }>({
+    hasValue: false,
+    value: undefined as T,
+  });
+
+  const getSnapshot = () => {
+    const next = selector(useAppStore.getState());
+    if (prevRef.current.hasValue && shallow(prevRef.current.value, next)) {
+      return prevRef.current.value;
+    }
+    prevRef.current.hasValue = true;
+    prevRef.current.value = next;
+    return next;
+  };
+
+  return useSyncExternalStore(useAppStore.subscribe, getSnapshot, getSnapshot);
+}
+
+// Sync initial persisted quality mode with beatSynth & restore PWA update state if present
+beatSynth.setLowQualityMode(isLowQualityActive(useAppStore.getState()));
 useAppStore.getState().hydrateFromUpdateIfPresent();
 

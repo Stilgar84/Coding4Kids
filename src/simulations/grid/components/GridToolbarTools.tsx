@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useAppStore, EditorTool } from '../../../store/useAppStore';
+import { EditorTool, useAppStoreSelector, isLowQualityActive } from '../../../store/useAppStore';
 import { GridState, KeyGateShape } from '../../../types';
 import { SHAPE_SYMBOLS } from '../../../engine/physics';
 import {
@@ -68,14 +68,21 @@ export interface GridToolbarToolsProps {
 export function GridToolbarTools({
   defaultWorldMenuOpen = false,
 }: GridToolbarToolsProps = {}): React.ReactElement | null {
-  useAppStore();
   const {
     appMode,
     editorTool,
     editorKeyGateVariant,
     setEditorTool,
     setEditorKeyGateVariant,
-  } = useAppStore.getState();
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    editorTool: s.editorTool,
+    editorKeyGateVariant: s.editorKeyGateVariant,
+    setEditorTool: s.setEditorTool,
+    setEditorKeyGateVariant: s.setEditorKeyGateVariant,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const [isWorldMenuOpen, setIsWorldMenuOpen] = useState(defaultWorldMenuOpen);
   const menuContainerRef = useRef<HTMLDivElement>(null);
@@ -252,7 +259,7 @@ export function GridToolbarTools({
             data-testid="world-items-popover"
             role="dialog"
             aria-label="Interactive World Items and Terrain"
-            className="absolute top-11 right-0 z-50 w-64 p-2.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-md flex flex-col gap-2.5"
+            className={`absolute top-11 right-0 z-50 w-64 p-2.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl ${isLowQuality ? '' : 'backdrop-blur-md '}flex flex-col gap-2.5`}
           >
             <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="World Terrain and Item Tools">
               <button

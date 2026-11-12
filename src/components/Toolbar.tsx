@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Check,
   ChevronDown,
@@ -15,7 +15,7 @@ import {
   Undo2,
   Zap,
 } from 'lucide-react';
-import { PRESET_LEVELS, useAppStore } from '../store/useAppStore';
+import { PRESET_LEVELS, useAppStoreSelector } from '../store/useAppStore';
 import { ScopeType } from '../types';
 import { validateLoopStructure } from '../engine/interpreter';
 import { LESSONS } from '../data/lessons';
@@ -32,8 +32,7 @@ import {
   getProfileDisplayName,
 } from '../services/profileService';
 
-export const Toolbar: React.FC = () => {
-  useAppStore();
+export const Toolbar: React.FC = React.memo(() => {
   const {
     profiles,
     activeProfileId,
@@ -61,9 +60,38 @@ export const Toolbar: React.FC = () => {
     undo,
     canUndo,
     toggleMobileMenu,
-    beatState,
+    beatIsMuted,
     unlockBeatAudio,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    profiles: s.profiles,
+    activeProfileId: s.activeProfileId,
+    setProfileModalOpen: s.setProfileModalOpen,
+    completedActivities: s.completedActivities,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    setCurriculumActivity: s.setCurriculumActivity,
+    statusAnnouncement: s.statusAnnouncement,
+    activeSimId: s.activeSimId,
+    currentLevel: s.currentLevel,
+    setLevel: s.setLevel,
+    isPlaying: s.isPlaying,
+    play: s.play,
+    pause: s.pause,
+    step: s.step,
+    reset: s.reset,
+    speed: s.speed,
+    setSpeed: s.setSpeed,
+    workspace: s.workspace,
+    setSolutionOpen: s.setSolutionOpen,
+    setSaveModalOpen: s.setSaveModalOpen,
+    setLessonPickerOpen: s.setLessonPickerOpen,
+    undo: s.undo,
+    canUndo: s.canUndo,
+    toggleMobileMenu: s.toggleMobileMenu,
+    beatIsMuted: s.beatState.isMuted,
+    unlockBeatAudio: s.unlockBeatAudio,
+  }));
 
   const currentLesson = LESSONS.find((l) => l.id === currentLevel) || LESSONS[0];
   const currentCurriculumActivity =
@@ -71,9 +99,13 @@ export const Toolbar: React.FC = () => {
     getActivityLatest(activeActivityId) ??
     CURRICULUM_ACTIVITIES[0];
 
-  const hasLoopError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((sc) => {
-    return (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError;
-  });
+  const hasLoopError = useMemo(
+    () =>
+      (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
+        (sc) => (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError
+      ),
+    [workspace]
+  );
 
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
@@ -364,7 +396,7 @@ export const Toolbar: React.FC = () => {
             data-testid="btn-step"
             disabled={hasLoopError || isInstant}
             onPointerDown={() => {
-              if (!beatState.isMuted) {
+              if (!beatIsMuted) {
                 unlockBeatAudio();
               }
             }}
@@ -404,7 +436,7 @@ export const Toolbar: React.FC = () => {
               data-testid="btn-play"
               disabled={hasLoopError}
               onPointerDown={() => {
-                if (!beatState.isMuted) {
+                if (!beatIsMuted) {
                   unlockBeatAudio();
                 }
               }}
@@ -449,4 +481,4 @@ export const Toolbar: React.FC = () => {
       <MobileDrawerMenu />
     </>
   );
-};
+});

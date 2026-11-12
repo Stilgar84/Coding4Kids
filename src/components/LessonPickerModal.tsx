@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Check, Flame, GraduationCap, Lock, Sparkles, Wrench, X } from 'lucide-react';
-import { PRESET_LEVELS, useAppStore } from '../store/useAppStore';
+import { PRESET_LEVELS, useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
@@ -123,6 +123,12 @@ export function getNextGridFocusIndex(
 }
 
 export const LessonPickerModal: React.FC = () => {
+  const isLessonPickerOpen = useAppStoreSelector((s) => s.isLessonPickerOpen);
+  if (!isLessonPickerOpen) return null;
+  return <LessonPickerModalContent />;
+};
+
+const LessonPickerModalContent: React.FC = () => {
   useAppStore();
   const {
     isLessonPickerOpen,

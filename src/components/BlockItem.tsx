@@ -16,7 +16,7 @@ import {
   Palette,
   Sparkles,
 } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
@@ -265,7 +265,7 @@ interface BlockItemProps {
   onClearDropIndicator?: () => void;
 }
 
-export const BlockItem: React.FC<BlockItemProps> = ({
+export const BlockItem: React.FC<BlockItemProps> = React.memo(({
   block,
   index,
   scope,
@@ -282,7 +282,6 @@ export const BlockItem: React.FC<BlockItemProps> = ({
   onDropAtSlot,
   onClearDropIndicator,
 }) => {
-  useAppStore();
   const {
     updateBlockRepeat,
     updateBlockParams,
@@ -295,7 +294,19 @@ export const BlockItem: React.FC<BlockItemProps> = ({
     activeActivityVersion,
     activeDemoTabIndex,
     activeSimId,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    updateBlockRepeat: s.updateBlockRepeat,
+    updateBlockParams: s.updateBlockParams,
+    replacePlaceholderBlock: s.replacePlaceholderBlock,
+    workspace: s.workspace,
+    runtime: s.runtime,
+    setSelectedBlockId: s.setSelectedBlockId,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
+    activeSimId: s.activeSimId,
+  }));
   const [isNumberHovered, setIsNumberHovered] = useState(false);
   const [isReplaceHovered, setIsReplaceHovered] = useState(false);
 
@@ -1179,5 +1190,5 @@ export const BlockItem: React.FC<BlockItemProps> = ({
       ) : null}
     </div>
   );
-};
+});
 

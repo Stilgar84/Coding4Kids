@@ -1,6 +1,6 @@
 import React from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { useAppStore } from '../../../store/useAppStore';
+import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { BEAT_LED_PALETTE, BeatState } from '../types';
 
 interface BeatToolbarToolsProps {
@@ -8,12 +8,17 @@ interface BeatToolbarToolsProps {
 }
 
 export const BeatToolbarTools: React.FC<BeatToolbarToolsProps> = ({ state: propState }) => {
-  useAppStore();
   const {
-    beatState: storeBeatState,
+    storeBeatState,
     toggleBeatMuted,
     unlockBeatAudio,
-  } = useAppStore.getState();
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    storeBeatState: s.beatState,
+    toggleBeatMuted: s.toggleBeatMuted,
+    unlockBeatAudio: s.unlockBeatAudio,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const state = propState || storeBeatState;
   const isMuted = Boolean(state?.isMuted);
@@ -58,7 +63,7 @@ export const BeatToolbarTools: React.FC<BeatToolbarToolsProps> = ({ state: propS
         <span
           style={{
             backgroundColor: activeColor,
-            boxShadow: `0 0 8px ${activeColor}99`,
+            ...(isLowQuality ? {} : { boxShadow: `0 0 8px ${activeColor}99` }),
           }}
           className="block w-5 h-5 rounded-md border border-white/60"
         />

@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { TurtleState } from '../types';
 import { getArcSvgPath } from '../physics';
 import { SimulationStatus } from '../../../types';
-import { useAppStore } from '../../../store/useAppStore';
+import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
 
 interface TurtleCanvasProps {
@@ -10,9 +10,51 @@ interface TurtleCanvasProps {
   runtimeStatus?: SimulationStatus;
 }
 
+const TurtleCommittedPaths = React.memo<{ paths: TurtleState['paths'] }>(({ paths }) => (
+  <>
+    {paths.map((p, idx) => {
+      if (p.type === 'LINE') {
+        return (
+          <line
+            key={`line-${idx}`}
+            data-testid={`turtle-line-${idx}`}
+            x1={p.fromX}
+            y1={p.fromY}
+            x2={p.toX}
+            y2={p.toY}
+            stroke={p.color}
+            strokeWidth={p.width}
+            strokeLinecap="round"
+          />
+        );
+      }
+      if (p.type === 'ARC') {
+        const d = getArcSvgPath(p);
+
+        return (
+          <path
+            key={`arc-${idx}`}
+            data-testid={`turtle-arc-${idx}`}
+            d={d}
+            fill="none"
+            stroke={p.color}
+            strokeWidth={p.width}
+            strokeLinecap="round"
+          />
+        );
+      }
+      return null;
+    })}
+  </>
+));
+
 export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) => {
-  useAppStore();
-  const { turtleState, updateTurtleViewport, speed } = useAppStore.getState();
+  const { turtleState, updateTurtleViewport, speed, isLowQuality } = useAppStoreSelector((s) => ({
+    turtleState: s.turtleState,
+    updateTurtleViewport: s.updateTurtleViewport,
+    speed: s.speed,
+    isLowQuality: isLowQualityActive(s),
+  }));
   const state = propState || turtleState;
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
@@ -185,6 +227,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     <div
       ref={containerRef}
       data-testid="turtle-canvas-container"
+      data-quality={isLowQuality ? 'low' : 'high'}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -217,40 +260,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
           <circle cx="0" cy="0" r="3" fill="#94a3b8" opacity="0.8" />
 
-          {/* Render Paths (Lines and Arcs) */}
-          {state.paths.map((p, idx) => {
-            if (p.type === 'LINE') {
-              return (
-                <line
-                  key={`line-${idx}`}
-                  data-testid={`turtle-line-${idx}`}
-                  x1={p.fromX}
-                  y1={p.fromY}
-                  x2={p.toX}
-                  y2={p.toY}
-                  stroke={p.color}
-                  strokeWidth={p.width}
-                  strokeLinecap="round"
-                />
-              );
-            }
-            if (p.type === 'ARC') {
-              const d = getArcSvgPath(p);
-
-              return (
-                <path
-                  key={`arc-${idx}`}
-                  data-testid={`turtle-arc-${idx}`}
-                  d={d}
-                  fill="none"
-                  stroke={p.color}
-                  strokeWidth={p.width}
-                  strokeLinecap="round"
-                />
-              );
-            }
-            return null;
-          })}
+          {/* Render Committed Paths (Lines and Arcs) */}
+          <TurtleCommittedPaths paths={state.paths} />
 
           {/* Active In-Progress Drawing Segment */}
           {state.activeAnimation && state.activeAnimation.penDown && (
@@ -290,8 +301,13 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
             data-testid="turtle-robot"
             transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading})`}
           >
-            {/* Pulsing selection aura */}
-            <circle r={22} fill="#38bdf8" opacity="0.15" className={isInstant ? '' : 'animate-pulse'} />
+            {/* Pulsing selection aura (disabled in Instant or Lite mode) */}
+            <circle
+              r={22}
+              fill="#38bdf8"
+              opacity="0.15"
+              className={isInstant || isLowQuality ? '' : 'animate-pulse'}
+            />
 
             {/* Turtle Shell / Body */}
             <circle r={18} fill="#0284c7" stroke="#38bdf8" strokeWidth={2.5} className="shadow-lg" />
@@ -331,7 +347,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
       {/* Floating Info Pill: Compact Coordinate, Heading & Pen Indicator */}
       <div
         data-testid="turtle-info-pill"
-        className="absolute bottom-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl text-[11px] font-mono text-slate-200 pointer-events-none select-none shadow-lg"
+        className={`absolute bottom-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-[11px] font-mono text-slate-200 pointer-events-none select-none shadow-lg ${
+          isLowQuality ? '' : 'backdrop-blur'
+        }`}
       >
         <span>
           X: <b className="text-amber-400">{Math.round(robotPose.x)}</b> Y:{' '}

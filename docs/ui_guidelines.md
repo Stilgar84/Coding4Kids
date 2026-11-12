@@ -75,9 +75,11 @@ Never reuse the same arrow or trash glyph for unrelated concepts:
   - **Spam Guards:** Never trigger on `loadSolution()`, `format === 'explanation'` demo tabs, map edits, mode/lesson/world switches, hydration, `importCode()`, or `undo()`/`redo()`.
   - **Click Anywhere to Dismiss:** Clicking/tapping anywhere on the overlay (or pressing `Escape` / `Enter` / `Space`) dismisses the modal while keeping the canvas `status-success` pill visible underneath; `Next ▶` (`btn-victory-next`, `e.stopPropagation()`) advances in Curriculum mode.
 - **Touch Targets:** Interactive controls must be `≥ 36×36px` on narrow mobile (`<640px`) and `≥ 44×44px` on tablet/desktop (`≥768px`).
-- **Zustand v5 SSR Compatibility (`renderToStaticMarkup`):** Components reading `useAppStore` must subscribe and read live state via the SSR-safe pattern:
+- **Zustand v5 SSR Compatibility & Selective Subscriptions (`renderToStaticMarkup`):** Components reading `useAppStore` should subscribe selectively via `useAppStoreSelector` (`src/store/useAppStore.ts`, backed by `useSyncExternalStore(useAppStore.subscribe, getSnapshot, getSnapshot)` with `shallow` equality) so Vitest `renderToStaticMarkup` tests reflect `useAppStore.setState(...)` mutations deterministically while avoiding unnecessary client re-renders on unrelated store ticks:
   ```ts
-  useAppStore();
-  const { ... } = useAppStore.getState();
+  const { activeSimId, isPlaying } = useAppStoreSelector((s) => ({
+    activeSimId: s.activeSimId,
+    isPlaying: s.isPlaying,
+  }));
   ```
-  so Vitest `renderToStaticMarkup` tests reflect `useAppStore.setState(...)` mutations deterministically.
+  Closed modals and drawers should gate on their open boolean (`useAppStoreSelector((s) => s.isFooOpen)`) before rendering content.

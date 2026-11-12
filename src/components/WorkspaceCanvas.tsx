@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAppStoreSelector } from '../store/useAppStore';
 import {
   BlockItem,
   computeLoopNestingMetadata,
@@ -28,7 +28,6 @@ export {
 const SLOT_SHAKE_DURATION_MS = 500;
 
 export const WorkspaceCanvas: React.FC = () => {
-  useAppStore();
   const {
     appMode,
     activeActivityId,
@@ -43,7 +42,21 @@ export const WorkspaceCanvas: React.FC = () => {
     addBlock,
     reorderBlocks,
     removeBlock,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    slotCapRejectionCount: s.slotCapRejectionCount,
+    lastSlotCapRejectedAt: s.lastSlotCapRejectedAt,
+    activeScope: s.activeScope,
+    workspace: s.workspace,
+    runtime: s.runtime,
+    selectedBlockId: s.selectedBlockId,
+    setSelectedBlockId: s.setSelectedBlockId,
+    addBlock: s.addBlock,
+    reorderBlocks: s.reorderBlocks,
+    removeBlock: s.removeBlock,
+  }));
 
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState<number | null>(null);
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
@@ -88,17 +101,27 @@ export const WorkspaceCanvas: React.FC = () => {
   }, [activeScope, selectedBlockId, removeBlock]);
 
   // Loop validation diagnostics & matched nesting bracket metadata
-  const loopValidation = validateLoopStructure(blocks);
-  const unclosedSet = new Set([
-    ...loopValidation.unclosedLoopStartIds,
-    ...loopValidation.orphanLoopEndIds,
-  ]);
-  const activeLoopStartPcs = new Set(
-    (runtime?.loopStack ?? [])
-      .filter((frame) => frame.scope === activeScope)
-      .map((frame) => frame.loopStartPc)
+  const loopValidation = useMemo(() => validateLoopStructure(blocks), [blocks]);
+  const unclosedSet = useMemo(
+    () =>
+      new Set([
+        ...loopValidation.unclosedLoopStartIds,
+        ...loopValidation.orphanLoopEndIds,
+      ]),
+    [loopValidation]
   );
-  const loopAnalysis = computeLoopNestingMetadata(blocks, activeLoopStartPcs);
+  const activeLoopStartPcsKey = (runtime?.loopStack ?? [])
+    .filter((frame) => frame.scope === activeScope)
+    .map((frame) => frame.loopStartPc)
+    .join(',');
+  const loopAnalysis = useMemo(() => {
+    const activeLoopStartPcs = new Set(
+      activeLoopStartPcsKey
+        ? activeLoopStartPcsKey.split(',').map((v) => Number(v))
+        : []
+    );
+    return computeLoopNestingMetadata(blocks, activeLoopStartPcs);
+  }, [blocks, activeLoopStartPcsKey]);
   const sequenceGapClass =
     loopAnalysis.maxTier >= 2
       ? 'gap-x-1.5 gap-y-9 pb-9'

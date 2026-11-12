@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ActionParamDef } from '../../engine/simulation/types';
 import { ParamVisual } from './VisualParamBadges';
 import { X } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStoreSelector } from '../../store/useAppStore';
 import {
   computeStagedPalettePolicy,
   resolveActiveCurriculumActivity,
@@ -75,8 +75,11 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   anchorRef,
   actionType,
 }) => {
-  useAppStore();
-  const { appMode, activeActivityId, activeActivityVersion } = useAppStore.getState();
+  const { appMode, activeActivityId, activeActivityVersion } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+  }));
   const activeActivity = resolveActiveCurriculumActivity(
     appMode,
     activeActivityId,

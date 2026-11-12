@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Play, Sparkles } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
@@ -9,9 +9,13 @@ import {
 } from '../data/curriculum';
 
 export const VictoryCelebrationModal: React.FC = () => {
-  useAppStore();
+  const isVictoryModalOpen = useAppStoreSelector((s) => s.isVictoryModalOpen);
+  if (!isVictoryModalOpen) return null;
+  return <VictoryCelebrationModalContent />;
+};
+
+const VictoryCelebrationModalContent: React.FC = () => {
   const {
-    isVictoryModalOpen,
     victoryEarnedBadges,
     dismissVictoryModal,
     appMode,
@@ -19,21 +23,28 @@ export const VictoryCelebrationModal: React.FC = () => {
     activeActivityVersion,
     speed,
     setCurriculumActivity,
-  } = useAppStore.getState();
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    victoryEarnedBadges: s.victoryEarnedBadges,
+    dismissVictoryModal: s.dismissVictoryModal,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    speed: s.speed,
+    setCurriculumActivity: s.setCurriculumActivity,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   useEffect(() => {
-    if (!isVictoryModalOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        useAppStore.getState().dismissVictoryModal();
+        dismissVictoryModal();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isVictoryModalOpen]);
-
-  if (!isVictoryModalOpen) return null;
+  }, [dismissVictoryModal]);
 
   const activeActivity =
     appMode === 'curriculum'
@@ -80,11 +91,14 @@ export const VictoryCelebrationModal: React.FC = () => {
     <div
       data-testid="victory-modal"
       data-ceremony={isBadgeOrCapstone ? 'badge' : 'standard'}
+      data-quality={isLowQuality ? 'low' : 'high'}
       role="dialog"
       aria-modal="true"
       aria-label="Puzzle Completed Celebration"
       onClick={() => dismissVictoryModal()}
-      className={`fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md cursor-pointer select-none ${entranceClass}`}
+      className={`fixed inset-0 z-[70] flex flex-col items-center justify-center p-4 bg-slate-950/80 ${
+        isLowQuality ? '' : 'backdrop-blur-md '
+      }cursor-pointer select-none ${entranceClass}`}
     >
       {/* Screen-reader polite completion & badge unlock announcement */}
       <div
@@ -97,19 +111,21 @@ export const VictoryCelebrationModal: React.FC = () => {
         {liveAnnouncementText}
       </div>
 
-      {/* Radial celebratory glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
-      >
+      {/* Radial celebratory glow (skipped in Lite mode) */}
+      {!isLowQuality && (
         <div
-          className={`w-[360px] h-[360px] sm:w-[480px] sm:h-[480px] rounded-full blur-3xl opacity-35 animate-celebration-pulse ${
-            isBadgeOrCapstone
-              ? 'bg-gradient-to-tr from-amber-400 via-yellow-300 to-emerald-400'
-              : 'bg-gradient-to-tr from-emerald-400 via-amber-300 to-sky-400'
-          }`}
-        />
-      </div>
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+        >
+          <div
+            className={`w-[360px] h-[360px] sm:w-[480px] sm:h-[480px] rounded-full blur-3xl opacity-35 animate-celebration-pulse ${
+              isBadgeOrCapstone
+                ? 'bg-gradient-to-tr from-amber-400 via-yellow-300 to-emerald-400'
+                : 'bg-gradient-to-tr from-emerald-400 via-amber-300 to-sky-400'
+            }`}
+          />
+        </div>
+      )}
 
       <div className="relative z-10 flex flex-col items-center text-center max-w-md w-full gap-4 sm:gap-5">
         {/* Big Visual Illustration */}
@@ -117,11 +133,15 @@ export const VictoryCelebrationModal: React.FC = () => {
           <div className="relative flex flex-col items-center">
             <svg
               viewBox="0 0 240 210"
-              className="w-52 h-44 sm:w-64 sm:h-56 drop-shadow-[0_12px_28px_rgba(251,191,36,0.45)] animate-celebration-float"
+              className={`w-52 h-44 sm:w-64 sm:h-56 ${
+                isLowQuality
+                  ? ''
+                  : 'drop-shadow-[0_12px_28px_rgba(251,191,36,0.45)] animate-celebration-float'
+              }`}
               aria-hidden="true"
             >
               {/* Confetti sparkles */}
-              <g className="animate-confetti-sparkle">
+              <g className={isLowQuality ? undefined : 'animate-confetti-sparkle'}>
                 <circle cx="34" cy="40" r="6" fill="#34d399" />
                 <circle cx="206" cy="36" r="7" fill="#60a5fa" />
                 <circle cx="26" cy="138" r="5" fill="#f472b6" />
@@ -203,11 +223,15 @@ export const VictoryCelebrationModal: React.FC = () => {
             {/* Cheering Robot Illustration */}
             <svg
               viewBox="0 0 220 180"
-              className="w-48 h-40 sm:w-56 sm:h-48 drop-shadow-[0_12px_24px_rgba(16,185,129,0.35)] animate-celebration-float"
+              className={`w-48 h-40 sm:w-56 sm:h-48 ${
+                isLowQuality
+                  ? ''
+                  : 'drop-shadow-[0_12px_24px_rgba(16,185,129,0.35)] animate-celebration-float'
+              }`}
               aria-hidden="true"
             >
               {/* Confetti dots */}
-              <g className="animate-confetti-sparkle">
+              <g className={isLowQuality ? undefined : 'animate-confetti-sparkle'}>
                 <circle cx="28" cy="36" r="6" fill="#fbbf24" />
                 <circle cx="192" cy="34" r="6" fill="#34d399" />
                 <circle cx="24" cy="126" r="5" fill="#60a5fa" />

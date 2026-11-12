@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   FolderOpen,
+  Gauge,
   Lightbulb,
   Map,
   Maximize2,
@@ -17,7 +18,7 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
   getActivityAtVersion,
@@ -33,7 +34,12 @@ import {
 } from '../services/profileService';
 
 export const MobileDrawerMenu: React.FC = () => {
-  useAppStore();
+  const isMobileMenuOpen = useAppStoreSelector((s) => s.isMobileMenuOpen);
+  if (!isMobileMenuOpen) return null;
+  return <MobileDrawerMenuContent />;
+};
+
+const MobileDrawerMenuContent: React.FC = () => {
   const {
     profiles,
     activeProfileId,
@@ -44,7 +50,6 @@ export const MobileDrawerMenu: React.FC = () => {
     activeActivityId,
     activeActivityVersion,
     openCopyInSandbox,
-    isMobileMenuOpen,
     setMobileMenuOpen,
     activeSimId,
     setSimEnvironment,
@@ -56,11 +61,44 @@ export const MobileDrawerMenu: React.FC = () => {
     setBadgeModalOpen,
     isMapHidden,
     toggleMapHidden,
-    beatState,
+    beatIsMuted,
     toggleBeatMuted,
     canRedo,
     redo,
-  } = useAppStore.getState();
+    performanceMode,
+    isAutoLowQuality,
+    cyclePerformanceMode,
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    profiles: s.profiles,
+    activeProfileId: s.activeProfileId,
+    setProfileModalOpen: s.setProfileModalOpen,
+    resetActivityToStarter: s.resetActivityToStarter,
+    appMode: s.appMode,
+    setAppMode: s.setAppMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    openCopyInSandbox: s.openCopyInSandbox,
+    setMobileMenuOpen: s.setMobileMenuOpen,
+    activeSimId: s.activeSimId,
+    setSimEnvironment: s.setSimEnvironment,
+    setSolutionOpen: s.setSolutionOpen,
+    setSaveModalOpen: s.setSaveModalOpen,
+    setLoadModalOpen: s.setLoadModalOpen,
+    setExportImportOpen: s.setExportImportOpen,
+    setLessonPickerOpen: s.setLessonPickerOpen,
+    setBadgeModalOpen: s.setBadgeModalOpen,
+    isMapHidden: s.isMapHidden,
+    toggleMapHidden: s.toggleMapHidden,
+    beatIsMuted: s.beatState.isMuted,
+    toggleBeatMuted: s.toggleBeatMuted,
+    canRedo: s.canRedo,
+    redo: s.redo,
+    performanceMode: s.performanceMode,
+    isAutoLowQuality: s.isAutoLowQuality,
+    cyclePerformanceMode: s.cyclePerformanceMode,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { needRefresh, isUpdating } = usePwaUpdateStore();
@@ -78,18 +116,15 @@ export const MobileDrawerMenu: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isMobileMenuOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        useAppStore.getState().setMobileMenuOpen(false);
+        setMobileMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMobileMenuOpen]);
-
-  if (!isMobileMenuOpen) return null;
+  }, [setMobileMenuOpen]);
 
   const currentCurriculumActivity =
     getActivityAtVersion(activeActivityId, activeActivityVersion) ??
@@ -370,20 +405,20 @@ export const MobileDrawerMenu: React.FC = () => {
           <button
             type="button"
             data-testid="drawer-btn-sound"
-            aria-pressed={!beatState.isMuted}
+            aria-pressed={!beatIsMuted}
             onClick={toggleBeatMuted}
             className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-all cursor-pointer ${
-              beatState.isMuted
+              beatIsMuted
                 ? 'bg-slate-800 text-slate-400 border-slate-700'
                 : 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40'
             }`}
           >
-            {beatState.isMuted ? (
+            {beatIsMuted ? (
               <VolumeX className="w-4 h-4 text-slate-400 shrink-0" />
             ) : (
               <Volume2 className="w-4 h-4 text-emerald-300 shrink-0" />
             )}
-            <span>{beatState.isMuted ? 'Muted' : 'Sound On'}</span>
+            <span>{beatIsMuted ? 'Muted' : 'Sound On'}</span>
           </button>
 
           {/* Redo */}
@@ -481,6 +516,41 @@ export const MobileDrawerMenu: React.FC = () => {
               <Maximize2 className="w-4 h-4 shrink-0" />
             )}
             <span>{isFullscreen ? 'Exit Full' : 'Fullscreen'}</span>
+          </button>
+
+          {/* Visual Quality Mode (Auto / Lite / Glow) */}
+          <button
+            type="button"
+            data-testid="drawer-btn-quality-mode"
+            data-quality-mode={performanceMode}
+            data-quality={isLowQuality ? 'low' : 'high'}
+            onClick={cyclePerformanceMode}
+            aria-label={`Visual quality mode: ${
+              performanceMode === 'auto'
+                ? isAutoLowQuality
+                  ? 'Auto (Lite)'
+                  : 'Auto'
+                : performanceMode === 'low'
+                ? 'Lite'
+                : 'Glow'
+            }`}
+            title="Cycle visual quality mode (Auto / Lite / Glow)"
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-colors cursor-pointer ${
+              isLowQuality
+                ? 'bg-amber-950/70 hover:bg-amber-900/70 text-amber-200 border-amber-500/60'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+          >
+            <Gauge className={`w-4 h-4 shrink-0 ${isLowQuality ? 'text-amber-400' : 'text-sky-400'}`} />
+            <span>
+              {performanceMode === 'auto'
+                ? isAutoLowQuality
+                  ? 'Auto (Lite)'
+                  : 'Auto'
+                : performanceMode === 'low'
+                ? 'Lite'
+                : 'Glow'}
+            </span>
           </button>
         </div>
       </div>

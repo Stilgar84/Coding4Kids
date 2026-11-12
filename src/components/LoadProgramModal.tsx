@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { getActivityLatest } from '../data/curriculum';
 import {
   getSavedPrograms,
@@ -21,6 +21,12 @@ import {
 export type LoadFilterMode = 'current-lesson' | 'all-lessons' | 'sandbox' | 'all';
 
 export const LoadProgramModal: React.FC = () => {
+  const isLoadModalOpen = useAppStoreSelector((s) => s.isLoadModalOpen);
+  if (!isLoadModalOpen) return null;
+  return <LoadProgramModalContent />;
+};
+
+const LoadProgramModalContent: React.FC = () => {
   useAppStore();
   const {
     activeProfileId,

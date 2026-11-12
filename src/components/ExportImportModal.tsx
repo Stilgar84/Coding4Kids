@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import QRCode from 'qrcode';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import {
   ProfileBackupImportMode,
   exportProfileBackupToQrBytes,
@@ -35,6 +35,12 @@ import { FullScreenQrModal } from './FullScreenQrModal';
 import { QrScannerModal } from './QrScannerModal';
 
 export const ExportImportModal: React.FC = () => {
+  const isExportImportOpen = useAppStoreSelector((s) => s.isExportImportOpen);
+  if (!isExportImportOpen) return null;
+  return <ExportImportModalContent />;
+};
+
+const ExportImportModalContent: React.FC = () => {
   useAppStore();
   const {
     isExportImportOpen,

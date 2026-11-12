@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Check, Lock, Sparkles, X } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { CURRICULUM_MODULES, getActivityLatest } from '../data/curriculum';
 import {
   getProfileAvatar,
@@ -11,6 +11,12 @@ import {
 import { isCurriculumModuleUnlocked } from './LessonPickerModal';
 
 export const BadgeCollectionModal: React.FC = () => {
+  const isBadgeModalOpen = useAppStoreSelector((s) => s.isBadgeModalOpen);
+  if (!isBadgeModalOpen) return null;
+  return <BadgeCollectionModalContent />;
+};
+
+const BadgeCollectionModalContent: React.FC = () => {
   useAppStore();
   const {
     isBadgeModalOpen,

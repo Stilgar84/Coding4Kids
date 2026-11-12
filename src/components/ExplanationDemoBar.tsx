@@ -5,7 +5,7 @@ import {
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector } from '../store/useAppStore';
 
 /**
  * Pure helper for WAI-ARIA tablist keyboard navigation.
@@ -45,38 +45,27 @@ export function computeNextDemoTabIndex(
  * to mark the explanation lesson complete and advance to the next activity.
  */
 export const ExplanationDemoBar: React.FC = () => {
-  const subAppMode = useAppStore((s) => s.appMode);
-  const subActivityId = useAppStore((s) => s.activeActivityId);
-  const subActivityVersion = useAppStore((s) => s.activeActivityVersion);
-  const subActiveDemoTabIndex = useAppStore((s) => s.activeDemoTabIndex);
-  const subExploredDemoTabs = useAppStore((s) => s.exploredDemoTabs);
-  const subCompletedActivities = useAppStore((s) => s.completedActivities);
-  const subStatusAnnouncement = useAppStore((s) => s.statusAnnouncement);
-  const selectExplanationDemoTab = useAppStore((s) => s.selectExplanationDemoTab);
-  const completeExplanationAndContinue = useAppStore(
-    (s) => s.completeExplanationAndContinue
-  );
-
-  const isSSR = typeof window === 'undefined';
-  const liveState = isSSR ? useAppStore.getState() : null;
-
-  const appMode = liveState ? liveState.appMode : subAppMode;
-  const activeActivityId = liveState ? liveState.activeActivityId : subActivityId;
-  const activeActivityVersion = liveState
-    ? liveState.activeActivityVersion
-    : subActivityVersion;
-  const activeDemoTabIndex = liveState
-    ? liveState.activeDemoTabIndex
-    : subActiveDemoTabIndex;
-  const exploredDemoTabs = liveState
-    ? liveState.exploredDemoTabs
-    : subExploredDemoTabs;
-  const completedActivities = liveState
-    ? liveState.completedActivities
-    : subCompletedActivities;
-  const statusAnnouncement = liveState
-    ? liveState.statusAnnouncement
-    : subStatusAnnouncement;
+  const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    activeDemoTabIndex,
+    exploredDemoTabs,
+    completedActivities,
+    statusAnnouncement,
+    selectExplanationDemoTab,
+    completeExplanationAndContinue,
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
+    exploredDemoTabs: s.exploredDemoTabs,
+    completedActivities: s.completedActivities,
+    statusAnnouncement: s.statusAnnouncement,
+    selectExplanationDemoTab: s.selectExplanationDemoTab,
+    completeExplanationAndContinue: s.completeExplanationAndContinue,
+  }));
 
   const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 

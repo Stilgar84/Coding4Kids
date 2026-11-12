@@ -1,9 +1,15 @@
 import React, { useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { Sparkles, History, X, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const LessonVersionMismatchModal: React.FC = () => {
+  const hasPendingMismatch = useAppStoreSelector((s) => Boolean(s.pendingVersionMismatch));
+  if (!hasPendingMismatch) return null;
+  return <LessonVersionMismatchModalContent />;
+};
+
+const LessonVersionMismatchModalContent: React.FC = () => {
   useAppStore();
   const { pendingVersionMismatch, resolveVersionMismatch, dismissVersionMismatch } =
     useAppStore.getState();

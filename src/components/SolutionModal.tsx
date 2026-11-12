@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { LESSONS } from '../data/lessons';
 import {
   CURRICULUM_ACTIVITIES,
@@ -79,7 +79,13 @@ export interface SolutionModalProps {
   activityOverride?: CurriculumActivity;
 }
 
-export const SolutionModal: React.FC<SolutionModalProps> = ({
+export const SolutionModal: React.FC<SolutionModalProps> = (props) => {
+  const isSolutionOpen = useAppStoreSelector((s) => s.isSolutionOpen);
+  if (!isSolutionOpen) return null;
+  return <SolutionModalContent {...props} />;
+};
+
+const SolutionModalContent: React.FC<SolutionModalProps> = ({
   defaultDevProofsExpanded = true,
   activityOverride,
 }) => {

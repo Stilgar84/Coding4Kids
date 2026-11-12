@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import {
   DEFAULT_PROFILE_ID,
   PROFILE_AVATARS,
@@ -33,6 +33,12 @@ import {
 } from 'lucide-react';
 
 export const ProfileSwitcherModal: React.FC = () => {
+  const isProfileModalOpen = useAppStoreSelector((s) => s.isProfileModalOpen);
+  if (!isProfileModalOpen) return null;
+  return <ProfileSwitcherModalContent />;
+};
+
+const ProfileSwitcherModalContent: React.FC = () => {
   useAppStore();
   const {
     isProfileModalOpen,

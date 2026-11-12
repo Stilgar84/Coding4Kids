@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { runHeadlessSimulation, MAX_SAVE_SIMULATION_STEPS } from '../engine/simulationRunner';
 import { generateSimulationThumbnail } from '../services/mapThumbnailGenerator';
@@ -23,6 +23,12 @@ import {
 } from 'lucide-react';
 
 export const SaveProgramModal: React.FC = () => {
+  const isSaveModalOpen = useAppStoreSelector((s) => s.isSaveModalOpen);
+  if (!isSaveModalOpen) return null;
+  return <SaveProgramModalContent />;
+};
+
+const SaveProgramModalContent: React.FC = () => {
   useAppStore();
   const {
     activeProfileId,

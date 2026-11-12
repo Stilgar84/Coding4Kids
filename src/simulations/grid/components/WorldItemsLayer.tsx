@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useAppStoreSelector, isLowQualityActive } from '../../../store/useAppStore';
 import {
   CellCoord,
   GridState,
@@ -780,6 +781,7 @@ export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
   grid,
   stacked = false,
 }) => {
+  const isLowQuality = useAppStoreSelector(isLowQualityActive);
   const carried = grid.robot.carriedItem ?? null;
   const showHud = Boolean(carried) || hasInteractiveWorldElements(grid);
   const feedbackSeq = grid.lastInteractionFeedback?.seq ?? 0;
@@ -819,7 +821,7 @@ export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
       title={grid.lastInteractionFeedback?.message || summaryLabel}
       className={`${
         stacked ? '' : 'absolute top-3 left-3 z-20 '
-      }pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-2xl border-2 shadow-lg backdrop-blur-sm transition-colors ${
+      }pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-2xl border-2 shadow-lg ${isLowQuality ? '' : 'backdrop-blur-sm '}transition-colors ${
         isShaking
           ? 'backpack-hud-shake bg-amber-950/90 border-amber-400 text-amber-100'
           : carried

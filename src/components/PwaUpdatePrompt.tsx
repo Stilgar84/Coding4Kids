@@ -5,11 +5,14 @@ import {
   applyAppUpdate,
   dismissUpdatePrompt,
 } from '../services/pwaUpdateManager';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStoreSelector } from '../store/useAppStore';
 
 export const PwaUpdatePrompt: React.FC = () => {
   const { needRefresh, isPromptDismissed, isUpdating } = usePwaUpdateStore();
-  const { wasRestoredAfterUpdate, dismissRestoredNotice } = useAppStore();
+  const { wasRestoredAfterUpdate, dismissRestoredNotice } = useAppStoreSelector((s) => ({
+    wasRestoredAfterUpdate: s.wasRestoredAfterUpdate,
+    dismissRestoredNotice: s.dismissRestoredNotice,
+  }));
 
   useEffect(() => {
     if (!wasRestoredAfterUpdate) return;

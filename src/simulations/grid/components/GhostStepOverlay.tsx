@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Direction } from '../../../types';
-import { useAppStore } from '../../../store/useAppStore';
+import { useAppStoreSelector } from '../../../store/useAppStore';
 import {
   GhostPreviewPose,
   GhostPreviewState,
@@ -40,11 +40,15 @@ export const GhostStepOverlay: React.FC<GhostStepOverlayProps> = ({
   previewOverride,
   stepIntervalMs = 550,
 }) => {
-  const subscribedPreview = useAppStore((state) => state.ghostPreview);
-  const storePreview =
-    typeof window === 'undefined' ? useAppStore.getState().ghostPreview : subscribedPreview;
-  const advanceGhostPreviewStep = useAppStore((state) => state.advanceGhostPreviewStep);
-  const stopGhostPreview = useAppStore((state) => state.stopGhostPreview);
+  const {
+    ghostPreview: storePreview,
+    advanceGhostPreviewStep,
+    stopGhostPreview,
+  } = useAppStoreSelector((state) => ({
+    ghostPreview: state.ghostPreview,
+    advanceGhostPreviewStep: state.advanceGhostPreviewStep,
+    stopGhostPreview: state.stopGhostPreview,
+  }));
 
   const preview = previewOverride !== undefined ? previewOverride : storePreview;
   const isActive = Boolean(preview?.active && preview.poses.length > 0);

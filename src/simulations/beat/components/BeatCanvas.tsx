@@ -1,7 +1,7 @@
 import React, { useSyncExternalStore } from 'react';
 import { Bell, Eraser, Grid, Hourglass, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
-import { SimulationStatus } from '../../../types';
-import { useAppStore } from '../../../store/useAppStore';
+import { Direction, SimulationStatus } from '../../../types';
+import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { BEAT_GRID_SIZE, BEAT_LED_PALETTE, BeatCueKind, BeatState } from '../types';
 import { beatSynth } from '../beatSynth';
 
@@ -138,14 +138,108 @@ function getCursorArrowRotation(dir: BeatState['cursor']['dir']): number {
   }
 }
 
+interface BeatLedCellProps {
+  col: number;
+  row: number;
+  ledColor: string | null;
+  isCursorHere: boolean;
+  cursorDir: Direction;
+  isLowQuality: boolean;
+}
+
+const BeatLedCell = React.memo<BeatLedCellProps>(
+  ({ col, row, ledColor, isCursorHere, cursorDir, isLowQuality }) => {
+    const isLit = Boolean(ledColor);
+
+    return (
+      <div
+        data-testid={`beat-led-${col}-${row}`}
+        data-coord={`${col + 1},${row + 1}`}
+        data-lit={isLit ? 'true' : 'false'}
+        data-color={ledColor || ''}
+        style={
+          isLit && ledColor
+            ? isLowQuality
+              ? { backgroundColor: ledColor }
+              : {
+                  backgroundColor: ledColor,
+                  boxShadow: `0 0 12px ${ledColor}b3, inset 0 1px 3px rgba(255,255,255,0.65)`,
+                }
+            : undefined
+        }
+        className={`relative w-full h-full rounded-md sm:rounded-lg ${
+          isLowQuality ? '' : 'transition-colors duration-100'
+        } ${
+          isLit
+            ? isLowQuality
+              ? 'border border-white/50'
+              : 'scale-[1.02] border border-white/50'
+            : isLowQuality
+            ? 'bg-slate-800/85 border border-slate-700/60'
+            : 'bg-slate-800/85 border border-slate-700/60 shadow-inner'
+        }`}
+      >
+        {/* Subtle glossy LED lens highlight when lit (omitted in Lite mode) */}
+        {isLit && !isLowQuality && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0.5 left-0.5 right-0.5 h-1/3 rounded-t-sm bg-white/30"
+          />
+        )}
+
+        {/* High-Contrast Directional LED Cursor Reticle (Visible when CURSOR_STEP / CURSOR_TURN runs) */}
+        {isCursorHere && (
+          <div
+            data-testid="beat-cursor-reticle"
+            data-cursor-x={col + 1}
+            data-cursor-y={row + 1}
+            data-cursor-dir={cursorDir}
+            role="img"
+            aria-label={`LED Cursor at column ${col + 1}, row ${row + 1}, facing ${cursorDir.toLowerCase()}`}
+            className={`pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ring-white flex items-center justify-center z-10 ${
+              isLowQuality
+                ? ''
+                : 'shadow-[0_0_0_1.5px_rgba(2,6,23,0.92),0_0_10px_rgba(255,255,255,0.8)]'
+            }`}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              className="w-3.5 h-3.5 sm:w-4 sm:h-4 overflow-visible"
+              style={{
+                transform: `rotate(${getCursorArrowRotation(cursorDir)}deg)`,
+              }}
+            >
+              <polygon
+                points="8,1.8 13.4,12.8 8,10.1 2.6,12.8"
+                fill="#ffffff"
+                stroke="#020617"
+                strokeWidth="2.2"
+                strokeLinejoin="round"
+                style={{ paintOrder: 'stroke fill' }}
+              />
+            </svg>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
 export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
-  useAppStore();
   const {
-    beatState: storeBeatState,
+    storeBeatState,
     setBeatMuted,
     toggleBeatMuted,
     unlockBeatAudio,
-  } = useAppStore.getState();
+    isLowQuality,
+  } = useAppStoreSelector((s) => ({
+    storeBeatState: s.beatState,
+    setBeatMuted: s.setBeatMuted,
+    toggleBeatMuted: s.toggleBeatMuted,
+    unlockBeatAudio: s.unlockBeatAudio,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const state = propState || storeBeatState;
   const isMuted = Boolean(state.isMuted);
@@ -179,6 +273,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
   return (
     <div
       data-testid="beat-canvas"
+      data-quality={isLowQuality ? 'low' : 'high'}
       className="relative flex flex-col w-full h-full bg-slate-950 select-none overflow-hidden"
     >
       {/* Top Status & Accessibility Bar: Beat-Ring Cue Indicator + Active LED Color + Mute / Tap-for-Sound */}
@@ -230,7 +325,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
             <span
               style={{
                 backgroundColor: activeColor,
-                boxShadow: `0 0 8px ${activeColor}99`,
+                ...(isLowQuality ? {} : { boxShadow: `0 0 8px ${activeColor}99` }),
               }}
               className="block w-5 h-5 rounded-md border border-white/60"
             />
@@ -273,21 +368,28 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
           data-testid="beat-ring"
           data-beat-index={state.beatIndex}
           data-cue={activeCue}
-          style={{
-            boxShadow:
-              state.beatIndex > 0
-                ? `0 0 28px ${cueVisual.ringGlowColor}, inset 0 1px 1px rgba(255,255,255,0.08)`
-                : 'inset 0 1px 1px rgba(255,255,255,0.06)',
-          }}
-          className={`relative aspect-square max-h-full max-w-[min(86vw,430px)] w-full p-3 sm:p-4 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 transition-all duration-150 flex items-center justify-center ${cueVisual.ringBorderClass}`}
+          style={
+            isLowQuality
+              ? undefined
+              : {
+                  boxShadow:
+                    state.beatIndex > 0
+                      ? `0 0 28px ${cueVisual.ringGlowColor}, inset 0 1px 1px rgba(255,255,255,0.08)`
+                      : 'inset 0 1px 1px rgba(255,255,255,0.06)',
+                }
+          }
+          className={`relative aspect-square max-h-full max-w-[min(86vw,430px)] w-full p-3 sm:p-4 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 ${
+            isLowQuality ? '' : 'transition-colors duration-100'
+          } flex items-center justify-center ${cueVisual.ringBorderClass}`}
         >
-          {/* Animated Beat-Ring Ripple Keyed to beatIndex (Respects prefers-reduced-motion) */}
-          {state.beatIndex > 0 && (
+          {/* Persistent compositor-only Beat-Ring Ripple (omitted in Lite mode; alternating classes avoid DOM remount) */}
+          {!isLowQuality && state.beatIndex > 0 && (
             <div
-              key={state.beatIndex}
               data-testid="beat-ring-pulse"
               aria-hidden="true"
-              className={`pointer-events-none absolute -inset-1.5 rounded-[28px] border-2 opacity-75 animate-ping motion-reduce:animate-none [animation-iteration-count:1] [animation-duration:320ms] ${cueVisual.ringBorderClass}`}
+              className={`pointer-events-none absolute -inset-1.5 rounded-[28px] border-2 opacity-0 ${
+                state.beatIndex % 2 === 0 ? 'animate-beat-ripple-a' : 'animate-beat-ripple-b'
+              } ${cueVisual.ringBorderClass}`}
             />
           )}
 
@@ -296,77 +398,28 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
             data-testid="beat-led-grid"
             role="img"
             aria-label="8 by 8 RGB LED Matrix"
-            className="w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border border-slate-800 shadow-inner"
+            className={`w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border border-slate-800 ${
+              isLowQuality ? '' : 'shadow-inner'
+            }`}
           >
             {Array.from({ length: BEAT_GRID_SIZE }, (_, row) =>
               Array.from({ length: BEAT_GRID_SIZE }, (__, col) => {
                 const ledColor = state.leds?.[row]?.[col] ?? null;
-                const isLit = Boolean(ledColor);
                 const isCursorHere =
                   Boolean(state.cursor?.visible) &&
                   state.cursor.x === col + 1 &&
                   state.cursor.y === row + 1;
 
                 return (
-                  <div
+                  <BeatLedCell
                     key={`${col}-${row}`}
-                    data-testid={`beat-led-${col}-${row}`}
-                    data-coord={`${col + 1},${row + 1}`}
-                    data-lit={isLit ? 'true' : 'false'}
-                    data-color={ledColor || ''}
-                    style={
-                      isLit && ledColor
-                        ? {
-                            backgroundColor: ledColor,
-                            boxShadow: `0 0 12px ${ledColor}b3, inset 0 1px 3px rgba(255,255,255,0.65)`,
-                          }
-                        : undefined
-                    }
-                    className={`relative w-full h-full rounded-md sm:rounded-lg transition-all duration-150 ${
-                      isLit
-                        ? 'scale-[1.02] border border-white/50'
-                        : 'bg-slate-800/85 border border-slate-700/60 shadow-inner'
-                    }`}
-                  >
-                    {/* Subtle glossy LED lens highlight when lit */}
-                    {isLit && (
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute top-0.5 left-0.5 right-0.5 h-1/3 rounded-t-sm bg-white/30"
-                      />
-                    )}
-
-                    {/* High-Contrast Directional LED Cursor Reticle (Visible when CURSOR_STEP / CURSOR_TURN runs) */}
-                    {isCursorHere && (
-                      <div
-                        data-testid="beat-cursor-reticle"
-                        data-cursor-x={state.cursor.x}
-                        data-cursor-y={state.cursor.y}
-                        data-cursor-dir={state.cursor.dir}
-                        role="img"
-                        aria-label={`LED Cursor at column ${state.cursor.x}, row ${state.cursor.y}, facing ${state.cursor.dir.toLowerCase()}`}
-                        className="pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ring-white shadow-[0_0_0_1.5px_rgba(2,6,23,0.92),0_0_10px_rgba(255,255,255,0.8)] flex items-center justify-center z-10"
-                      >
-                        <svg
-                          viewBox="0 0 16 16"
-                          aria-hidden="true"
-                          className="w-3.5 h-3.5 sm:w-4 sm:h-4 overflow-visible"
-                          style={{
-                            transform: `rotate(${getCursorArrowRotation(state.cursor.dir)}deg)`,
-                          }}
-                        >
-                          <polygon
-                            points="8,1.8 13.4,12.8 8,10.1 2.6,12.8"
-                            fill="#ffffff"
-                            stroke="#020617"
-                            strokeWidth="2.2"
-                            strokeLinejoin="round"
-                            style={{ paintOrder: 'stroke fill' }}
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
+                    col={col}
+                    row={row}
+                    ledColor={ledColor}
+                    isCursorHere={isCursorHere}
+                    cursorDir={state.cursor?.dir || 'EAST'}
+                    isLowQuality={isLowQuality}
+                  />
                 );
               })
             )}

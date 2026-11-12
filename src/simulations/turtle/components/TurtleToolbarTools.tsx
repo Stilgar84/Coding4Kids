@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppStore } from '../../../store/useAppStore';
+import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import {
   ZoomIn,
   ZoomOut,
@@ -7,20 +7,24 @@ import {
   Compass,
 } from 'lucide-react';
 
-export const TurtleToolbarTools: React.FC = () => {
-  useAppStore();
-  const { turtleState, updateTurtleViewport } = useAppStore.getState();
+export const TurtleToolbarTools: React.FC = React.memo(() => {
+  const { zoom, fitToView, updateTurtleViewport, isLowQuality } = useAppStoreSelector((s) => ({
+    zoom: s.turtleState.zoom,
+    fitToView: s.turtleState.fitToView,
+    updateTurtleViewport: s.updateTurtleViewport,
+    isLowQuality: isLowQualityActive(s),
+  }));
 
   const handleZoomIn = () => {
     updateTurtleViewport({
-      zoom: Math.min(5, Number((turtleState.zoom * 1.25).toFixed(2))),
+      zoom: Math.min(5, Number((zoom * 1.25).toFixed(2))),
       fitToView: false,
     });
   };
 
   const handleZoomOut = () => {
     updateTurtleViewport({
-      zoom: Math.max(0.2, Number((turtleState.zoom * 0.8).toFixed(2))),
+      zoom: Math.max(0.2, Number((zoom * 0.8).toFixed(2))),
       fitToView: false,
     });
   };
@@ -35,12 +39,16 @@ export const TurtleToolbarTools: React.FC = () => {
 
   const handleToggleFit = () => {
     updateTurtleViewport({
-      fitToView: !turtleState.fitToView,
+      fitToView: !fitToView,
     });
   };
 
   return (
-    <div className="flex items-center gap-1 bg-slate-900/90 backdrop-blur p-1 rounded-xl border border-slate-700/80 shadow-lg">
+    <div
+      className={`flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-lg ${
+        isLowQuality ? '' : 'backdrop-blur'
+      }`}
+    >
       {/* Zoom In */}
       <button
         type="button"
@@ -70,9 +78,9 @@ export const TurtleToolbarTools: React.FC = () => {
         type="button"
         data-testid="tool-fit-content"
         onClick={handleToggleFit}
-        aria-pressed={turtleState.fitToView}
+        aria-pressed={fitToView}
         className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all active:scale-95 ${
-          turtleState.fitToView
+          fitToView
             ? 'bg-sky-500 border-sky-300 text-white shadow-md'
             : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
         }`}
@@ -95,4 +103,4 @@ export const TurtleToolbarTools: React.FC = () => {
       </button>
     </div>
   );
-};
+});
