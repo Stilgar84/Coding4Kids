@@ -167,7 +167,7 @@ export function writeBeatParams(
       break;
     }
 
-    // Forward-compatible hooks for Commit 13 (Tier 2) & Commit 17 (Tier 3)
+    // Tier 2 (Module 2+) & Tier 3 (Module 3+ Cursor) Beat & Light opcodes
     case OP_BEAT_PLAY_NOTE: {
       writeBeatVarOrVLE(writer, params?.pitch, 1, (paramVarMask & 0x02) !== 0);
       const dur = Number(params?.duration ?? 1);
@@ -202,7 +202,9 @@ export function writeBeatParams(
     }
 
     case OP_BEAT_CURSOR_TURN: {
-      const dirByte = params?.direction === 'LEFT' || params?.dir === 'LEFT' ? 0 : 1;
+      const rawDir = params?.direction ?? params?.dir;
+      const dirByte =
+        rawDir === 0 || String(rawDir ?? 'RIGHT').trim().toUpperCase() === 'LEFT' ? 0 : 1;
       writer.writeUint8(dirByte);
       break;
     }

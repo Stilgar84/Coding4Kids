@@ -439,6 +439,27 @@ export function renderBeatMapSvg(beat: BeatState): string {
     }
   }
 
+  if (beat?.cursor?.visible) {
+    const cursorCol = Math.max(0, Math.min(BEAT_GRID_SIZE - 1, Math.round(beat.cursor.x) - 1));
+    const cursorRow = Math.max(0, Math.min(BEAT_GRID_SIZE - 1, Math.round(beat.cursor.y) - 1));
+    const cx = cursorCol * (padSize + gap);
+    const cy = cursorRow * (padSize + gap);
+    const rot =
+      beat.cursor.dir === 'NORTH'
+        ? 0
+        : beat.cursor.dir === 'SOUTH'
+        ? 180
+        : beat.cursor.dir === 'WEST'
+        ? 270
+        : 90;
+    elements.push(
+      `<rect x="${cx - 1}" y="${cy - 1}" width="${padSize + 2}" height="${padSize + 2}" rx="6" fill="none" stroke="#ffffff" stroke-width="2" />`
+    );
+    elements.push(
+      `<g transform="translate(${cx + padSize / 2}, ${cy + padSize / 2}) rotate(${rot})"><polygon points="0,-6 5,5 0,2.5 -5,5" fill="#ffffff" stroke="#020617" stroke-width="1.6" stroke-linejoin="round" /></g>`
+    );
+  }
+
   elements.push(`</g>`);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">${elements.join(

@@ -587,6 +587,10 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
             Array.from({ length: BEAT_GRID_SIZE }, (__, col) => {
               const ledColor = displayState.leds?.[row]?.[col] ?? null;
               const isLit = Boolean(ledColor);
+              const isCursorHere =
+                Boolean(displayState.cursor?.visible) &&
+                displayState.cursor.x === col + 1 &&
+                displayState.cursor.y === row + 1;
               return (
                 <span
                   key={`${col}-${row}`}
@@ -601,10 +605,23 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = ({
                         }
                       : undefined
                   }
-                  className={`block w-full h-full rounded-[1.5px] transition-colors duration-100 ${
-                    isLit ? 'border border-white/30' : 'bg-slate-800/90'
+                  className={`relative block w-full h-full rounded-[1.5px] transition-colors duration-100 ${
+                    isCursorHere
+                      ? 'ring-1 ring-white z-10'
+                      : isLit
+                      ? 'border border-white/30'
+                      : 'bg-slate-800/90'
                   }`}
-                />
+                >
+                  {isCursorHere && (
+                    <span
+                      data-testid={`variation-beat-cursor-${card.id}`}
+                      data-cursor-dir={displayState.cursor.dir}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 rounded-[1.5px] ring-1 ring-slate-950/90"
+                    />
+                  )}
+                </span>
               );
             })
           )}

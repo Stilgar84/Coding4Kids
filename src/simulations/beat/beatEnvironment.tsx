@@ -159,6 +159,18 @@ export const BEAT_STAMP_PRESET_PARAM_DEF: ActionParamDef = {
   })),
 };
 
+export const BEAT_CURSOR_TURN_PARAM_DEF: ActionParamDef = {
+  id: 'direction',
+  label: 'Turn Direction',
+  type: 'turnDir',
+  visualVariant: 'turnDir',
+  defaultValue: 'RIGHT',
+  options: [
+    { value: 'LEFT', label: 'Left 90°' },
+    { value: 'RIGHT', label: 'Right 90°' },
+  ],
+};
+
 export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'beat-drum-kick',
@@ -561,7 +573,151 @@ export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
     borderClass: 'border-pink-300',
     supportsRepeat: false,
   },
+  // Tier 3 (Module 3+): LED Cursor Blocks for Border / Marquee / Wave Loops
+  {
+    id: 'beat-cursor-step',
+    actionType: 'CURSOR_STEP',
+    name: 'Step LED Cursor',
+    category: 'motion',
+    icon: ({ isActive }) => (
+      <svg
+        className="w-6 h-6 md:w-7 md:h-7"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        {/* Trailing lit LED cell */}
+        <rect
+          x="3"
+          y="8.5"
+          width="6"
+          height="7"
+          rx="1.6"
+          fill={isActive ? 'rgba(2,6,23,0.35)' : 'rgba(254,240,138,0.45)'}
+        />
+        {/* Target cursor LED cell */}
+        <rect
+          x="11"
+          y="7"
+          width="10"
+          height="10"
+          rx="2.2"
+          stroke={isActive ? '#020617' : '#ffffff'}
+          strokeWidth="2"
+          fill={isActive ? 'rgba(2,6,23,0.2)' : 'rgba(255,255,255,0.18)'}
+        />
+        {/* Forward directional dart */}
+        <polygon
+          points="19,12 13.5,9 14.8,12 13.5,15"
+          fill={isActive ? '#020617' : '#fef08a'}
+        />
+      </svg>
+    ),
+    bgClass: 'bg-cyan-600 hover:bg-cyan-500',
+    borderClass: 'border-cyan-300',
+    supportsRepeat: true,
+  },
+  {
+    id: 'beat-cursor-turn',
+    actionType: 'CURSOR_TURN',
+    name: 'Turn LED Cursor',
+    category: 'action',
+    params: { direction: 'RIGHT' },
+    paramDefs: [BEAT_CURSOR_TURN_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <svg
+        className="w-6 h-6 md:w-7 md:h-7"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        {/* LED cursor reticle frame */}
+        <rect
+          x="4"
+          y="4"
+          width="16"
+          height="16"
+          rx="3"
+          stroke={isActive ? '#020617' : 'rgba(255,255,255,0.65)'}
+          strokeWidth="2"
+        />
+        {/* 90-degree corner rotation arrow inside reticle */}
+        <path
+          d="M9 16V9h6"
+          stroke={isActive ? '#020617' : '#fef08a'}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <polyline
+          points="13,6.5 16,9 13,11.5"
+          stroke={isActive ? '#020617' : '#fef08a'}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+    bgClass: 'bg-amber-600 hover:bg-amber-500',
+    borderClass: 'border-amber-300',
+    supportsRepeat: false,
+  },
 ];
+
+const CARDINAL_DIRS: readonly BeatState['cursor']['dir'][] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
+
+function stepBeatCursor(cursor: BeatState['cursor']): BeatState['cursor'] {
+  const baseX = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.x || 1)));
+  const baseY = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.y || 1)));
+  const dir: BeatState['cursor']['dir'] = CARDINAL_DIRS.includes(cursor?.dir)
+    ? cursor.dir
+    : 'EAST';
+
+  let nextX = baseX;
+  let nextY = baseY;
+  switch (dir) {
+    case 'EAST':
+      nextX = (baseX % BEAT_GRID_SIZE) + 1;
+      break;
+    case 'WEST':
+      nextX = ((baseX + BEAT_GRID_SIZE - 2) % BEAT_GRID_SIZE) + 1;
+      break;
+    case 'SOUTH':
+      nextY = (baseY % BEAT_GRID_SIZE) + 1;
+      break;
+    case 'NORTH':
+      nextY = ((baseY + BEAT_GRID_SIZE - 2) % BEAT_GRID_SIZE) + 1;
+      break;
+  }
+
+  return {
+    x: nextX,
+    y: nextY,
+    dir,
+    visible: true,
+  };
+}
+
+function turnBeatCursor(
+  cursor: BeatState['cursor'],
+  rawTurnDir: unknown
+): BeatState['cursor'] {
+  const baseX = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.x || 1)));
+  const baseY = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.y || 1)));
+  const currentIdx = Math.max(0, CARDINAL_DIRS.indexOf(cursor?.dir || 'EAST'));
+  const isLeft =
+    rawTurnDir === 0 || String(rawTurnDir ?? 'RIGHT').trim().toUpperCase() === 'LEFT';
+  const nextIdx = isLeft
+    ? (currentIdx + CARDINAL_DIRS.length - 1) % CARDINAL_DIRS.length
+    : (currentIdx + 1) % CARDINAL_DIRS.length;
+
+  return {
+    x: baseX,
+    y: baseY,
+    dir: CARDINAL_DIRS[nextIdx],
+    visible: true,
+  };
+}
 
 function resolveLedColor(rawColor: unknown, fallback: string): string {
   if (typeof rawColor === 'number') {
@@ -761,6 +917,31 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
         );
         nextLeds = cloneLedGrid(state.leds);
         nextLeds[rowIdx][colIdx] = nextActiveColor;
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      case 'CURSOR_STEP': {
+        nextCursor = stepBeatCursor(nextCursor);
+        nextLeds = cloneLedGrid(state.leds);
+        nextLeds[nextCursor.y - 1][nextCursor.x - 1] = nextActiveColor;
+        lastTriggeredEvent = {
+          kind: 'LED_CHANGE',
+          actionType,
+          beatIndex: nextBeatIndex,
+          color: nextActiveColor,
+        };
+        break;
+      }
+
+      case 'CURSOR_TURN': {
+        const rawDir = options?.params?.direction ?? options?.params?.dir ?? 'RIGHT';
+        nextCursor = turnBeatCursor(nextCursor, rawDir);
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
           actionType,

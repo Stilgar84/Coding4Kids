@@ -645,6 +645,99 @@ export const GridCoordVisual: React.FC<GridCoordVisualProps> = ({
 };
 
 // ==========================================
+// 6f. Cursor Turn Direction Visual (Left 90° vs Right 90° L-Turn Arrow)
+// ==========================================
+interface CursorTurnVisualProps {
+  turnDir: 'LEFT' | 'RIGHT' | string;
+  compact?: boolean;
+  className?: string;
+}
+
+export const CursorTurnVisual: React.FC<CursorTurnVisualProps> = ({
+  turnDir,
+  compact = true,
+  className = '',
+}) => {
+  const normalized = String(turnDir || 'RIGHT').toUpperCase() === 'LEFT' ? 'LEFT' : 'RIGHT';
+  const isLeft = normalized === 'LEFT';
+  const size = compact ? 22 : 28;
+
+  return (
+    <div
+      data-testid={`cursor-turn-visual-${normalized.toLowerCase()}`}
+      className={`flex flex-col items-center justify-center leading-none ${className}`}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        className="overflow-visible"
+        aria-hidden="true"
+      >
+        {/* Incoming forward stem from bottom to center */}
+        <line
+          x1="12"
+          y1="20"
+          x2="12"
+          y2="10"
+          stroke="rgba(255,255,255,0.85)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+        {/* Pivot dot */}
+        <circle cx="12" cy="10" r="2.1" fill="#fbbf24" />
+        {/* 90° turn ray + arrowhead */}
+        {isLeft ? (
+          <>
+            <line
+              x1="12"
+              y1="10"
+              x2="4.5"
+              y2="10"
+              stroke="#fbbf24"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+            />
+            <polyline
+              points="8.5,6 4,10 8.5,14"
+              stroke="#fbbf24"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
+        ) : (
+          <>
+            <line
+              x1="12"
+              y1="10"
+              x2="19.5"
+              y2="10"
+              stroke="#fbbf24"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+            />
+            <polyline
+              points="15.5,6 20,10 15.5,14"
+              stroke="#fbbf24"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
+        )}
+      </svg>
+      {!compact && (
+        <span className="text-[9px] font-black text-amber-200 mt-0.5 tracking-tighter">
+          90°
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
 // 7. Generic Param Renderer
 // ==========================================
 interface ParamVisualProps {
@@ -736,6 +829,8 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
       return <BeatDurationVisual duration={Number(effectiveValue)} compact={compact} />;
     case 'preset':
       return <StampPresetVisual preset={String(effectiveValue)} size={compact ? 22 : 28} />;
+    case 'turnDir':
+      return <CursorTurnVisual turnDir={String(effectiveValue)} compact={compact} />;
     case 'gridCoord': {
       const coordVariant =
         paramDef.visualVariant === 'col' ||

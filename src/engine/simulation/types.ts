@@ -11,7 +11,8 @@ export type ActionParamType =
   | 'pitch'
   | 'duration'
   | 'preset'
-  | 'gridCoord';
+  | 'gridCoord'
+  | 'turnDir';
 
 export interface ActionParamOption<T = any> {
   value: T;
@@ -36,7 +37,8 @@ export interface ActionParamDef {
     | 'row'
     | 'col'
     | 'pixelX'
-    | 'pixelY';
+    | 'pixelY'
+    | 'turnDir';
 }
 
 export function getDefaultParams(paramDefs?: ActionParamDef[]): Record<string, any> | undefined {

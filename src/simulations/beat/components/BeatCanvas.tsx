@@ -336,20 +336,33 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
                       />
                     )}
 
-                    {/* Optional LED Cursor Reticle (Ready for Commit 17 CURSOR_STEP / CURSOR_TURN) */}
+                    {/* High-Contrast Directional LED Cursor Reticle (Visible when CURSOR_STEP / CURSOR_TURN runs) */}
                     {isCursorHere && (
                       <div
                         data-testid="beat-cursor-reticle"
-                        className="pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ring-white flex items-center justify-center"
+                        data-cursor-x={state.cursor.x}
+                        data-cursor-y={state.cursor.y}
+                        data-cursor-dir={state.cursor.dir}
+                        role="img"
+                        aria-label={`LED Cursor at column ${state.cursor.x}, row ${state.cursor.y}, facing ${state.cursor.dir.toLowerCase()}`}
+                        className="pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ring-white shadow-[0_0_0_1.5px_rgba(2,6,23,0.92),0_0_10px_rgba(255,255,255,0.8)] flex items-center justify-center z-10"
                       >
                         <svg
                           viewBox="0 0 16 16"
-                          className="w-3 h-3 fill-white drop-shadow"
+                          aria-hidden="true"
+                          className="w-3.5 h-3.5 sm:w-4 sm:h-4 overflow-visible"
                           style={{
                             transform: `rotate(${getCursorArrowRotation(state.cursor.dir)}deg)`,
                           }}
                         >
-                          <polygon points="8,2 13,12 8,9.5 3,12" />
+                          <polygon
+                            points="8,1.8 13.4,12.8 8,10.1 2.6,12.8"
+                            fill="#ffffff"
+                            stroke="#020617"
+                            strokeWidth="2.2"
+                            strokeLinejoin="round"
+                            style={{ paintOrder: 'stroke fill' }}
+                          />
                         </svg>
                       </div>
                     )}

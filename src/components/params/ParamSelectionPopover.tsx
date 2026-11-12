@@ -163,7 +163,8 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'length' ||
     paramDef.type === 'pitch' ||
     paramDef.type === 'duration' ||
-    paramDef.type === 'gridCoord';
+    paramDef.type === 'gridCoord' ||
+    paramDef.type === 'turnDir';
 
   const content = (
     <div
@@ -209,7 +210,11 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
       </div>
 
       {/* Options Grid / Row */}
-      <div className="grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto p-0.5">
+      <div
+        className={`grid ${
+          paramDef.options.length === 2 ? 'grid-cols-2' : 'grid-cols-4'
+        } gap-1.5 max-h-56 overflow-y-auto p-0.5`}
+      >
         {paramDef.options.map((opt) => {
           const isSelected = opt.value === effectiveValue;
           return (

@@ -504,7 +504,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         '3.2',
         '3.3',
       ]);
-      expect(getActivitiesForModule('module-3').map((a) => a.id)).toEqual([
+      expect(getActivitiesForModule('module-3').map((a) => a.id).slice(0, 4)).toEqual([
         '3.0',
         '3.1',
         '3.2',
