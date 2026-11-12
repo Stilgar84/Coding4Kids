@@ -107,6 +107,37 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     return () => observer.disconnect();
   }, []);
 
+  // Compute transform
+  // When fitToView is active, scale automatically fits computedBounds into container
+  let effectiveZoom = state.zoom;
+  let effectivePanX = state.pan.x;
+  let effectivePanY = state.pan.y;
+
+  if (state.fitToView && containerSize.width > 0 && containerSize.height > 0) {
+    const bounds = state.computedBounds;
+    const boundsWidth = Math.max(100, bounds.maxX - bounds.minX);
+    const boundsHeight = Math.max(100, bounds.maxY - bounds.minY);
+    const scaleX = (containerSize.width - 64) / boundsWidth;
+    const scaleY = (containerSize.height - 64) / boundsHeight;
+    effectiveZoom = Math.min(scaleX, scaleY, 2.5);
+
+    const boundsCenterX = (bounds.minX + bounds.maxX) / 2;
+    const boundsCenterY = (bounds.minY + bounds.maxY) / 2;
+    effectivePanX = -boundsCenterX * effectiveZoom;
+    effectivePanY = -boundsCenterY * effectiveZoom;
+  }
+
+  const liveViewportRef = useRef({
+    zoom: effectiveZoom,
+    panX: effectivePanX,
+    panY: effectivePanY,
+  });
+  liveViewportRef.current = {
+    zoom: effectiveZoom,
+    panX: effectivePanX,
+    panY: effectivePanY,
+  };
+
   const pinchStartRef = useRef<{
     dist: number;
     zoom: number;
@@ -129,11 +160,11 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         const centerY = (t1.clientY + t2.clientY) / 2;
         pinchStartRef.current = {
           dist,
-          zoom: state.zoom,
+          zoom: liveViewportRef.current.zoom,
           centerX,
           centerY,
-          panX: state.pan.x,
-          panY: state.pan.y,
+          panX: liveViewportRef.current.panX,
+          panY: liveViewportRef.current.panY,
         };
       }
     };
@@ -180,7 +211,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
       el.removeEventListener('touchend', handleTouchEnd);
       el.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [state.zoom, state.pan, updateTurtleViewport]);
+  }, [updateTurtleViewport]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -188,8 +219,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
-      panX: state.pan.x,
-      panY: state.pan.y,
+      panX: effectivePanX,
+      panY: effectivePanY,
     };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
@@ -198,11 +229,13 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     if (!isPanning) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
+    if (dx === 0 && dy === 0) return;
     updateTurtleViewport({
       pan: {
         x: dragStartRef.current.panX + dx,
         y: dragStartRef.current.panY + dy,
       },
+      fitToView: false,
     });
   };
 
@@ -216,29 +249,13 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    const nextZoom = Math.min(5, Math.max(0.2, state.zoom * zoomFactor));
-    updateTurtleViewport({ zoom: nextZoom, fitToView: false });
+    const nextZoom = Math.min(5, Math.max(0.2, effectiveZoom * zoomFactor));
+    updateTurtleViewport({
+      zoom: nextZoom,
+      ...(state.fitToView ? { pan: { x: effectivePanX, y: effectivePanY } } : {}),
+      fitToView: false,
+    });
   };
-
-  // Compute transform
-  // When fitToView is active, scale automatically fits computedBounds into container
-  let effectiveZoom = state.zoom;
-  let effectivePanX = state.pan.x;
-  let effectivePanY = state.pan.y;
-
-  if (state.fitToView && containerSize.width > 0 && containerSize.height > 0) {
-    const bounds = state.computedBounds;
-    const boundsWidth = Math.max(100, bounds.maxX - bounds.minX);
-    const boundsHeight = Math.max(100, bounds.maxY - bounds.minY);
-    const scaleX = (containerSize.width - 64) / boundsWidth;
-    const scaleY = (containerSize.height - 64) / boundsHeight;
-    effectiveZoom = Math.min(scaleX, scaleY, 2.5);
-
-    const boundsCenterX = (bounds.minX + bounds.maxX) / 2;
-    const boundsCenterY = (bounds.minY + bounds.maxY) / 2;
-    effectivePanX = -boundsCenterX * effectiveZoom;
-    effectivePanY = -boundsCenterY * effectiveZoom;
-  }
 
   const centerX = containerSize.width / 2 + effectivePanX;
   const centerY = containerSize.height / 2 + effectivePanY;
@@ -371,7 +388,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
 
       {/* Top-Right HUD: Show/Hide Turtle & Loop Playback */}
       <div
-        className="absolute top-3 right-3 z-20 flex items-center gap-1.5"
+        className={`absolute top-3 right-3 z-20 flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-lg ${
+          isLowQuality ? '' : 'backdrop-blur'
+        }`}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <button
@@ -381,13 +400,17 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           aria-pressed={state.showTurtle === false}
           title={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
           aria-label={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
-          className={`flex items-center justify-center min-w-[36px] min-h-[36px] px-2 rounded-xl border transition-all active:scale-95 shadow-lg ${
+          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all active:scale-95 cursor-pointer ${
             state.showTurtle === false
-              ? 'bg-sky-500/20 border-sky-400 text-sky-200'
-              : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-200'
+              ? 'bg-sky-600 hover:bg-sky-500 border-sky-300 text-white shadow-md'
+              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 hover:text-white'
           }`}
         >
-          {state.showTurtle === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          {state.showTurtle === false ? (
+            <EyeOff className="w-4 h-4 stroke-[2.5]" />
+          ) : (
+            <Eye className="w-4 h-4 stroke-[2.25]" />
+          )}
         </button>
         <button
           type="button"
@@ -396,13 +419,13 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           aria-pressed={isLoopPlayback}
           title={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
           aria-label={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
-          className={`flex items-center justify-center min-w-[36px] min-h-[36px] px-2 rounded-xl border transition-all active:scale-95 shadow-lg ${
+          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all active:scale-95 cursor-pointer ${
             isLoopPlayback
-              ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/30'
-              : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+              ? 'bg-amber-500 hover:bg-amber-400 border-amber-300 text-slate-950 shadow-md'
+              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
           }`}
         >
-          <InfinityIcon className="w-4 h-4" />
+          <InfinityIcon className={`w-4 h-4 ${isLoopPlayback ? 'stroke-[2.5]' : 'stroke-[2.25]'}`} />
         </button>
       </div>
 

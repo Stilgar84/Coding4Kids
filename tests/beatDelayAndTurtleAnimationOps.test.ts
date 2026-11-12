@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { useAppStore, createEmptyWorkspace } from '../src/store/useAppStore';
 import { exportToString, importFromString } from '../src/engine/serialization/codeSerializer';
 import { createInitialTurtleState } from '../src/simulations/turtle/turtleEnvironment';
+import { TurtleCanvas } from '../src/simulations/turtle/components/TurtleCanvas';
 import { calculateTeleportDuration, calculateWaitDuration } from '../src/simulations/turtle/physics';
 import { BEAT_SOUND_BASE_DURATIONS_MS, getBeatEventSoundDurationMs } from '../src/simulations/beat/beatSynth';
 
@@ -243,6 +246,117 @@ describe('Beat Delay/Wait/Loop & Turtle Animation/Teleport/Sensors/Instant/Loop'
       expect(vars?.a).toBe(40);
       expect(vars?.b).toBe(-30);
       expect(vars?.c).toBe(180);
+    });
+
+    it('preserves zoom, pan, fitToView, and showTurtle changed mid-animation across play(), loop restarts, step(), and instant speed switch', () => {
+      const rafCallbacks: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        rafCallbacks.push(cb);
+        return rafCallbacks.length;
+      });
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+      try {
+        const store = useAppStore.getState();
+        store.setSimEnvironment('turtle');
+        store.setSpeed(400);
+        store.setLoopPlayback(true);
+        store.updateTurtleViewport({ pan: { x: 0, y: 0 }, zoom: 1, fitToView: false });
+        if (!useAppStore.getState().turtleState.showTurtle) {
+          store.toggleTurtleVisible();
+        }
+
+        store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 50 });
+        store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 50 });
+        store.play();
+
+        const anim1 = useAppStore.getState().turtleState.activeAnimation!;
+        expect(anim1.type).toBe('LINE');
+        expect(rafCallbacks).toHaveLength(1);
+
+        // Advance first FORWARD to 50% progress
+        rafCallbacks.shift()!(anim1.startTime + anim1.duration * 0.5);
+        expect(useAppStore.getState().turtleState.activeAnimation?.progress).toBeCloseTo(0.5);
+
+        // User zooms, pans, and hides turtle while drawing is happening
+        store.updateTurtleViewport({ zoom: 2.25, pan: { x: 40, y: -30 }, fitToView: false });
+        store.toggleTurtleVisible();
+        expect(useAppStore.getState().turtleState.zoom).toBe(2.25);
+        expect(useAppStore.getState().turtleState.pan).toEqual({ x: 40, y: -30 });
+        expect(useAppStore.getState().turtleState.showTurtle).toBe(false);
+
+        // Complete first FORWARD -> second FORWARD starts; viewport and visibility must NOT reset
+        rafCallbacks.shift()!(anim1.startTime + anim1.duration + 1);
+        let stateAfterFirst = useAppStore.getState().turtleState;
+        expect(stateAfterFirst.paths).toHaveLength(1);
+        expect(stateAfterFirst.zoom).toBe(2.25);
+        expect(stateAfterFirst.pan).toEqual({ x: 40, y: -30 });
+        expect(stateAfterFirst.fitToView).toBe(false);
+        expect(stateAfterFirst.showTurtle).toBe(false);
+        expect(stateAfterFirst.activeAnimation?.type).toBe('LINE');
+
+        // Complete second FORWARD -> loop restarts pass 2; viewport and visibility remain intact
+        const anim2 = stateAfterFirst.activeAnimation!;
+        rafCallbacks.shift()!(anim2.startTime + anim2.duration + 1);
+        const stateAfterLoopRestart = useAppStore.getState().turtleState;
+        expect(stateAfterLoopRestart.paths).toHaveLength(0);
+        expect(stateAfterLoopRestart.zoom).toBe(2.25);
+        expect(stateAfterLoopRestart.pan).toEqual({ x: 40, y: -30 });
+        expect(stateAfterLoopRestart.fitToView).toBe(false);
+        expect(stateAfterLoopRestart.showTurtle).toBe(false);
+        expect(useAppStore.getState().isPlaying).toBe(true);
+
+        // Mid-animation snap-commit via step() preserves changes made during animation
+        store.updateTurtleViewport({ zoom: 1.5, pan: { x: -12, y: 18 }, fitToView: true });
+        store.toggleTurtleVisible(); // now true
+        store.step();
+        const stateAfterStepCommit = useAppStore.getState().turtleState;
+        expect(stateAfterStepCommit.zoom).toBe(1.5);
+        expect(stateAfterStepCommit.pan).toEqual({ x: -12, y: 18 });
+        expect(stateAfterStepCommit.fitToView).toBe(true);
+        expect(stateAfterStepCommit.showTurtle).toBe(true);
+
+        // Mid-animation snap-commit via setSpeed('instant') preserves changes made during animation
+        store.pause();
+        store.setLoopPlayback(false);
+        store.reset();
+        store.play();
+        store.updateTurtleViewport({ zoom: 3.1, pan: { x: 5, y: 9 }, fitToView: false });
+        store.toggleTurtleVisible(); // now false
+        store.setSpeed('instant');
+        const stateAfterInstant = useAppStore.getState().turtleState;
+        expect(stateAfterInstant.zoom).toBe(3.1);
+        expect(stateAfterInstant.pan).toEqual({ x: 5, y: 9 });
+        expect(stateAfterInstant.fitToView).toBe(false);
+        expect(stateAfterInstant.showTurtle).toBe(false);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('renders high-contrast solid active states for TurtleCanvas visibility and loop HUD buttons', () => {
+      const store = useAppStore.getState();
+      store.setSimEnvironment('turtle');
+      store.setLoopPlayback(true);
+      if (useAppStore.getState().turtleState.showTurtle) {
+        store.toggleTurtleVisible();
+      }
+
+      const html = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: useAppStore.getState().turtleState })
+      );
+
+      const toggleTurtleMatch = html.match(/data-testid="tool-toggle-turtle"[^>]*>/);
+      expect(toggleTurtleMatch).not.toBeNull();
+      expect(toggleTurtleMatch![0]).toContain('bg-sky-600');
+      expect(toggleTurtleMatch![0]).toContain('text-white');
+      expect(toggleTurtleMatch![0]).not.toContain('bg-sky-500/20');
+
+      const loopPlaybackMatch = html.match(/data-testid="tool-loop-playback"[^>]*>/);
+      expect(loopPlaybackMatch).not.toBeNull();
+      expect(loopPlaybackMatch![0]).toContain('bg-amber-500');
+      expect(loopPlaybackMatch![0]).toContain('text-slate-950');
+      expect(loopPlaybackMatch![0]).not.toContain('bg-amber-500/25');
     });
   });
 

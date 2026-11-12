@@ -138,16 +138,8 @@ export type EditorTool =
 export const getInitialGridState = (grid: GridState): GridState =>
   resetGridInteractiveState(grid);
 
-export const getInitialTurtleState = (turtleState: TurtleState): TurtleState => ({
-  ...turtleState,
-  robot: { x: 0, y: 0, heading: 0 },
-  penDown: true,
-  penColor: '#0f172a',
-  penWidth: 6,
-  paths: [],
-  status: 'IDLE',
-  activeAnimation: null,
-});
+export const getInitialTurtleState = (turtleState: TurtleState): TurtleState =>
+  turtleSimulationEnvironment.resetState(turtleState);
 
 export const getInitialBeatState = (beatState?: BeatState): BeatState =>
   resetBeatState(beatState);
@@ -462,6 +454,17 @@ interface TurtlePendingCommit {
 }
 
 let pendingTurtleCommit: TurtlePendingCommit | null = null;
+const mergeLiveTurtleViewState = (
+  targetState: TurtleState,
+  liveState: TurtleState
+): TurtleState => ({
+  ...targetState,
+  pan: { ...liveState.pan },
+  zoom: liveState.zoom,
+  fitToView: liveState.fitToView,
+  showTurtle: liveState.showTurtle,
+  activeAnimation: null,
+});
 const MAX_HISTORY = 100;
 let activeBatchSnapshot: HistorySnapshot | null = null;
 
@@ -688,10 +691,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const commit = pendingTurtleCommit;
       pendingTurtleCommit = null;
 
-      const completedTurtleState: TurtleState = {
-        ...commit.finalTurtleState,
-        activeAnimation: null,
-      };
+      const completedTurtleState: TurtleState = mergeLiveTurtleViewState(
+        commit.finalTurtleState,
+        turtleState
+      );
 
       if (commit.isDone || commit.isSingleStep) {
         if (
@@ -1695,7 +1698,15 @@ export const useAppStore = create<AppState>((set, get) => {
         workspace: restoredWs,
         grid: JSON.parse(JSON.stringify(previousSnapshot.grid)),
         ...(previousSnapshot.turtleState
-          ? { turtleState: JSON.parse(JSON.stringify(previousSnapshot.turtleState)) }
+          ? {
+              turtleState: {
+                ...JSON.parse(JSON.stringify(previousSnapshot.turtleState)),
+                pan: { ...get().turtleState.pan },
+                zoom: get().turtleState.zoom,
+                fitToView: get().turtleState.fitToView,
+                showTurtle: get().turtleState.showTurtle,
+              },
+            }
           : {}),
         ...(previousSnapshot.beatState
           ? {
@@ -1758,7 +1769,15 @@ export const useAppStore = create<AppState>((set, get) => {
         workspace: restoredWs,
         grid: JSON.parse(JSON.stringify(nextSnapshot.grid)),
         ...(nextSnapshot.turtleState
-          ? { turtleState: JSON.parse(JSON.stringify(nextSnapshot.turtleState)) }
+          ? {
+              turtleState: {
+                ...JSON.parse(JSON.stringify(nextSnapshot.turtleState)),
+                pan: { ...get().turtleState.pan },
+                zoom: get().turtleState.zoom,
+                fitToView: get().turtleState.fitToView,
+                showTurtle: get().turtleState.showTurtle,
+              },
+            }
           : {}),
         ...(nextSnapshot.beatState
           ? {
@@ -3338,11 +3357,12 @@ export const useAppStore = create<AppState>((set, get) => {
           turtleRafId = null;
         }
         if (pendingTurtleCommit) {
+          const liveTurtle = get().turtleState;
           set({
-            turtleState: {
-              ...pendingTurtleCommit.finalTurtleState,
-              activeAnimation: null,
-            },
+            turtleState: mergeLiveTurtleViewState(
+              pendingTurtleCommit.finalTurtleState,
+              liveTurtle
+            ),
             runtime: pendingTurtleCommit.finalRuntime,
           });
           pendingTurtleCommit = null;
@@ -4335,13 +4355,33 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     updateTurtleViewport: (updates) => {
-      set((state) => ({
-        turtleState: {
-          ...state.turtleState,
-          ...updates,
-          pan: updates.pan ? { ...state.turtleState.pan, ...updates.pan } : state.turtleState.pan,
-        },
-      }));
+      set((state) => {
+        const nextPan = updates.pan
+          ? { ...state.turtleState.pan, ...updates.pan }
+          : state.turtleState.pan;
+        const nextZoom = updates.zoom !== undefined ? updates.zoom : state.turtleState.zoom;
+        const nextFitToView =
+          updates.fitToView !== undefined ? updates.fitToView : state.turtleState.fitToView;
+
+        if (pendingTurtleCommit) {
+          pendingTurtleCommit.finalTurtleState = {
+            ...pendingTurtleCommit.finalTurtleState,
+            pan: { ...nextPan },
+            zoom: nextZoom,
+            fitToView: nextFitToView,
+          };
+        }
+
+        return {
+          turtleState: {
+            ...state.turtleState,
+            ...updates,
+            pan: nextPan,
+            zoom: nextZoom,
+            fitToView: nextFitToView,
+          },
+        };
+      });
     },
 
     clearTurtleCanvas: () => {
@@ -4559,11 +4599,9 @@ export const useAppStore = create<AppState>((set, get) => {
           }
           const commit = pendingTurtleCommit;
           pendingTurtleCommit = null;
+          const liveTurtle = get().turtleState;
           set({
-            turtleState: {
-              ...commit.finalTurtleState,
-              activeAnimation: null,
-            },
+            turtleState: mergeLiveTurtleViewState(commit.finalTurtleState, liveTurtle),
             runtime: commit.finalRuntime,
           });
           if (
@@ -4778,12 +4816,21 @@ export const useAppStore = create<AppState>((set, get) => {
     toggleLoopPlayback: () => set((state) => ({ isLoopPlayback: !state.isLoopPlayback })),
 
     toggleTurtleVisible: () =>
-      set((state) => ({
-        turtleState: {
-          ...state.turtleState,
-          showTurtle: !state.turtleState.showTurtle,
-        },
-      })),
+      set((state) => {
+        const nextShowTurtle = !state.turtleState.showTurtle;
+        if (pendingTurtleCommit) {
+          pendingTurtleCommit.finalTurtleState = {
+            ...pendingTurtleCommit.finalTurtleState,
+            showTurtle: nextShowTurtle,
+          };
+        }
+        return {
+          turtleState: {
+            ...state.turtleState,
+            showTurtle: nextShowTurtle,
+          },
+        };
+      }),
 
     dismissRestoredNotice: () => set({ wasRestoredAfterUpdate: false }),
 
@@ -4793,11 +4840,9 @@ export const useAppStore = create<AppState>((set, get) => {
       if (pendingTurtleCommit) {
         const commit = pendingTurtleCommit;
         pendingTurtleCommit = null;
+        const liveTurtle = get().turtleState;
         set({
-          turtleState: {
-            ...commit.finalTurtleState,
-            activeAnimation: null,
-          },
+          turtleState: mergeLiveTurtleViewState(commit.finalTurtleState, liveTurtle),
           runtime: commit.finalRuntime,
         });
       }
