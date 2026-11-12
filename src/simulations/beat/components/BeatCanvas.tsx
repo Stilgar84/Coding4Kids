@@ -1,5 +1,5 @@
 import React, { useSyncExternalStore } from 'react';
-import { Bell, Eraser, Grid, Hourglass, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Eraser, Gauge, Grid, Hourglass, Infinity as InfinityIcon, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { Direction, SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { BEAT_GRID_SIZE, BEAT_LED_PALETTE, BeatCueKind, BeatState } from '../types';
@@ -112,6 +112,15 @@ function getCueVisualStyle(cue: BeatCueKind | 'NONE'): CueVisualStyle {
         symbol: '◆',
         label: 'LED Light',
         icon: <Sparkles className="w-4 h-4" />,
+      };
+    case 'SET_BEAT_DELAY':
+      return {
+        ringBorderClass: 'border-sky-400 border-solid',
+        ringGlowColor: 'rgba(56, 189, 248, 0.45)',
+        pillClass: 'bg-sky-500/20 border-sky-400 text-sky-200',
+        symbol: '⏱',
+        label: 'Step Delay',
+        icon: <Gauge className="w-4 h-4 text-sky-300" />,
       };
     default:
       return {
@@ -233,12 +242,16 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
     toggleBeatMuted,
     unlockBeatAudio,
     isLowQuality,
+    isLoopPlayback,
+    toggleLoopPlayback,
   } = useAppStoreSelector((s) => ({
     storeBeatState: s.beatState,
     setBeatMuted: s.setBeatMuted,
     toggleBeatMuted: s.toggleBeatMuted,
     unlockBeatAudio: s.unlockBeatAudio,
     isLowQuality: isLowQualityActive(s),
+    isLoopPlayback: s.isLoopPlayback,
+    toggleLoopPlayback: s.toggleLoopPlayback,
   }));
 
   const state = propState || storeBeatState;
@@ -358,6 +371,22 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
             }`}
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+
+          <button
+            type="button"
+            data-testid="tool-loop-playback"
+            aria-pressed={isLoopPlayback}
+            aria-label={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
+            title={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
+            onClick={toggleLoopPlayback}
+            className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+              isLoopPlayback
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/30'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700'
+            }`}
+          >
+            <InfinityIcon className="w-4 h-4" />
           </button>
         </div>
       </div>

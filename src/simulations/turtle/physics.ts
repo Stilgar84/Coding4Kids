@@ -7,6 +7,8 @@ export const DEFAULT_ARC_ANGLE = 90;
 
 export const BASE_LINEAR_SPEED = 200; // px/s at 1x
 export const BASE_ANGULAR_SPEED = 360; // deg/s at 1x
+export const BASE_TELEPORT_DURATION_MS = 320; // ms at 1x
+export const BASE_WAIT_DURATION_MS = 400; // 1 beat/unit = 400ms at 1x
 
 export function normalizeHeading(degrees: number): number {
   let h = degrees % 360;
@@ -153,6 +155,25 @@ export function isTurtleMotionAction(actionType: string): boolean {
 }
 
 /**
+ * Checks whether an action type animates over time (motion, wait, or teleport).
+ */
+export function isTurtleAnimatedAction(actionType: string): boolean {
+  return isTurtleMotionAction(actionType) || actionType === 'WAIT' || actionType === 'TELEPORT';
+}
+
+export function calculateTeleportDuration(speed: SimulationSpeed | number): number {
+  const mult = getSpeedMultiplier(speed);
+  if (!Number.isFinite(mult)) return 0;
+  return BASE_TELEPORT_DURATION_MS / mult;
+}
+
+export function calculateWaitDuration(units: number, speed: SimulationSpeed | number): number {
+  const mult = getSpeedMultiplier(speed);
+  if (!Number.isFinite(mult) || units <= 0) return 0;
+  return (BASE_WAIT_DURATION_MS * units) / mult;
+}
+
+/**
  * Creates a TurtleActiveAnimation descriptor for a motion action.
  */
 export function createTurtleAnimation(
@@ -182,6 +203,39 @@ export function createTurtleAnimation(
       penColor,
       penWidth,
       deltaDegrees,
+    };
+  }
+
+  if (actionType === 'WAIT') {
+    const units = typeof params?.duration === 'number' && Number.isFinite(params.duration) ? params.duration : 1;
+    const duration = calculateWaitDuration(units, speed);
+    return {
+      type: 'WAIT',
+      fromPose,
+      toPose: fromPose,
+      currentPose: { ...fromPose },
+      progress: 0,
+      duration,
+      startTime,
+      penDown: false,
+      penColor,
+      penWidth,
+    };
+  }
+
+  if (actionType === 'TELEPORT') {
+    const duration = calculateTeleportDuration(speed);
+    return {
+      type: 'TELEPORT',
+      fromPose,
+      toPose,
+      currentPose: { ...fromPose },
+      progress: 0,
+      duration,
+      startTime,
+      penDown: false,
+      penColor,
+      penWidth,
     };
   }
 
@@ -246,6 +300,12 @@ export function interpolateAnimationPose(
   }
   if (anim.type === 'TURN' && anim.deltaDegrees !== undefined) {
     return { pose: getTurnProgressPose(anim.fromPose, anim.deltaDegrees, p) };
+  }
+  if (anim.type === 'WAIT') {
+    return { pose: anim.fromPose };
+  }
+  if (anim.type === 'TELEPORT') {
+    return { pose: p >= 0.5 ? anim.toPose : anim.fromPose };
   }
   return { pose: anim.toPose };
 }
@@ -414,6 +474,27 @@ export function arcTurtle(
     robot: newRobot,
     paths: newPaths,
     computedBounds: updateBoundingBox(newPaths, newRobot),
+  };
+}
+
+/**
+ * Teleports turtle instantly to (x, y, heading) without drawing any path, even when penDown is true.
+ */
+export function teleportTurtle(
+  state: TurtleState,
+  x: number,
+  y: number,
+  heading: number
+): TurtleState {
+  const newRobot: TurtlePose = {
+    x: Number(x.toFixed(4)),
+    y: Number(y.toFixed(4)),
+    heading: normalizeHeading(heading),
+  };
+  return {
+    ...state,
+    robot: newRobot,
+    computedBounds: updateBoundingBox(state.paths, newRobot),
   };
 }
 

@@ -261,7 +261,7 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
         'LIGHT_PIXEL',
         'STAMP_PRESET',
       ]);
-      expect(actionTypes.slice(15)).toEqual(['CURSOR_STEP', 'CURSOR_TURN']);
+      expect(actionTypes.slice(15)).toEqual(['CURSOR_STEP', 'CURSOR_TURN', 'SET_BEAT_DELAY']);
 
       // Repeatable rhythm/melody/cursor-step blocks vs non-repeatable stamp/clear/LED state/cursor-turn blocks
       expect(BEAT_PALETTE_ITEMS.find((p) => p.actionType === 'DRUM_KICK')?.supportsRepeat).toBe(true);
@@ -555,16 +555,17 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
       expect(thumb.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true);
       expect(log.oscillatorsCreated).toBe(0);
 
-      // 3. Store Instant mode
+      // 3. Store muted + zero-delay non-sound batching
       const store = useAppStore.getState();
       store.setSimEnvironment('beat');
-      store.setSpeed('instant');
-      store.addBlock('MAIN', 'DRUM_KICK', 4);
-      store.addBlock('MAIN', 'PLAY_CHIME');
+      store.setBeatMuted(true);
+      store.addBlock('MAIN', 'SET_BEAT_DELAY', undefined, undefined, { multiplier: 0 });
       store.addBlock('MAIN', 'STAMP_STAR');
+      store.addBlock('MAIN', 'STAMP_HEART');
+      store.addBlock('MAIN', 'CLEAR_LEDS');
       store.play();
 
-      expect(useAppStore.getState().beatState.beatIndex).toBe(6);
+      expect(useAppStore.getState().beatState.beatIndex).toBe(4);
       expect(log.oscillatorsCreated).toBe(0);
       expect(log.bufferSourcesCreated).toBe(0);
     });

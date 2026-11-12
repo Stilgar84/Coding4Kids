@@ -823,7 +823,7 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
       expect(cardsHtml).toContain('Doorbell Chime');
       expect(cardsHtml).toContain('Traffic-Light Countdown');
       expect(cardsHtml).toContain('Rising Color Bar &amp; Bassline');
-      expect(BEAT_PALETTE_ITEMS.length).toBe(17);
+      expect(BEAT_PALETTE_ITEMS.length).toBe(18);
       expect(paletteHtml).not.toContain('Step LED Cursor');
       expect(paletteHtml).not.toContain('Turn LED Cursor');
     });

@@ -39,6 +39,7 @@ export const MODULE_2_BEAT_ALLOWED_BLOCKS: string[] = [
   'LIGHT_COL',
   'LIGHT_PIXEL',
   'STAMP_PRESET',
+  'SET_BEAT_DELAY',
 ];
 
 /**

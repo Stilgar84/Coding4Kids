@@ -12,7 +12,11 @@ export type ActionParamType =
   | 'duration'
   | 'preset'
   | 'gridCoord'
-  | 'turnDir';
+  | 'turnDir'
+  | 'beat-delay'
+  | 'wait-duration'
+  | 'instant-mode'
+  | 'coord';
 
 export interface ActionParamOption<T = any> {
   value: T;
@@ -54,7 +58,7 @@ export interface SimPaletteItem {
   id: string; // unique item id in palette, e.g. 'turtle-turn-left', 'turtle-pen-color'
   actionType: string; // underlying action type, e.g. 'TURN_LEFT', 'SET_PEN_COLOR'
   name: string;
-  category: 'motion' | 'pen' | 'action';
+  category: 'motion' | 'pen' | 'action' | 'timing';
   params?: Record<string, any>; // default / template params
   paramDefs?: ActionParamDef[]; // Parameter definitions (options, defaults, labels)
   icon: (props: { className?: string; isActive?: boolean }) => React.ReactNode;
@@ -70,6 +74,13 @@ export interface SimActionResult<TState> {
   isSuccess?: boolean;
 }
 
+export interface SimSensorDef {
+  id: string; // e.g. '$x' | '$y' | '$heading'
+  label: string;
+  icon: string;
+  shortLabel?: string;
+}
+
 export interface SimulationEnvironment<TState = any> {
   id: string;
   name: string;
@@ -77,6 +88,7 @@ export interface SimulationEnvironment<TState = any> {
 
   // 1. Palette items (actions and parameterized variants)
   paletteItems: SimPaletteItem[];
+  sensors?: SimSensorDef[];
 
   // 2. Simulation State & Execution
   createInitialState: () => TState;
@@ -87,8 +99,9 @@ export interface SimulationEnvironment<TState = any> {
     options?: { repeatCount?: number; params?: Record<string, any> }
   ) => SimActionResult<TState>;
 
-  // Hook for sensor queries (future-proof)
+  // Hook for sensor queries
   getSensorInfo?: (state: TState, sensorId: string) => any;
+  readSensor?: (sensorId: string, state: TState) => number;
 
   // Victory / Completion evaluation when call stack finishes
   evaluateCompletion?: (state: TState) => SimulationStatus;

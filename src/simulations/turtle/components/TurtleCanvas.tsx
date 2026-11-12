@@ -4,6 +4,7 @@ import { getArcSvgPath } from '../physics';
 import { SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
+import { Eye, EyeOff, Infinity as InfinityIcon } from 'lucide-react';
 
 interface TurtleCanvasProps {
   state: TurtleState;
@@ -49,14 +50,35 @@ const TurtleCommittedPaths = React.memo<{ paths: TurtleState['paths'] }>(({ path
 ));
 
 export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) => {
-  const { turtleState, updateTurtleViewport, speed, isLowQuality } = useAppStoreSelector((s) => ({
+  const {
+    turtleState,
+    updateTurtleViewport,
+    speed,
+    isLowQuality,
+    isLoopPlayback,
+    toggleLoopPlayback,
+    toggleTurtleVisible,
+  } = useAppStoreSelector((s) => ({
     turtleState: s.turtleState,
     updateTurtleViewport: s.updateTurtleViewport,
     speed: s.speed,
     isLowQuality: isLowQualityActive(s),
+    isLoopPlayback: s.isLoopPlayback,
+    toggleLoopPlayback: s.toggleLoopPlayback,
+    toggleTurtleVisible: s.toggleTurtleVisible,
   }));
   const state = propState || turtleState;
-  const isInstant = speed === 'instant' || (speed as any) === 0;
+  const isInstant = speed === 'instant' || (speed as any) === 0 || state.instantMode;
+
+  const activeAnim = state.activeAnimation;
+  let teleportScale = 1;
+  let teleportOpacity = 1;
+  if (activeAnim?.type === 'TELEPORT') {
+    const p = Math.max(0, Math.min(1, activeAnim.progress));
+    const phase = p < 0.5 ? 1 - p * 2 : (p - 0.5) * 2;
+    teleportScale = Math.max(0.05, phase);
+    teleportOpacity = Math.max(0, phase);
+  }
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 600 });
@@ -297,10 +319,12 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           )}
 
           {/* Robot Turtle Avatar */}
-          <g
-            data-testid="turtle-robot"
-            transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading})`}
-          >
+          {state.showTurtle !== false && (
+            <g
+              data-testid="turtle-robot"
+              transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading}) scale(${teleportScale})`}
+              opacity={teleportOpacity}
+            >
             {/* Pulsing selection aura (disabled in Instant or Lite mode) */}
             <circle
               r={22}
@@ -340,9 +364,47 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
             {!state.penDown && (
               <line x1="-3" y1="-3" x2="3" y2="3" stroke="#ef4444" strokeWidth="1.5" />
             )}
-          </g>
+            </g>
+          )}
         </g>
       </svg>
+
+      {/* Top-Right HUD: Show/Hide Turtle & Loop Playback */}
+      <div
+        className="absolute top-3 right-3 z-20 flex items-center gap-1.5"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          data-testid="tool-toggle-turtle"
+          onClick={toggleTurtleVisible}
+          aria-pressed={state.showTurtle === false}
+          title={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
+          aria-label={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
+          className={`flex items-center justify-center min-w-[36px] min-h-[36px] px-2 rounded-xl border transition-all active:scale-95 shadow-lg ${
+            state.showTurtle === false
+              ? 'bg-sky-500/20 border-sky-400 text-sky-200'
+              : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-200'
+          }`}
+        >
+          {state.showTurtle === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+        <button
+          type="button"
+          data-testid="tool-loop-playback"
+          onClick={toggleLoopPlayback}
+          aria-pressed={isLoopPlayback}
+          title={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
+          aria-label={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
+          className={`flex items-center justify-center min-w-[36px] min-h-[36px] px-2 rounded-xl border transition-all active:scale-95 shadow-lg ${
+            isLoopPlayback
+              ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/30'
+              : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-300'
+          }`}
+        >
+          <InfinityIcon className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Floating Info Pill: Compact Coordinate, Heading & Pen Indicator */}
       <div

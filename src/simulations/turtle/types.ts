@@ -32,7 +32,7 @@ export interface TurtleArc {
 export type TurtlePathItem = TurtleLine | TurtleArc;
 
 export interface TurtleActiveAnimation {
-  type: 'LINE' | 'ARC' | 'TURN';
+  type: 'LINE' | 'ARC' | 'TURN' | 'WAIT' | 'TELEPORT';
   fromPose: TurtlePose;
   toPose: TurtlePose;
   currentPose: TurtlePose;
@@ -70,4 +70,6 @@ export interface TurtleState {
   fitToView: boolean;
   computedBounds: TurtleBounds;
   activeAnimation?: TurtleActiveAnimation | null;
+  instantMode: boolean;
+  showTurtle: boolean;
 }

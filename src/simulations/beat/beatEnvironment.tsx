@@ -1,6 +1,7 @@
 import {
   Bell,
   Eraser,
+  Gauge,
   Heart,
   Hourglass,
   Music,
@@ -49,6 +50,7 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
       visible: false,
     },
     isMuted,
+    stepDelayMultiplier: 1,
     status: 'IDLE',
   };
 }
@@ -157,6 +159,35 @@ export const BEAT_STAMP_PRESET_PARAM_DEF: ActionParamDef = {
     value: preset.name,
     label: preset.label,
   })),
+};
+
+export const BEAT_WAIT_DURATION_PARAM_DEF: ActionParamDef = {
+  id: 'duration',
+  label: 'Wait',
+  type: 'wait-duration',
+  defaultValue: 1,
+  options: [
+    { value: 0.25, label: '¼' },
+    { value: 0.5, label: '½' },
+    { value: 1, label: '1' },
+    { value: 2, label: '2' },
+    { value: 4, label: '4' },
+  ],
+};
+
+export const BEAT_DELAY_PARAM_DEF: ActionParamDef = {
+  id: 'delay',
+  label: 'Step Delay',
+  type: 'beat-delay',
+  defaultValue: 0,
+  options: [
+    { value: 0, label: 'Instant' },
+    { value: 0.25, label: '¼×' },
+    { value: 0.5, label: '½×' },
+    { value: 1, label: '1×' },
+    { value: 2, label: '2×' },
+    { value: 4, label: '4×' },
+  ],
 };
 
 export const BEAT_CURSOR_TURN_PARAM_DEF: ActionParamDef = {
@@ -328,8 +359,10 @@ export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'beat-wait-beat',
     actionType: 'WAIT_BEAT',
-    name: 'Wait 1 Beat',
+    name: 'Wait Beat',
     category: 'action',
+    params: { duration: 1 },
+    paramDefs: [BEAT_WAIT_DURATION_PARAM_DEF],
     icon: ({ isActive }) => (
       <Hourglass
         className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
@@ -662,6 +695,24 @@ export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
     borderClass: 'border-amber-300',
     supportsRepeat: false,
   },
+  {
+    id: 'beat-set-delay',
+    actionType: 'SET_BEAT_DELAY',
+    name: 'Step Delay',
+    category: 'action',
+    params: { delay: 0 },
+    paramDefs: [BEAT_DELAY_PARAM_DEF],
+    icon: ({ isActive }) => (
+      <Gauge
+        className={`w-5 h-5 md:w-6 md:h-6 stroke-[2.5] ${
+          isActive ? 'text-slate-950' : 'text-emerald-200'
+        }`}
+      />
+    ),
+    bgClass: 'bg-emerald-700 hover:bg-emerald-600',
+    borderClass: 'border-emerald-400',
+    supportsRepeat: false,
+  },
 ];
 
 const CARDINAL_DIRS: readonly BeatState['cursor']['dir'][] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
@@ -761,6 +812,10 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
     let nextActiveColor = state.activeColor || DEFAULT_BEAT_LED_COLOR;
     let nextIsColorCustomized = Boolean(state.isColorCustomized);
     let nextCursor = state.cursor || { x: 1, y: 1, dir: 'EAST' as const, visible: false };
+    let nextStepDelayMultiplier =
+      typeof state.stepDelayMultiplier === 'number' && Number.isFinite(state.stepDelayMultiplier)
+        ? state.stepDelayMultiplier
+        : 1;
     let lastTriggeredEvent: BeatState['lastTriggeredEvent'] = state.lastTriggeredEvent;
 
     switch (actionType) {
@@ -826,10 +881,26 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'WAIT_BEAT': {
+        const rawWait = Number(options?.params?.duration ?? 1);
+        const waitBeats = Number.isFinite(rawWait) && rawWait > 0 ? rawWait : 1;
         lastTriggeredEvent = {
           kind: 'WAIT_BEAT',
           actionType,
           beatIndex: nextBeatIndex,
+          waitBeats,
+        };
+        break;
+      }
+
+      case 'SET_BEAT_DELAY': {
+        const rawDelay = Number(options?.params?.delay ?? 0);
+        nextStepDelayMultiplier =
+          Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : 0;
+        lastTriggeredEvent = {
+          kind: 'SET_BEAT_DELAY',
+          actionType,
+          beatIndex: nextBeatIndex,
+          delayMultiplier: nextStepDelayMultiplier,
         };
         break;
       }
@@ -964,6 +1035,7 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       stepCount: nextStepCount,
       lastTriggeredEvent,
       cursor: nextCursor,
+      stepDelayMultiplier: nextStepDelayMultiplier,
       status: 'RUNNING',
     };
 

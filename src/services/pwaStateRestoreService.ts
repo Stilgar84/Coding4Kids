@@ -42,6 +42,7 @@ export interface AppUpdateStateInput {
   isSubpaletteCollapsed: boolean;
   isMapHidden: boolean;
   isFunctionBarOpen: boolean;
+  isLoopPlayback?: boolean;
   past: HistorySnapshot[];
   future: HistorySnapshot[];
 }
@@ -330,6 +331,8 @@ function sanitizeTurtleState(raw: unknown): TurtleState {
           }
         : defaults.computedBounds,
     activeAnimation: null,
+    instantMode: typeof t.instantMode === 'boolean' ? t.instantMode : defaults.instantMode,
+    showTurtle: typeof t.showTurtle === 'boolean' ? t.showTurtle : defaults.showTurtle,
   };
 }
 
@@ -386,6 +389,10 @@ function sanitizeBeatState(raw: unknown): BeatState {
       visible: Boolean(rawCursor.visible),
     },
     isMuted: Boolean(b.isMuted),
+    stepDelayMultiplier:
+      typeof b.stepDelayMultiplier === 'number' && Number.isFinite(b.stepDelayMultiplier) && b.stepDelayMultiplier >= 0
+        ? b.stepDelayMultiplier
+        : defaults.stepDelayMultiplier,
     status: status === 'RUNNING' ? 'PAUSED' : status,
   };
 }
@@ -595,7 +602,9 @@ export function consumeRestoredStateAfterUpdate(
     const runtime = sanitizeRuntime(parsed.runtime);
     const activeScope: ScopeType = VALID_SCOPES.includes(parsed.activeScope) ? parsed.activeScope : 'MAIN';
     const selectedBlockId = typeof parsed.selectedBlockId === 'string' ? parsed.selectedBlockId : null;
-    const speed = sanitizeSpeed(parsed.speed);
+    const rawSpeed = sanitizeSpeed(parsed.speed);
+    const speed: SimulationSpeed =
+      activeSimId === 'beat' && rawSpeed === 'instant' ? 400 : rawSpeed;
     const editorTool: EditorTool =
       appMode === 'curriculum'
         ? 'NONE'
@@ -625,6 +634,7 @@ export function consumeRestoredStateAfterUpdate(
       isSubpaletteCollapsed: Boolean(parsed.isSubpaletteCollapsed),
       isMapHidden: Boolean(parsed.isMapHidden),
       isFunctionBarOpen: Boolean(parsed.isFunctionBarOpen),
+      ...(typeof parsed.isLoopPlayback === 'boolean' ? { isLoopPlayback: parsed.isLoopPlayback } : {}),
       past: sanitizeHistoryList(parsed.past, fallbackGrid),
       future: sanitizeHistoryList(parsed.future, fallbackGrid),
     };

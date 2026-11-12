@@ -4,6 +4,7 @@ import { ActionParamDef } from '../../engine/simulation/types';
 import { ParamVisual } from './VisualParamBadges';
 import { X } from 'lucide-react';
 import { useAppStoreSelector } from '../../store/useAppStore';
+import { getSimEnvironment } from '../../engine/simulation/registry';
 import {
   computeStagedPalettePolicy,
   resolveActiveCurriculumActivity,
@@ -75,11 +76,13 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   anchorRef,
   actionType,
 }) => {
-  const { appMode, activeActivityId, activeActivityVersion } = useAppStoreSelector((s) => ({
+  const { appMode, activeActivityId, activeActivityVersion, activeSimId } = useAppStoreSelector((s) => ({
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
+    activeSimId: s.activeSimId,
   }));
+  const simEnv = getSimEnvironment(activeSimId);
   const activeActivity = resolveActiveCurriculumActivity(
     appMode,
     activeActivityId,
@@ -158,7 +161,10 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'number' ||
     paramDef.type === 'length' ||
     paramDef.type === 'pitch' ||
-    paramDef.type === 'gridCoord';
+    paramDef.type === 'gridCoord' ||
+    paramDef.type === 'coord' ||
+    paramDef.type === 'wait-duration' ||
+    paramDef.type === 'beat-delay';
 
   const hideOptionSubLabel =
     paramDef.type === 'angle' ||
@@ -167,7 +173,11 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'pitch' ||
     paramDef.type === 'duration' ||
     paramDef.type === 'gridCoord' ||
-    paramDef.type === 'turnDir';
+    paramDef.type === 'turnDir' ||
+    paramDef.type === 'beat-delay' ||
+    paramDef.type === 'wait-duration' ||
+    paramDef.type === 'instant-mode' ||
+    paramDef.type === 'coord';
 
   const content = (
     <div
@@ -260,6 +270,41 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
           );
         })}
       </div>
+
+      {/* Sensors Section for Numerical Parameters (e.g., Turtle $x, $y, $heading) */}
+      {isNumerical && policy.allowVariables && simEnv?.sensors && simEnv.sensors.length > 0 && (
+        <div className="flex flex-col gap-1 border-t border-slate-800 pt-1.5">
+          <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider px-1">
+            Sensors
+          </span>
+          <div className="grid grid-cols-3 gap-1 p-0.5">
+            {simEnv.sensors.map((sensor) => {
+              const isSelected = effectiveValue === sensor.id;
+              return (
+                <button
+                  key={sensor.id}
+                  type="button"
+                  data-testid={`param-option-sensor-${sensor.id}`}
+                  aria-pressed={isSelected}
+                  aria-label={`Sensor ${sensor.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(sensor.id);
+                    onClose();
+                  }}
+                  className={`flex items-center justify-center min-w-[36px] min-h-[36px] py-1 rounded border text-xs font-mono font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+                    isSelected
+                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/40'
+                      : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-cyan-300 hover:border-slate-500'
+                  }`}
+                >
+                  {sensor.icon}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Variables Section for Numerical Parameters */}
       {isNumerical && policy.allowVariables && policy.subpaletteVariableNames.length > 0 && (

@@ -48,6 +48,52 @@ const MAX_NOTE_CACHE_ENTRIES = 48;
 const MAX_ACTIVE_VOICES_STANDARD = 8;
 const MAX_ACTIVE_VOICES_LOW = 4;
 
+export const BEAT_SOUND_BASE_DURATIONS_MS = {
+  DRUM_KICK: 210,
+  DRUM_SNARE: 150,
+  DRUM_CLAP: 160,
+  PLAY_CHIME: 360,
+} as const;
+
+function normalizeSpeedScale(speed: SimulationSpeed | number = 400): number {
+  if (typeof speed !== 'number' || !Number.isFinite(speed) || speed <= 0) return 1;
+  return Math.max(0.0625, speed / 400);
+}
+
+export function getBeatNoteDurationSec(
+  durationBeats: number = 1,
+  speed: SimulationSpeed | number = 400
+): number {
+  const speedMs = typeof speed === 'number' && Number.isFinite(speed) && speed > 0 ? speed : 400;
+  const beatSec = Math.max(0.025, (speedMs / 1000) * 0.9);
+  const mult = Number.isFinite(durationBeats) && durationBeats > 0 ? durationBeats : 1;
+  return Math.max(0.025, Math.min(2.0, beatSec * mult));
+}
+
+export function getBeatEventSoundDurationMs(
+  event: BeatTriggerEvent | null | undefined,
+  speed: SimulationSpeed = 400
+): number {
+  if (!event || speed === 'instant' || (speed as any) === 0) return 0;
+  const scale = normalizeSpeedScale(speed);
+  switch (event.kind) {
+    case 'DRUM_KICK':
+      return Math.max(25, Math.round(BEAT_SOUND_BASE_DURATIONS_MS.DRUM_KICK * scale));
+    case 'DRUM_SNARE':
+      return Math.max(25, Math.round(BEAT_SOUND_BASE_DURATIONS_MS.DRUM_SNARE * scale));
+    case 'DRUM_CLAP':
+      return Math.max(25, Math.round(BEAT_SOUND_BASE_DURATIONS_MS.DRUM_CLAP * scale));
+    case 'PLAY_CHIME':
+      return Math.max(30, Math.round(BEAT_SOUND_BASE_DURATIONS_MS.PLAY_CHIME * scale));
+    case 'PLAY_NOTE': {
+      const safeDur = getBeatNoteDurationSec(event.durationBeats ?? 1, speed);
+      return Math.round((safeDur + 0.01) * 1000);
+    }
+    default:
+      return 0;
+  }
+}
+
 export class BeatSynthEngine {
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
@@ -649,12 +695,15 @@ export class BeatSynthEngine {
   /**
    * Punchy 808-style kick drum: sine pitch-drop (155 Hz -> 42 Hz) + soft click transient.
    */
-  playKick(): void {
-    const ctx = this.getReadyContext(() => this.playKick());
+  playKick(speedScale: number = 1): void {
+    const ctx = this.getReadyContext(() => this.playKick(speedScale));
     if (!ctx) return;
 
+    const s = Math.max(0.12, Math.min(2, speedScale));
+    const totalDur = Math.max(0.025, 0.21 * s);
+
     try {
-      if (this.sampleCacheEnabled) {
+      if (this.sampleCacheEnabled && Math.abs(s - 1) < 0.01) {
         const cached = this.getOrCreateCachedSample(ctx, 'kick', () => this.renderKickBuffer(ctx));
         if (cached) {
           this.playCachedBuffer(ctx, cached);
@@ -668,35 +717,35 @@ export class BeatSynthEngine {
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(155, now);
-      osc.frequency.exponentialRampToValueAtTime(42, now + 0.16);
+      osc.frequency.exponentialRampToValueAtTime(42, now + 0.16 * s);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.45, now + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      gain.gain.linearRampToValueAtTime(0.45, now + 0.005 * s);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2 * s);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
       this.trackSource(osc);
       osc.start(now);
-      osc.stop(now + 0.21);
+      osc.stop(now + totalDur);
 
       // Subtle beater click
       const clickOsc = ctx.createOscillator();
       const clickGain = ctx.createGain();
       clickOsc.type = 'triangle';
       clickOsc.frequency.setValueAtTime(240, now);
-      clickOsc.frequency.exponentialRampToValueAtTime(65, now + 0.025);
+      clickOsc.frequency.exponentialRampToValueAtTime(65, now + 0.025 * s);
 
       clickGain.gain.setValueAtTime(0.18, now);
-      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03 * s);
 
       clickOsc.connect(clickGain);
       clickGain.connect(ctx.destination);
 
       this.trackSource(clickOsc);
       clickOsc.start(now);
-      clickOsc.stop(now + 0.035);
+      clickOsc.stop(now + 0.035 * s);
     } catch {
       // Never block or throw
     }
@@ -705,12 +754,15 @@ export class BeatSynthEngine {
   /**
    * Crisp snare drum: highpass-filtered noise wires + triangle drum body.
    */
-  playSnare(): void {
-    const ctx = this.getReadyContext(() => this.playSnare());
+  playSnare(speedScale: number = 1): void {
+    const ctx = this.getReadyContext(() => this.playSnare(speedScale));
     if (!ctx) return;
 
+    const s = Math.max(0.16, Math.min(2, speedScale));
+    const totalDur = Math.max(0.025, 0.15 * s);
+
     try {
-      if (this.sampleCacheEnabled) {
+      if (this.sampleCacheEnabled && Math.abs(s - 1) < 0.01) {
         const cached = this.getOrCreateCachedSample(ctx, 'snare', () => this.renderSnareBuffer(ctx));
         if (cached) {
           this.playCachedBuffer(ctx, cached);
@@ -731,7 +783,7 @@ export class BeatSynthEngine {
 
         const noiseGain = ctx.createGain();
         noiseGain.gain.setValueAtTime(0.28, now);
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14 * s);
 
         noise.connect(filter);
         filter.connect(noiseGain);
@@ -739,24 +791,24 @@ export class BeatSynthEngine {
 
         this.trackSource(noise);
         noise.start(now);
-        noise.stop(now + 0.15);
+        noise.stop(now + totalDur);
       }
 
       const bodyOsc = ctx.createOscillator();
       const bodyGain = ctx.createGain();
       bodyOsc.type = 'triangle';
       bodyOsc.frequency.setValueAtTime(190, now);
-      bodyOsc.frequency.exponentialRampToValueAtTime(95, now + 0.08);
+      bodyOsc.frequency.exponentialRampToValueAtTime(95, now + 0.08 * s);
 
       bodyGain.gain.setValueAtTime(0.26, now);
-      bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09 * s);
 
       bodyOsc.connect(bodyGain);
       bodyGain.connect(ctx.destination);
 
       this.trackSource(bodyOsc);
       bodyOsc.start(now);
-      bodyOsc.stop(now + 0.1);
+      bodyOsc.stop(now + 0.1 * s);
     } catch {
       // Never block or throw
     }
@@ -765,12 +817,15 @@ export class BeatSynthEngine {
   /**
    * Multi-burst bandpass-filtered handclap accent.
    */
-  playClap(): void {
-    const ctx = this.getReadyContext(() => this.playClap());
+  playClap(speedScale: number = 1): void {
+    const ctx = this.getReadyContext(() => this.playClap(speedScale));
     if (!ctx) return;
 
+    const s = Math.max(0.15, Math.min(2, speedScale));
+    const totalDur = Math.max(0.025, 0.16 * s);
+
     try {
-      if (this.sampleCacheEnabled) {
+      if (this.sampleCacheEnabled && Math.abs(s - 1) < 0.01) {
         const cached = this.getOrCreateCachedSample(ctx, 'clap', () => this.renderClapBuffer(ctx));
         if (cached) {
           this.playCachedBuffer(ctx, cached);
@@ -791,14 +846,14 @@ export class BeatSynthEngine {
       filter.Q.setValueAtTime(1.4, now);
 
       const gain = ctx.createGain();
-      // 3 crisp micro-bursts (0ms, 11ms, 22ms) + warm decay tail
+      // 3 crisp micro-bursts + warm decay tail
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.linearRampToValueAtTime(0.32, now + 0.002);
-      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.01);
-      gain.gain.linearRampToValueAtTime(0.3, now + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.02);
-      gain.gain.linearRampToValueAtTime(0.34, now + 0.023);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      gain.gain.linearRampToValueAtTime(0.32, now + 0.002 * s);
+      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.01 * s);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.012 * s);
+      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.02 * s);
+      gain.gain.linearRampToValueAtTime(0.34, now + 0.023 * s);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15 * s);
 
       noise.connect(filter);
       filter.connect(gain);
@@ -806,7 +861,7 @@ export class BeatSynthEngine {
 
       this.trackSource(noise);
       noise.start(now);
-      noise.stop(now + 0.16);
+      noise.stop(now + totalDur);
     } catch {
       // Never block or throw
     }
@@ -815,12 +870,14 @@ export class BeatSynthEngine {
   /**
    * Bright celebratory bell chime arpeggio (C6 - E6 - G6).
    */
-  playChime(): void {
-    const ctx = this.getReadyContext(() => this.playChime());
+  playChime(speedScale: number = 1): void {
+    const ctx = this.getReadyContext(() => this.playChime(speedScale));
     if (!ctx) return;
 
+    const s = Math.max(0.085, Math.min(2, speedScale));
+
     try {
-      if (this.sampleCacheEnabled) {
+      if (this.sampleCacheEnabled && Math.abs(s - 1) < 0.01) {
         const cached = this.getOrCreateCachedSample(ctx, 'chime', () => this.renderChimeBuffer(ctx));
         if (cached) {
           this.playCachedBuffer(ctx, cached);
@@ -832,7 +889,7 @@ export class BeatSynthEngine {
       const notes = [1046.5, 1318.51, 1567.98]; // C6, E6, G6
 
       notes.forEach((freq, idx) => {
-        const t0 = now + idx * 0.035;
+        const t0 = now + idx * 0.035 * s;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
@@ -840,15 +897,15 @@ export class BeatSynthEngine {
         osc.frequency.setValueAtTime(freq, t0);
 
         gain.gain.setValueAtTime(0.001, t0);
-        gain.gain.linearRampToValueAtTime(0.2, t0 + 0.008);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+        gain.gain.linearRampToValueAtTime(0.2, t0 + 0.008 * s);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28 * s);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
 
         this.trackSource(osc);
         osc.start(t0);
-        osc.stop(t0 + 0.29);
+        osc.stop(t0 + 0.29 * s);
       });
     } catch {
       // Never block or throw
@@ -924,7 +981,7 @@ export class BeatSynthEngine {
     try {
       const clampedIdx = Math.max(0, Math.min(BEAT_SCALE_FREQUENCIES.length - 1, Math.round(pitch) - 1));
       const freq = BEAT_SCALE_FREQUENCIES[clampedIdx];
-      const safeDur = Math.max(0.06, Math.min(2.0, durationSec));
+      const safeDur = Math.max(0.025, Math.min(2.0, durationSec));
 
       if (this.sampleCacheEnabled) {
         const bucketMs = Math.max(60, Math.round((safeDur * 1000) / 20) * 20);
@@ -965,6 +1022,13 @@ export class BeatSynthEngine {
   }
 
   /**
+   * Returns the exact sound playback duration in ms for a BeatTriggerEvent at `speed`.
+   */
+  getEventDurationMs(event: BeatTriggerEvent | null | undefined, speed: SimulationSpeed = 400): number {
+    return getBeatEventSoundDurationMs(event, speed);
+  }
+
+  /**
    * Dispatches a BeatTriggerEvent to the Web Audio synth.
    * Guaranteed 100% silent when muted or in `'instant'` simulation mode.
    */
@@ -972,27 +1036,28 @@ export class BeatSynthEngine {
     if (!event || this.muted) return;
     if (speed === 'instant' || (speed as any) === 0) return;
 
+    const speedScale = normalizeSpeedScale(speed);
+
     switch (event.kind) {
       case 'DRUM_KICK':
-        this.playKick();
+        this.playKick(speedScale);
         break;
       case 'DRUM_SNARE':
-        this.playSnare();
+        this.playSnare(speedScale);
         break;
       case 'DRUM_CLAP':
-        this.playClap();
+        this.playClap(speedScale);
         break;
       case 'PLAY_CHIME':
-        this.playChime();
+        this.playChime(speedScale);
         break;
       case 'PLAY_NOTE': {
-        const beatSec = typeof speed === 'number' ? Math.max(0.06, (speed / 1000) * 0.9) : 0.28;
-        const mult = event.durationBeats ?? 1;
-        this.playNote(event.pitch ?? 1, beatSec * mult);
+        const durSec = getBeatNoteDurationSec(event.durationBeats ?? 1, speed);
+        this.playNote(event.pitch ?? 1, durSec);
         break;
       }
       default:
-        // WAIT_BEAT, STAMP, CLEAR_LEDS, LED_CHANGE are visual-only events
+        // WAIT_BEAT, STAMP, CLEAR_LEDS, LED_CHANGE, SET_BEAT_DELAY are visual-only events
         break;
     }
   }

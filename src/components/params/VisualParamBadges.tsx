@@ -747,6 +747,91 @@ interface ParamVisualProps {
   actionType?: string;
 }
 
+export const SensorVisual: React.FC<{ sensorId: string; compact?: boolean }> = ({
+  sensorId,
+  compact = true,
+}) => {
+  const label =
+    sensorId === '$x' ? '📍X' : sensorId === '$y' ? '📍Y' : sensorId === '$heading' ? '🧭∠' : sensorId;
+  return (
+    <span
+      data-testid={`sensor-badge-${sensorId}`}
+      className={`font-mono font-black text-cyan-200 bg-cyan-950/90 rounded border border-cyan-400/70 shadow-sm flex items-center justify-center leading-none ${
+        compact ? 'px-1.5 py-0.5 text-[11px] min-w-[24px] h-[22px]' : 'px-2 py-1 text-xs min-w-[32px] h-[28px]'
+      }`}
+    >
+      {label}
+    </span>
+  );
+};
+
+export const BeatDelayVisual: React.FC<{ multiplier: number; compact?: boolean }> = ({
+  multiplier,
+  compact = true,
+}) => {
+  const label =
+    multiplier === 0
+      ? '⚡0'
+      : multiplier === 0.25
+      ? '¼×'
+      : multiplier === 0.5
+      ? '½×'
+      : `${multiplier}×`;
+  return (
+    <span
+      className={`font-black leading-none flex items-center justify-center ${
+        multiplier === 0 ? 'text-yellow-300' : 'text-sky-200'
+      } ${compact ? 'text-[11px]' : 'text-xs'}`}
+    >
+      {label}
+    </span>
+  );
+};
+
+export const WaitDurationVisual: React.FC<{ duration: number; compact?: boolean }> = ({
+  duration,
+  compact = true,
+}) => {
+  const label =
+    duration === 0.25 ? '¼×' : duration === 0.5 ? '½×' : `${duration}×`;
+  return (
+    <span className={`font-black text-amber-200 leading-none ${compact ? 'text-[11px]' : 'text-xs'}`}>
+      {label}
+    </span>
+  );
+};
+
+export const InstantModeVisual: React.FC<{ mode: string; compact?: boolean }> = ({
+  mode,
+  compact = true,
+}) => {
+  const isOn = String(mode).toUpperCase() !== 'OFF';
+  return (
+    <span
+      className={`font-black rounded px-1.5 py-0.5 leading-none border ${
+        isOn
+          ? 'bg-yellow-400/25 text-yellow-200 border-yellow-400/70'
+          : 'bg-slate-800 text-slate-300 border-slate-500/70'
+      } ${compact ? 'text-[10px]' : 'text-xs'}`}
+    >
+      {isOn ? 'ON' : 'OFF'}
+    </span>
+  );
+};
+
+export const CoordVisual: React.FC<{ value: number; axis?: string; compact?: boolean }> = ({
+  value,
+  axis,
+  compact = true,
+}) => {
+  return (
+    <span className={`font-mono font-black text-cyan-200 leading-none ${compact ? 'text-[10px]' : 'text-xs'}`}>
+      {axis ? `${axis}:` : ''}
+      {value}
+    </span>
+  );
+};
+
 export const ParamVisual: React.FC<ParamVisualProps> = ({
   paramDef,
   value,
@@ -754,6 +839,10 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
   actionType,
 }) => {
   const effectiveValue = value !== undefined ? value : paramDef.defaultValue;
+
+  if (typeof effectiveValue === 'string' && effectiveValue.startsWith('$')) {
+    return <SensorVisual sensorId={effectiveValue} compact={compact} />;
+  }
 
   if (isVariableName(effectiveValue)) {
     return (
@@ -852,6 +941,20 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
         />
       );
     }
+    case 'beat-delay':
+      return <BeatDelayVisual multiplier={Number(effectiveValue)} compact={compact} />;
+    case 'wait-duration':
+      return <WaitDurationVisual duration={Number(effectiveValue)} compact={compact} />;
+    case 'instant-mode':
+      return <InstantModeVisual mode={String(effectiveValue)} compact={compact} />;
+    case 'coord':
+      return (
+        <CoordVisual
+          value={Number(effectiveValue)}
+          axis={paramDef.id === 'x' ? 'X' : paramDef.id === 'y' ? 'Y' : undefined}
+          compact={compact}
+        />
+      );
     default:
       return (
         <span className="text-xs font-bold text-white">

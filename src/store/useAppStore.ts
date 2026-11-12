@@ -52,7 +52,7 @@ import {
   evaluateValue,
 } from '../engine/interpreter';
 import {
-  isTurtleMotionAction,
+  isTurtleAnimatedAction,
   createTurtleAnimation,
   interpolateAnimationPose,
 } from '../simulations/turtle/physics';
@@ -309,6 +309,7 @@ interface AppState {
   isMapHidden: boolean;
   isFunctionBarOpen: boolean;
   isMobileMenuOpen: boolean;
+  isLoopPlayback: boolean;
   wasRestoredAfterUpdate: boolean;
   performanceMode: PerformanceMode;
   isAutoLowQuality: boolean;
@@ -422,6 +423,7 @@ interface AppState {
   // Turtle environment actions
   updateTurtleViewport: (updates: Partial<{ pan: { x: number; y: number }; zoom: number; fitToView: boolean }>) => void;
   clearTurtleCanvas: () => void;
+  toggleTurtleVisible: () => void;
 
   // Beat & Light Matrix environment actions
   setBeatMuted: (muted: boolean) => void;
@@ -434,6 +436,8 @@ interface AppState {
   play: () => void;
   pause: () => void;
   reset: () => void;
+  setLoopPlayback: (loop: boolean) => void;
+  toggleLoopPlayback: () => void;
 
   // PWA update state persistence actions
   dismissRestoredNotice: () => void;
@@ -489,6 +493,166 @@ const cancelFrame = (id: number) => {
 };
 
 export const useAppStore = create<AppState>((set, get) => {
+  let turtlePassHadDelay = false;
+  let beatPassHadDelay = false;
+
+  const isBeatSoundBlock = (actionType: string): boolean =>
+    actionType === 'DRUM_KICK' ||
+    actionType === 'DRUM_SNARE' ||
+    actionType === 'DRUM_CLAP' ||
+    actionType === 'PLAY_CHIME' ||
+    actionType === 'PLAY_NOTE';
+
+  function runBeatExecutionLoop() {
+    const simEnv = getSimEnvironment('beat');
+    if (!simEnv) return;
+
+    let stepsInSyncBatch = 0;
+
+    while (get().isPlaying) {
+      const { runtime, workspace, beatState, speed } = get();
+      const globalSpeedMs = typeof speed === 'number' && speed > 0 ? speed : 400;
+
+      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+        if (workspace[sc]?.length > 0) {
+          const val = validateLoopStructure(workspace[sc]);
+          if (val.hasError) {
+            set({ isPlaying: false });
+            return;
+          }
+        }
+      }
+
+      const currentRuntime = runtime || createInitialInterpreterState();
+      if (
+        (beatState.status as string) === 'SUCCESS' ||
+        (beatState.status as string) === 'COLLISION' ||
+        currentRuntime.callStack.length === 0
+      ) {
+        set({ isPlaying: false });
+        return;
+      }
+
+      const currentFrame = currentRuntime.callStack[currentRuntime.callStack.length - 1];
+      const currentBlock = (workspace[currentFrame.scope] || [])[currentFrame.pc];
+      const wasSuccess =
+        (beatState.status as string) === 'SUCCESS' ||
+        (currentRuntime.status as string) === 'SUCCESS';
+      const prevScope = get().activeScope;
+      const prevBeatIndex = beatState.beatIndex;
+
+      const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv);
+      const nextBeat = res.nextGrid as BeatState;
+
+      if (nextBeat.beatIndex !== prevBeatIndex && !nextBeat.isMuted) {
+        beatSynth.playEvent(nextBeat.lastTriggeredEvent, globalSpeedMs);
+      }
+
+      const activeScope =
+        res.nextRuntime.callStack.length > 0
+          ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
+          : prevScope;
+
+      const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
+
+      set({
+        runtime: res.nextRuntime,
+        beatState: nextBeat,
+        activeScope,
+        ...(activeScope !== prevScope && activeScope !== 'MAIN'
+          ? { isFunctionBarOpen: true }
+          : {}),
+        ...(isPausedOnPlaceholder
+          ? {
+              isPlaying: false,
+              selectedBlockId: res.nextRuntime.activeBlockId,
+              statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
+            }
+          : {}),
+      });
+
+      if (nextBeat.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS') {
+        const reward = recordCurriculumSuccessIfApplicable();
+        if (!wasSuccess) {
+          triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+        }
+        set({ isPlaying: false });
+        return;
+      }
+
+      if (isPausedOnPlaceholder || nextBeat.status === 'COLLISION') {
+        set({ isPlaying: false });
+        return;
+      }
+
+      let delayMs = 0;
+      if (currentBlock) {
+        if (isBeatSoundBlock(currentBlock.type)) {
+          delayMs = beatSynth.getEventDurationMs(nextBeat.lastTriggeredEvent, globalSpeedMs);
+        } else if (currentBlock.type === 'WAIT_BEAT') {
+          const rawDur = currentBlock.params?.duration;
+          const durUnits =
+            rawDur !== undefined
+              ? evaluateValue(rawDur, currentRuntime.variables, 1, simEnv, beatState)
+              : 1;
+          delayMs = Math.max(0, durUnits * globalSpeedMs);
+        } else {
+          delayMs = Math.max(0, nextBeat.stepDelayMultiplier * globalSpeedMs);
+        }
+      }
+
+      if (delayMs > 0) {
+        beatPassHadDelay = true;
+      }
+
+      if (res.done) {
+        recordCreativePlayCompletionIfApplicable(true);
+        if (get().isLoopPlayback) {
+          const hadDelay = beatPassHadDelay;
+          beatPassHadDelay = false;
+          const resetBeat = getInitialBeatState(nextBeat);
+          set({
+            beatState: resetBeat,
+            runtime: null,
+            isPlaying: true,
+          });
+          if (delayMs > 0 || !hadDelay) {
+            const waitBeforeRestart = delayMs > 0 ? delayMs : 16;
+            timerId = setTimeout(() => {
+              timerId = null;
+              if (get().isPlaying) runBeatExecutionLoop();
+            }, waitBeforeRestart);
+            return;
+          }
+          continue;
+        }
+        set({ isPlaying: false });
+        return;
+      }
+
+      if (delayMs > 0) {
+        timerId = setTimeout(() => {
+          timerId = null;
+          if (get().isPlaying) {
+            runBeatExecutionLoop();
+          }
+        }, delayMs);
+        return;
+      }
+
+      stepsInSyncBatch += 1;
+      if (stepsInSyncBatch >= 2000) {
+        timerId = setTimeout(() => {
+          timerId = null;
+          if (get().isPlaying) {
+            runBeatExecutionLoop();
+          }
+        }, 0);
+        return;
+      }
+    }
+  }
+
   function stepTurtleAnimation(timestamp: number) {
     turtleRafId = null;
     const { turtleState } = get();
@@ -530,6 +694,25 @@ export const useAppStore = create<AppState>((set, get) => {
       };
 
       if (commit.isDone || commit.isSingleStep) {
+        if (
+          commit.isDone &&
+          !commit.isSingleStep &&
+          get().isLoopPlayback &&
+          completedTurtleState.status !== 'SUCCESS' &&
+          commit.finalRuntime.status !== 'PAUSED' &&
+          completedTurtleState.status !== 'COLLISION'
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
+          turtlePassHadDelay = false;
+          set({
+            turtleState: getInitialTurtleState(completedTurtleState),
+            runtime: null,
+            isPlaying: true,
+          });
+          runTurtleExecutionLoop(false);
+          return;
+        }
+
         set({
           turtleState: completedTurtleState,
           runtime: commit.finalRuntime,
@@ -618,16 +801,121 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
+      // Fast-path pure-JS execution when Turtle instantMode is ON during play()
+      if (!isSingleStep && turtleState.instantMode) {
+        let stepsInBatch = 0;
+        let lastActiveScope = get().activeScope;
+
+        while (true) {
+          if (
+            (turtleState.status as string) === 'SUCCESS' ||
+            (turtleState.status as string) === 'COLLISION' ||
+            runtime.callStack.length === 0
+          ) {
+            set({ runtime, turtleState, activeScope: lastActiveScope, isPlaying: false });
+            return;
+          }
+
+          const cf = runtime.callStack[runtime.callStack.length - 1];
+          const cb = (workspace[cf.scope] || [])[cf.pc];
+          if (cb && cb.type === 'WAIT') {
+            // Commit batched instant state before handling timed WAIT animation
+            set({ runtime, turtleState, activeScope: lastActiveScope });
+            break;
+          }
+
+          const wasSuccessInstant =
+            (turtleState.status as string) === 'SUCCESS' ||
+            (runtime.status as string) === 'SUCCESS';
+          const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+          runtime = res.nextRuntime;
+          turtleState = res.nextGrid as TurtleState;
+          lastActiveScope =
+            runtime.callStack.length > 0
+              ? runtime.callStack[runtime.callStack.length - 1].scope
+              : lastActiveScope;
+
+          const isPausedOnPlaceholder = runtime.status === 'PAUSED';
+
+          if (turtleState.status === 'SUCCESS' || runtime.status === 'SUCCESS') {
+            set({ runtime, turtleState, activeScope: lastActiveScope, isPlaying: false });
+            const reward = recordCurriculumSuccessIfApplicable();
+            if (!wasSuccessInstant) {
+              triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+            }
+            return;
+          }
+
+          if (isPausedOnPlaceholder) {
+            set({
+              runtime,
+              turtleState,
+              activeScope: lastActiveScope,
+              isPlaying: false,
+              selectedBlockId: runtime.activeBlockId,
+              statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, runtime),
+            });
+            return;
+          }
+
+          if (res.done) {
+            if (turtleState.status !== 'COLLISION') {
+              recordCreativePlayCompletionIfApplicable(true);
+            }
+            if (get().isLoopPlayback && turtleState.status !== 'COLLISION') {
+              const hadDelay = turtlePassHadDelay;
+              turtlePassHadDelay = false;
+              const resetTurtle = getInitialTurtleState(turtleState);
+              set({
+                runtime: null,
+                turtleState: resetTurtle,
+                activeScope: 'MAIN',
+                isPlaying: true,
+              });
+              if (!hadDelay) {
+                timerId = setTimeout(() => {
+                  timerId = null;
+                  if (get().isPlaying) runTurtleExecutionLoop(false);
+                }, 16);
+                return;
+              }
+              runtime = createInitialInterpreterState();
+              turtleState = resetTurtle;
+              break;
+            }
+            set({ runtime, turtleState, activeScope: lastActiveScope, isPlaying: false });
+            return;
+          }
+
+          if (!turtleState.instantMode) {
+            // Exited instant mode via SET_INSTANT('OFF')
+            set({ runtime, turtleState, activeScope: lastActiveScope });
+            break;
+          }
+
+          stepsInBatch += 1;
+          if (stepsInBatch >= 2000) {
+            set({ runtime, turtleState, activeScope: lastActiveScope });
+            timerId = setTimeout(() => {
+              timerId = null;
+              if (get().isPlaying) runTurtleExecutionLoop(false);
+            }, 0);
+            return;
+          }
+        }
+        if (runtime.callStack.length === 0) return;
+      }
+
       const currentFrame = runtime.callStack[runtime.callStack.length - 1];
       const scopeBlocks = workspace[currentFrame.scope] || [];
       const currentBlock = scopeBlocks[currentFrame.pc];
 
-      const isMotion = currentBlock && isTurtleMotionAction(currentBlock.type);
+      const isAnimated = currentBlock && isTurtleAnimatedAction(currentBlock.type);
       const wasSuccess =
         (turtleState.status as string) === 'SUCCESS' ||
         (runtime.status as string) === 'SUCCESS';
 
-      if (!isMotion) {
+      if (!isAnimated) {
         const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
@@ -668,6 +956,38 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         if (res.done) {
+          if (
+            !isSingleStep &&
+            get().isLoopPlayback &&
+            !isPausedOnPlaceholder &&
+            turtleState.status !== 'COLLISION' &&
+            turtleState.status !== 'SUCCESS'
+          ) {
+            const hadDelay = turtlePassHadDelay;
+            turtlePassHadDelay = false;
+            const resetTurtle = getInitialTurtleState(turtleState);
+            set({
+              runtime: null,
+              turtleState: resetTurtle,
+              activeScope: 'MAIN',
+              isPlaying: true,
+            });
+            if (!hadDelay) {
+              timerId = setTimeout(() => {
+                timerId = null;
+                if (get().isPlaying) runTurtleExecutionLoop(false);
+              }, 16);
+              return;
+            }
+            runtime = createInitialInterpreterState();
+            turtleState = resetTurtle;
+            continue;
+          }
+          set({ isPlaying: false });
+          return;
+        }
+
+        if (isSingleStep && currentBlock?.type === 'CLEAR_CANVAS') {
           set({ isPlaying: false });
           return;
         }
@@ -721,6 +1041,38 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         if (res.done) {
+          if (
+            !isSingleStep &&
+            get().isLoopPlayback &&
+            !isPausedOnPlaceholder &&
+            turtleState.status !== 'COLLISION' &&
+            turtleState.status !== 'SUCCESS'
+          ) {
+            const hadDelay = turtlePassHadDelay;
+            turtlePassHadDelay = false;
+            const resetTurtle = getInitialTurtleState(turtleState);
+            set({
+              runtime: null,
+              turtleState: resetTurtle,
+              activeScope: 'MAIN',
+              isPlaying: true,
+            });
+            if (!hadDelay) {
+              timerId = setTimeout(() => {
+                timerId = null;
+                if (get().isPlaying) runTurtleExecutionLoop(false);
+              }, 16);
+              return;
+            }
+            runtime = createInitialInterpreterState();
+            turtleState = resetTurtle;
+            continue;
+          }
+          set({ isPlaying: false });
+          return;
+        }
+
+        if (isSingleStep && currentBlock?.type === 'CLEAR_CANVAS') {
           set({ isPlaying: false });
           return;
         }
@@ -744,8 +1096,11 @@ export const useAppStore = create<AppState>((set, get) => {
       const resolvedParams: Record<string, any> = {};
       if (currentBlock.params) {
         for (const [k, v] of Object.entries(currentBlock.params)) {
-          if (typeof v === 'string' && /^[a-z]$/.test(v.trim())) {
-            resolvedParams[k] = evaluateValue(v, runtime.variables, 0);
+          if (
+            typeof v === 'string' &&
+            (/^[a-z]$/.test(v.trim()) || v.trim().startsWith('$'))
+          ) {
+            resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, turtleState);
           } else {
             resolvedParams[k] = v;
           }
@@ -791,6 +1146,34 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         if (res.done || isSingleStep) {
+          if (
+            res.done &&
+            !isSingleStep &&
+            get().isLoopPlayback &&
+            runtime.status !== 'PAUSED' &&
+            turtleState.status !== 'COLLISION' &&
+            turtleState.status !== 'SUCCESS'
+          ) {
+            const hadDelay = turtlePassHadDelay;
+            turtlePassHadDelay = false;
+            const resetTurtle = getInitialTurtleState(turtleState);
+            set({
+              runtime: null,
+              turtleState: resetTurtle,
+              activeScope: 'MAIN',
+              isPlaying: true,
+            });
+            if (!hadDelay) {
+              timerId = setTimeout(() => {
+                timerId = null;
+                if (get().isPlaying) runTurtleExecutionLoop(false);
+              }, 16);
+              return;
+            }
+            runtime = createInitialInterpreterState();
+            turtleState = resetTurtle;
+            continue;
+          }
           set({ isPlaying: false });
           return;
         }
@@ -798,6 +1181,7 @@ export const useAppStore = create<AppState>((set, get) => {
         continue;
       }
 
+      turtlePassHadDelay = true;
       pendingTurtleCommit = {
         finalTurtleState: res.nextGrid as TurtleState,
         finalRuntime: res.nextRuntime,
@@ -1281,6 +1665,7 @@ export const useAppStore = create<AppState>((set, get) => {
     isMapHidden: false,
     isFunctionBarOpen: false,
     isMobileMenuOpen: false,
+    isLoopPlayback: false,
     wasRestoredAfterUpdate: false,
     performanceMode: loadPersistedPerformanceMode(),
     isAutoLowQuality: false,
@@ -2271,12 +2656,16 @@ export const useAppStore = create<AppState>((set, get) => {
         ? cloneWorkspace(updatedSavedWorkspaces[simId])
         : createEmptyWorkspace();
 
+      const curSpeed = get().speed;
       set({
         activeSimId: simId,
         savedWorkspaces: updatedSavedWorkspaces,
         workspace: destinationWorkspace,
         selectedBlockId: null,
         activeScope: 'MAIN',
+        ...(simId === 'beat' && (curSpeed === 'instant' || (curSpeed as any) === 0)
+          ? { speed: 400 as SimulationSpeed }
+          : {}),
       });
 
       get().reset();
@@ -2933,8 +3322,11 @@ export const useAppStore = create<AppState>((set, get) => {
     setSpeed: (speed) => {
       const prevSpeed = get().speed;
       const wasInstant = prevSpeed === 'instant' || (prevSpeed as any) === 0;
-      const normalizedSpeed: SimulationSpeed =
+      let normalizedSpeed: SimulationSpeed =
         speed === 0 || speed === 'instant' ? 'instant' : (speed as SimulationSpeed);
+      if (get().activeSimId === 'beat' && normalizedSpeed === 'instant') {
+        normalizedSpeed = 400;
+      }
 
       if (normalizedSpeed === 'instant') {
         if (timerId) {
@@ -4199,7 +4591,11 @@ export const useAppStore = create<AppState>((set, get) => {
       if (get().ghostPreview) {
         set({ ghostPreview: null });
       }
-      if (speed === 'instant' || (speed as any) === 0) {
+      if (activeSimId === 'beat' && (speed === 'instant' || (speed as any) === 0)) {
+        set({ speed: 400 });
+      }
+      const effectiveSpeed = get().speed;
+      if (effectiveSpeed === 'instant' || (effectiveSpeed as any) === 0) {
         if (timerId) {
           clearTimeout(timerId);
           timerId = null;
@@ -4265,7 +4661,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }
       }
 
-      if (activeSimId === 'grid' || activeSimId === 'beat') {
+      if (activeSimId === 'grid') {
         if (timerId) {
           clearTimeout(timerId);
           timerId = null;
@@ -4298,8 +4694,18 @@ export const useAppStore = create<AppState>((set, get) => {
         if (typeof initialSpeed === 'number' && initialSpeed > 0) {
           scheduleNextTick(initialSpeed);
         }
+      } else if (activeSimId === 'beat') {
+        if (timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+        beatPassHadDelay = false;
+        set({ isPlaying: true });
+        runBeatExecutionLoop();
+        markDemoTabExploredInternal(true);
       } else {
         // Turtle runner: RAF-driven constant speed loop
+        turtlePassHadDelay = false;
         set({ isPlaying: true });
         runTurtleExecutionLoop(false);
         markDemoTabExploredInternal(true);
@@ -4332,6 +4738,8 @@ export const useAppStore = create<AppState>((set, get) => {
         turtleRafId = null;
       }
       pendingTurtleCommit = null;
+      turtlePassHadDelay = false;
+      beatPassHadDelay = false;
       beatSynth.stopAll();
 
       const { grid, turtleState, beatState, activeSimId } = get();
@@ -4364,6 +4772,18 @@ export const useAppStore = create<AppState>((set, get) => {
         });
       }
     },
+
+    setLoopPlayback: (loop) => set({ isLoopPlayback: loop }),
+
+    toggleLoopPlayback: () => set((state) => ({ isLoopPlayback: !state.isLoopPlayback })),
+
+    toggleTurtleVisible: () =>
+      set((state) => ({
+        turtleState: {
+          ...state.turtleState,
+          showTurtle: !state.turtleState.showTurtle,
+        },
+      })),
 
     dismissRestoredNotice: () => set({ wasRestoredAfterUpdate: false }),
 
@@ -4405,6 +4825,7 @@ export const useAppStore = create<AppState>((set, get) => {
         isSubpaletteCollapsed: s.isSubpaletteCollapsed,
         isMapHidden: s.isMapHidden,
         isFunctionBarOpen: s.isFunctionBarOpen,
+        isLoopPlayback: s.isLoopPlayback,
         past: s.past,
         future: s.future,
       });
@@ -4451,6 +4872,9 @@ export const useAppStore = create<AppState>((set, get) => {
         runtime: restored.runtime,
         isPlaying: false,
         activeScope: restored.activeScope,
+        ...(typeof restored.isLoopPlayback === 'boolean'
+          ? { isLoopPlayback: restored.isLoopPlayback }
+          : {}),
         selectedBlockId: restored.selectedBlockId,
         speed: restored.speed,
         editorTool: restored.editorTool,

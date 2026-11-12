@@ -40,7 +40,8 @@ export type BeatCueKind =
   | 'STAMP'
   | 'WAIT_BEAT'
   | 'CLEAR_LEDS'
-  | 'LED_CHANGE';
+  | 'LED_CHANGE'
+  | 'SET_BEAT_DELAY';
 
 export interface BeatTriggerEvent {
   kind: BeatCueKind;
@@ -49,6 +50,8 @@ export interface BeatTriggerEvent {
   preset?: BeatPresetName;
   pitch?: number;
   durationBeats?: number;
+  waitBeats?: number;
+  delayMultiplier?: number;
   color?: string;
 }
 
@@ -80,6 +83,8 @@ export interface BeatState {
   cursor: BeatCursorState;
   /** Whether Beat audio synthesis is muted */
   isMuted: boolean;
+  /** Delay multiplier for non-sound, non-wait blocks (0 = instant, 1 = 1x global speed) */
+  stepDelayMultiplier: number;
   /** Simulation execution status (Beat & Light lessons are open-ended and never fail) */
   status: SimulationStatus;
 }

@@ -14,12 +14,18 @@ import { SimulationEnvironment } from './simulation/types';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 
 export const MAX_CALL_STACK_DEPTH = 32;
-export const MAX_TOTAL_STEPS = 1000;
+export const MAX_TOTAL_STEPS = 10000;
 
-export function evaluateValue(
+export function isSensorToken(val: unknown): val is string {
+  return typeof val === 'string' && /^\$[a-zA-Z][a-zA-Z0-9_]*$/.test(val.trim());
+}
+
+export function evaluateValue<TState = any>(
   val: number | string | undefined,
   variables: Record<string, number>,
-  defaultValue: number = 0
+  defaultValue: number = 0,
+  simEnv?: SimulationEnvironment<TState>,
+  simState?: TState
 ): number {
   if (val === undefined || val === null) return defaultValue;
   if (typeof val === 'number') return isNaN(val) ? defaultValue : val;
@@ -27,6 +33,10 @@ export function evaluateValue(
     const trimmed = val.trim();
     if (/^[a-z]$/.test(trimmed)) {
       return variables[trimmed] ?? 0;
+    }
+    if (isSensorToken(trimmed) && simEnv?.readSensor && simState !== undefined) {
+      const sensed = simEnv.readSensor(trimmed, simState);
+      return Number.isFinite(sensed) ? sensed : defaultValue;
     }
     const num = Number(trimmed);
     return isNaN(num) ? defaultValue : num;
@@ -274,7 +284,7 @@ export function tickInterpreter<TState = GridState>(
   // Handle Variable Assignment: a = b
   if (blockType === 'VAR_ASSIGN') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
-    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0);
+    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0, simEnv, simState);
     const nextVariables: Record<VariableName, number> = {
       ...runtime.variables,
       [a]: bVal,
@@ -303,8 +313,8 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'VAR_OP') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
     const op = (currentBlock.params?.op || '+') as BinaryOp;
-    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0);
-    const cVal = evaluateValue(currentBlock.params?.c, runtime.variables, 0);
+    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0, simEnv, simState);
+    const cVal = evaluateValue(currentBlock.params?.c, runtime.variables, 0, simEnv, simState);
     const result = evaluateBinaryOp(bVal, op, cVal);
     const nextVariables: Record<VariableName, number> = {
       ...runtime.variables,
@@ -334,7 +344,7 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'LOOP_START') {
     const matchingEnd = findMatchingLoopEnd(scopeBlocks, currentFrame.pc);
     const rawCount = currentBlock.repeatCount !== undefined
-      ? evaluateValue(currentBlock.repeatCount, runtime.variables, 2)
+      ? evaluateValue(currentBlock.repeatCount, runtime.variables, 2, simEnv, simState)
       : 2;
     const loopCount = Math.round(rawCount);
 
@@ -430,7 +440,7 @@ export function tickInterpreter<TState = GridState>(
 
   // Handle Domain Action blocks (e.g. MOVE_FWD, TURN_LEFT, SET_PEN_COLOR, etc.)
   const rawRepeats = currentBlock.repeatCount !== undefined
-    ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1)
+    ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1, simEnv, simState)
     : 1;
   const totalRepeats = Math.round(rawRepeats);
 
@@ -462,12 +472,12 @@ export function tickInterpreter<TState = GridState>(
       ? { blockId: currentBlock.id, current: iterationIndex, total: totalRepeats }
       : null;
 
-  // Resolve numerical parameters in params
+  // Resolve numerical parameters & sensors in params
   const resolvedParams: Record<string, any> = {};
   if (currentBlock.params) {
     for (const [k, v] of Object.entries(currentBlock.params)) {
-      if (typeof v === 'string' && /^[a-z]$/.test(v.trim())) {
-        resolvedParams[k] = evaluateValue(v, runtime.variables, 0);
+      if (typeof v === 'string' && (/^[a-z]$/.test(v.trim()) || isSensorToken(v))) {
+        resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, simState);
       } else {
         resolvedParams[k] = v;
       }

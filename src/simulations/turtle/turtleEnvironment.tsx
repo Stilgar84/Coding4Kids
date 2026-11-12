@@ -11,6 +11,7 @@ import {
   moveTurtleBackward,
   turnTurtle,
   arcTurtle,
+  teleportTurtle,
   DEFAULT_STEP_DISTANCE,
 } from './physics';
 import { TurtleCanvas } from './components/TurtleCanvas';
@@ -23,6 +24,10 @@ import {
   PenTool,
   Slash,
   Palette,
+  Hourglass,
+  Zap,
+  Eraser,
+  Crosshair,
 } from 'lucide-react';
 
 export const DEFAULT_TURN_ANGLE = 90;
@@ -61,6 +66,8 @@ export function createInitialTurtleState(): TurtleState {
     fitToView: false,
     computedBounds: { minX: -100, minY: -100, maxX: 100, maxY: 100 },
     activeAnimation: null,
+    instantMode: false,
+    showTurtle: true,
   };
 }
 
@@ -165,6 +172,81 @@ export const TURTLE_LENGTH_PARAM_DEF: ActionParamDef = {
     { value: 100, label: '100' },
     { value: 150, label: '150' },
     { value: 200, label: '200' },
+  ],
+};
+
+export const TURTLE_WAIT_DURATION_PARAM_DEF: ActionParamDef = {
+  id: 'duration',
+  label: 'Wait',
+  type: 'wait-duration',
+  defaultValue: 1,
+  options: [
+    { value: 0.25, label: '¼×' },
+    { value: 0.5, label: '½×' },
+    { value: 1, label: '1×' },
+    { value: 2, label: '2×' },
+    { value: 4, label: '4×' },
+  ],
+};
+
+export const TURTLE_INSTANT_MODE_PARAM_DEF: ActionParamDef = {
+  id: 'mode',
+  label: 'Instant',
+  type: 'instant-mode',
+  defaultValue: 'ON',
+  options: [
+    { value: 'ON', label: 'ON' },
+    { value: 'OFF', label: 'OFF' },
+  ],
+};
+
+export const TURTLE_TELEPORT_X_PARAM_DEF: ActionParamDef = {
+  id: 'x',
+  label: 'X',
+  type: 'coord',
+  defaultValue: 0,
+  unit: 'px',
+  options: [
+    { value: -150, label: '-150' },
+    { value: -100, label: '-100' },
+    { value: -50, label: '-50' },
+    { value: 0, label: '0' },
+    { value: 50, label: '50' },
+    { value: 100, label: '100' },
+    { value: 150, label: '150' },
+  ],
+};
+
+export const TURTLE_TELEPORT_Y_PARAM_DEF: ActionParamDef = {
+  id: 'y',
+  label: 'Y',
+  type: 'coord',
+  defaultValue: 0,
+  unit: 'px',
+  options: [
+    { value: -150, label: '-150' },
+    { value: -100, label: '-100' },
+    { value: -50, label: '-50' },
+    { value: 0, label: '0' },
+    { value: 50, label: '50' },
+    { value: 100, label: '100' },
+    { value: 150, label: '150' },
+  ],
+};
+
+export const TURTLE_TELEPORT_HEADING_PARAM_DEF: ActionParamDef = {
+  id: 'heading',
+  label: 'Heading',
+  type: 'angle',
+  defaultValue: 0,
+  unit: '°',
+  options: [
+    { value: 0, label: '0°' },
+    { value: 45, label: '45°' },
+    { value: 90, label: '90°' },
+    { value: 135, label: '135°' },
+    { value: 180, label: '180°' },
+    { value: 270, label: '270°' },
   ],
 };
 
@@ -340,6 +422,72 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     borderClass: 'border-slate-500',
     supportsRepeat: false,
   },
+
+  // Teleport
+  {
+    id: 'turtle-teleport',
+    actionType: 'TELEPORT',
+    name: 'Teleport',
+    category: 'motion',
+    paramDefs: [
+      TURTLE_TELEPORT_X_PARAM_DEF,
+      TURTLE_TELEPORT_Y_PARAM_DEF,
+      TURTLE_TELEPORT_HEADING_PARAM_DEF,
+    ],
+    params: { x: 0, y: 0, heading: 0 },
+    icon: ({ isActive }) => (
+      <Crosshair className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-cyan-300 stroke-[2.5]'}`} />
+    ),
+    bgClass: 'bg-cyan-700 hover:bg-cyan-600',
+    borderClass: 'border-cyan-400',
+    supportsRepeat: false,
+  },
+
+  // Wait
+  {
+    id: 'turtle-wait',
+    actionType: 'WAIT',
+    name: 'Wait',
+    category: 'timing',
+    paramDefs: [TURTLE_WAIT_DURATION_PARAM_DEF],
+    params: { duration: 1 },
+    icon: ({ isActive }) => (
+      <Hourglass className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-amber-300 stroke-[2.5]'}`} />
+    ),
+    bgClass: 'bg-amber-700 hover:bg-amber-600',
+    borderClass: 'border-amber-400',
+    supportsRepeat: false,
+  },
+
+  // Instant Mode
+  {
+    id: 'turtle-set-instant',
+    actionType: 'SET_INSTANT',
+    name: 'Instant Mode',
+    category: 'timing',
+    paramDefs: [TURTLE_INSTANT_MODE_PARAM_DEF],
+    params: { mode: 'ON' },
+    icon: ({ isActive }) => (
+      <Zap className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-yellow-300 stroke-[2.5]'}`} />
+    ),
+    bgClass: 'bg-yellow-700 hover:bg-yellow-600',
+    borderClass: 'border-yellow-400',
+    supportsRepeat: false,
+  },
+
+  // Clear Picture
+  {
+    id: 'turtle-clear-canvas',
+    actionType: 'CLEAR_CANVAS',
+    name: 'Clear Picture',
+    category: 'pen',
+    icon: ({ isActive }) => (
+      <Eraser className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-rose-200 stroke-[2.5]'}`} />
+    ),
+    bgClass: 'bg-rose-700 hover:bg-rose-600',
+    borderClass: 'border-rose-400',
+    supportsRepeat: false,
+  },
 ];
 
 export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
@@ -349,6 +497,25 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
 
   paletteItems: TURTLE_PALETTE_ITEMS,
 
+  sensors: [
+    { id: '$x', label: 'X', icon: '📍X' },
+    { id: '$y', label: 'Y', icon: '📍Y' },
+    { id: '$heading', label: '∠', icon: '🧭∠' },
+  ],
+
+  readSensor: (sensorId: string, state: TurtleState): number => {
+    switch (sensorId) {
+      case '$x':
+        return Math.round(state.robot.x);
+      case '$y':
+        return Math.round(state.robot.y);
+      case '$heading':
+        return Math.round(state.robot.heading);
+      default:
+        return 0;
+    }
+  },
+
   createInitialState: createInitialTurtleState,
 
   resetState: (state: TurtleState): TurtleState => ({
@@ -356,6 +523,7 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
     pan: state.pan,
     zoom: state.zoom,
     fitToView: state.fitToView,
+    showTurtle: state.showTurtle,
   }),
 
   executeAction: (
@@ -441,6 +609,37 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
       case 'SET_PEN_WIDTH': {
         const width = options?.params?.width ?? 6;
         nextState = { ...nextState, penWidth: width };
+        break;
+      }
+
+      case 'TELEPORT': {
+        const rawX = options?.params?.x;
+        const rawY = options?.params?.y;
+        const rawHeading = options?.params?.heading;
+        const x = typeof rawX === 'number' && Number.isFinite(rawX) ? rawX : 0;
+        const y = typeof rawY === 'number' && Number.isFinite(rawY) ? rawY : 0;
+        const heading = typeof rawHeading === 'number' && Number.isFinite(rawHeading) ? rawHeading : 0;
+        nextState = teleportTurtle(nextState, x, y, heading);
+        break;
+      }
+
+      case 'WAIT': {
+        // Timing handled by execution loop; state unchanged.
+        break;
+      }
+
+      case 'SET_INSTANT': {
+        const mode = options?.params?.mode ?? 'ON';
+        nextState = { ...nextState, instantMode: mode === 'ON' };
+        break;
+      }
+
+      case 'CLEAR_CANVAS': {
+        nextState = {
+          ...nextState,
+          paths: [],
+          computedBounds: { minX: -100, minY: -100, maxX: 100, maxY: 100 },
+        };
         break;
       }
 

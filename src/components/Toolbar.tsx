@@ -107,12 +107,12 @@ export const Toolbar: React.FC = React.memo(() => {
     [workspace]
   );
 
-  const isInstant = speed === 'instant' || (speed as any) === 0;
+  const isInstant = activeSimId !== 'beat' && (speed === 'instant' || (speed as any) === 0);
 
   const toggleSpeed = () => {
     if (speed === 400) setSpeed(100);
     else if (speed === 100) setSpeed(25);
-    else if (speed === 25) setSpeed('instant');
+    else if (speed === 25 && activeSimId !== 'beat') setSpeed('instant');
     else setSpeed(400);
   };
 

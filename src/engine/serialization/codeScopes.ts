@@ -26,6 +26,9 @@ import {
   byteToOp,
   varNameToIndex,
   indexToVarName,
+  isSensorRefString,
+  encodeVarOrSensorIndex,
+  decodeVarOrSensorIndex,
   OP_GRID_MOVE_FWD,
   OP_GRID_MOVE_BACK,
   OP_GRID_TURN_LEFT,
@@ -44,6 +47,10 @@ import {
   OP_TURTLE_SET_PEN_WIDTH,
   OP_TURTLE_FORWARD_LEN,
   OP_TURTLE_BACKWARD_LEN,
+  OP_TURTLE_WAIT,
+  OP_TURTLE_SET_INSTANT,
+  OP_TURTLE_CLEAR_CANVAS,
+  OP_TURTLE_TELEPORT,
 } from './types';
 import { writeTurtleParams, readTurtleParams } from './env/turtleSerializer';
 import {
@@ -61,9 +68,17 @@ function createUniqueBlockId(type: string): string {
   return `${type}_${Date.now()}_${blockIdCounter}_${rand}`;
 }
 
+function isVarOrSensorVal(val: unknown): boolean {
+  return (
+    isVariableName(val) ||
+    isSensorRefString(val) ||
+    (typeof val === 'string' && /^[a-z]$/.test(val))
+  );
+}
+
 function getOperandType(val: any): number {
   if (val === undefined || val === null) return OPERAND_TYPE_POS_INT;
-  if (isVariableName(val) || (typeof val === 'string' && /^[a-z]$/.test(val))) {
+  if (isVarOrSensorVal(val)) {
     return OPERAND_TYPE_VAR;
   }
   const num = typeof val === 'number' ? val : Number(val);
@@ -76,7 +91,7 @@ function getOperandType(val: any): number {
 
 function writeOperandData(writer: BinaryWriter, type: number, val: any): void {
   if (type === OPERAND_TYPE_VAR) {
-    writer.writeUint8(varNameToIndex(val));
+    writer.writeUint8(encodeVarOrSensorIndex(String(val)));
   } else if (type === OPERAND_TYPE_POS_INT) {
     const num = typeof val === 'number' ? val : Number(val);
     writer.writeVLE(Math.max(0, Math.round(num)));
@@ -91,7 +106,7 @@ function writeOperandData(writer: BinaryWriter, type: number, val: any): void {
 
 function readOperandData(reader: BinaryReader, type: number): any {
   if (type === OPERAND_TYPE_VAR) {
-    return indexToVarName(reader.readUint8());
+    return decodeVarOrSensorIndex(reader.readUint8());
   } else if (type === OPERAND_TYPE_POS_INT) {
     return reader.readVLE();
   } else if (type === OPERAND_TYPE_NEG_INT) {
@@ -239,6 +254,18 @@ export function writeCodeScopes(
           case 'SET_PEN_WIDTH':
             opcode = OP_TURTLE_SET_PEN_WIDTH;
             break;
+          case 'WAIT':
+            opcode = OP_TURTLE_WAIT;
+            break;
+          case 'SET_INSTANT':
+            opcode = OP_TURTLE_SET_INSTANT;
+            break;
+          case 'CLEAR_CANVAS':
+            opcode = OP_TURTLE_CLEAR_CANVAS;
+            break;
+          case 'TELEPORT':
+            opcode = OP_TURTLE_TELEPORT;
+            break;
           default:
             throw new Error(`Unsupported Turtle block type: ${block.type}`);
         }
@@ -288,23 +315,16 @@ export function writeCodeScopes(
           param1IsVar = flags.param1IsVar;
         } else if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
           const lenVal = block.params.length ?? block.params.distance;
-          param0IsVar =
-            isVariableName(lenVal) || (typeof lenVal === 'string' && /^[a-z]$/.test(lenVal));
+          param0IsVar = isVarOrSensorVal(lenVal);
         } else if (block.type === 'TURN_LEFT' || block.type === 'TURN_RIGHT') {
-          param0IsVar =
-            isVariableName(block.params.angle) ||
-            (typeof block.params.angle === 'string' && /^[a-z]$/.test(block.params.angle));
+          param0IsVar = isVarOrSensorVal(block.params.angle);
         } else if (block.type === 'ARC_LEFT' || block.type === 'ARC_RIGHT') {
-          param0IsVar =
-            isVariableName(block.params.radius) ||
-            (typeof block.params.radius === 'string' && /^[a-z]$/.test(block.params.radius));
-          param1IsVar =
-            isVariableName(block.params.angle) ||
-            (typeof block.params.angle === 'string' && /^[a-z]$/.test(block.params.angle));
+          param0IsVar = isVarOrSensorVal(block.params.radius);
+          param1IsVar = isVarOrSensorVal(block.params.angle);
         } else if (block.type === 'SET_PEN_WIDTH') {
-          param0IsVar =
-            isVariableName(block.params.width) ||
-            (typeof block.params.width === 'string' && /^[a-z]$/.test(block.params.width));
+          param0IsVar = isVarOrSensorVal(block.params.width);
+        } else if (block.type === 'WAIT') {
+          param0IsVar = isVarOrSensorVal(block.params.duration);
         }
       }
 
@@ -469,6 +489,18 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
             break;
           case OP_TURTLE_SET_PEN_WIDTH:
             type = 'SET_PEN_WIDTH';
+            break;
+          case OP_TURTLE_WAIT:
+            type = 'WAIT';
+            break;
+          case OP_TURTLE_SET_INSTANT:
+            type = 'SET_INSTANT';
+            break;
+          case OP_TURTLE_CLEAR_CANVAS:
+            type = 'CLEAR_CANVAS';
+            break;
+          case OP_TURTLE_TELEPORT:
+            type = 'TELEPORT';
             break;
           default:
             throw new Error(`Unknown Turtle opcode: 0x${opcode.toString(16)}`);

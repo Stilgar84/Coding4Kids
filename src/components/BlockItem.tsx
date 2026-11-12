@@ -722,7 +722,9 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           </div>
         );
 
-      case 'VAR_ASSIGN':
+      case 'VAR_ASSIGN': {
+        const formatOp = (v: any) =>
+          v === '$x' ? '📍X' : v === '$y' ? '📍Y' : v === '$heading' ? '🧭∠' : v;
         return (
           <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-xs md:text-sm select-none px-1">
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
@@ -730,12 +732,15 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
             </span>
             <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
-              {block.params?.b ?? 1}
+              {formatOp(block.params?.b ?? 1)}
             </span>
           </div>
         );
+      }
 
-      case 'VAR_OP':
+      case 'VAR_OP': {
+        const formatOp = (v: any) =>
+          v === '$x' ? '📍X' : v === '$y' ? '📍Y' : v === '$heading' ? '🧭∠' : v;
         return (
           <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-[10px] md:text-xs select-none px-0.5 md:px-1">
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
@@ -743,16 +748,17 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
             </span>
             <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
-              {block.params?.b ?? 'a'}
+              {formatOp(block.params?.b ?? 'a')}
             </span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-amber-400'}>
               {block.params?.op ?? '+'}
             </span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
-              {block.params?.c ?? 1}
+              {formatOp(block.params?.c ?? 1)}
             </span>
           </div>
         );
+      }
 
       case 'PLACEHOLDER': {
         const cueColor = isActive ? 'text-slate-900' : 'text-cyan-300/90';

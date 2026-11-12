@@ -18,6 +18,8 @@ import {
   OP_BEAT_LIGHT_PIXEL,
   OP_BEAT_CURSOR_STEP,
   OP_BEAT_CURSOR_TURN,
+  OP_BEAT_SET_DELAY,
+  OP_BEAT_WAIT_DURATION,
   varNameToIndex,
   indexToVarName,
 } from '../types';
@@ -86,8 +88,13 @@ export function getBeatOpcodeForBlock(block: CodeBlock): number {
     case 'STAMP_SMILE':
     case 'STAMP_PRESET':
       return OP_BEAT_STAMP_PRESET;
-    case 'WAIT_BEAT':
+    case 'WAIT_BEAT': {
+      const dur = block.params?.duration;
+      if ((dur !== undefined && dur !== 1) || isVarVal(dur)) {
+        return OP_BEAT_WAIT_DURATION;
+      }
       return OP_BEAT_WAIT_BEAT;
+    }
     case 'CLEAR_LEDS':
       return OP_BEAT_CLEAR_LEDS;
     case 'PLAY_NOTE':
@@ -104,6 +111,8 @@ export function getBeatOpcodeForBlock(block: CodeBlock): number {
       return OP_BEAT_CURSOR_STEP;
     case 'CURSOR_TURN':
       return OP_BEAT_CURSOR_TURN;
+    case 'SET_BEAT_DELAY':
+      return OP_BEAT_SET_DELAY;
     default:
       throw new Error(`Unsupported Beat block type: ${block.type}`);
   }
@@ -132,6 +141,10 @@ export function getBeatParamVarFlags(
       return { param0IsVar: isVarVal(params.x), param1IsVar: false };
     case OP_BEAT_LIGHT_PIXEL:
       return { param0IsVar: isVarVal(params.x), param1IsVar: isVarVal(params.y) };
+    case OP_BEAT_SET_DELAY:
+      return { param0IsVar: isVarVal(params.multiplier), param1IsVar: false };
+    case OP_BEAT_WAIT_DURATION:
+      return { param0IsVar: isVarVal(params.duration), param1IsVar: false };
     default:
       return { param0IsVar: false, param1IsVar: false };
   }
@@ -209,6 +222,28 @@ export function writeBeatParams(
       break;
     }
 
+    case OP_BEAT_SET_DELAY: {
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(String(params?.multiplier ?? 'a')));
+      } else {
+        const mult = Number(params?.multiplier ?? 0);
+        const scaled = Math.max(0, Math.round((Number.isFinite(mult) ? mult : 0) * 100));
+        writer.writeVLE(scaled);
+      }
+      break;
+    }
+
+    case OP_BEAT_WAIT_DURATION: {
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(varNameToIndex(String(params?.duration ?? 'a')));
+      } else {
+        const dur = Number(params?.duration ?? 1);
+        const scaled = Math.max(0, Math.round((Number.isFinite(dur) ? dur : 1) * 100));
+        writer.writeVLE(scaled);
+      }
+      break;
+    }
+
     default:
       // No parameters for DRUM_KICK, DRUM_SNARE, DRUM_CLAP, PLAY_CHIME, WAIT_BEAT, CLEAR_LEDS, CURSOR_STEP
       break;
@@ -280,6 +315,20 @@ export function readBeatBlock(
     case OP_BEAT_CURSOR_TURN: {
       const dirByte = reader.readUint8();
       return { type: 'CURSOR_TURN', params: { direction: dirByte === 0 ? 'LEFT' : 'RIGHT' } };
+    }
+    case OP_BEAT_SET_DELAY: {
+      const multiplier =
+        (paramVarMask & 0x02) !== 0
+          ? indexToVarName(reader.readUint8())
+          : reader.readVLE() / 100;
+      return { type: 'SET_BEAT_DELAY', params: { multiplier } };
+    }
+    case OP_BEAT_WAIT_DURATION: {
+      const duration =
+        (paramVarMask & 0x02) !== 0
+          ? indexToVarName(reader.readUint8())
+          : reader.readVLE() / 100;
+      return { type: 'WAIT_BEAT', params: { duration } };
     }
     default:
       throw new Error(`Unknown Beat opcode: 0x${opcode.toString(16)}`);

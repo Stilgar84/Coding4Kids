@@ -57,6 +57,8 @@ export const BlockSubpalette: React.FC = React.memo(() => {
   const targetVarNames = policy.subpaletteVariableNames;
   const operandVarNames =
     policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
+  const simSensors =
+    policy.isCurriculum && !policy.allowVariables ? [] : (currentSimEnv?.sensors || []);
 
   // Handle VAR_ASSIGN
   if (selectedBlock.type === 'VAR_ASSIGN') {
@@ -125,7 +127,22 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {operandVarNames.length > 0 && (
+            {simSensors.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                data-testid={`subpalette-assign-b-sensor-${s.id}`}
+                onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: s.id })}
+                className={`flex-shrink-0 flex items-center justify-center px-1.5 h-[30px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                  currentB === s.id
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/40 shadow-sm'
+                    : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-cyan-300 hover:border-slate-500'
+                }`}
+              >
+                {s.icon}
+              </button>
+            ))}
+            {(operandVarNames.length > 0 || simSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (
@@ -229,7 +246,22 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {operandVarNames.length > 0 && (
+            {simSensors.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                data-testid={`subpalette-assign-b-sensor-${s.id}`}
+                onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: s.id })}
+                className={`flex-shrink-0 flex items-center justify-center px-1.5 h-[30px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                  currentB === s.id
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/40 shadow-sm'
+                    : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-cyan-300 hover:border-slate-500'
+                }`}
+              >
+                {s.icon}
+              </button>
+            ))}
+            {(operandVarNames.length > 0 || simSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (
@@ -310,7 +342,22 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {operandVarNames.length > 0 && (
+            {simSensors.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                data-testid={`subpalette-op-c-sensor-${s.id}`}
+                onClick={() => updateBlockParams(activeScope, selectedBlock.id, { c: s.id })}
+                className={`flex-shrink-0 flex items-center justify-center px-1.5 h-[30px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
+                  currentC === s.id
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/40 shadow-sm'
+                    : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 text-cyan-300 hover:border-slate-500'
+                }`}
+              >
+                {s.icon}
+              </button>
+            ))}
+            {(operandVarNames.length > 0 || simSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (

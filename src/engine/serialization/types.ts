@@ -142,6 +142,36 @@ export function indexToVarName(idx: number): VariableName {
   return toVariableName(String.fromCharCode(97 + safeIdx));
 }
 
+export const SENSOR_REF_FLAG = 0x80;
+export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading'] as const;
+
+export function sensorNameToByte(name: string): number {
+  const idx = SERIALIZED_SENSOR_IDS.indexOf(name as (typeof SERIALIZED_SENSOR_IDS)[number]);
+  return idx >= 0 ? idx : 0;
+}
+
+export function byteToSensorName(byte: number): string {
+  return SERIALIZED_SENSOR_IDS[byte] ?? '$x';
+}
+
+export function isSensorRefString(val: unknown): val is string {
+  return typeof val === 'string' && val.startsWith('$') && SERIALIZED_SENSOR_IDS.includes(val as any);
+}
+
+export function encodeVarOrSensorIndex(name: string): number {
+  if (isSensorRefString(name)) {
+    return SENSOR_REF_FLAG | sensorNameToByte(name);
+  }
+  return varNameToIndex(name);
+}
+
+export function decodeVarOrSensorIndex(byte: number): string {
+  if ((byte & SENSOR_REF_FLAG) !== 0) {
+    return byteToSensorName(byte & 0x7f);
+  }
+  return indexToVarName(byte);
+}
+
 // Grid World Opcodes (envId = 0x01, envVersion = 1..2)
 export const OP_GRID_MOVE_FWD = 0x10;
 export const OP_GRID_MOVE_BACK = 0x11;
@@ -163,6 +193,10 @@ export const OP_TURTLE_SET_PEN_COLOR = 0x18;
 export const OP_TURTLE_SET_PEN_WIDTH = 0x19;
 export const OP_TURTLE_FORWARD_LEN = 0x1a;
 export const OP_TURTLE_BACKWARD_LEN = 0x1b;
+export const OP_TURTLE_WAIT = 0x1c;
+export const OP_TURTLE_SET_INSTANT = 0x1d;
+export const OP_TURTLE_CLEAR_CANVAS = 0x1e;
+export const OP_TURTLE_TELEPORT = 0x1f;
 
 // Turtle Color Palette
 export const TURTLE_COLOR_PALETTE: readonly string[] = [
@@ -193,6 +227,8 @@ export const OP_BEAT_LIGHT_COL = 0x1a;
 export const OP_BEAT_LIGHT_PIXEL = 0x1b;
 export const OP_BEAT_CURSOR_STEP = 0x1c;
 export const OP_BEAT_CURSOR_TURN = 0x1d;
+export const OP_BEAT_SET_DELAY = 0x1e;
+export const OP_BEAT_WAIT_DURATION = 0x1f;
 
 export interface ImportResult {
   success: boolean;

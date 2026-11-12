@@ -5,6 +5,7 @@ import {
   EyeOff,
   FolderOpen,
   Gauge,
+  Infinity as InfinityIcon,
   Lightbulb,
   Map,
   Maximize2,
@@ -63,6 +64,10 @@ const MobileDrawerMenuContent: React.FC = () => {
     toggleMapHidden,
     beatIsMuted,
     toggleBeatMuted,
+    isLoopPlayback,
+    toggleLoopPlayback,
+    showTurtle,
+    toggleTurtleVisible,
     canRedo,
     redo,
     performanceMode,
@@ -92,6 +97,10 @@ const MobileDrawerMenuContent: React.FC = () => {
     toggleMapHidden: s.toggleMapHidden,
     beatIsMuted: s.beatState.isMuted,
     toggleBeatMuted: s.toggleBeatMuted,
+    isLoopPlayback: s.isLoopPlayback,
+    toggleLoopPlayback: s.toggleLoopPlayback,
+    showTurtle: s.turtleState.showTurtle,
+    toggleTurtleVisible: s.toggleTurtleVisible,
     canRedo: s.canRedo,
     redo: s.redo,
     performanceMode: s.performanceMode,
@@ -436,6 +445,46 @@ const MobileDrawerMenuContent: React.FC = () => {
             <Redo2 className="w-4 h-4 shrink-0" />
             <span>Redo</span>
           </button>
+
+          {/* Loop Playback (Beat & Turtle) */}
+          {(activeSimId === 'beat' || activeSimId === 'turtle') && (
+            <button
+              type="button"
+              data-testid="drawer-btn-loop"
+              aria-pressed={isLoopPlayback}
+              onClick={toggleLoopPlayback}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-all cursor-pointer ${
+                isLoopPlayback
+                  ? 'bg-amber-500/20 text-amber-200 border-amber-400/70'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+            >
+              <InfinityIcon className="w-4 h-4 shrink-0" />
+              <span>{isLoopPlayback ? 'Loop On' : 'Loop Off'}</span>
+            </button>
+          )}
+
+          {/* Hide / Show Turtle */}
+          {activeSimId === 'turtle' && (
+            <button
+              type="button"
+              data-testid="drawer-btn-toggle-turtle"
+              aria-pressed={!showTurtle}
+              onClick={toggleTurtleVisible}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border font-bold text-xs active:scale-95 transition-all cursor-pointer ${
+                !showTurtle
+                  ? 'bg-sky-500/20 text-sky-200 border-sky-400/70'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+            >
+              {showTurtle ? (
+                <Eye className="w-4 h-4 shrink-0" />
+              ) : (
+                <EyeOff className="w-4 h-4 shrink-0" />
+              )}
+              <span>{showTurtle ? 'Hide Turtle' : 'Show Turtle'}</span>
+            </button>
+          )}
 
           {/* Clue / Solution shortcut */}
           {canShowSolution && (

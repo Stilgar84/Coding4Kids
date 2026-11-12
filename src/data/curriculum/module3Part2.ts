@@ -464,7 +464,13 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
       'Put a shape loop inside an outer rotation or stepping loop to spin squares, arc petals, triangles, and stars into dazzling geometric rosettes!',
     hint: 'Run the 6-rotated-squares rosette, preview the Arc Flower, Triangle Pinwheel, or Star Row cards, and tweak inner vs. outer repeat counts to invent new spirographs.',
     palette: {
-      allowedSimBlocks: [...MODULE_3_TURTLE_ALLOWED_BLOCKS],
+      allowedSimBlocks: [
+        ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
+        'TELEPORT',
+        'WAIT',
+        'SET_INSTANT',
+        'CLEAR_CANVAS',
+      ],
       allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
       allowedScopes: ['MAIN'],
       allowRepeatBadges: true,
@@ -658,7 +664,13 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
       'Design a multi-layered kaleidoscope medallion by combining nested polygon loops, sweeping outer arc rings, and bold pen colors!',
     hint: 'Run the two-layer mandala starter, explore the Crystal Snowflake, Gondola Ferris Wheel, or Honeycomb Ring cards, and tap ✓ Done when your medallion is complete!',
     palette: {
-      allowedSimBlocks: [...MODULE_3_TURTLE_ALLOWED_BLOCKS],
+      allowedSimBlocks: [
+        ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
+        'TELEPORT',
+        'WAIT',
+        'SET_INSTANT',
+        'CLEAR_CANVAS',
+      ],
       allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
       allowedScopes: ['MAIN'],
       allowRepeatBadges: true,
