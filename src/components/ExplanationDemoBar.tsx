@@ -9,6 +9,11 @@ import {
   findNextUnviewedDemoTabIndex,
   getNextCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
+import {
+  BranchSkipSpotlight,
+  FifoVsLifoSpotlight,
+  SensorBeamBadge,
+} from '../simulations/grid/components/SensorAndBranchSpotlight';
 
 /**
  * Zero-reading animated badge visualizing a `Main → F1 → Main` call/return cycle.
@@ -299,6 +304,17 @@ export const ExplanationDemoBar: React.FC = () => {
       {activeTab?.spotlights?.includes('call-stack-jump') && (
         <CallStackJumpSpotlight activeScope={activeScope} />
       )}
+      {activeTab?.spotlights?.includes('branch-skip') && (
+        <BranchSkipSpotlight />
+      )}
+      {activeTab?.spotlights?.includes('fifo-vs-lifo') && (
+        <FifoVsLifoSpotlight />
+      )}
+      {activeTab?.spotlights?.includes('sensor-beam') &&
+        !activeTab?.spotlights?.includes('branch-skip') &&
+        !activeTab?.spotlights?.includes('fifo-vs-lifo') && (
+          <SensorBeamBadge />
+        )}
 
       {/* Right: Prominent 1-Tap Next Step / Next Lesson (→) Button */}
       <button

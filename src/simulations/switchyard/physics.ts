@@ -66,18 +66,20 @@ export function evaluateSwitchyardSensor(
 ): boolean {
   const item = state.queue[0] ?? null;
   const sensorType = typeof sensor === 'string' ? sensor : sensor?.type;
-  const colorIdx =
-    typeof sensor === 'object' && sensor.colorIdx !== undefined
-      ? sensor.colorIdx
-      : param !== undefined
-      ? ((ITEM_COLOR_INDEX as Record<string, number>)[param] ?? Number(param))
-      : 0;
-  const iconIdx =
-    typeof sensor === 'object' && sensor.iconIdx !== undefined
-      ? sensor.iconIdx
-      : param !== undefined
-      ? ((ITEM_ICON_INDEX as Record<string, number>)[param] ?? Number(param))
-      : 0;
+  let colorIdx = typeof sensor === 'object' && sensor.colorIdx !== undefined ? sensor.colorIdx : undefined;
+  let iconIdx = typeof sensor === 'object' && sensor.iconIdx !== undefined ? sensor.iconIdx : undefined;
+
+  if (param !== undefined && colorIdx === undefined && iconIdx === undefined) {
+    const upper = param.toUpperCase();
+    if (upper in ITEM_COLOR_INDEX) {
+      colorIdx = ITEM_COLOR_INDEX[upper as keyof typeof ITEM_COLOR_INDEX];
+    } else if (upper in ITEM_ICON_INDEX) {
+      iconIdx = ITEM_ICON_INDEX[upper as keyof typeof ITEM_ICON_INDEX];
+    } else {
+      const parsed = parseInt(param, 10);
+      if (!isNaN(parsed)) colorIdx = parsed;
+    }
+  }
 
   switch (sensorType) {
     case 'hasNextItem':
@@ -85,9 +87,9 @@ export function evaluateSwitchyardSensor(
     case 'itemDamaged':
       return item !== null && item.damaged;
     case 'itemColor':
-      return item !== null && ITEM_COLOR_INDEX[item.color] === colorIdx;
+      return item !== null && ITEM_COLOR_INDEX[item.color] === (colorIdx ?? 0);
     case 'itemIcon':
-      return item !== null && ITEM_ICON_INDEX[item.icon] === iconIdx;
+      return item !== null && ITEM_ICON_INDEX[item.icon] === (iconIdx ?? 0);
     default:
       return false;
   }

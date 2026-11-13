@@ -94,11 +94,13 @@ function cellRight(grid: GridState): { x: number; y: number } {
  * @returns boolean result
  */
 export function evaluateGridSensor(
-  sensor: { type: string; colorIdx?: number },
-  state: GridState
+  sensor: { type: string; colorIdx?: number } | string,
+  state: GridState,
+  param?: string
 ): boolean {
   const { robot } = state;
-  switch (sensor.type) {
+  const sensorType = typeof sensor === 'string' ? sensor : sensor?.type;
+  switch (sensorType) {
     case 'pathAhead': {
       const ahead = cellAhead(state);
       return isCellWalkable(ahead.x, ahead.y, state);
@@ -122,7 +124,12 @@ export function evaluateGridSensor(
         (f) => f.isGoal && f.x === robot.x && f.y === robot.y
       );
     case 'tileColor': {
-      const colorIdx = sensor.colorIdx ?? 0;
+      const colorIdx =
+        typeof sensor === 'object' && sensor.colorIdx !== undefined
+          ? sensor.colorIdx
+          : param
+          ? parseInt(param, 10)
+          : 0;
       const beacons = state.beaconTiles ?? [];
       const beacon = beacons.find((b) => b.x === robot.x && b.y === robot.y);
       if (!beacon) return false;

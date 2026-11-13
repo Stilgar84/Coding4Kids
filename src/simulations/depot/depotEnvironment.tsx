@@ -6,7 +6,7 @@ import {
   SimulationEnvironment,
 } from '../../engine/simulation/types';
 import { registerSimulation } from '../../engine/simulation/registry';
-import { DepotState } from './types';
+import { DepotState, DEPOT_CRATE_COLORS } from './types';
 import {
   applyDepotAction,
   createInitialDepotState,
@@ -230,11 +230,58 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
    *             0x1B=heldColor==, 0x1C=topColor==
    */
   evaluateSensor: (
-    sensorCode: number,
+    sensorCode: number | string | any,
     state: DepotState,
-    params?: { stationParam?: number; colorIdx?: number }
+    params?: any
   ): boolean => {
-    return evaluateDepotSensor(sensorCode, state, params);
+    let code: number;
+    let resolvedParams =
+      typeof params === 'object' && params !== null ? { ...params } : undefined;
+
+    if (typeof sensorCode === 'string') {
+      const cleanSensor = sensorCode.startsWith('$')
+        ? sensorCode.slice(1)
+        : sensorCode;
+      if (cleanSensor === 'stationEmpty') {
+        code = 0x18;
+        if (typeof params === 'string' || typeof params === 'number') {
+          const sp =
+            typeof params === 'number'
+              ? params
+              : params === 'QUEUE'
+              ? 4
+              : parseInt(params, 10) || 0;
+          resolvedParams = { stationParam: sp };
+        }
+      } else if (cleanSensor === 'hasItem') {
+        code = 0x19;
+      } else if (cleanSensor === 'itemDamaged') {
+        code = 0x1a;
+      } else if (cleanSensor === 'heldColor') {
+        code = 0x1b;
+        if (typeof params === 'string' || typeof params === 'number') {
+          const cIdx =
+            typeof params === 'number'
+              ? params
+              : DEPOT_CRATE_COLORS[params.toUpperCase() as keyof typeof DEPOT_CRATE_COLORS]?.code ?? 0;
+          resolvedParams = { colorIdx: cIdx };
+        }
+      } else if (cleanSensor === 'topColor') {
+        code = 0x1c;
+        if (typeof params === 'string' || typeof params === 'number') {
+          const cIdx =
+            typeof params === 'number'
+              ? params
+              : DEPOT_CRATE_COLORS[params.toUpperCase() as keyof typeof DEPOT_CRATE_COLORS]?.code ?? 0;
+          resolvedParams = { colorIdx: cIdx };
+        }
+      } else {
+        code = 0;
+      }
+    } else {
+      code = sensorCode;
+    }
+    return evaluateDepotSensor(code, state, resolvedParams);
   },
 
   evaluateCompletion: (state: DepotState) => evaluateDepotCompletion(state),

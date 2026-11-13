@@ -7,6 +7,8 @@ import {
   ITEM_COLORS,
   ITEM_ICONS,
 } from '../types';
+import { useAppStoreSelector } from '../../../store/useAppStore';
+import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculum';
 
 // ─── Sizing constants ──────────────────────────────────────────────────────
 const SVG_W = 480;
@@ -287,7 +289,30 @@ function DockBox({
 export const SwitchyardCanvas: React.FC<{
   state: SwitchyardState;
   runtimeStatus?: SimulationStatus;
-}> = ({ state, runtimeStatus }) => {
+  spotlightsOverride?: string[];
+}> = ({ state, runtimeStatus, spotlightsOverride }) => {
+  const { appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex } =
+    useAppStoreSelector((s) => ({
+      appMode: s.appMode,
+      activeActivityId: s.activeActivityId,
+      activeActivityVersion: s.activeActivityVersion,
+      activeDemoTabIndex: s.activeDemoTabIndex,
+    }));
+
+  const spotlights = React.useMemo(() => {
+    if (spotlightsOverride) return spotlightsOverride;
+    if (appMode !== 'curriculum') return [];
+    const act =
+      getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+      getActivityLatest(activeActivityId);
+    if (!act || act.format !== 'explanation' || !act.demoTabs?.length) return [];
+    const idx = Math.min(Math.max(0, activeDemoTabIndex), act.demoTabs.length - 1);
+    return act.demoTabs[idx]?.spotlights ?? [];
+  }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
+
+  const hasSensorBeam = spotlights.includes('sensor-beam');
+  const hasBranchSkip = spotlights.includes('branch-skip');
+
   const hasScanner = state.queue.length > 0;
   const scannerItem = state.queue[0] ?? null;
   const queueRest = state.queue.slice(1);
@@ -326,6 +351,60 @@ export const SwitchyardCanvas: React.FC<{
 
         {/* Scanner gate */}
         <ScannerGate active={hasScanner} x={SCANNER_X} y={SCANNER_Y} w={SCANNER_W} h={SCANNER_H} />
+
+        {/* Sensor-Beam Spotlight (Commit 27) */}
+        {hasSensorBeam && scannerItem && (
+          <g data-testid="switchyard-sensor-beam" className="pointer-events-none select-none">
+            <line
+              x1={SCANNER_X + SCANNER_W / 2}
+              y1={SCANNER_Y + 4}
+              x2={SCANNER_X + SCANNER_W / 2}
+              y2={SCANNER_Y + SCANNER_H - 4}
+              stroke="#38bdf8"
+              strokeWidth={3}
+              strokeDasharray="4 2"
+              className="animate-pulse"
+            />
+            <circle
+              cx={SCANNER_X + SCANNER_W / 2}
+              cy={SCANNER_Y - 10}
+              r={10}
+              fill={scannerItem.damaged ? '#dc2626' : '#059669'}
+              stroke="#ffffff"
+              strokeWidth={1.5}
+            />
+            <text
+              x={SCANNER_X + SCANNER_W / 2}
+              y={SCANNER_Y - 9}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#ffffff"
+              fontSize={10}
+              fontWeight="900"
+            >
+              {scannerItem.damaged ? '⚠️' : '✓'}
+            </text>
+          </g>
+        )}
+
+        {/* Branch-Skip Switch Path Arc Indicator (Commit 27) */}
+        {hasBranchSkip && state.switches.length > 0 && (
+          <g data-testid="switchyard-branch-skip" className="pointer-events-none select-none">
+            <path
+              d={
+                state.switches[0].direction === 'LEFT'
+                  ? `M ${SWITCH_X} ${SWITCH_Y} Q ${SWITCH_X + 40} ${SWITCH_Y - 20} ${DOCK_A_X} ${DOCK_A_Y + DOCK_H / 2}`
+                  : `M ${SWITCH_X} ${SWITCH_Y} Q ${SWITCH_X + 40} ${SWITCH_Y + 20} ${DOCK_B_X} ${DOCK_B_Y + DOCK_H / 2}`
+              }
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth={3}
+              strokeDasharray="5 3"
+              opacity={0.85}
+              className="animate-pulse"
+            />
+          </g>
+        )}
 
         {/* Item at scanner */}
         {scannerItem && (

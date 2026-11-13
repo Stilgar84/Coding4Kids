@@ -322,7 +322,10 @@ export type DemoSpotlightType =
   | 'world-item'
   | 'backpack'
   | 'loop-counter'
-  | 'call-stack-jump';
+  | 'call-stack-jump'
+  | 'sensor-beam'
+  | 'branch-skip'
+  | 'fifo-vs-lifo';
 
 export interface ExplanationDemoTab {
   id: string;
@@ -570,6 +573,8 @@ export function createCurriculumGridState(
     status: 'IDLE',
     showTrace: true,
     fitToView,
+    requireAllItemsCollected: def.requireAllItemsCollected,
+    requireEmptyBackpackAtGoal: def.requireEmptyBackpackAtGoal,
   };
 }
 

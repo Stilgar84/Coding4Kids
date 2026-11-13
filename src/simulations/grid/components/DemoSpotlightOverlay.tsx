@@ -13,6 +13,7 @@ import {
 } from '../../../data/curriculum';
 import { useAppStore } from '../../../store/useAppStore';
 import { GRID_CELL_SIZE } from './GridOverlayLayer';
+import { SensorBeamGridOverlay } from './SensorAndBranchSpotlight';
 
 export interface DemoSpotlightOverlayProps {
   grid: GridState;
@@ -188,6 +189,7 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
   const hasWorldItem = spotlights.includes('world-item');
   const hasBackpack = spotlights.includes('backpack');
   const hasLoopCounter = spotlights.includes('loop-counter');
+  const hasSensorBeam = spotlights.includes('sensor-beam');
 
   const effectiveGrid =
     liveState && spotlightsOverride === undefined ? liveState.grid : grid;
@@ -581,6 +583,15 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
             {`↻${loopCurrent}/${loopTotal}`}
           </text>
         </g>
+      )}
+      {/* Sensor Beam Spotlight (Commit 27) */}
+      {hasSensorBeam && (
+        <SensorBeamGridOverlay
+          grid={effectiveGrid}
+          cellSize={cellSize}
+          runtime={runtime}
+          workspace={workspace}
+        />
       )}
     </g>
   );

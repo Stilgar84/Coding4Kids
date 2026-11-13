@@ -16,6 +16,7 @@ import { MODULE_3_BEAT_ACTIVITIES } from './module3Beat';
 import { MODULE_3_PART2_ACTIVITIES } from './module3Part2';
 import { MODULE_3_DEPOT_ACTIVITIES } from './module3Depot';
 import { MODULE_4_CREATIVE_ACTIVITIES } from './module4CreativeAndDemo';
+import { MODULE_5_DEMO_ACTIVITIES } from './module5Demos';
 
 export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
@@ -39,6 +40,7 @@ export {
   MODULE_4_CREATIVE_ACTIVITIES,
   MODULE_4_TURTLE_ALLOWED_BLOCKS,
 } from './module4CreativeAndDemo';
+export { MODULE_5_DEMO_ACTIVITIES } from './module5Demos';
 
 /**
  * Static Module catalog for Modules 1–6.
@@ -260,6 +262,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...MODULE_3_PART2_ACTIVITIES,
   ...MODULE_3_DEPOT_ACTIVITIES,
   ...MODULE_4_CREATIVE_ACTIVITIES,
+  ...MODULE_5_DEMO_ACTIVITIES,
 ]);
 
 export function getCurriculumModules(): CurriculumModule[] {

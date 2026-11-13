@@ -248,8 +248,8 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
     return readGridSensor(sensorId, state);
   },
 
-  evaluateSensor: (sensor: any, state: GridState): boolean => {
-    return evaluateGridSensor(sensor, state);
+  evaluateSensor: (sensor: any, state: GridState, param?: string): boolean => {
+    return evaluateGridSensor(sensor, state, param);
   },
 
   evaluateCompletion: (state: GridState) => {

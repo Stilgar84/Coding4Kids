@@ -9,10 +9,12 @@ import {
   DepotState,
 } from '../types';
 import { stationToIndex } from '../depotPhysics';
+import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculum';
 
 interface DepotCanvasProps {
   state: DepotState;
   runtimeStatus?: SimulationStatus;
+  spotlightsOverride?: string[];
 }
 
 const CrateBox: React.FC<{
@@ -94,12 +96,42 @@ const CrateBox: React.FC<{
   );
 };
 
-export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runtimeStatus }) => {
-  const { storeDepotState, isLowQuality, hasMultiVariant } = useAppStoreSelector((s) => ({
+export const DepotCanvas: React.FC<DepotCanvasProps> = ({
+  state: propState,
+  runtimeStatus,
+  spotlightsOverride,
+}) => {
+  const {
+    storeDepotState,
+    isLowQuality,
+    hasMultiVariant,
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    activeDemoTabIndex,
+  } = useAppStoreSelector((s) => ({
     storeDepotState: s.depotState,
     isLowQuality: isLowQualityActive(s),
     hasMultiVariant: s.variantRuns.length > 1,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
   }));
+
+  const spotlights = React.useMemo(() => {
+    if (spotlightsOverride) return spotlightsOverride;
+    if (appMode !== 'curriculum') return [];
+    const act =
+      getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+      getActivityLatest(activeActivityId);
+    if (!act || act.format !== 'explanation' || !act.demoTabs?.length) return [];
+    const idx = Math.min(Math.max(0, activeDemoTabIndex), act.demoTabs.length - 1);
+    return act.demoTabs[idx]?.spotlights ?? [];
+  }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
+
+  const hasFifoVsLifo = spotlights.includes('fifo-vs-lifo');
+  const hasSensorBeam = spotlights.includes('sensor-beam');
 
   const state = propState || storeDepotState;
   const effectiveStatus = runtimeStatus ?? state.status;
@@ -267,9 +299,30 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
                     />
                   </div>
                 )}
+                {/* Sensor beam on claw held crate */}
+                {hasSensorBeam && state.heldCrate && (
+                  <div
+                    data-testid="depot-sensor-beam"
+                    className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-0.5 pointer-events-none bg-sky-950/90 border border-sky-400/80 rounded px-1 text-[9px] font-black text-sky-300"
+                  >
+                    <span>📡</span>
+                    <span>✓</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
+
+          {/* FIFO vs LIFO Spotlight Banner (Commit 27) */}
+          {hasFifoVsLifo && (
+            <div
+              data-testid="depot-fifo-vs-lifo-banner"
+              className="w-full flex items-center justify-between px-3 py-1 bg-indigo-950/70 border border-indigo-400/50 rounded-xl text-[11px] font-black select-none pointer-events-none"
+            >
+              <span className="text-amber-300">⬆ LIFO Stacks (Top Crate First)</span>
+              <span className="text-emerald-300">FIFO Queue (Front Crate First ➔)</span>
+            </div>
+          )}
 
           {/* 3 LIFO Stack Bays */}
           <div className="flex-1 min-h-0 grid grid-cols-3 gap-2 sm:gap-3 items-end pt-1">
@@ -403,6 +456,15 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
                         <span className="absolute -top-1 -right-1 text-[9px] bg-amber-400 text-slate-950 font-black px-1 rounded-full">
                           1st
                         </span>
+                      )}
+                      {hasSensorBeam && isFront && (
+                        <div
+                          data-testid="depot-sensor-beam"
+                          className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-0.5 pointer-events-none bg-sky-950/90 border border-sky-400/80 rounded px-1 text-[8px] font-black text-sky-300"
+                        >
+                          <span>📡</span>
+                          <span>✓</span>
+                        </div>
                       )}
                     </div>
                   );
