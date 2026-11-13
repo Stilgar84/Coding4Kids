@@ -176,10 +176,10 @@ RobotEmu uses two distinct block-envelope layouts depending on the 5-bit opcode 
 
 ```
 Byte 0 (blockHeader):
-  Bit 7 (0x80)    Bit 6 (0x40)    Bit 5 (0x20)   Bits 4..0 (0x1F)
-+---------------+---------------+--------------+------------------+
-| HasVarParam   | HasRep        | Reserved (0) | Opcode (0..31)   |
-+---------------+---------------+--------------+------------------+
+  Bit 7 (0x80)    Bit 6 (0x40)    Bit 5 (0x20)          Bits 4..0 (0x1F)
++---------------+---------------+---------------------+------------------+
+| HasVarParam   | HasRep        | ElseHasCond (0x05)  | Opcode (0..31)   |
++---------------+---------------+---------------------+------------------+
 
 Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
   Bits 7..3 (0)   Bit 2 (0x04)     Bit 1 (0x02)     Bit 0 (0x01)
@@ -188,11 +188,15 @@ Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
 +---------------+----------------+----------------+----------------+
 ```
 
-1. **`paramVarMask` (`uint8`, present iff `HasVarParam == 1`):**
+1. **`blockHeader` Bit 5 (`MASK_ELSE_HAS_COND = 0x20`):**
+   - On `OP_ELSE = 0x05`, Bit 5 indicates an `ELSE_IF` block (`0x25`), followed immediately by a `ConditionExpr` prefix tree (§7.1.2).
+   - Plain `ELSE` emits `0x05` (Bit 5 = 0, 0 parameter bytes).
+   - For all other standard opcodes, Bit 5 is reserved (`0`).
+2. **`paramVarMask` (`uint8`, present iff `HasVarParam == 1`):**
    - `bit 0 (0x01)`: `repeatCount` is a variable index (`varIdx: uint8`) instead of `VLE`.
    - `bit 1 (0x02)`: Action parameter 0 is a variable index (`varIdx: uint8`) instead of `VLE`/`uint8`.
    - `bit 2 (0x04)`: Action parameter 1 is a variable index (`varIdx: uint8`) instead of `VLE`.
-2. **Repeat Count (present iff `HasRep == 1`):**
+3. **Repeat Count (present iff `HasRep == 1`):**
    - If `HasVarParam == 1` and `(paramVarMask & 0x01) != 0`: `varIdx: uint8` (`0..25`).
    - Otherwise: `repeatCount: VLE`.
 3. **Opcode-Specific Parameters:** Dictated strictly by `(envByte, opcode)` and `paramVarMask` bits `1..2`.
@@ -240,17 +244,53 @@ Governed by `FORMAT_VERSION = 1` across all environments.
 | `0x01` | `OP_LOOP_START` (`LOOP_START`) | None (uses `MASK_HAS_REP`) | Loop iteration count via `MASK_HAS_REP (0x40)` (`VLE` or `varIdx` via `MASK_HAS_VAR_PARAM (0x80)`). |
 | `0x02` | `OP_LOOP_END` (`LOOP_END`) | None | Closes matching `LOOP_START` (supports arbitrary nesting depth). |
 | `0x03` | `OP_CALL_FN` (`CALL_FN`) | `fnIndex: uint8` | Calls helper scope: `1` = `F1`, `2` = `F2`, `3` = `F3`. |
-| `0x04` | `OP_IF` (`IF`) | Reserved (M5) | Conditional branch start (activated in Module 5). |
-| `0x05` | `OP_ELSE` (`ELSE`) | None (M5) | Else branch separator (activated in Module 5). |
-| `0x06` | `OP_END_IF` (`END_IF`) | None (M5) | Conditional branch closer (activated in Module 5). |
+| `0x04` | `OP_IF` (`IF`) | `condition: ConditionExpr` | Conditional branch start; followed immediately by `ConditionExpr` prefix tree (§7.1.2). |
+| `0x05` | `OP_ELSE` (`ELSE` / `ELSE_IF`) | None (`ELSE`), `condition: ConditionExpr` (`ELSE_IF`) | Branch separator. Plain `ELSE` emits `0x05` (0 param bytes, 1 byte total); `ELSE_IF` sets `MASK_ELSE_HAS_COND = 0x20` (`0x25`) followed immediately by `ConditionExpr` (§7.1.2). |
+| `0x06` | `OP_END_IF` (`END_IF`) | None | Conditional branch closer (0 parameter bytes, 1 byte total). |
 | `0x07` | `OP_VAR_ASSIGN` (`VAR_ASSIGN`) | `operandDescMask`, `varIdx`, `operandB` | Assigns `a = b` (see §6.2). |
 | `0x08` | `OP_VAR_OP` (`VAR_OP`) | `operandDescMask`, `varIdx`, `opByte`, `operandB`, `operandC` | Evaluates `a = b op c` (see §6.2 & §7.1.1). |
 | `0x09` | `OP_PLACEHOLDER` (`PLACEHOLDER`) | `hintCategory: VLE` | `?` scaffold slot. **Active in M1–M3 (`0..4`):** `0`=any, `1`=motion, `2`=turn, `3`=item, `4`=loop. **Reserved for M4–M11 (`5..15`):** `5`=function, `6`=conditional, `7`=sensor, `8`=variable, `9`=operator, `10`=socket (`11..15` unassigned; VLE-extensible). |
-| `0x0A`–`0x0F` | Reserved | Reserved | Reserved for Module 5–11 control & shared tape extensions (`ELSE_IF`, `WHILE`, `END_WHILE`, `TAPE_*`; see [`env_depot_and_tape.md`](./env_depot_and_tape.md)). |
+| `0x0A` | `OP_WHILE` (`WHILE`) | `condition: ConditionExpr` | Conditional loop start; followed immediately by `ConditionExpr` prefix tree (§7.1.2). |
+| `0x0B` | `OP_END_WHILE` (`END_WHILE`) | None | Conditional loop closer (0 parameter bytes, 1 byte total). |
+| `0x0C`–`0x0E` | Reserved | Reserved | Reserved for Module 7 shared tape opcodes (`OP_TAPE_SEEK = 0x0C`, `OP_TAPE_STEP = 0x0D`, `OP_TAPE_WRITE = 0x0E`; see [`env_depot_and_tape.md`](./env_depot_and_tape.md)). |
+| `0x0F` | Reserved | Reserved | Reserved for future universal extensions. |
 
 #### 7.1.1 `VAR_OP` Binary Operator Codes (`opByte: uint8`)
 
 `0x00` `+` · `0x01` `-` · `0x02` `*` · `0x03` `/` · `0x04` `%` · `0x05` `==` · `0x06` `!=` · `0x07` `<` · `0x08` `<=` · `0x09` `>` · `0x0A` `>=` · `0x0B` `&&` · `0x0C` `||`.
+
+#### 7.1.2 `ConditionExpr` Prefix-Tree Binary Encoding
+
+`ConditionExpr` represents boolean sensor queries, relational expressions, and boolean combinators (`NOT`, `AND`, `OR`) encoded as a compact prefix tree. Each node starts with a 1-byte tag:
+
+| Tag | Kind / Sensor | Parameters | Description |
+| :--- | :--- | :--- | :--- |
+| **Grid Boolean Sensors (`0x01`–`0x08`):** | | | |
+| `0x01` | `pathAhead` | None | Robot path clear ahead. |
+| `0x02` | `pathLeft` | None | Robot path clear to left. |
+| `0x03` | `pathRight` | None | Robot path clear to right. |
+| `0x04` | `itemHere` | None | Floor item present on current cell. |
+| `0x05` | `carryingItem` | None | Robot backpack contains an item. |
+| `0x06` | `atGoal` | None | Robot is standing on goal tile. |
+| `0x07` | `tileColor` | `colorIdx: uint8` | Current tile matches color index (`0..9` in `PALETTE_COLORS`). |
+| `0x08` | `unvisitedAhead` | None | Reserved for Module 11 footprint backtracking. |
+| **Switchyard Boolean Sensors (`0x10`–`0x13`):** | | | |
+| `0x10` | `hasNextItem` | None | Incoming car/item queue is non-empty. |
+| `0x11` | `itemDamaged` | None | Scanned switchyard car is cracked/damaged. |
+| `0x12` | `itemColor` | `colorIdx: uint8` | Scanned switchyard car color (`0..9`). |
+| `0x13` | `itemIcon` | `iconIdx: uint8` | Scanned switchyard emblem (`0`=crate, `1`=battery, `2`=gear, `3`=crystal). |
+| **Depot Boolean & Color-Match Sensors (`0x18`–`0x1C`):** | | | |
+| `0x18` | `stationEmpty` | `stationCode: uint8` | Station is empty (`0`=CURRENT, `1`=STACK_1, `2`=STACK_2, `3`=STACK_3, `4`=QUEUE, `5`=INPUT). |
+| `0x19` | `hasItem` | None | Claw/worker is holding a crate. |
+| `0x1A` | `itemDamaged` | None | Held or front/top crate is cracked/damaged. |
+| `0x1B` | `heldColor` | `colorIdx: uint8` | Held crate color (`0..9`). |
+| `0x1C` | `topColor` | `colorIdx: uint8` | Top crate color of active stack (`0..9`). |
+| **Boolean Combinators (`0x20`–`0x22`):** | | | |
+| `0x20` | `NOT` | `operand: ConditionExpr` | Inverts child condition (e.g. `NOT pathAhead`). |
+| `0x21` | `AND` | `left: ConditionExpr`, `right: ConditionExpr` | Conjunction of two child conditions. |
+| `0x22` | `OR` | `left: ConditionExpr`, `right: ConditionExpr` | Disjunction of two child conditions. |
+| **Reserved Comparisons (`0x30`):** | | | |
+| `0x30` | `CMP` | Reserved | Reserved for Module 7 color equality & Module 8 numeric relational comparisons (`<`, `>`, `==`, `!=`, `%`). |
 
 ---
 

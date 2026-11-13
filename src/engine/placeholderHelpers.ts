@@ -118,9 +118,11 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'CALL_F3':
       return 'function';
     case 'IF':
+    case 'ELSE_IF':
     case 'ELSE':
     case 'END_IF':
     case 'WHILE':
+    case 'END_WHILE':
       return 'conditional';
     case 'VAR_ASSIGN':
       return 'variable';
@@ -183,9 +185,11 @@ export function doesBlockMatchHintCategory(
     case 'conditional':
       return (
         blockType === 'IF' ||
+        blockType === 'ELSE_IF' ||
         blockType === 'ELSE' ||
         blockType === 'END_IF' ||
-        blockType === 'WHILE'
+        blockType === 'WHILE' ||
+        blockType === 'END_WHILE'
       );
     case 'sensor':
       return itemCategory === 'sensor';

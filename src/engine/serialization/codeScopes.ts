@@ -12,6 +12,11 @@ import {
   OP_LOOP_START,
   OP_LOOP_END,
   OP_CALL_FN,
+  OP_IF,
+  OP_ELSE,
+  OP_END_IF,
+  OP_WHILE,
+  OP_END_WHILE,
   OP_VAR_ASSIGN,
   OP_VAR_OP,
   OP_PLACEHOLDER,
@@ -19,6 +24,7 @@ import {
   codeToPlaceholderHintCategory,
   MASK_HAS_VAR_PARAM,
   MASK_HAS_REP,
+  MASK_ELSE_HAS_COND,
   OPERAND_TYPE_VAR,
   OPERAND_TYPE_POS_INT,
   OPERAND_TYPE_NEG_INT,
@@ -53,6 +59,7 @@ import {
   OP_TURTLE_CLEAR_CANVAS,
   OP_TURTLE_TELEPORT,
 } from './types';
+import { writeConditionExpr, readConditionExpr } from './conditionSerializer';
 import { writeTurtleParams, readTurtleParams } from './env/turtleSerializer';
 import {
   getBeatOpcodeForBlock,
@@ -202,6 +209,63 @@ export function writeCodeScopes(
         );
         writer.writeUint8(OP_PLACEHOLDER);
         writer.writeVLE(hintCode);
+        continue;
+      }
+
+      // --- Conditional & While Control Flow (OP_IF 0x04, OP_ELSE/ELSE_IF 0x05/0x25, OP_END_IF 0x06,
+      //                                       OP_WHILE 0x0A, OP_END_WHILE 0x0B) ---
+      if (block.type === 'IF') {
+        // OP_IF = 0x04 (raw, bits 7..5 = 0, no HasVarParam/HasRep), followed by ConditionExpr
+        writer.writeUint8(OP_IF);
+        const condition = block.params?.condition;
+        if (condition && typeof condition === 'object') {
+          writeConditionExpr(writer, condition as any);
+        } else {
+          // Fallback: write pathAhead sensor tag 0x01
+          writer.writeUint8(0x01);
+        }
+        continue;
+      }
+
+      if (block.type === 'ELSE_IF') {
+        // ELSE_IF = 0x25 (OP_ELSE=0x05 | MASK_ELSE_HAS_COND=0x20), followed by ConditionExpr
+        writer.writeUint8(OP_ELSE | MASK_ELSE_HAS_COND);
+        const condition = block.params?.condition;
+        if (condition && typeof condition === 'object') {
+          writeConditionExpr(writer, condition as any);
+        } else {
+          writer.writeUint8(0x01);
+        }
+        continue;
+      }
+
+      if (block.type === 'ELSE') {
+        // Plain ELSE = 0x05, 0 parameter bytes (1 byte total)
+        writer.writeUint8(OP_ELSE);
+        continue;
+      }
+
+      if (block.type === 'END_IF') {
+        // OP_END_IF = 0x06, 0 parameter bytes (1 byte total)
+        writer.writeUint8(OP_END_IF);
+        continue;
+      }
+
+      if (block.type === 'WHILE') {
+        // OP_WHILE = 0x0A (raw), followed by ConditionExpr
+        writer.writeUint8(OP_WHILE);
+        const condition = block.params?.condition;
+        if (condition && typeof condition === 'object') {
+          writeConditionExpr(writer, condition as any);
+        } else {
+          writer.writeUint8(0x01);
+        }
+        continue;
+      }
+
+      if (block.type === 'END_WHILE') {
+        // OP_END_WHILE = 0x0B, 0 parameter bytes (1 byte total)
+        writer.writeUint8(OP_END_WHILE);
         continue;
       }
 
@@ -417,7 +481,47 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
       const blockHeader = reader.readUint8();
       const hasVar = (blockHeader & MASK_HAS_VAR_PARAM) !== 0;
       const hasRep = (blockHeader & MASK_HAS_REP) !== 0;
+      const elseHasCond = (blockHeader & MASK_ELSE_HAS_COND) !== 0; // bit 5 → ELSE_IF
       const opcode = blockHeader & 0x1f;
+
+      // --- Decode IF / ELSE / ELSE_IF / END_IF / WHILE / END_WHILE ---
+      // These opcodes use raw header bytes with bits 7..5 = 0 (except ELSE_IF: bit5=1).
+      // Handle before the generic hasVar/hasRep/paramVarMask decode path.
+      if (opcode === OP_IF) {
+        const condition = readConditionExpr(reader);
+        const id = createUniqueBlockId('IF');
+        blocks.push({ id, type: 'IF', params: { condition } });
+        continue;
+      }
+      if (opcode === OP_ELSE) {
+        if (elseHasCond) {
+          // ELSE_IF: blockHeader = 0x25 (OP_ELSE | MASK_ELSE_HAS_COND)
+          const condition = readConditionExpr(reader);
+          const id = createUniqueBlockId('ELSE_IF');
+          blocks.push({ id, type: 'ELSE_IF', params: { condition } });
+        } else {
+          // Plain ELSE: blockHeader = 0x05
+          const id = createUniqueBlockId('ELSE');
+          blocks.push({ id, type: 'ELSE' });
+        }
+        continue;
+      }
+      if (opcode === OP_END_IF) {
+        const id = createUniqueBlockId('END_IF');
+        blocks.push({ id, type: 'END_IF' });
+        continue;
+      }
+      if (opcode === OP_WHILE) {
+        const condition = readConditionExpr(reader);
+        const id = createUniqueBlockId('WHILE');
+        blocks.push({ id, type: 'WHILE', params: { condition } });
+        continue;
+      }
+      if (opcode === OP_END_WHILE) {
+        const id = createUniqueBlockId('END_WHILE');
+        blocks.push({ id, type: 'END_WHILE' });
+        continue;
+      }
 
       let paramVarMask = 0;
       if (opcode === OP_VAR_ASSIGN || opcode === OP_VAR_OP) {

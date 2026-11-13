@@ -20,6 +20,7 @@ import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
+import { ConditionBadge } from './ConditionBadge';
 import {
   getPlaceholderHintCategory,
   getPlaceholderHintLabel,
@@ -529,6 +530,36 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
         borderClass = 'border-indigo-400';
         break;
 
+      case 'IF':
+        bgClass = 'bg-cyan-700';
+        borderClass = 'border-cyan-400';
+        break;
+
+      case 'ELSE_IF':
+        bgClass = 'bg-cyan-800';
+        borderClass = 'border-cyan-400';
+        break;
+
+      case 'ELSE':
+        bgClass = 'bg-cyan-800';
+        borderClass = 'border-cyan-500';
+        break;
+
+      case 'END_IF':
+        bgClass = 'bg-cyan-950';
+        borderClass = 'border-cyan-500';
+        break;
+
+      case 'WHILE':
+        bgClass = 'bg-amber-600';
+        borderClass = 'border-amber-400';
+        break;
+
+      case 'END_WHILE':
+        bgClass = 'bg-amber-950';
+        borderClass = 'border-amber-500';
+        break;
+
       default: {
         if (paletteItem) {
           const baseBg = paletteItem.bgClass.split(' ').find((cls) => cls.startsWith('bg-'));
@@ -789,6 +820,57 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           </div>
         );
       }
+
+      case 'IF':
+        return (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1">
+            <span className={`text-[10px] md:text-xs font-black uppercase tracking-wider ${isActive ? 'text-slate-950' : 'text-white'}`}>
+              IF
+            </span>
+            <ConditionBadge condition={block.params?.condition} compact />
+          </div>
+        );
+
+      case 'ELSE_IF':
+        return (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1">
+            <span className={`text-[9px] md:text-[11px] font-black uppercase tracking-tight ${isActive ? 'text-slate-950' : 'text-white'}`}>
+              ELSE IF
+            </span>
+            <ConditionBadge condition={block.params?.condition} compact />
+          </div>
+        );
+
+      case 'ELSE':
+        return (
+          <span className={`text-xs md:text-sm font-black uppercase tracking-wider ${isActive ? 'text-slate-950' : 'text-cyan-200'}`}>
+            ELSE
+          </span>
+        );
+
+      case 'END_IF':
+        return (
+          <CornerDownLeft
+            className={`w-5 h-5 md:w-7 md:h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-cyan-200 stroke-[3]'}`}
+          />
+        );
+
+      case 'WHILE':
+        return (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1">
+            <span className={`text-[10px] md:text-xs font-black uppercase tracking-wider ${isActive ? 'text-slate-950' : 'text-white'}`}>
+              WHILE
+            </span>
+            <ConditionBadge condition={block.params?.condition} compact />
+          </div>
+        );
+
+      case 'END_WHILE':
+        return (
+          <CornerDownLeft
+            className={`w-5 h-5 md:w-7 md:h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-amber-200 stroke-[3]'}`}
+          />
+        );
 
       default:
         if (paletteItem?.icon) {

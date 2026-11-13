@@ -5,6 +5,8 @@ import {
   CodeBlock,
   StackFrame,
   LoopFrame,
+  WhileFrame,
+  CondFrame,
   GridState,
   SimulationStatus,
   VariableName,
@@ -12,6 +14,8 @@ import {
 } from '../types';
 import { SimulationEnvironment } from './simulation/types';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
+import { ConditionExpr } from '../data/curriculum/types';
+import { evaluateConditionExpr } from './serialization/conditionSerializer';
 
 export const MAX_CALL_STACK_DEPTH = 32;
 export const MAX_TOTAL_STEPS = 10000;
@@ -67,6 +71,8 @@ export function createInitialInterpreterState(): InterpreterRuntimeState {
   return {
     callStack: [{ scope: 'MAIN', pc: 0, subTickLeft: 0 }],
     loopStack: [],
+    whileStack: [],
+    condStack: [],
     activeBlockId: null,
     activeScope: 'MAIN',
     status: 'RUNNING',
@@ -89,39 +95,107 @@ export interface LoopValidationResult {
   hasError: boolean;
 }
 
+export interface ControlStructureValidationResult extends LoopValidationResult {
+  unclosedIfIds: string[];
+  orphanElseIds: string[];
+  orphanEndIfIds: string[];
+  unclosedWhileIds: string[];
+  orphanEndWhileIds: string[];
+}
+
 /**
- * Validates loop structure in a list of blocks, checking for unclosed LOOP_START
- * and orphan LOOP_END blocks.
+ * Validates loop, while, and conditional structures in a list of blocks.
  */
-export function validateLoopStructure(blocks: CodeBlock[]): LoopValidationResult {
+export function validateControlStructure(blocks: CodeBlock[]): ControlStructureValidationResult {
   const unclosedLoopStartIds: string[] = [];
   const orphanLoopEndIds: string[] = [];
-  const openStack: CodeBlock[] = [];
+  const loopOpenStack: CodeBlock[] = [];
+
+  const unclosedIfIds: string[] = [];
+  const orphanElseIds: string[] = [];
+  const orphanEndIfIds: string[] = [];
+  const ifOpenStack: { ifBlock: CodeBlock; hasElse: boolean }[] = [];
+
+  const unclosedWhileIds: string[] = [];
+  const orphanEndWhileIds: string[] = [];
+  const whileOpenStack: CodeBlock[] = [];
 
   for (const block of blocks) {
     if (block.type === 'LOOP_START') {
-      openStack.push(block);
+      loopOpenStack.push(block);
     } else if (block.type === 'LOOP_END') {
-      if (openStack.length > 0) {
-        openStack.pop();
+      if (loopOpenStack.length > 0) {
+        loopOpenStack.pop();
       } else {
         orphanLoopEndIds.push(block.id);
+      }
+    } else if (block.type === 'IF') {
+      ifOpenStack.push({ ifBlock: block, hasElse: false });
+    } else if (block.type === 'ELSE_IF') {
+      if (ifOpenStack.length === 0 || ifOpenStack[ifOpenStack.length - 1].hasElse) {
+        orphanElseIds.push(block.id);
+      }
+    } else if (block.type === 'ELSE') {
+      if (ifOpenStack.length === 0 || ifOpenStack[ifOpenStack.length - 1].hasElse) {
+        orphanElseIds.push(block.id);
+      } else {
+        ifOpenStack[ifOpenStack.length - 1].hasElse = true;
+      }
+    } else if (block.type === 'END_IF') {
+      if (ifOpenStack.length > 0) {
+        ifOpenStack.pop();
+      } else {
+        orphanEndIfIds.push(block.id);
+      }
+    } else if (block.type === 'WHILE') {
+      whileOpenStack.push(block);
+    } else if (block.type === 'END_WHILE') {
+      if (whileOpenStack.length > 0) {
+        whileOpenStack.pop();
+      } else {
+        orphanEndWhileIds.push(block.id);
       }
     }
   }
 
-  for (const block of openStack) {
+  for (const block of loopOpenStack) {
     unclosedLoopStartIds.push(block.id);
   }
+  for (const frame of ifOpenStack) {
+    unclosedIfIds.push(frame.ifBlock.id);
+  }
+  for (const block of whileOpenStack) {
+    unclosedWhileIds.push(block.id);
+  }
 
-  const hasError = unclosedLoopStartIds.length > 0 || orphanLoopEndIds.length > 0;
+  const hasError =
+    unclosedLoopStartIds.length > 0 ||
+    orphanLoopEndIds.length > 0 ||
+    unclosedIfIds.length > 0 ||
+    orphanElseIds.length > 0 ||
+    orphanEndIfIds.length > 0 ||
+    unclosedWhileIds.length > 0 ||
+    orphanEndWhileIds.length > 0;
 
   return {
     isValid: !hasError,
     unclosedLoopStartIds,
     orphanLoopEndIds,
+    unclosedIfIds,
+    orphanElseIds,
+    orphanEndIfIds,
+    unclosedWhileIds,
+    orphanEndWhileIds,
     hasError,
   };
+}
+
+/**
+ * Validates loop structure in a list of blocks, checking for unclosed LOOP_START
+ * and orphan LOOP_END blocks, as well as IF/ELSE/WHILE control structures.
+ */
+export function validateLoopStructure(blocks: CodeBlock[]): ControlStructureValidationResult {
+  return validateControlStructure(blocks);
 }
 
 /**
@@ -140,6 +214,90 @@ export function findMatchingLoopEnd(blocks: CodeBlock[], startIdx: number): numb
     }
   }
   return -1; // Unmatched loop
+}
+
+/**
+ * Finds the index of the matching END_WHILE for a WHILE at startIdx in blocks array.
+ */
+export function findMatchingWhileEnd(blocks: CodeBlock[], startIdx: number): number {
+  let depth = 0;
+  for (let i = startIdx; i < blocks.length; i++) {
+    if (blocks[i].type === 'WHILE') {
+      depth++;
+    } else if (blocks[i].type === 'END_WHILE') {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+export interface IfStructure {
+  ifPc: number;
+  elseIfPcs: number[];
+  elsePc: number | null;
+  endIfPc: number;
+}
+
+/**
+ * Scans an IF construct starting at ifIdx to find its ELSE_IF, ELSE, and matching END_IF blocks.
+ */
+export function findIfStructure(blocks: CodeBlock[], ifIdx: number): IfStructure {
+  const elseIfPcs: number[] = [];
+  let elsePc: number | null = null;
+  let endIfPc = -1;
+
+  let depth = 0;
+  for (let i = ifIdx; i < blocks.length; i++) {
+    const t = blocks[i].type;
+    if (t === 'IF') {
+      depth++;
+    } else if (t === 'END_IF') {
+      depth--;
+      if (depth === 0) {
+        endIfPc = i;
+        break;
+      }
+    } else if (depth === 1) {
+      if (t === 'ELSE_IF') {
+        elseIfPcs.push(i);
+      } else if (t === 'ELSE' && elsePc === null) {
+        elsePc = i;
+      }
+    }
+  }
+
+  return { ifPc: ifIdx, elseIfPcs, elsePc, endIfPc };
+}
+
+/**
+ * Evaluates the condition on a code block (IF, ELSE_IF, WHILE), delegating to
+ * `simEnv.evaluateSensor` when available.
+ */
+export function evaluateBlockCondition<TState = any>(
+  block: CodeBlock,
+  simState: TState,
+  simEnv?: SimulationEnvironment<TState>
+): boolean {
+  const evalSensor = (sensor: string, state: TState, param?: string): boolean => {
+    if (simEnv?.evaluateSensor) {
+      return simEnv.evaluateSensor(sensor, state, param);
+    }
+    return false;
+  };
+
+  const cond = block.params?.condition as ConditionExpr | undefined;
+  if (cond && typeof cond === 'object') {
+    return evaluateConditionExpr(cond, simState, evalSensor);
+  }
+
+  if (typeof block.params?.sensor === 'string') {
+    return evalSensor(block.params.sensor, simState, block.params.param as string | undefined);
+  }
+
+  return true;
 }
 
 /**
@@ -170,6 +328,8 @@ export function tickInterpreter<TState = GridState>(
 
   const callStack: StackFrame[] = [...runtime.callStack];
   const loopStack: LoopFrame[] = [...runtime.loopStack];
+  const whileStack: WhileFrame[] = runtime.whileStack ? [...runtime.whileStack] : [];
+  const condStack: CondFrame[] = runtime.condStack ? [...runtime.condStack] : [];
 
   // Pop finished stack frames
   while (callStack.length > 0) {
@@ -195,6 +355,9 @@ export function tickInterpreter<TState = GridState>(
       nextRuntime: {
         ...runtime,
         callStack: [],
+        loopStack: [],
+        whileStack: [],
+        condStack: [],
         activeBlockId: null,
         status: finalStatus,
       },
@@ -209,7 +372,7 @@ export function tickInterpreter<TState = GridState>(
 
   if (!currentBlock) {
     callStack.pop();
-    return tickInterpreter({ ...runtime, callStack }, workspace, simState, simEnv);
+    return tickInterpreter({ ...runtime, callStack, loopStack, whileStack, condStack }, workspace, simState, simEnv);
   }
 
   const blockType = currentBlock.type;
@@ -231,6 +394,8 @@ export function tickInterpreter<TState = GridState>(
         ...runtime,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         status: 'PAUSED',
@@ -256,7 +421,7 @@ export function tickInterpreter<TState = GridState>(
         ? { ...simState, status: 'COLLISION' }
         : simState;
       return {
-        nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId },
+        nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId, whileStack, condStack },
         nextGrid: nextSimState,
         done: true,
       };
@@ -271,6 +436,8 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope: targetScope,
         stepCount: runtime.stepCount + 1,
@@ -298,6 +465,8 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         variables: nextVariables,
@@ -329,9 +498,271 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         variables: nextVariables,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle IF
+  if (blockType === 'IF') {
+    const ifStruct = findIfStructure(scopeBlocks, currentFrame.pc);
+    if (ifStruct.endIfPc === -1) {
+      currentFrame.pc++;
+      callStack[callStack.length - 1] = currentFrame;
+      return {
+        nextRuntime: {
+          ...runtime,
+          status: runningStatus,
+          callStack,
+          loopStack,
+          whileStack,
+          condStack,
+          activeBlockId,
+          activeScope,
+          stepCount: runtime.stepCount + 1,
+          activeRepeatProgress: null,
+        },
+        nextGrid: simState,
+        done: false,
+      };
+    }
+
+    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+    if (condTrue) {
+      condStack.push({
+        scope: currentFrame.scope,
+        ifPc: currentFrame.pc,
+        endIfPc: ifStruct.endIfPc,
+        branchTaken: true,
+      });
+      currentFrame.pc++;
+    } else {
+      condStack.push({
+        scope: currentFrame.scope,
+        ifPc: currentFrame.pc,
+        endIfPc: ifStruct.endIfPc,
+        branchTaken: false,
+      });
+      const nextTarget = ifStruct.elseIfPcs.length > 0
+        ? ifStruct.elseIfPcs[0]
+        : (ifStruct.elsePc ?? ifStruct.endIfPc);
+      currentFrame.pc = nextTarget;
+    }
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle ELSE_IF
+  if (blockType === 'ELSE_IF') {
+    const topCond = condStack.length > 0 ? condStack[condStack.length - 1] : null;
+    if (topCond && topCond.scope === currentFrame.scope) {
+      if (topCond.branchTaken) {
+        // Prior branch was taken, skip past END_IF
+        currentFrame.pc = topCond.endIfPc + 1;
+        condStack.pop();
+      } else {
+        const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+        if (condTrue) {
+          topCond.branchTaken = true;
+          currentFrame.pc++;
+        } else {
+          const ifStruct = findIfStructure(scopeBlocks, topCond.ifPc);
+          const k = ifStruct.elseIfPcs.indexOf(currentFrame.pc);
+          const nextTarget = (k >= 0 && k + 1 < ifStruct.elseIfPcs.length)
+            ? ifStruct.elseIfPcs[k + 1]
+            : (ifStruct.elsePc ?? ifStruct.endIfPc);
+          currentFrame.pc = nextTarget;
+        }
+      }
+    } else {
+      currentFrame.pc++;
+    }
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle ELSE
+  if (blockType === 'ELSE') {
+    const topCond = condStack.length > 0 ? condStack[condStack.length - 1] : null;
+    if (topCond && topCond.scope === currentFrame.scope) {
+      if (topCond.branchTaken) {
+        // Prior branch was taken, skip past END_IF
+        currentFrame.pc = topCond.endIfPc + 1;
+        condStack.pop();
+      } else {
+        topCond.branchTaken = true;
+        currentFrame.pc++;
+      }
+    } else {
+      currentFrame.pc++;
+    }
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle END_IF
+  if (blockType === 'END_IF') {
+    const topCond = condStack.length > 0 ? condStack[condStack.length - 1] : null;
+    if (topCond && topCond.scope === currentFrame.scope && topCond.endIfPc === currentFrame.pc) {
+      condStack.pop();
+    }
+    currentFrame.pc++;
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle WHILE
+  if (blockType === 'WHILE') {
+    const matchingEnd = findMatchingWhileEnd(scopeBlocks, currentFrame.pc);
+    if (matchingEnd === -1) {
+      currentFrame.pc++;
+      callStack[callStack.length - 1] = currentFrame;
+      return {
+        nextRuntime: {
+          ...runtime,
+          status: runningStatus,
+          callStack,
+          loopStack,
+          whileStack,
+          condStack,
+          activeBlockId,
+          activeScope,
+          stepCount: runtime.stepCount + 1,
+          activeRepeatProgress: null,
+        },
+        nextGrid: simState,
+        done: false,
+      };
+    }
+
+    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+    if (!condTrue) {
+      if (whileStack.length > 0 && whileStack[whileStack.length - 1].whileStartPc === currentFrame.pc) {
+        whileStack.pop();
+      }
+      currentFrame.pc = matchingEnd + 1;
+    } else {
+      if (whileStack.length === 0 || whileStack[whileStack.length - 1].whileStartPc !== currentFrame.pc) {
+        whileStack.push({
+          scope: currentFrame.scope,
+          whileStartPc: currentFrame.pc,
+          whileEndPc: matchingEnd,
+        });
+      }
+      currentFrame.pc++;
+    }
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
+        stepCount: runtime.stepCount + 1,
+        activeRepeatProgress: null,
+      },
+      nextGrid: simState,
+      done: false,
+    };
+  }
+
+  // Handle END_WHILE
+  if (blockType === 'END_WHILE') {
+    const topWhile = whileStack.length > 0 ? whileStack[whileStack.length - 1] : null;
+    if (topWhile && topWhile.scope === currentFrame.scope && topWhile.whileEndPc === currentFrame.pc) {
+      currentFrame.pc = topWhile.whileStartPc;
+    } else {
+      currentFrame.pc++;
+    }
+
+    callStack[callStack.length - 1] = currentFrame;
+    return {
+      nextRuntime: {
+        ...runtime,
+        status: runningStatus,
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
+        activeBlockId,
+        activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
       },
@@ -362,6 +793,8 @@ export function tickInterpreter<TState = GridState>(
           status: runningStatus,
           callStack,
           loopStack,
+          whileStack,
+          condStack,
           activeBlockId,
           activeScope,
           stepCount: runtime.stepCount + 1,
@@ -394,6 +827,8 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
@@ -428,6 +863,8 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
@@ -455,6 +892,8 @@ export function tickInterpreter<TState = GridState>(
         status: runningStatus,
         callStack,
         loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
@@ -495,6 +934,10 @@ export function tickInterpreter<TState = GridState>(
       nextRuntime: {
         ...runtime,
         status: 'COLLISION',
+        callStack,
+        loopStack,
+        whileStack,
+        condStack,
         activeBlockId,
         activeScope,
         stepCount: runtime.stepCount + 1,
@@ -522,6 +965,8 @@ export function tickInterpreter<TState = GridState>(
       ...runtime,
       callStack,
       loopStack,
+      whileStack,
+      condStack,
       activeBlockId,
       activeScope,
       status: actionRes.status,

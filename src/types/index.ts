@@ -222,9 +222,24 @@ export interface LoopFrame {
   totalIterations: number;
 }
 
+export interface WhileFrame {
+  scope: ScopeType;
+  whileStartPc: number;
+  whileEndPc: number;
+}
+
+export interface CondFrame {
+  scope: ScopeType;
+  ifPc: number;
+  endIfPc: number;
+  branchTaken: boolean;
+}
+
 export interface InterpreterRuntimeState {
   callStack: StackFrame[];
   loopStack: LoopFrame[];
+  whileStack?: WhileFrame[];
+  condStack?: CondFrame[];
   activeBlockId: string | null;
   activeScope: ScopeType;
   status: SimulationStatus;

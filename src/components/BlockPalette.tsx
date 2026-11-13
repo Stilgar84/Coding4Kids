@@ -124,6 +124,71 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     borderClass: 'border-rose-400',
     supportsRepeat: false,
   },
+  {
+    type: 'IF',
+    name: 'If Condition',
+    testId: 'palette-if',
+    icon: (
+      <span className="font-bold text-xs md:text-sm text-white tracking-wider">IF</span>
+    ),
+    bgClass: 'bg-cyan-700 hover:bg-cyan-600',
+    borderClass: 'border-cyan-400',
+    supportsRepeat: false,
+    params: { condition: { kind: 'sensor', sensor: 'pathAhead' } },
+  },
+  {
+    type: 'ELSE_IF',
+    name: 'Else If Condition',
+    testId: 'palette-else-if',
+    icon: (
+      <span className="font-bold text-[10px] md:text-xs text-white tracking-tight">ELSE IF</span>
+    ),
+    bgClass: 'bg-cyan-800 hover:bg-cyan-700',
+    borderClass: 'border-cyan-400',
+    supportsRepeat: false,
+    params: { condition: { kind: 'sensor', sensor: 'pathAhead' } },
+  },
+  {
+    type: 'ELSE',
+    name: 'Else',
+    testId: 'palette-else',
+    icon: (
+      <span className="font-bold text-xs md:text-sm text-cyan-200 tracking-wider">ELSE</span>
+    ),
+    bgClass: 'bg-cyan-800 hover:bg-cyan-700',
+    borderClass: 'border-cyan-500',
+    supportsRepeat: false,
+  },
+  {
+    type: 'END_IF',
+    name: 'End If',
+    testId: 'palette-end-if',
+    icon: <CornerDownLeft className="w-5 h-5 md:w-8 md:h-8 text-cyan-200 stroke-[3]" />,
+    bgClass: 'bg-cyan-950 hover:bg-cyan-900',
+    borderClass: 'border-cyan-500',
+    supportsRepeat: false,
+  },
+  {
+    type: 'WHILE',
+    name: 'While Loop',
+    testId: 'palette-while',
+    icon: (
+      <span className="font-bold text-xs md:text-sm text-white tracking-wider">WHILE</span>
+    ),
+    bgClass: 'bg-amber-600 hover:bg-amber-500',
+    borderClass: 'border-amber-400',
+    supportsRepeat: false,
+    params: { condition: { kind: 'sensor', sensor: 'pathAhead' } },
+  },
+  {
+    type: 'END_WHILE',
+    name: 'End While',
+    testId: 'palette-end-while',
+    icon: <CornerDownLeft className="w-5 h-5 md:w-8 md:h-8 text-amber-200 stroke-[3]" />,
+    bgClass: 'bg-amber-950 hover:bg-amber-900',
+    borderClass: 'border-amber-500',
+    supportsRepeat: false,
+  },
 ];
 
 const NUMBER_BADGES = [2, 3, 4, 5, 6, 7, 8, 9];
