@@ -188,14 +188,52 @@ export function renderGridMapSvg(grid: GridState): string {
           </g>`
         );
       } else {
+        const stackBadge = (item.count ?? 1) > 1
+          ? `<rect x="3" y="-9" width="10" height="7" rx="2" fill="#0ea5e9" /><text x="8" y="-5.5" font-size="5" font-weight="bold" fill="#fff" text-anchor="middle" dominant-baseline="central">×${item.count}</text>`
+          : '';
         elements.push(
-          `<g data-thumb-item="crate-${item.x}-${item.y}" transform="translate(${cx}, ${cy})">
+          `<g data-thumb-item="crate-${item.x}-${item.y}"${(item.count ?? 1) > 1 ? ` data-thumb-stack="${item.x}-${item.y}"` : ''} transform="translate(${cx}, ${cy})">
             <rect x="-9" y="-9" width="18" height="18" rx="2.5" fill="#b45309" stroke="#fde68a" stroke-width="1.2" />
             <line x1="-6" y1="-6" x2="6" y2="6" stroke="#78350f" stroke-width="1.5" />
             <line x1="6" y1="-6" x2="-6" y2="6" stroke="#78350f" stroke-width="1.5" />
+            ${stackBadge}
           </g>`
         );
       }
+    }
+  }
+
+  // Grid v3: Floor Beacons
+  if (grid.beaconTiles && grid.beaconTiles.length > 0) {
+    const BEACON_FILLS: Record<string, string> = {
+      red: '#ef4444',
+      blue: '#3b82f6',
+      green: '#10b981',
+      yellow: '#f59e0b',
+    };
+    for (const b of grid.beaconTiles) {
+      const cx = b.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = b.y * CELL_SIZE + CELL_SIZE / 2;
+      const fill = BEACON_FILLS[b.color] ?? '#3b82f6';
+      elements.push(
+        `<g data-thumb-beacon="${b.x}-${b.y}" data-color="${b.color}" data-shape="${b.shape}" transform="translate(${cx}, ${cy})">
+          <circle r="7" fill="${fill}" stroke="#ffffff" stroke-width="1" />
+        </g>`
+      );
+    }
+  }
+
+  // Grid v3: Floor Dials
+  if (grid.dialTiles && grid.dialTiles.length > 0) {
+    for (const d of grid.dialTiles) {
+      const cx = d.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = d.y * CELL_SIZE + CELL_SIZE / 2;
+      elements.push(
+        `<g data-thumb-dial="${d.x}-${d.y}" data-value="${d.value}" transform="translate(${cx}, ${cy})">
+          <circle r="8" fill="#1e293b" stroke="#f1f5f9" stroke-width="1.2" />
+          <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="#f8fafc" font-size="7" font-weight="900">${d.value}</text>
+        </g>`
+      );
     }
   }
 

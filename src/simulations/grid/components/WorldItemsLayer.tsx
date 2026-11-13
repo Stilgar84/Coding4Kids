@@ -808,7 +808,11 @@ export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
     carried?.type === 'key' ? resolveKeyGateColor(carried.color, keyShape) : undefined;
   const keyVis = keyColor ? KEY_GATE_VISUALS[keyColor] : undefined;
 
-  const summaryLabel = carried ? `Backpack carrying ${formatItemLabel(carried)}` : 'Backpack empty (0 of 1)';
+  const carriedCount = grid.robot.carriedCount ?? carried?.count ?? (carried ? 1 : 0);
+  const countSuffix = carriedCount > 1 ? ` ×${carriedCount}` : '';
+  const summaryLabel = carried
+    ? `Backpack carrying ${formatItemLabel(carried)}${countSuffix}`
+    : 'Backpack empty (0 of 1)';
 
   return (
     <div
@@ -816,6 +820,7 @@ export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
       data-carrying={carried ? carried.type : 'empty'}
       data-carrying-shape={keyShape}
       data-carrying-color={keyColor}
+      data-carried-count={carriedCount}
       data-feedback-kind={grid.lastInteractionFeedback?.kind}
       aria-label={summaryLabel}
       title={grid.lastInteractionFeedback?.message || summaryLabel}
@@ -865,7 +870,7 @@ export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
               </span>
             )}
             <span className="px-1.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[10px] font-black">
-              1/1
+              {carriedCount > 1 ? `×${carriedCount}` : '1/1'}
             </span>
           </>
         ) : (

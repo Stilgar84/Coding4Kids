@@ -127,6 +127,28 @@ export interface WorldItem {
   shape?: KeyGateShape;
   /** Color paired with shape for keys ('amber' | 'emerald' | 'purple') */
   color?: KeyGateColor;
+  /** Stack count for stackable supply-depot items (count >= 2 means stackable, default = 1) */
+  count?: number;
+}
+
+// ─── Grid v3: Beacon Tiles ─────────────────────────────────────────────────────
+/** Color+shape floor beacons for Module 5–6 sensor lessons */
+export type BeaconColor = 'red' | 'blue' | 'green' | 'yellow';
+export type BeaconShape = 'circle' | 'triangle' | 'square' | 'diamond';
+
+export interface BeaconTile {
+  x: number;
+  y: number;
+  color: BeaconColor;
+  shape: BeaconShape;
+}
+
+// ─── Grid v3: Dial Tiles ───────────────────────────────────────────────────────
+/** Numbered floor dials 1..20 for Module 6 $tileDial sensor */
+export interface DialTile {
+  x: number;
+  y: number;
+  value: number; // 1..20
 }
 
 export interface LockedGate {
@@ -173,6 +195,8 @@ export interface RobotState {
   initialDir: Direction;
   /** 1-slot backpack carried item (null/undefined when empty) */
   carriedItem?: WorldItem | null;
+  /** Stack count carried from a stackable supply depot (default 1) */
+  carriedCount?: number;
 }
 
 export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION';
@@ -201,6 +225,28 @@ export interface GridState {
   initialWorldItems?: WorldItem[];
   /** Non-fatal contextual feedback (e.g. backpack full, empty cell, wrong key) for visual shake + aria-live */
   lastInteractionFeedback?: WorldInteractionFeedback | null;
+
+  // ─── Grid v3: Beacons, Dials & Rule Flags ─────────────────────────────────
+  /** Color+shape floor beacons for Module 5–6 boolean sensor `tileColor` */
+  beaconTiles?: BeaconTile[];
+  /** Numbered floor dials 1..20 for Module 6 `$tileDial` sensor */
+  dialTiles?: DialTile[];
+  /**
+   * When true, PICK_UP on an empty tile triggers COLLISION (strict sensor puzzles M5+).
+   * When false/undefined (Sandbox & M1–M4), PICK_UP on empty tile triggers soft feedback only.
+   */
+  strictInteractionCollision?: boolean;
+  /**
+   * When true, goal evaluation requires all world items to have been collected.
+   * Used in M5 hall puzzles with requireAllItemsCollected.
+   */
+  requireAllItemsCollected?: boolean;
+  /**
+   * When true, goal evaluation requires the robot's backpack to be empty at goal arrival.
+   * Used in M6 supply-depot capstone (6A).
+   */
+  requireEmptyBackpackAtGoal?: boolean;
+
   trace: CellCoord[];
   status: SimulationStatus;
   showTrace: boolean;

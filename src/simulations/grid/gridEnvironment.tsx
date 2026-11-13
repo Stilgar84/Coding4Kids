@@ -13,6 +13,7 @@ import {
 } from '../../engine/physics';
 import { GridCanvas } from '../../components/GridCanvas';
 import { GridToolbarTools } from './components/GridToolbarTools';
+import { evaluateGridSensor, readGridSensor } from './sensors';
 import { ArrowUp, ArrowDown, CornerUpLeft, CornerUpRight, Hand } from 'lucide-react';
 
 const PickUpIcon: React.FC<{ className?: string; isActive?: boolean }> = ({
@@ -209,7 +210,12 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
         x: res.newX,
         y: res.newY,
         dir: res.newDir as Direction,
-        ...(hasWorld ? { carriedItem: res.carriedItem ?? null } : {}),
+        ...(hasWorld
+          ? {
+              carriedItem: res.carriedItem ?? null,
+              carriedCount: res.carriedCount ?? (res.carriedItem ? res.carriedItem.count ?? 1 : 0),
+            }
+          : {}),
       },
       flags: res.flags,
       trace: res.trace,
@@ -231,6 +237,21 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
     };
   },
 
+  sensors: [
+    { id: '$tileDial', label: 'Tile Dial', icon: '🔢', shortLabel: 'dial' },
+    { id: '$x', label: 'Robot X', icon: '📍', shortLabel: 'x' },
+    { id: '$y', label: 'Robot Y', icon: '📍', shortLabel: 'y' },
+    { id: '$heading', label: 'Heading', icon: '🧭', shortLabel: 'dir' },
+  ],
+
+  readSensor: (sensorId: string, state: GridState): number => {
+    return readGridSensor(sensorId, state);
+  },
+
+  evaluateSensor: (sensor: any, state: GridState): boolean => {
+    return evaluateGridSensor(sensor, state);
+  },
+
   evaluateCompletion: (state: GridState) => {
     const onGoal = state.flags.some(
       (f) => f.isGoal && f.x === state.robot.x && f.y === state.robot.y
@@ -243,7 +264,14 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       state.worldItems
     );
     const switchesOk = areGoalSwitchesSatisfied(synced.floorSwitches, synced.lockedGates);
-    return onGoal && allCollected && switchesOk ? 'SUCCESS' : 'IDLE';
+    const allItemsCollectedOk =
+      !state.requireAllItemsCollected || (state.worldItems?.length ?? 0) === 0;
+    const emptyBackpackOk =
+      !state.requireEmptyBackpackAtGoal ||
+      (!state.robot.carriedItem && (state.robot.carriedCount ?? 0) === 0);
+    return onGoal && allCollected && switchesOk && allItemsCollectedOk && emptyBackpackOk
+      ? 'SUCCESS'
+      : 'IDLE';
   },
 
   Renderer: GridCanvas,

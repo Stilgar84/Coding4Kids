@@ -78,6 +78,21 @@ export function detectPadlockTransition(
     })
   );
 
+  const prevRules = {
+    worldItems: prevGrid.worldItems,
+    carriedItem: prevGrid.robot.carriedItem,
+    carriedCount: prevGrid.robot.carriedCount,
+    requireAllItemsCollected: prevGrid.requireAllItemsCollected,
+    requireEmptyBackpackAtGoal: prevGrid.requireEmptyBackpackAtGoal,
+  };
+  const nextRules = {
+    worldItems: nextGrid.worldItems,
+    carriedItem: nextGrid.robot.carriedItem,
+    carriedCount: nextGrid.robot.carriedCount,
+    requireAllItemsCollected: nextGrid.requireAllItemsCollected,
+    requireEmptyBackpackAtGoal: nextGrid.requireEmptyBackpackAtGoal,
+  };
+
   const newlyUnlockedFlags: FlagObjective[] = [];
   if (prerequisiteCollected || goalSwitchNewlySatisfied) {
     for (let i = 0; i < nextGrid.flags.length; i++) {
@@ -85,8 +100,8 @@ export function detectPadlockTransition(
       const nextFlag = nextGrid.flags[i];
       if (
         !nextFlag.collected &&
-        isFlagPadlocked(prevFlag, prevGrid.flags, prevGrid.floorSwitches, prevGrid.lockedGates) &&
-        !isFlagPadlocked(nextFlag, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates)
+        isFlagPadlocked(prevFlag, prevGrid.flags, prevGrid.floorSwitches, prevGrid.lockedGates, prevRules) &&
+        !isFlagPadlocked(nextFlag, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates, nextRules)
       ) {
         newlyUnlockedFlags.push(nextFlag);
       }
@@ -109,7 +124,7 @@ export function detectPadlockTransition(
       (f) =>
         f.x === nextGrid.robot.x &&
         f.y === nextGrid.robot.y &&
-        isFlagPadlocked(f, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates)
+        isFlagPadlocked(f, nextGrid.flags, nextGrid.floorSwitches, nextGrid.lockedGates, nextRules)
     );
     if (lockedHere) {
       steppedLockedFlag = lockedHere;
@@ -246,7 +261,13 @@ export const FlagPadlockOverlay: React.FC<FlagPadlockOverlayProps> = ({
     return null;
   }
 
-  const lockedIds = getPadlockedFlagIds(flags, grid.floorSwitches, grid.lockedGates);
+  const lockedIds = getPadlockedFlagIds(flags, grid.floorSwitches, grid.lockedGates, {
+    worldItems: grid.worldItems,
+    carriedItem: grid.robot.carriedItem,
+    carriedCount: grid.robot.carriedCount,
+    requireAllItemsCollected: grid.requireAllItemsCollected,
+    requireEmptyBackpackAtGoal: grid.requireEmptyBackpackAtGoal,
+  });
   const hasAnyUnlockAnim =
     (unlockedFlagIds ? unlockedFlagIds.size > 0 : false) || animatingIds.size > 0;
 

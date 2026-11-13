@@ -146,6 +146,9 @@ export type EditorTool =
   | 'GATE'
   | 'CRATE'
   | 'SWITCH'
+  | 'BEACON'
+  | 'DIAL'
+  | 'STACK_DEPOT'
   | 'ERASE';
 
 export const getInitialGridState = (grid: GridState): GridState =>
@@ -4690,6 +4693,91 @@ export const useAppStore = create<AppState>((set, get) => {
             initialWorldItems: cloneWorldItems(nextItems),
           }),
         });
+      } else if (editorTool === 'BEACON') {
+        const beacons = grid.beaconTiles ? [...grid.beaconTiles] : [];
+        const existingIdx = beacons.findIndex((b) => b.x === x && b.y === y);
+        const BEACON_SEQUENCE = [
+          { color: 'red' as const, shape: 'circle' as const },
+          { color: 'blue' as const, shape: 'triangle' as const },
+          { color: 'green' as const, shape: 'square' as const },
+          { color: 'yellow' as const, shape: 'diamond' as const },
+        ];
+        if (existingIdx >= 0) {
+          const current = beacons[existingIdx];
+          const curSeqIdx = BEACON_SEQUENCE.findIndex(
+            (s) => s.color === current.color && s.shape === current.shape
+          );
+          if (curSeqIdx >= 0 && curSeqIdx < BEACON_SEQUENCE.length - 1) {
+            beacons[existingIdx] = { x, y, ...BEACON_SEQUENCE[curSeqIdx + 1] };
+            recordMutation('Update beacon');
+          } else {
+            beacons.splice(existingIdx, 1);
+            recordMutation('Remove beacon');
+          }
+        } else {
+          beacons.push({ x, y, ...BEACON_SEQUENCE[0] });
+          recordMutation('Place beacon');
+        }
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            beaconTiles: beacons,
+          }),
+        });
+      } else if (editorTool === 'DIAL') {
+        const dials = grid.dialTiles ? [...grid.dialTiles] : [];
+        const existingIdx = dials.findIndex((d) => d.x === x && d.y === y);
+        if (existingIdx >= 0) {
+          const curVal = dials[existingIdx].value;
+          if (curVal < 5) {
+            dials[existingIdx] = { x, y, value: curVal + 1 };
+            recordMutation('Update dial');
+          } else {
+            dials.splice(existingIdx, 1);
+            recordMutation('Remove dial');
+          }
+        } else {
+          dials.push({ x, y, value: 1 });
+          recordMutation('Place dial');
+        }
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            dialTiles: dials,
+          }),
+        });
+      } else if (editorTool === 'STACK_DEPOT') {
+        const currentItems = cloneWorldItems(grid.initialWorldItems ?? grid.worldItems ?? []);
+        const existingIdx = currentItems.findIndex((it) => it.x === x && it.y === y);
+        if (existingIdx >= 0 && (currentItems[existingIdx].count ?? 1) > 1) {
+          const curCount = currentItems[existingIdx].count!;
+          if (curCount < 5) {
+            currentItems[existingIdx].count = curCount + 1;
+            recordMutation('Update stack depot');
+          } else {
+            currentItems.splice(existingIdx, 1);
+            recordMutation('Remove stack depot');
+          }
+        } else {
+          if (existingIdx >= 0) {
+            currentItems.splice(existingIdx, 1);
+          }
+          currentItems.push({
+            id: `stack_depot_${Date.now()}_${x}_${y}`,
+            type: 'crate',
+            x,
+            y,
+            count: 3,
+          });
+          recordMutation('Place stack depot');
+        }
+        set({
+          grid: resetGridInteractiveState({
+            ...grid,
+            worldItems: cloneWorldItems(currentItems),
+            initialWorldItems: cloneWorldItems(currentItems),
+          }),
+        });
       } else if (editorTool === 'ERASE') {
         const hasFlag = grid.flags.some((f) => f.x === x && f.y === y);
         const hasWater = Boolean(grid.waterCells?.some((w) => w.x === x && w.y === y));
@@ -4700,8 +4788,10 @@ export const useAppStore = create<AppState>((set, get) => {
         const hasItem =
           baseItems.some((it) => it.x === x && it.y === y) ||
           Boolean(grid.worldItems?.some((it) => it.x === x && it.y === y));
+        const hasBeacon = Boolean(grid.beaconTiles?.some((b) => b.x === x && b.y === y));
+        const hasDial = Boolean(grid.dialTiles?.some((d) => d.x === x && d.y === y));
 
-        if (!hasFlag && !hasWater && !hasGate && !hasSwitch && !hasItem) return;
+        if (!hasFlag && !hasWater && !hasGate && !hasSwitch && !hasItem && !hasBeacon && !hasDial) return;
 
         recordMutation('Erase cell');
         const nextFlags = grid.flags.filter((f) => !(f.x === x && f.y === y));
@@ -4712,6 +4802,8 @@ export const useAppStore = create<AppState>((set, get) => {
         );
         const nextSwitches = grid.floorSwitches?.filter((s) => !(s.x === x && s.y === y));
         const nextItems = cloneWorldItems(baseItems.filter((it) => !(it.x === x && it.y === y)));
+        const nextBeacons = grid.beaconTiles?.filter((b) => !(b.x === x && b.y === y));
+        const nextDials = grid.dialTiles?.filter((d) => !(d.x === x && d.y === y));
         const synced = syncWorldSwitchesAndGates(nextSwitches, nextGates, nextItems);
 
         set({
@@ -4732,6 +4824,8 @@ export const useAppStore = create<AppState>((set, get) => {
                   initialWorldItems: cloneWorldItems(nextItems),
                 }
               : {}),
+            ...(nextBeacons !== undefined ? { beaconTiles: nextBeacons } : {}),
+            ...(nextDials !== undefined ? { dialTiles: nextDials } : {}),
           }),
         });
       }

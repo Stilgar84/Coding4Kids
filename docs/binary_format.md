@@ -23,8 +23,8 @@ The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5+)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
-| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1` or `2` for `grid`; `1` for `turtle`, `beat`, and `profile`). Governs env-specific opcode mapping and payload layout. |
+| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items, `3` sensors/beacons/dials/stack depots)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5+)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
+| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`, `2`, or `3` for `grid`; `1` for `turtle`, `beat`, and `profile`). Governs env-specific opcode mapping and payload layout. |
 
 > **Environment State Deduction:**
 > For `envId = 0x01` (`grid`), the Grid map payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
@@ -145,6 +145,35 @@ Emitted only when a Grid map contains non-empty `waterCells`, `lockedGates`, `fl
 8. **World Items (`itemCount: VLE`):** For each authored floor pickup item:
    - `coord: CellCoord`
    - `attrByte: uint8` = `[0 (b7) | colorIdx (b6..b4, keys only) | shapeIdx (b3..b2, keys only) | typeIdx (b1..b0: 0=key, 1=plank, 2=crate)]`.
+
+### 4.3 Grid v3 Sensor, Beacon, Dial & Stack Depot Extension Block (`ENV_VERSION_GRID_V3 = 3`)
+
+Emitted only when a Grid map contains Module 5–6 extensions: `beaconTiles`, `dialTiles`, stackable depots (`count > 1` on `worldItems`), or curriculum rule flags (`strictInteractionCollision`, `requireAllItemsCollected`, `requireEmptyBackpackAtGoal`). Immediately follows the exact `envVersion = 2` payload above.
+
+```
++-----------------------------------------------------------------------------------------+
+| ... exact envVersion = 2 payload (waterCells, lockedGates, floorSwitches, worldItems)... |
+| gridRulesMask (uint8)                                                                   |
+| beaconCount (VLE) | ... packed beacons: CellCoord + attrByte ...                        |
+| dialCount (VLE)   | ... packed dials: CellCoord + valueByte ...                         |
+| stackCountOverridesCount (VLE) | ... packed stack items: itemIdx (VLE) + count (VLE) ...|
++-----------------------------------------------------------------------------------------+
+```
+
+9. **Grid Rules Mask (`gridRulesMask: uint8`):**
+   - `bit 0 (0x01)`: `strictInteractionCollision` (blind `PICK_UP` on empty tile or invalid `USE_DROP` triggers `COLLISION`).
+   - `bit 1 (0x02)`: `requireAllItemsCollected` (goal evaluation requires all floor world items to be collected).
+   - `bit 2 (0x04)`: `requireEmptyBackpackAtGoal` (goal evaluation requires robot backpack to be empty).
+   - `bits 7..3`: Reserved (`0`).
+10. **Floor Beacons (`beaconCount: VLE`):** For each floor beacon tile:
+    - `coord: CellCoord` (1 byte `[x: 4b][y: 4b]` on small grids, `x: VLE, y: VLE` on large grids).
+    - `attrByte: uint8` = `[0000 (b7..b4) | colorIdx (b3..b2: 0=red, 1=blue, 2=green, 3=yellow) | shapeIdx (b1..b0: 0=circle ●, 1=triangle ▲, 2=square ■, 3=diamond ◆)]`.
+11. **Floor Dials (`dialCount: VLE`):** For each numbered floor dial:
+    - `coord: CellCoord`
+    - `valueByte: uint8` = Dial value `1..20` (read by `$tileDial` sensor).
+12. **Stack Count Overrides (`stackCountOverridesCount: VLE`):** For each world item with `count > 1`:
+    - `itemIdx: VLE` (0-based index into the `worldItems` table).
+    - `count: VLE` (total stack count, e.g. `3` or `5`).
 
 ---
 
@@ -294,7 +323,7 @@ Governed by `FORMAT_VERSION = 1` across all environments.
 
 ---
 
-### 7.2 Grid World Opcodes (`ENV_ID_GENERIC = 0x00` or `ENV_ID_GRID = 0x01`, `envVersion = 1..2`)
+### 7.2 Grid World Opcodes (`ENV_ID_GENERIC = 0x00` or `ENV_ID_GRID = 0x01`, `envVersion = 1..3`)
 
 All Grid action opcodes use the Standard Block Envelope (§6.1) with `MASK_HAS_REP (0x40)` for repeat badges (`×2..×9` or higher `VLE`) and `MASK_HAS_VAR_PARAM (0x80)` (`paramVarMask & 0x01`) when repeat count is a variable.
 

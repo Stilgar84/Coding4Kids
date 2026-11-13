@@ -1,5 +1,9 @@
 import {
+  BeaconColor,
+  BeaconShape,
+  BeaconTile,
   CellCoord,
+  DialTile,
   Direction,
   FlagObjective,
   FloorSwitch,
@@ -22,7 +26,7 @@ import {
 } from '../../physics';
 import { BinaryReader } from '../binaryReader';
 import { BinaryWriter } from '../binaryWriter';
-import { ENV_VERSION_GRID, ENV_VERSION_GRID_V2 } from '../types';
+import { ENV_VERSION_GRID, ENV_VERSION_GRID_V2, ENV_VERSION_GRID_V3 } from '../types';
 
 const DIR_MAP: Record<Direction, number> = {
   NORTH: 0,
@@ -36,6 +40,27 @@ const REV_DIR_MAP: Direction[] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
 const SHAPE_LIST: readonly KeyGateShape[] = ['circle', 'triangle', 'diamond'];
 const COLOR_LIST: readonly KeyGateColor[] = ['amber', 'emerald', 'purple'];
 const ITEM_TYPE_LIST: readonly WorldItemType[] = ['key', 'plank', 'crate'];
+
+const BEACON_SHAPE_LIST: readonly BeaconShape[] = ['circle', 'triangle', 'square', 'diamond'];
+const BEACON_COLOR_LIST: readonly BeaconColor[] = ['red', 'blue', 'green', 'yellow'];
+
+function beaconShapeToIdx(shape: BeaconShape): number {
+  const idx = BEACON_SHAPE_LIST.indexOf(shape);
+  return idx >= 0 ? idx : 0;
+}
+
+function beaconIdxToShape(idx: number): BeaconShape {
+  return BEACON_SHAPE_LIST[idx & 0x03] ?? 'circle';
+}
+
+function beaconColorToIdx(color: BeaconColor): number {
+  const idx = BEACON_COLOR_LIST.indexOf(color);
+  return idx >= 0 ? idx : 0;
+}
+
+function beaconIdxToColor(idx: number): BeaconColor {
+  return BEACON_COLOR_LIST[idx & 0x03] ?? 'red';
+}
 
 export function directionToByte(dir: Direction): number {
   return DIR_MAP[dir] ?? 0;
@@ -102,9 +127,22 @@ function readCellCoord(reader: BinaryReader, isSmallGrid: boolean): CellCoord {
 
 /**
  * Returns `1` for classic Grid maps (no water, gates, switches, or floor items),
- * or `2` when any Module 2+ interactive world elements exist.
+ * `2` when Module 2 interactive world elements exist without v3 extensions,
+ * or `3` when beacons, dials, stackable depots, or v3 rule flags exist.
  */
 export function getGridSerializationVersion(grid?: GridState): number {
+  if (!grid) return ENV_VERSION_GRID;
+  const hasV3 =
+    (grid.beaconTiles && grid.beaconTiles.length > 0) ||
+    (grid.dialTiles && grid.dialTiles.length > 0) ||
+    Boolean(grid.strictInteractionCollision) ||
+    Boolean(grid.requireAllItemsCollected) ||
+    Boolean(grid.requireEmptyBackpackAtGoal) ||
+    (grid.worldItems && grid.worldItems.some((it) => (it.count ?? 1) > 1)) ||
+    (grid.initialWorldItems && grid.initialWorldItems.some((it) => (it.count ?? 1) > 1));
+  if (hasV3) {
+    return ENV_VERSION_GRID_V3;
+  }
   return hasInteractiveWorldElements(grid) ? ENV_VERSION_GRID_V2 : ENV_VERSION_GRID;
 }
 
@@ -225,6 +263,49 @@ export function writeGridState(
     const colorBits = item.type === 'key' ? colorToIdx(item.color, shape) & 0x07 : 0;
     const attrByte = (colorBits << 4) | (shapeBits << 2) | typeIdx;
     writer.writeUint8(attrByte);
+  }
+
+  if (resolvedVersion < ENV_VERSION_GRID_V3) {
+    return;
+  }
+
+  // --- envVersion = 3 Grid Sensors, Beacons, Dials, Rules & Stacks ---
+  // 9. Grid Rules Mask
+  const rulesMask =
+    (grid.strictInteractionCollision ? 0x01 : 0x00) |
+    (grid.requireAllItemsCollected ? 0x02 : 0x00) |
+    (grid.requireEmptyBackpackAtGoal ? 0x04 : 0x00);
+  writer.writeUint8(rulesMask);
+
+  // 10. Beacon Tiles
+  const beacons = grid.beaconTiles ?? [];
+  writer.writeVLE(beacons.length);
+  for (const b of beacons) {
+    writeCellCoord(writer, isSmallGrid, b.x, b.y);
+    const attrByte = ((beaconColorToIdx(b.color) & 0x03) << 2) | (beaconShapeToIdx(b.shape) & 0x03);
+    writer.writeUint8(attrByte);
+  }
+
+  // 11. Dial Tiles (1..20)
+  const dials = grid.dialTiles ?? [];
+  writer.writeVLE(dials.length);
+  for (const d of dials) {
+    writeCellCoord(writer, isSmallGrid, d.x, d.y);
+    writer.writeUint8(Math.max(1, Math.min(20, d.value)));
+  }
+
+  // 12. Stack Count Overrides on World Items (for items having count > 1)
+  const stackOverrides: { index: number; count: number }[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if ((it.count ?? 1) > 1) {
+      stackOverrides.push({ index: i, count: it.count! });
+    }
+  }
+  writer.writeVLE(stackOverrides.length);
+  for (const s of stackOverrides) {
+    writer.writeVLE(s.index);
+    writer.writeVLE(s.count);
   }
 }
 
@@ -418,6 +499,54 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
     }
   }
 
+  // --- envVersion >= 3 Grid Extension Block ---
+  let strictInteractionCollision: boolean | undefined;
+  let requireAllItemsCollected: boolean | undefined;
+  let requireEmptyBackpackAtGoal: boolean | undefined;
+  const beaconTiles: BeaconTile[] = [];
+  const dialTiles: DialTile[] = [];
+
+  if (envVersion >= ENV_VERSION_GRID_V3) {
+    const rulesMask = reader.readUint8();
+    strictInteractionCollision = (rulesMask & 0x01) !== 0 ? true : undefined;
+    requireAllItemsCollected = (rulesMask & 0x02) !== 0 ? true : undefined;
+    requireEmptyBackpackAtGoal = (rulesMask & 0x04) !== 0 ? true : undefined;
+
+    const beaconCount = reader.readVLE();
+    for (let i = 0; i < beaconCount; i++) {
+      const coord = readCellCoord(reader, isSmallGrid);
+      const attrByte = reader.readUint8();
+      const shape = beaconIdxToShape(attrByte & 0x03);
+      const color = beaconIdxToColor((attrByte >> 2) & 0x03);
+      beaconTiles.push({
+        x: coord.x,
+        y: coord.y,
+        shape,
+        color,
+      });
+    }
+
+    const dialCount = reader.readVLE();
+    for (let i = 0; i < dialCount; i++) {
+      const coord = readCellCoord(reader, isSmallGrid);
+      const value = reader.readUint8();
+      dialTiles.push({
+        x: coord.x,
+        y: coord.y,
+        value: Math.max(1, Math.min(20, value)),
+      });
+    }
+
+    const stackOverrideCount = reader.readVLE();
+    for (let i = 0; i < stackOverrideCount; i++) {
+      const itemIdx = reader.readVLE();
+      const count = reader.readVLE();
+      if (itemIdx >= 0 && itemIdx < rawItems.length) {
+        rawItems[itemIdx].count = count;
+      }
+    }
+  }
+
   const synced = syncWorldSwitchesAndGates(rawSwitches, rawGates, rawItems);
 
   return {
@@ -431,6 +560,7 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
       initialY: robotY,
       initialDir: robotDir,
       carriedItem: null,
+      carriedCount: 0,
     },
     barriers,
     flags,
@@ -441,6 +571,11 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
     floorSwitches: synced.floorSwitches ?? [],
     worldItems: cloneWorldItems(rawItems),
     initialWorldItems: cloneWorldItems(rawItems),
+    ...(beaconTiles.length > 0 ? { beaconTiles } : {}),
+    ...(dialTiles.length > 0 ? { dialTiles } : {}),
+    ...(strictInteractionCollision !== undefined ? { strictInteractionCollision } : {}),
+    ...(requireAllItemsCollected !== undefined ? { requireAllItemsCollected } : {}),
+    ...(requireEmptyBackpackAtGoal !== undefined ? { requireEmptyBackpackAtGoal } : {}),
     lastInteractionFeedback: null,
     trace: [{ x: robotX, y: robotY }],
     status: 'IDLE',

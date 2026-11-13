@@ -7,6 +7,7 @@ import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOv
 import { GhostStepOverlay } from '../simulations/grid/components/GhostStepOverlay';
 import { DemoSpotlightOverlay } from '../simulations/grid/components/DemoSpotlightOverlay';
 import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/WorldItemsLayer';
+import { BeaconAndDialLayer } from '../simulations/grid/components/BeaconAndDialLayer';
 import { SimulationTopLeftHud } from './SimulationTopLeftHud';
 
 const CELL_SIZE = 72; // pixels per cell
@@ -748,13 +749,14 @@ export const GridCanvas: React.FC = () => {
             handleEdgeClick={handleEdgeClick}
           />
 
-          {/* Pluggable Under-Robot Overlay Slot (World Items — Commit 14) */}
+          {/* Pluggable Under-Robot Overlay Slot (Beacon & Dial C22, World Items C14) */}
           <GridOverlayLayer
             grid={grid}
             cellSize={CELL_SIZE}
             isInstant={isInstant}
             isReadOnly={isReadOnly}
             layer="under-robot"
+            beaconAndDialSlot={<BeaconAndDialLayer grid={grid} cellSize={CELL_SIZE} />}
             worldItemsSlot={
               <WorldItemsLayer
                 grid={grid}

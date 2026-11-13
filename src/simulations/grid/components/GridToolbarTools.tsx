@@ -14,6 +14,9 @@ import {
   Package,
   CircleDot,
   Layers,
+  Radio,
+  Gauge,
+  Boxes,
 } from 'lucide-react';
 
 export const WORLD_EDITOR_TOOLS: readonly EditorTool[] = [
@@ -23,6 +26,9 @@ export const WORLD_EDITOR_TOOLS: readonly EditorTool[] = [
   'GATE',
   'CRATE',
   'SWITCH',
+  'BEACON',
+  'DIAL',
+  'STACK_DEPOT',
 ];
 
 export function isWorldEditorTool(tool: EditorTool): boolean {
@@ -142,6 +148,12 @@ export function GridToolbarTools({
         return <Package className="w-4 h-4 sm:w-5 sm:h-5" />;
       case 'SWITCH':
         return <CircleDot className="w-4 h-4 sm:w-5 sm:h-5" />;
+      case 'BEACON':
+        return <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />;
+      case 'DIAL':
+        return <Gauge className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />;
+      case 'STACK_DEPOT':
+        return <Boxes className="w-4 h-4 sm:w-5 sm:h-5 text-sky-400" />;
       case 'PLANK':
         return (
           <span className="text-sm sm:text-base leading-none" aria-hidden="true">
@@ -358,6 +370,54 @@ export function GridToolbarTools({
               >
                 <CircleDot className="w-4 h-4" />
                 <span>Switch</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="tool-beacon"
+                onClick={() => handleWorldToolSelect('BEACON')}
+                aria-pressed={editorTool === 'BEACON'}
+                aria-label="Floor beacon tool"
+                className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all ${
+                  editorTool === 'BEACON'
+                    ? 'bg-indigo-600 border-indigo-300 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <Radio className="w-4 h-4 text-indigo-300" />
+                <span>Beacon</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="tool-dial"
+                onClick={() => handleWorldToolSelect('DIAL')}
+                aria-pressed={editorTool === 'DIAL'}
+                aria-label="Floor dial tool"
+                className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all ${
+                  editorTool === 'DIAL'
+                    ? 'bg-amber-600 border-amber-300 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <Gauge className="w-4 h-4 text-amber-300" />
+                <span>Dial</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="tool-stack-depot"
+                onClick={() => handleWorldToolSelect('STACK_DEPOT')}
+                aria-pressed={editorTool === 'STACK_DEPOT'}
+                aria-label="Stack depot tool"
+                className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all ${
+                  editorTool === 'STACK_DEPOT'
+                    ? 'bg-sky-600 border-sky-300 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <Boxes className="w-4 h-4 text-sky-300" />
+                <span>Depot</span>
               </button>
             </div>
 
