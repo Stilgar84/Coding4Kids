@@ -178,7 +178,8 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'wait-duration' ||
     paramDef.type === 'instant-mode' ||
     paramDef.type === 'coord' ||
-    paramDef.type === 'depot-station';
+    paramDef.type === 'depot-station' ||
+    paramDef.type === 'depot-gate';
 
   const content = (
     <div

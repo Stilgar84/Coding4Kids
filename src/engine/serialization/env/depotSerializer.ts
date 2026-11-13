@@ -3,22 +3,31 @@ import {
   CrateColor,
   DEPOT_CRATE_COLORS,
   DEPOT_CRATE_PALETTE,
+  DepotQueueItem,
+  DepotSendGate,
   DepotStacks,
   DepotState,
 } from '../../../simulations/depot/types';
 import {
+  cloneQueue,
   cloneStacks,
+  codeToStation,
   createInitialDepotState,
+  depotStateNeedsQueueVersion,
   indexToStation,
   normalizeDepotStation,
+  stationToCode,
   stationToIndex,
 } from '../../../simulations/depot/depotPhysics';
 import { BinaryReader } from '../binaryReader';
 import { BinaryWriter } from '../binaryWriter';
 import {
+  ENV_VERSION_DEPOT_QUEUE,
+  ENV_VERSION_DEPOT_STATE,
   OP_DEPOT_GRAB,
   OP_DEPOT_MOVE_TO,
   OP_DEPOT_PLACE,
+  OP_DEPOT_SEND_GATE,
   OP_DEPOT_SEND_OUT,
   indexToVarName,
   varNameToIndex,
@@ -28,12 +37,33 @@ function isVarVal(val: unknown): boolean {
   return isVariableName(val) || (typeof val === 'string' && /^[a-z]$/.test(val.trim()));
 }
 
-function crateColorToByte(color: CrateColor): number {
+export function crateColorToByte(color: CrateColor): number {
   return DEPOT_CRATE_COLORS[color]?.code ?? 0;
 }
 
-function byteToCrateColor(byte: number): CrateColor {
-  return DEPOT_CRATE_PALETTE[byte]?.id ?? 'RED';
+export function byteToCrateColor(byte: number): CrateColor {
+  return DEPOT_CRATE_PALETTE[byte & 0x0f]?.id ?? 'RED';
+}
+
+export function gateToCode(gate: unknown): number {
+  const g = String(gate ?? 'OUT').trim().toUpperCase();
+  if (g === 'SCRAP') return 1;
+  if (g === 'ACCEPT') return 2;
+  if (g === 'REJECT') return 3;
+  return 0; // 'OUT'
+}
+
+export function codeToGate(code: number): DepotSendGate {
+  switch (code) {
+    case 1:
+      return 'SCRAP';
+    case 2:
+      return 'ACCEPT';
+    case 3:
+      return 'REJECT';
+    default:
+      return 'OUT';
+  }
 }
 
 function writeCrateList(writer: BinaryWriter, list: readonly CrateColor[]): void {
@@ -52,17 +82,54 @@ function readCrateList(reader: BinaryReader): CrateColor[] {
   return out;
 }
 
-export function writeDepotState(writer: BinaryWriter, state?: DepotState): void {
+function writeQueueItemList(writer: BinaryWriter, list: readonly DepotQueueItem[]): void {
+  writer.writeVLE(list.length);
+  for (const item of list) {
+    const colorByte = crateColorToByte(item.color);
+    const damagedBit = item.damaged ? 0x80 : 0x00;
+    writer.writeUint8(colorByte | damagedBit);
+  }
+}
+
+function readQueueItemList(reader: BinaryReader): DepotQueueItem[] {
+  const len = reader.readVLE();
+  const out: DepotQueueItem[] = [];
+  for (let i = 0; i < len; i++) {
+    const raw = reader.readUint8();
+    const color = byteToCrateColor(raw & 0x0f);
+    const damaged = (raw & 0x80) !== 0;
+    out.push({ color, damaged: damaged || undefined });
+  }
+  return out;
+}
+
+export function writeDepotState(
+  writer: BinaryWriter,
+  state?: DepotState,
+  envVersion?: number
+): void {
   if (!state) {
     writer.writeUint8(0x00);
     return;
   }
+  const version =
+    envVersion ??
+    (depotStateNeedsQueueVersion(state) ? ENV_VERSION_DEPOT_QUEUE : ENV_VERSION_DEPOT_STATE);
+
   let flags = 0x01; // has state
   if (state.targetStacks) flags |= 0x02;
   if (state.targetOutput && state.targetOutput.length > 0) flags |= 0x04;
+  if (version >= ENV_VERSION_DEPOT_QUEUE) {
+    if (state.queue.length > 0 || state.initialQueue.length > 0) flags |= 0x08;
+  }
   writer.writeUint8(flags);
 
-  writer.writeUint8(stationToIndex(state.initialWorkerStation ?? state.workerStation));
+  if (version >= ENV_VERSION_DEPOT_QUEUE) {
+    writer.writeUint8(stationToCode(state.initialWorkerStation ?? state.workerStation));
+  } else {
+    writer.writeUint8(stationToIndex(state.initialWorkerStation ?? state.workerStation));
+  }
+
   const initStacks = cloneStacks(state.initialStacks ?? state.stacks);
   for (let i = 0; i < 3; i++) {
     writeCrateList(writer, initStacks[i]);
@@ -75,14 +142,30 @@ export function writeDepotState(writer: BinaryWriter, state?: DepotState): void 
   if (state.targetOutput && state.targetOutput.length > 0) {
     writeCrateList(writer, state.targetOutput);
   }
+
+  // Version 3 (M5 FIFO Queue & Gate state)
+  if (version >= ENV_VERSION_DEPOT_QUEUE) {
+    const initQueue = cloneQueue(state.initialQueue ?? state.queue);
+    writeQueueItemList(writer, initQueue);
+    writer.writeVLE(state.scrapCount ?? 0);
+  }
 }
 
-export function readDepotState(reader: BinaryReader): DepotState {
+export function readDepotState(
+  reader: BinaryReader,
+  envVersion: number = ENV_VERSION_DEPOT_STATE
+): DepotState {
   const flags = reader.readUint8();
   if ((flags & 0x01) === 0) {
     return createInitialDepotState();
   }
-  const startStation = indexToStation(reader.readUint8());
+
+  const stationByte = reader.readUint8();
+  const startStation =
+    envVersion >= ENV_VERSION_DEPOT_QUEUE
+      ? codeToStation(stationByte)
+      : indexToStation(stationByte);
+
   const initialStacks: DepotStacks = [
     readCrateList(reader),
     readCrateList(reader),
@@ -100,6 +183,14 @@ export function readDepotState(reader: BinaryReader): DepotState {
   if ((flags & 0x04) !== 0) {
     targetOutput = readCrateList(reader);
   }
+
+  let queue: DepotQueueItem[] = [];
+  let scrapCount = 0;
+  if (envVersion >= ENV_VERSION_DEPOT_QUEUE) {
+    queue = readQueueItemList(reader);
+    scrapCount = reader.readVLE();
+  }
+
   return createInitialDepotState({
     initialStacks,
     stacks: initialStacks,
@@ -107,6 +198,9 @@ export function readDepotState(reader: BinaryReader): DepotState {
     workerStation: startStation,
     targetStacks,
     targetOutput,
+    queue,
+    initialQueue: queue,
+    scrapCount,
   });
 }
 
@@ -120,6 +214,8 @@ export function getDepotOpcodeForBlock(block: CodeBlock): number {
       return OP_DEPOT_PLACE;
     case 'DEPOT_SEND_OUT':
       return OP_DEPOT_SEND_OUT;
+    case 'DEPOT_SEND_GATE':
+      return OP_DEPOT_SEND_GATE;
     default:
       throw new Error(`Unsupported Depot action block type: ${block.type}`);
   }
@@ -132,6 +228,9 @@ export function getDepotParamVarFlags(
   if (!params) return { param0IsVar: false, param1IsVar: false };
   if (opcode === OP_DEPOT_MOVE_TO) {
     return { param0IsVar: isVarVal(params.station), param1IsVar: false };
+  }
+  if (opcode === OP_DEPOT_SEND_GATE) {
+    return { param0IsVar: isVarVal(params.gate), param1IsVar: false };
   }
   return { param0IsVar: false, param1IsVar: false };
 }
@@ -146,7 +245,13 @@ export function writeDepotParams(
     if ((paramVarMask & 0x02) !== 0) {
       writer.writeUint8(varNameToIndex(String(params?.station ?? 'a')));
     } else {
-      writer.writeUint8(stationToIndex(normalizeDepotStation(params?.station)));
+      writer.writeUint8(stationToCode(normalizeDepotStation(params?.station)));
+    }
+  } else if (opcode === OP_DEPOT_SEND_GATE) {
+    if ((paramVarMask & 0x02) !== 0) {
+      writer.writeUint8(varNameToIndex(String(params?.gate ?? 'a')));
+    } else {
+      writer.writeUint8(gateToCode(params?.gate));
     }
   }
 }
@@ -161,7 +266,7 @@ export function readDepotBlock(
       const station =
         (paramVarMask & 0x02) !== 0
           ? indexToVarName(reader.readUint8())
-          : indexToStation(reader.readUint8());
+          : codeToStation(reader.readUint8());
       return { type: 'DEPOT_MOVE_TO', params: { station } };
     }
     case OP_DEPOT_GRAB:
@@ -170,6 +275,13 @@ export function readDepotBlock(
       return { type: 'DEPOT_PLACE' };
     case OP_DEPOT_SEND_OUT:
       return { type: 'DEPOT_SEND_OUT' };
+    case OP_DEPOT_SEND_GATE: {
+      const gate =
+        (paramVarMask & 0x02) !== 0
+          ? indexToVarName(reader.readUint8())
+          : codeToGate(reader.readUint8());
+      return { type: 'DEPOT_SEND_GATE', params: { gate } };
+    }
     default:
       throw new Error(`Unknown Depot opcode: 0x${opcode.toString(16)}`);
   }

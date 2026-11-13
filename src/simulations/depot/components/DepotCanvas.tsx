@@ -5,7 +5,7 @@ import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppSt
 import {
   CrateColor,
   DEPOT_CRATE_COLORS,
-  DEPOT_STATIONS,
+  DEPOT_STACK_STATIONS,
   DepotState,
 } from '../types';
 import { stationToIndex } from '../depotPhysics';
@@ -17,11 +17,19 @@ interface DepotCanvasProps {
 
 const CrateBox: React.FC<{
   color: CrateColor;
+  damaged?: boolean;
   isTop?: boolean;
   isDimmed?: boolean;
   isGhost?: boolean;
   compact?: boolean;
-}> = ({ color, isTop = false, isDimmed = false, isGhost = false, compact = false }) => {
+}> = ({
+  color,
+  damaged = false,
+  isTop = false,
+  isDimmed = false,
+  isGhost = false,
+  compact = false,
+}) => {
   const meta = DEPOT_CRATE_COLORS[color] ?? DEPOT_CRATE_COLORS.RED;
   const sizeClass = compact
     ? 'w-11 h-8 sm:w-12 sm:h-9 text-xs'
@@ -45,6 +53,7 @@ const CrateBox: React.FC<{
 
   return (
     <div
+      data-damaged={damaged ? 'true' : 'false'}
       className={`${sizeClass} relative rounded-lg border-2 flex items-center justify-center font-black text-white shadow-md select-none transition-all duration-200 ${
         isTop
           ? 'ring-2 ring-white/90 shadow-[0_0_12px_rgba(255,255,255,0.35)] scale-[1.03] z-10'
@@ -56,10 +65,25 @@ const CrateBox: React.FC<{
         backgroundColor: meta.hex,
         borderColor: isTop ? '#ffffff' : meta.borderHex,
       }}
-      aria-label={meta.label}
-      title={meta.label}
+      aria-label={`${meta.label}${damaged ? ' (Damaged)' : ''}`}
+      title={`${meta.label}${damaged ? ' (Damaged)' : ''}`}
     >
       <span className="drop-shadow-sm">{meta.symbol}</span>
+      {damaged && (
+        <span
+          data-testid="crate-damaged-indicator"
+          aria-label="Damaged"
+          className="absolute -top-1.5 -left-1 text-[11px] select-none"
+        >
+          ⚡
+        </span>
+      )}
+      {damaged && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-md border border-rose-400/80 pointer-events-none bg-rose-500/20"
+        />
+      )}
       {isDimmed && (
         <span
           aria-hidden="true"
@@ -79,8 +103,15 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
 
   const state = propState || storeDepotState;
   const effectiveStatus = runtimeStatus ?? state.status;
+  const isQueueStation = state.workerStation === 'QUEUE';
   const activeStationIdx = stationToIndex(state.workerStation);
-  const craneLeftPct = activeStationIdx === 0 ? 16.667 : activeStationIdx === 1 ? 50 : 83.333;
+  const craneLeftPct = isQueueStation
+    ? 16.667
+    : activeStationIdx === 0
+    ? 16.667
+    : activeStationIdx === 1
+    ? 50
+    : 83.333;
   const heldMeta = state.heldCrate ? DEPOT_CRATE_COLORS[state.heldCrate] : null;
 
   const isCollision = effectiveStatus === 'COLLISION' || state.status === 'COLLISION';
@@ -94,7 +125,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
       data-testid="depot-canvas"
       data-quality={isLowQuality ? 'low' : 'high'}
       data-status={effectiveStatus}
-      className="relative flex flex-col w-full h-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white select-none overflow-hidden p-3 sm:p-4 gap-3"
+      className="relative flex flex-col w-full h-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white select-none overflow-hidden p-3 sm:p-4 gap-2.5 sm:gap-3"
     >
       {isCollision && (
         <div
@@ -119,7 +150,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
         </div>
       )}
 
-      {/* Top Status Strip (left-aligned to leave top-right simulation overlay tools clear) */}
+      {/* Top Status Strip */}
       <div className="flex items-center justify-between gap-2 pr-28 sm:pr-36 flex-shrink-0">
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 shadow-sm">
           <Package className="w-3.5 h-3.5 text-amber-400" />
@@ -131,6 +162,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
               style={{ backgroundColor: heldMeta.hex }}
             >
               <span>{heldMeta.symbol}</span>
+              {state.heldDamaged && <span className="text-[10px]">⚡</span>}
             </span>
           ) : (
             <span
@@ -157,20 +189,26 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
                 ? 'EMPTY'
                 : state.lastFailureReason === 'CLAW_EMPTY'
                 ? 'NO CRATE'
+                : state.lastFailureReason === 'STACK_FULL'
+                ? 'FULL'
                 : state.lastFailureReason === 'WRONG_OUTPUT_ORDER'
                 ? 'ORDER!'
+                : state.lastFailureReason === 'DAMAGED_TO_STACK'
+                ? 'CRACKED!'
+                : state.lastFailureReason === 'INTACT_TO_SCRAP'
+                ? 'NOT SCRAP!'
                 : 'ERROR'}
             </span>
           </div>
         )}
       </div>
 
-      {/* Main Depot Stage: 3 LIFO Stack Bays + Crane Track (left) and OUTPUT Bay (right) */}
+      {/* Main Depot Stage: Left (Gantry + 3 Stacks + FIFO Queue) and Right (Output + Scrap) */}
       <div className="flex-1 min-h-0 flex items-stretch gap-3 sm:gap-4">
-        {/* Left: Overhead Gantry Crane + 3 LIFO Stack Bays */}
-        <div className="flex-1 min-w-0 flex flex-col justify-between bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5 sm:p-3.5 relative">
+        {/* Left: Overhead Gantry Crane + 3 LIFO Stack Bays + FIFO Queue Belt */}
+        <div className="flex-1 min-w-0 flex flex-col justify-between bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5 sm:p-3 relative gap-2">
           {/* Gantry Crane Overhead Rail */}
-          <div className="relative h-20 sm:h-24 flex-shrink-0">
+          <div className="relative h-18 sm:h-20 flex-shrink-0">
             {/* Horizontal Track Rail */}
             <div className="absolute inset-x-4 top-2 h-2.5 rounded-full bg-slate-700 border border-slate-600 shadow-inner" />
 
@@ -184,12 +222,11 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
               style={{ left: `${craneLeftPct}%` }}
             >
               {/* Trolley Wheel Block */}
-              <div className="w-10 h-6 rounded-lg bg-amber-400 border-2 border-amber-200 shadow-md flex items-center justify-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-slate-900" />
-                <span className="w-2 h-2 rounded-full bg-slate-900" />
+              <div className="w-10 h-6 rounded-lg bg-amber-400 border-2 border-amber-200 shadow-md flex items-center justify-center gap-1 font-black text-[10px] text-slate-950">
+                {isQueueStation ? 'Q' : activeStationIdx + 1}
               </div>
               {/* Hoist Cable */}
-              <div className="w-1 h-2.5 bg-slate-400" />
+              <div className="w-1 h-2 bg-slate-400" />
               {/* Mechanical Claw + Optional Held Crate */}
               <div className="relative flex flex-col items-center">
                 <svg
@@ -219,9 +256,15 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
                   <div
                     data-testid="depot-claw-held-crate"
                     data-color={state.heldCrate}
+                    data-damaged={state.heldDamaged ? 'true' : 'false'}
                     className="-mt-1"
                   >
-                    <CrateBox color={state.heldCrate} isTop compact />
+                    <CrateBox
+                      color={state.heldCrate}
+                      damaged={state.heldDamaged}
+                      isTop
+                      compact
+                    />
                   </div>
                 )}
               </div>
@@ -229,8 +272,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
           </div>
 
           {/* 3 LIFO Stack Bays */}
-          <div className="flex-1 min-h-0 grid grid-cols-3 gap-2 sm:gap-3 items-end pt-2">
-            {DEPOT_STATIONS.map((stationId, idx) => {
+          <div className="flex-1 min-h-0 grid grid-cols-3 gap-2 sm:gap-3 items-end pt-1">
+            {DEPOT_STACK_STATIONS.map((stationId, idx) => {
               const stack = state.stacks[idx] ?? [];
               const targetStack = state.targetStacks?.[idx] ?? [];
               const isWorkerHere = state.workerStation === stationId;
@@ -240,11 +283,11 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
                 <div
                   key={stationId}
                   data-testid={`depot-stack-${idx + 1}`}
-                  className="flex flex-col items-center justify-end h-full min-h-0 gap-1.5"
+                  className="flex flex-col items-center justify-end h-full min-h-0 gap-1"
                 >
                   {/* Vertical Stack Rail Container */}
                   <div
-                    className={`relative flex-1 w-full max-w-[84px] min-h-[128px] rounded-t-xl border-x-2 border-b-4 flex flex-col justify-end items-center pb-1.5 px-1 transition-colors ${
+                    className={`relative flex-1 w-full max-w-[84px] min-h-[100px] rounded-t-xl border-x-2 border-b-4 flex flex-col justify-end items-center pb-1.5 px-1 transition-colors ${
                       isWorkerHere
                         ? 'border-amber-400/80 bg-amber-500/5 shadow-[inset_0_-8px_16px_rgba(245,158,11,0.08)]'
                         : 'border-slate-600/70 border-x-dashed bg-slate-950/45'
@@ -290,7 +333,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
 
                   {/* Numeric Station Badge (1, 2, 3) */}
                   <div
-                    className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center font-black text-sm shadow-sm transition-colors ${
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl border-2 flex items-center justify-center font-black text-xs sm:text-sm shadow-sm transition-colors ${
                       isWorkerHere
                         ? 'bg-amber-400 text-slate-950 border-amber-200'
                         : 'bg-slate-800 text-slate-200 border-slate-600'
@@ -302,52 +345,147 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
               );
             })}
           </div>
-        </div>
 
-        {/* Right: Conveyor OUTPUT ✅ Bay */}
-        <div
-          data-testid="depot-output-bay"
-          className={`w-24 sm:w-32 flex-shrink-0 flex flex-col justify-between rounded-2xl border-2 p-2.5 sm:p-3 transition-colors ${
-            isSuccess
-              ? 'bg-emerald-950/45 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.25)]'
-              : 'bg-slate-900/75 border-slate-700'
-          }`}
-        >
-          <div className="flex items-center justify-center gap-1.5 pb-1.5 border-b border-slate-700/80">
-            <ArrowRight className="w-4 h-4 text-emerald-400" />
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          </div>
+          {/* FIFO Conveyor Queue Belt (M5) */}
+          <div
+            data-testid="depot-queue-belt"
+            className={`w-full flex items-center justify-between rounded-xl border p-2 bg-slate-950/70 transition-colors ${
+              isQueueStation
+                ? 'border-amber-400 bg-amber-500/10 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                : 'border-slate-800'
+            }`}
+          >
+            {/* Front marker */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div
+                data-testid="depot-queue-station"
+                className={`px-2 py-0.5 rounded-lg border text-xs font-black flex items-center gap-1 ${
+                  isQueueStation
+                    ? 'bg-amber-400 text-slate-950 border-amber-200'
+                    : 'bg-slate-800 text-slate-200 border-slate-600'
+                }`}
+              >
+                <span>Q</span>
+                <span className="text-[10px] text-slate-400 hidden sm:inline">FRONT</span>
+              </div>
+              <span className="text-slate-500 text-xs font-bold">◄──</span>
+            </div>
 
-          <div className="flex-1 flex flex-col justify-center items-center gap-1.5 py-2 overflow-y-auto">
-            {Array.from({ length: totalOutputSlots }, (_, slotIdx) => {
-              const delivered = state.output[slotIdx];
-              const target = outputGoal[slotIdx];
-              const matchesTarget = Boolean(delivered && target && delivered === target);
-
-              return (
+            {/* Queue slots (front = index 0) */}
+            <div className="flex-1 flex items-center gap-1.5 px-2 overflow-x-auto min-w-0">
+              {state.queue.length === 0 ? (
                 <div
-                  key={slotIdx}
-                  data-testid={`depot-output-slot-${slotIdx}`}
-                  className="relative flex items-center gap-1.5"
+                  data-testid="depot-queue-empty"
+                  className="text-xs text-slate-500 font-mono italic px-2 py-1"
                 >
-                  <span className="text-[10px] font-mono font-bold text-slate-400 w-3 text-right">
-                    {slotIdx + 1}
-                  </span>
-                  {delivered ? (
-                    <div className="relative">
-                      <CrateBox color={delivered} isTop={matchesTarget} compact />
-                      {matchesTarget && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 bg-slate-950 rounded-full absolute -top-1 -right-1" />
+                  Empty
+                </div>
+              ) : (
+                state.queue.map((item, qIdx) => {
+                  const isFront = qIdx === 0;
+                  return (
+                    <div
+                      key={qIdx}
+                      data-testid={`depot-queue-crate-${qIdx}`}
+                      data-color={item.color}
+                      data-damaged={item.damaged ? 'true' : 'false'}
+                      data-front={isFront ? 'true' : 'false'}
+                      className="relative flex-shrink-0"
+                    >
+                      <CrateBox
+                        color={item.color}
+                        damaged={item.damaged}
+                        isTop={isFront}
+                        isDimmed={!isFront}
+                        compact
+                      />
+                      {isFront && (
+                        <span className="absolute -top-1 -right-1 text-[9px] bg-amber-400 text-slate-950 font-black px-1 rounded-full">
+                          1st
+                        </span>
                       )}
                     </div>
-                  ) : target ? (
-                    <CrateBox color={target} isGhost compact />
-                  ) : (
-                    <div className="w-11 h-8 sm:w-12 sm:h-9 rounded-lg border border-dashed border-slate-700 bg-slate-950/50" />
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })
+              )}
+            </div>
+
+            {/* Back marker */}
+            <div className="text-[10px] font-mono text-slate-500 flex-shrink-0">
+              BACK
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Output Bay & Scrap Chute */}
+        <div className="w-24 sm:w-32 flex-shrink-0 flex flex-col justify-between gap-2.5">
+          {/* Output Bay */}
+          <div
+            data-testid="depot-output-bay"
+            className={`flex-1 flex flex-col justify-between rounded-2xl border-2 p-2 sm:p-2.5 transition-colors ${
+              isSuccess
+                ? 'bg-emerald-950/45 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.25)]'
+                : 'bg-slate-900/75 border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-1 pb-1 border-b border-slate-700/80">
+              <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span className="text-[10px] font-bold text-emerald-300">OUT</span>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center items-center gap-1.5 py-1.5 overflow-y-auto">
+              {Array.from({ length: totalOutputSlots }, (_, slotIdx) => {
+                const delivered = state.output[slotIdx];
+                const target = outputGoal[slotIdx];
+                const matchesTarget = Boolean(delivered && target && delivered === target);
+
+                return (
+                  <div
+                    key={slotIdx}
+                    data-testid={`depot-output-slot-${slotIdx}`}
+                    className="relative flex items-center gap-1.5"
+                  >
+                    <span className="text-[10px] font-mono font-bold text-slate-400 w-3 text-right">
+                      {slotIdx + 1}
+                    </span>
+                    {delivered ? (
+                      <div className="relative">
+                        <CrateBox color={delivered} isTop={matchesTarget} compact />
+                        {matchesTarget && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 bg-slate-950 rounded-full absolute -top-1 -right-1" />
+                        )}
+                      </div>
+                    ) : target ? (
+                      <CrateBox color={target} isGhost compact />
+                    ) : (
+                      <div className="w-11 h-8 sm:w-12 sm:h-9 rounded-lg border border-dashed border-slate-700 bg-slate-950/50" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Scrap Bay (M5) */}
+          <div
+            data-testid="depot-scrap-bay"
+            className="h-16 sm:h-20 rounded-2xl border-2 border-rose-800/80 bg-rose-950/40 p-1.5 flex flex-col justify-between items-center text-rose-300 shadow-inner flex-shrink-0"
+            title="Scrap Hazard Chute"
+          >
+            <div className="flex items-center gap-1 text-[10px] font-bold tracking-wider">
+              <span>⚠️</span>
+              <span>SCRAP</span>
+            </div>
+            <div
+              data-testid="depot-scrap-count"
+              className="text-sm sm:text-base font-mono font-black text-rose-200"
+            >
+              {state.scrapCount}
+            </div>
+            <div className="text-[8px] text-rose-400/80 font-mono">
+              CHUTE
+            </div>
           </div>
         </div>
       </div>

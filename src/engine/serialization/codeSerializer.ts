@@ -16,6 +16,7 @@ import {
   ENV_VERSION_BEAT,
   ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_STATE,
+  ENV_VERSION_DEPOT_QUEUE,
   ENV_VERSION_SWITCHYARD,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
@@ -35,6 +36,7 @@ import {
   readGridState,
 } from './env/gridSerializer';
 import { writeDepotState, readDepotState } from './env/depotSerializer';
+import { depotStateNeedsQueueVersion } from '../../simulations/depot/depotPhysics';
 import { writeSwitchyardState, readSwitchyardState } from './env/switchyardSerializer';
 import { writeCodeScopes, readCodeScopes } from './codeScopes';
 
@@ -79,7 +81,9 @@ export function exportToBinary(
       ? ENV_VERSION_BEAT
       : envId === 'depot'
       ? envState && 'stacks' in envState
-        ? ENV_VERSION_DEPOT_STATE
+        ? depotStateNeedsQueueVersion(envState as DepotState)
+          ? ENV_VERSION_DEPOT_QUEUE
+          : ENV_VERSION_DEPOT_STATE
         : ENV_VERSION_DEPOT
       : envId === 'switchyard'
       ? ENV_VERSION_SWITCHYARD
@@ -90,7 +94,7 @@ export function exportToBinary(
   if (envByte === ENV_ID_GRID && envState && 'width' in envState) {
     writeGridState(writer, envState as GridState, envVersion);
   } else if (envByte === ENV_ID_DEPOT && envState && 'stacks' in envState) {
-    writeDepotState(writer, envState as DepotState);
+    writeDepotState(writer, envState as DepotState, envVersion);
   } else if (envByte === ENV_ID_SWITCHYARD && envState && 'switches' in envState) {
     writeSwitchyardState(writer, envState as SwitchyardState);
   }
@@ -298,7 +302,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       beatState = createInitialBeatState();
     } else if (envByte === ENV_ID_DEPOT) {
       depotState =
-        envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader) : undefined;
+        envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader, envVersion) : undefined;
     } else if (envByte === ENV_ID_SWITCHYARD) {
       switchyardState = readSwitchyardState(reader);
     }

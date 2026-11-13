@@ -14,6 +14,7 @@ import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 import { createInitialBeatState } from '../simulations/beat/beatEnvironment';
 import { DepotState } from '../simulations/depot/types';
 import {
+  cloneQueue,
   cloneStacks,
   createInitialDepotState,
   normalizeDepotStation,
@@ -432,9 +433,13 @@ function sanitizeDepotState(raw: unknown): DepotState {
     workerStation: normalizeDepotStation(d.workerStation),
     initialWorkerStation: normalizeDepotStation(d.initialWorkerStation),
     heldCrate: typeof d.heldCrate === 'string' && validColors.has(d.heldCrate) ? (d.heldCrate as any) : null,
+    heldDamaged: Boolean(d.heldDamaged),
     lastFailureReason: typeof d.lastFailureReason === 'string' ? (d.lastFailureReason as any) : null,
     status: status === 'RUNNING' ? 'PAUSED' : status,
     stepCount: typeof d.stepCount === 'number' && Number.isFinite(d.stepCount) ? d.stepCount : 0,
+    queue: Array.isArray(d.queue) ? cloneQueue(d.queue) : [],
+    initialQueue: Array.isArray(d.initialQueue ?? d.queue) ? cloneQueue(d.initialQueue ?? d.queue) : [],
+    scrapCount: typeof d.scrapCount === 'number' && Number.isFinite(d.scrapCount) ? d.scrapCount : 0,
   };
 }
 

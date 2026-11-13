@@ -1,21 +1,35 @@
 import { SimulationStatus } from '../../types';
 
-export type DepotStationId = 'STACK_1' | 'STACK_2' | 'STACK_3';
+// ---- Station IDs (M3: stacks, M5: + QUEUE) ----
+export type DepotStationId = 'STACK_1' | 'STACK_2' | 'STACK_3' | 'QUEUE';
 
 export type CrateColor = 'RED' | 'BLUE' | 'GREEN' | 'AMBER';
 
 export type DepotStacks = [CrateColor[], CrateColor[], CrateColor[]];
+
+/** A single crate item in the FIFO queue (M5+). */
+export interface DepotQueueItem {
+  color: CrateColor;
+  damaged?: boolean;
+}
 
 export type DepotFailureReason =
   | 'CLAW_FULL'
   | 'CLAW_EMPTY'
   | 'EMPTY_STACK'
   | 'STACK_FULL'
-  | 'WRONG_OUTPUT_ORDER';
+  | 'WRONG_OUTPUT_ORDER'
+  | 'DAMAGED_TO_STACK'    // M5: damaged crate placed on a target stack → COLLISION
+  | 'INTACT_TO_SCRAP';    // M5: intact crate sent to SCRAP gate → COLLISION
 
-export const DEPOT_STATIONS: readonly DepotStationId[] = ['STACK_1', 'STACK_2', 'STACK_3'];
+/** Gate parameter for DEPOT_SEND_GATE (0x14). `OUT` is the default [OUT] dock. */
+export type DepotSendGate = 'OUT' | 'SCRAP' | 'ACCEPT' | 'REJECT';
+
+export const DEPOT_STATIONS: readonly DepotStationId[] = ['STACK_1', 'STACK_2', 'STACK_3', 'QUEUE'];
+export const DEPOT_STACK_STATIONS: readonly DepotStationId[] = ['STACK_1', 'STACK_2', 'STACK_3'];
 
 export const DEPOT_MAX_STACK_HEIGHT = 6;
+export const DEPOT_MAX_QUEUE_LENGTH = 8;
 
 export interface DepotCrateColorMeta {
   id: CrateColor;
@@ -90,8 +104,18 @@ export interface DepotState {
   initialWorkerStation: DepotStationId;
   /** Crate currently gripped in the single-item claw (null if empty) */
   heldCrate: CrateColor | null;
+  /** Whether the held crate is damaged (M5+). */
+  heldDamaged: boolean;
   /** Failure tag set when an invalid LIFO / claw / output action triggers COLLISION */
   lastFailureReason: DepotFailureReason | null;
   status: SimulationStatus;
   stepCount: number;
+
+  // ---- M5 FIFO Queue fields ----
+  /** Items in the FIFO conveyor queue (front = index 0, back = last). */
+  queue: DepotQueueItem[];
+  /** Initial queue snapshot used by resetState. */
+  initialQueue: DepotQueueItem[];
+  /** Cratecount in SCRAP dock (damaged crates sent via DEPOT_SEND_GATE SCRAP). */
+  scrapCount: number;
 }

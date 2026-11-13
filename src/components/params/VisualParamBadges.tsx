@@ -845,9 +845,17 @@ export const DepotStationVisual: React.FC<{ station: string | number; compact?: 
   compact = true,
 }) => {
   const norm = String(station ?? 'STACK_1').trim().toUpperCase();
-  const num = norm === 'STACK_2' || norm === '2' ? 2 : norm === 'STACK_3' || norm === '3' ? 3 : 1;
+  const isQueue = norm === 'QUEUE' || norm === 'Q';
+  const num = isQueue ? 'Q' : norm === 'STACK_2' || norm === '2' ? 2 : norm === 'STACK_3' || norm === '3' ? 3 : 1;
 
   if (compact) {
+    if (isQueue) {
+      return (
+        <span className="inline-flex items-center justify-center rounded px-1 h-4 bg-amber-400 text-slate-950 text-[10px] font-black shadow-sm select-none">
+          Q
+        </span>
+      );
+    }
     return (
       <div className="inline-flex items-center gap-0.5 leading-none select-none">
         {[1, 2, 3].map((slot) => (
@@ -862,6 +870,16 @@ export const DepotStationVisual: React.FC<{ station: string | number; compact?: 
             {slot === num ? slot : ''}
           </span>
         ))}
+      </div>
+    );
+  }
+
+  if (isQueue) {
+    return (
+      <div className="flex flex-col items-center gap-1 select-none">
+        <span className="inline-flex items-center justify-center rounded px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-xs shadow-sm">
+          QUEUE (FIFO)
+        </span>
       </div>
     );
   }
@@ -884,6 +902,34 @@ export const DepotStationVisual: React.FC<{ station: string | number; compact?: 
         #{num}
       </span>
     </div>
+  );
+};
+
+export const DepotGateVisual: React.FC<{ gate: string | unknown; compact?: boolean }> = ({
+  gate,
+  compact = true,
+}) => {
+  const norm = String(gate ?? 'OUT').trim().toUpperCase();
+  const isScrap = norm === 'SCRAP';
+  const isAccept = norm === 'ACCEPT';
+  const isReject = norm === 'REJECT';
+
+  const bg = isScrap
+    ? 'bg-rose-500 text-white'
+    : isAccept
+    ? 'bg-emerald-500 text-slate-950'
+    : isReject
+    ? 'bg-red-600 text-white'
+    : 'bg-violet-500 text-white';
+
+  const label = isScrap ? 'SCRAP' : isAccept ? 'ACCEPT' : isReject ? 'REJECT' : 'OUT';
+
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 font-black uppercase text-[10px] select-none shadow-sm ${bg}`}
+    >
+      {compact ? label : `GATE: ${label}`}
+    </span>
   );
 };
 
@@ -1012,6 +1058,8 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
       );
     case 'depot-station':
       return <DepotStationVisual station={effectiveValue} compact={compact} />;
+    case 'depot-gate':
+      return <DepotGateVisual gate={effectiveValue} compact={compact} />;
     default:
       return (
         <span className="text-xs font-bold text-white">

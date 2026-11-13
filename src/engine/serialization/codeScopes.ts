@@ -746,7 +746,7 @@ export function importCodeOnlyFromBinary(bytes: Uint8Array): WorkspaceState {
     throw new Error(`Unsupported autosave environment ID: 0x${envByte.toString(16)}`);
   }
   if (envByte === ENV_ID_DEPOT && envVersion >= 2) {
-    readDepotState(reader);
+    readDepotState(reader, envVersion);
   }
   return readCodeScopes(reader, envByte);
 }

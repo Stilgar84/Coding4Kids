@@ -23,11 +23,11 @@ The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items, `3` sensors/beacons/dials/stack depots)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: `switchyard` (Switchyard sorting conveyor & docks — see §4.4 & §7.5)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
-| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`, `2`, or `3` for `grid`; `1` for `turtle`, `beat`, `switchyard`, and `profile`). Governs env-specific opcode mapping and payload layout. |
+| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items, `3` sensors/beacons/dials/stack depots)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: `switchyard` (Switchyard sorting conveyor & docks — see §4.4 & §7.5)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: `depot` (Crate Depot warehouse; `envVersion = 1` code-only, `2` stack-only, `3` FIFO queue & scrap — see §4.5 & §7.6)<br>• `0x08`+: Reserved for future environments |
+| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`, `2`, or `3` for `grid` and `depot`; `1` for `turtle`, `beat`, `switchyard`, and `profile`). Governs env-specific opcode mapping and payload layout. |
 
 > **Environment State Deduction:**
-> For `envId = 0x01` (`grid`) and `envId = 0x05` (`switchyard`), the environment state payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
+> For `envId = 0x01` (`grid`) and `envId = 0x05` (`switchyard`), the environment state payload (§4) immediately follows byte 2. For `envId = 0x07` (`depot`) with `envVersion >= 2`, the Depot state payload (§4.5) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), `0x03` (`beat`), and `0x07` with `envVersion = 1`, there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
 
 ### 2.2 Standalone Curriculum Lesson Share Envelope (`ENV_ID_LESSON = 0x04`)
 
@@ -213,7 +213,23 @@ When `envId = 0x05`, the Switchyard layout and queue payload immediately follows
      - `bits 3..2`: `iconIdx` (`0` = `CRATE`, `1` = `BATTERY`, `2` = `GEAR`, `3` = `CRYSTAL`).
      - `bit 4 (0x10)`: `damaged` flag (`1` = damaged / hazard item, `0` = intact).
      - `bits 7..5`: Reserved (`0`).
+### 4.5 Depot Warehouse Payload (`ENV_ID_DEPOT = 0x07`, `envVersion = 1..3`)
 
+When `envId = 0x07`:
+- `envVersion = 1` (`ENV_VERSION_DEPOT = 1`): Code-only stream, no state payload; Code Payload (§5) begins immediately at byte 3.
+- `envVersion = 2` (`ENV_VERSION_DEPOT_STATE = 2`): Stack-only layout (M3 baseline, e.g. lessons `3.8`–`3.10` and `4.6`):
+  1. `flags: uint8`:
+     - `bit 0 (0x01)`: `hasState` (always `1`)
+     - `bit 1 (0x02)`: `hasTargetStacks`
+     - `bit 2 (0x04)`: `hasTargetOutput`
+  2. `workerStation: uint8`: `0` = `STACK_1`, `1` = `STACK_2`, `2` = `STACK_3`.
+  3. `initialStacks`: 3 × crate list (`count: VLE`, followed by `count` × `colorByte: uint8` where 0=RED, 1=BLUE, 2=GREEN, 3=AMBER).
+  4. `targetStacks` (if `bit 1`): 3 × crate list.
+  5. `targetOutput` (if `bit 2`): 1 × crate list.
+- `envVersion = 3` (`ENV_VERSION_DEPOT_QUEUE = 3`): Module 5 FIFO Conveyor Queue & Hazard extension layout:
+  Follows the exact `envVersion = 2` prefix above (where `flags bit 3 (0x08)` indicates `hasQueue` and `workerStation` code `3` = `QUEUE`), followed immediately by:
+  6. `queue`: `queueLen: VLE`, followed by `queueLen` × `queueItemByte: uint8` where `bits 3..0 = colorCode (0..3)` and `bit 7 (0x80) = damaged flag`.
+  7. `scrapCount: VLE`: Count of scrapped damaged crates.
 ---
 
 ## 5. Code Payload
@@ -429,7 +445,26 @@ All Switchyard action opcodes use the Standard Block Envelope (§6.1). `SEND_NEX
 | `0x11` | `OP_SWITCHYARD_SWITCH_RIGHT` (`SWITCH_RIGHT`) | None | Toggle track switch A to `RIGHT` branch (or toggles designated junction switch). |
 | `0x12` | `OP_SWITCHYARD_SEND_NEXT` (`SEND_NEXT`) | None | Releases front car from the conveyor queue down track into the active switch network (supports `MASK_HAS_REP` + variable repeat). |
 | `0x13` | `OP_SWITCHYARD_SCRAP_ITEM` (`SCRAP_ITEM`) | None | Diverts front car from the scanner gate directly into the scrap chute. Intact cars entering scrap cause `COLLISION`. |
+### 7.6 Crate Depot Opcodes (`ENV_ID_DEPOT = 0x07`, `envVersion = 1..3`)
 
+All Depot opcodes use the Standard Block Envelope (§6.1). When action parameters hold variable names (`'a'..'z'`), `MASK_HAS_VAR_PARAM (0x80)` is set in `blockHeader` and `paramVarMask` (`Byte 1`) indicates variable parameters (`bit 1 = 0x02` for `param0`).
+
+| Opcode | Constant / Action Type | Parameters (`param0`) | Description |
+| :--- | :--- | :--- | :--- |
+| `0x10` | `OP_DEPOT_MOVE_TO` (`DEPOT_MOVE_TO`) | `stationCode: uint8 \| varIdx` | Station code (`0` = `STACK_1`, `1` = `STACK_2`, `2` = `STACK_3`, `3` = `QUEUE`). Supports `paramVarMask & 0x02` for dynamic stack index variable. |
+| `0x11` | `OP_DEPOT_GRAB` (`DEPOT_GRAB`) | None | Grabs top crate from current stack or dequeues front crate from FIFO queue into claw. |
+| `0x12` | `OP_DEPOT_PLACE` (`DEPOT_PLACE`) | None | Places held crate onto current stack or enqueues at back of FIFO queue. |
+| `0x13` | `OP_DEPOT_SEND_OUT` (`DEPOT_SEND_OUT`) | None | Sends held crate to default `[OUT]` bay (parameterless for full M3 backward compatibility). |
+| `0x14` | `OP_DEPOT_SEND_GATE` (`DEPOT_SEND_GATE`) | `gateCode: uint8 \| varIdx` | Sends held crate to specified dock gate (`0` = `OUT`, `1` = `SCRAP`, `2` = `ACCEPT`, `3` = `REJECT`). Supports `paramVarMask & 0x02`. |
+
+#### 7.6.1 Depot Boolean Sensors (ConditionExpr `0x18`–`0x1C`)
+
+Governed by Module 5 `ConditionExpr` prefix-tree evaluation:
+- `0x18` `stationEmpty` (`stationCode: uint8` — `0=CURRENT`, `1=STACK_1`, `2=STACK_2`, `3=STACK_3`, `4=QUEUE`, `5=INPUT`): True when station has zero items.
+- `0x19` `hasItem`: True when claw holds a crate.
+- `0x1A` `itemDamaged`: True when held crate is damaged (cracked).
+- `0x1B` `heldColor` (`colorIdx: uint8` `0..3`): True when `$heldColor == colorIdx`.
+- `0x1C` `topColor` (`colorIdx: uint8` `0..3`): True when `$topColor == colorIdx` (non-destructive peek at top/front crate of current station).
 ---
 
 ## 8. Base64URL Encoding

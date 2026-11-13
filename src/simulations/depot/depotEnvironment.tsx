@@ -11,6 +11,7 @@ import {
   applyDepotAction,
   createInitialDepotState,
   evaluateDepotCompletion,
+  evaluateDepotSensor,
   resetDepotState,
 } from './depotPhysics';
 import { DepotCanvas } from './components/DepotCanvas';
@@ -18,13 +19,27 @@ import { DepotToolbarTools } from './components/DepotToolbarTools';
 
 export const DEPOT_STATION_PARAM_DEF: ActionParamDef = {
   id: 'station',
-  label: 'Stack Bay',
+  label: 'Station',
   type: 'depot-station',
   defaultValue: 'STACK_1',
   options: [
     { value: 'STACK_1', label: '1' },
     { value: 'STACK_2', label: '2' },
     { value: 'STACK_3', label: '3' },
+    { value: 'QUEUE',   label: 'Q' },
+  ],
+};
+
+export const DEPOT_GATE_PARAM_DEF: ActionParamDef = {
+  id: 'gate',
+  label: 'Gate',
+  type: 'depot-gate',
+  defaultValue: 'OUT',
+  options: [
+    { value: 'OUT',    label: 'OUT'    },
+    { value: 'SCRAP',  label: 'SCRAP'  },
+    { value: 'ACCEPT', label: 'ACCEPT' },
+    { value: 'REJECT', label: 'REJECT' },
   ],
 };
 
@@ -104,7 +119,7 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'depot-send-out',
     actionType: 'DEPOT_SEND_OUT',
-    name: 'Send Crate Out',
+    name: 'Send Crate Out [OUT]',
     category: 'action',
     icon: ({ isActive }) => (
       <svg
@@ -124,6 +139,35 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
     borderClass: 'border-violet-400',
     supportsRepeat: false,
   },
+  {
+    id: 'depot-send-gate',
+    actionType: 'DEPOT_SEND_GATE',
+    name: 'Send to Gate',
+    category: 'action',
+    paramDefs: [DEPOT_GATE_PARAM_DEF],
+    params: { gate: 'SCRAP' },
+    icon: ({ isActive }) => (
+      <svg
+        className={`w-6 h-6 md:w-7 md:h-7 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {/* Crate */}
+        <rect x="3" y="8" width="8" height="8" rx="1.5" />
+        {/* Arrow with scrap symbol */}
+        <path d="M12 12 H17" />
+        <polyline points="15 9 18 12 15 15" />
+        {/* Zigzag / scrap indicator */}
+        <path d="M18 8 L21 10 L18 12 L21 14 L18 16" strokeLinecap="round" />
+      </svg>
+    ),
+    bgClass: 'bg-rose-600 hover:bg-rose-500',
+    borderClass: 'border-rose-400',
+    supportsRepeat: false,
+  },
 ];
 
 export const DEPOT_SENSORS: SimSensorDef[] = [
@@ -131,6 +175,12 @@ export const DEPOT_SENSORS: SimSensorDef[] = [
   { id: '$stack2', label: 'Stack 2 Height', icon: '2️⃣', shortLabel: 'S2' },
   { id: '$stack3', label: 'Stack 3 Height', icon: '3️⃣', shortLabel: 'S3' },
   { id: '$out', label: 'Output Count', icon: '✅', shortLabel: 'OUT' },
+  // M5 boolean sensors (also handled via evaluateSensor with numeric codes)
+  { id: 'stationEmpty', label: 'Station Empty?', icon: '📭', shortLabel: 'Empty' },
+  { id: 'hasItem', label: 'Holding Item?', icon: '🤏', shortLabel: 'Hold' },
+  { id: 'itemDamaged', label: 'Item Damaged?', icon: '⚠️', shortLabel: 'Dmg' },
+  { id: '$heldColor', label: 'Held Color', icon: '🎨', shortLabel: 'HCol' },
+  { id: '$topColor', label: 'Top/Front Color', icon: '🔝', shortLabel: 'TCol' },
 ];
 
 export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
@@ -172,6 +222,19 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
       default:
         return 0;
     }
+  },
+
+  /**
+   * M5 boolean sensor evaluation for IF/WHILE conditions.
+   * sensorCode: 0x18=stationEmpty, 0x19=hasItem, 0x1A=itemDamaged,
+   *             0x1B=heldColor==, 0x1C=topColor==
+   */
+  evaluateSensor: (
+    sensorCode: number,
+    state: DepotState,
+    params?: { stationParam?: number; colorIdx?: number }
+  ): boolean => {
+    return evaluateDepotSensor(sensorCode, state, params);
   },
 
   evaluateCompletion: (state: DepotState) => evaluateDepotCompletion(state),
