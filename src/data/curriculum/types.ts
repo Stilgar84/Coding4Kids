@@ -325,13 +325,17 @@ export type DemoSpotlightType =
   | 'call-stack-jump'
   | 'sensor-beam'
   | 'branch-skip'
-  | 'fifo-vs-lifo';
+  | 'fifo-vs-lifo'
+  | 'dial-read'
+  | 'pose-bookmark'
+  | 'variable-watch';
 
 export interface ExplanationDemoTab {
   id: string;
   label: string;
   icon?: string;
   title?: string;
+  simId?: CurriculumSimId;
   gridState?: CurriculumGridDefinition;
   depotState?: DepotState;
   switchyardState?: CurriculumSwitchyardDefinition;
@@ -536,6 +540,15 @@ export function createCurriculumGridState(
       },
       barriers: def.barriers.map((b) => ({ ...b })),
       flags: def.flags.map((f) => ({ ...f, collected: false })),
+      beaconTiles: def.beaconTiles
+        ? def.beaconTiles.map((b) => ({
+            x: b.x,
+            y: b.y,
+            color: b.color as any,
+            shape: (b as any).shape ?? (b.color === 'amber' ? 'triangle' : b.color === 'sky' ? 'circle' : 'square'),
+          }))
+        : undefined,
+      dialTiles: def.dialTiles ? def.dialTiles.map((d) => ({ x: d.x, y: d.y, value: d.value })) : undefined,
       trace: [{ x: def.robot.x, y: def.robot.y }],
       status: 'IDLE',
       showTrace: true,
@@ -568,6 +581,15 @@ export function createCurriculumGridState(
     floorSwitches: synced.floorSwitches ?? [],
     worldItems: baseItems,
     initialWorldItems: cloneWorldItems(baseItems),
+    beaconTiles: def.beaconTiles
+      ? def.beaconTiles.map((b) => ({
+          x: b.x,
+          y: b.y,
+          color: b.color as any,
+          shape: (b as any).shape ?? (b.color === 'amber' ? 'triangle' : b.color === 'sky' ? 'circle' : 'square'),
+        }))
+      : undefined,
+    dialTiles: def.dialTiles ? def.dialTiles.map((d) => ({ x: d.x, y: d.y, value: d.value })) : undefined,
     lastInteractionFeedback: null,
     trace: [{ x: def.robot.x, y: def.robot.y }],
     status: 'IDLE',

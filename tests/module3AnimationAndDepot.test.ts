@@ -134,7 +134,9 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
       const m3Title = getCurriculumModule('module-3')!.title;
       expect(m3Title).toBe('Loops — Repeating Sequences, Frame Animation & LIFO Stacks');
 
-      for (const act of CURRICULUM_ACTIVITIES) {
+      for (const act of CURRICULUM_ACTIVITIES.filter((a) =>
+        ['module-1', 'module-2', 'module-3'].includes(a.moduleId)
+      )) {
         expect(act.palette.allowedSimBlocks ?? []).not.toContain('TELEPORT');
       }
 

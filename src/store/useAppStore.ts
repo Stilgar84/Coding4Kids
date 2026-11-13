@@ -1700,7 +1700,11 @@ export const useAppStore = create<AppState>((set, get) => {
     const freshWorkspace = cloneWorkspaceWithFreshIds(loadedWorkspace);
     nextCurriculumWorkspaces[activity.id] = cloneWorkspace(freshWorkspace);
 
-    const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(activity.simId);
+    const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
+      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
+        ? activity.demoTabs[0].simId
+        : activity.simId
+    );
     const prevFitToView = state.grid.fitToView ?? false;
     const resolvedGridDef = activity.grid ?? activity.gridVariants?.[0];
     const targetGrid = resolvedGridDef
@@ -2065,7 +2069,11 @@ export const useAppStore = create<AppState>((set, get) => {
           CURRICULUM_ACTIVITIES[0];
         if (!activity) return;
 
-        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(activity.simId);
+        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
+      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
+        ? activity.demoTabs[0].simId
+        : activity.simId
+    );
         const resolvedGridDef = activity.grid ?? activity.gridVariants?.[0];
         const targetGrid = resolvedGridDef
           ? createCurriculumGridState(resolvedGridDef, prevFitToView)
@@ -2430,7 +2438,11 @@ export const useAppStore = create<AppState>((set, get) => {
         const activeTab =
           savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
 
-        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(activity.simId);
+        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
+      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
+        ? activity.demoTabs[0].simId
+        : activity.simId
+    );
         const prevFitToView = state.grid.fitToView ?? false;
         const resolvedGridDef =
           activeTab?.gridState ??
@@ -2621,7 +2633,11 @@ export const useAppStore = create<AppState>((set, get) => {
       const activeTab =
         savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
 
-      const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(activity.simId);
+      const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
+      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
+        ? activity.demoTabs[0].simId
+        : activity.simId
+    );
       const prevFitToView = state.grid.fitToView ?? false;
       const resolvedGridDef =
         activeTab?.gridState ??
@@ -2753,6 +2769,9 @@ export const useAppStore = create<AppState>((set, get) => {
         ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
         : resetSwitchyardState(state.switchyardState);
       const nextWs = cloneWorkspaceWithFreshIds(tab.workspace);
+      const nextSimId = tab.simId
+        ? resolveCurriculumSimId(tab.simId)
+        : resolveCurriculumSimId(activity.simId);
 
       set({
         activeDemoTabIndex: clampedIndex,
@@ -2761,6 +2780,7 @@ export const useAppStore = create<AppState>((set, get) => {
           [activity.id]: clampedIndex,
         },
         viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, clampedIndex),
+        activeSimId: nextSimId,
         grid: nextGrid,
         turtleState: createInitialTurtleState(),
         beatState: resetBeatState(state.beatState),

@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { ArrowRight, Check, CornerRightDown, CornerLeftUp } from 'lucide-react';
+import { VariableAndDialSpotlight } from './VariableAndDialSpotlight';
 import {
   getActivityAtVersion,
   getActivityLatest,
@@ -315,6 +316,13 @@ export const ExplanationDemoBar: React.FC = () => {
         !activeTab?.spotlights?.includes('fifo-vs-lifo') && (
           <SensorBeamBadge />
         )}
+
+      {/* Module 6 Variable & Dial Spotlights */}
+      {activeTab?.spotlights?.some((s) =>
+        ['dial-read', 'pose-bookmark', 'variable-watch'].includes(s)
+      ) && (
+        <VariableAndDialSpotlight spotlights={activeTab.spotlights} />
+      )}
 
       {/* Right: Prominent 1-Tap Next Step / Next Lesson (→) Button */}
       <button
