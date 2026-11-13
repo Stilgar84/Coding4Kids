@@ -1009,23 +1009,52 @@ export const BlockPalette: React.FC = React.memo(() => {
           className="flex items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800 animate-in fade-in slide-in-from-top-1"
         >
           <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Scope:</span>
-          {visibleScopeTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              data-testid={`palette-tab-${tab.id.toLowerCase()}`}
-              onClick={() => setActiveScope(tab.id)}
-              aria-pressed={activeScope === tab.id}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all active:scale-95 ${
-                activeScope === tab.id
-                  ? `${tab.activeColor} shadow-sm`
-                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
+          {visibleScopeTabs.map((tab) => {
+            // Compute per-tab slot budget for the compact pill (used/cap)
+            const tabBudget = computeSlotBudget(workspace, tab.id, appMode, activeActivity?.slotCap);
+            const showTabPill = tabBudget.isCapped && tabBudget.counterMax !== null;
+            const tabIsActive = activeScope === tab.id;
+            const tabIsFull = tabBudget.isFull;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                data-testid={`palette-tab-${tab.id.toLowerCase()}`}
+                onClick={() => setActiveScope(tab.id)}
+                aria-pressed={tabIsActive}
+                aria-label={
+                  showTabPill
+                    ? `${tab.id === 'MAIN' ? 'Main' : tab.label} tab, ${tabBudget.counterUsed} of ${tabBudget.counterMax} slots used`
+                    : tab.id === 'MAIN' ? 'Main tab' : `Function ${tab.label} tab`
+                }
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all active:scale-95 ${
+                  tabIsActive
+                    ? `${tab.activeColor} shadow-sm`
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+                {showTabPill && (
+                  <span
+                    data-testid={`palette-tab-slot-pill-${tab.id.toLowerCase()}`}
+                    aria-hidden="true"
+                    className={`ml-0.5 font-mono font-black text-[9px] leading-none px-1 py-0.5 rounded-md border ${
+                      tabIsFull
+                        ? tabIsActive
+                          ? 'bg-amber-500/30 border-amber-400/70 text-amber-200'
+                          : 'bg-amber-950/50 border-amber-600/50 text-amber-400'
+                        : tabIsActive
+                        ? 'bg-slate-950/40 border-white/20 text-white/80'
+                        : 'bg-slate-800 border-slate-600 text-slate-400'
+                    }`}
+                  >
+                    {tabBudget.counterUsed}/{tabBudget.counterMax}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 

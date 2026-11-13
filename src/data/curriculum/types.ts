@@ -321,7 +321,8 @@ export type DemoSpotlightType =
   | 'egocentric-pov'
   | 'world-item'
   | 'backpack'
-  | 'loop-counter';
+  | 'loop-counter'
+  | 'call-stack-jump';
 
 export interface ExplanationDemoTab {
   id: string;

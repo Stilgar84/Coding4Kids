@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, Check, CornerRightDown, CornerLeftUp } from 'lucide-react';
 import {
   getActivityAtVersion,
   getActivityLatest,
@@ -9,6 +9,64 @@ import {
   findNextUnviewedDemoTabIndex,
   getNextCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
+
+/**
+ * Zero-reading animated badge visualizing a `Main → F1 → Main` call/return cycle.
+ * Renders as a compact pill row: [Main] ↓ [1] ↑ [Main], flashing the active scope
+ * in sync with stepped playback when present in a demo tab's `spotlights` list.
+ */
+const CallStackJumpSpotlight: React.FC<{ activeScope?: string }> = ({ activeScope }) => {
+  const isInF1 = activeScope === 'F1';
+  const isInF2 = activeScope === 'F2';
+  const isInF3 = activeScope === 'F3';
+  const isInHelper = isInF1 || isInF2 || isInF3;
+  const helperLabel = isInF2 ? '2' : isInF3 ? '3' : '1';
+
+  return (
+    <div
+      data-testid="call-stack-jump-spotlight"
+      aria-label="Call and return: Main calls Function 1 and returns"
+      className="flex items-center gap-1 px-2 py-1 bg-slate-800/80 rounded-xl border border-slate-700/70 select-none shrink-0"
+    >
+      {/* Main scope badge */}
+      <span
+        className={`inline-flex items-center justify-center px-1.5 h-5 rounded-md border text-[9px] font-black transition-all duration-200 ${
+          !isInHelper
+            ? 'bg-indigo-600 border-indigo-300 text-white shadow-[0_0_8px_rgba(99,102,241,0.6)]'
+            : 'bg-slate-900 border-slate-600 text-slate-400'
+        }`}
+        aria-hidden="true"
+      >
+        Main
+      </span>
+      {/* Call arrow (down into helper) */}
+      <CornerRightDown
+        aria-hidden="true"
+        className={`w-3 h-3 stroke-[2.5] transition-colors duration-200 ${
+          isInHelper ? 'text-emerald-400' : 'text-slate-500'
+        }`}
+      />
+      {/* F1 scope badge */}
+      <span
+        className={`inline-flex items-center justify-center px-1.5 h-5 rounded-md border text-[9px] font-black transition-all duration-200 ${
+          isInHelper
+            ? 'bg-emerald-600 border-emerald-300 text-white shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+            : 'bg-slate-900 border-slate-600 text-slate-400'
+        }`}
+        aria-hidden="true"
+      >
+        {helperLabel}
+      </span>
+      {/* Return arrow (up back to Main) */}
+      <CornerLeftUp
+        aria-hidden="true"
+        className={`w-3 h-3 stroke-[2.5] transition-colors duration-200 ${
+          !isInHelper ? 'text-indigo-400' : 'text-slate-500'
+        }`}
+      />
+    </div>
+  );
+};
 
 /**
  * Pure helper for WAI-ARIA tablist keyboard navigation.
@@ -57,6 +115,7 @@ export const ExplanationDemoBar: React.FC = () => {
     viewedDemoTabs,
     completedActivities,
     statusAnnouncement,
+    activeScope,
     selectExplanationDemoTab,
     completeExplanationAndContinue,
   } = useAppStoreSelector((s) => ({
@@ -68,6 +127,7 @@ export const ExplanationDemoBar: React.FC = () => {
     viewedDemoTabs: s.viewedDemoTabs,
     completedActivities: s.completedActivities,
     statusAnnouncement: s.statusAnnouncement,
+    activeScope: s.activeScope,
     selectExplanationDemoTab: s.selectExplanationDemoTab,
     completeExplanationAndContinue: s.completeExplanationAndContinue,
   }));
@@ -234,6 +294,11 @@ export const ExplanationDemoBar: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Center spotlight: Call-Stack Jump Animation Badge */}
+      {activeTab?.spotlights?.includes('call-stack-jump') && (
+        <CallStackJumpSpotlight activeScope={activeScope} />
+      )}
 
       {/* Right: Prominent 1-Tap Next Step / Next Lesson (→) Button */}
       <button
