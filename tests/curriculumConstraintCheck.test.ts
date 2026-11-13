@@ -283,7 +283,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
   describe('1. Live Curriculum Catalog Anti-Bypass & Performance Gate (< 200 ms)', () => {
     const validatedPuzzles = CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity);
 
-    it('finds all 16 validated M1–M3 puzzle activities in CURRICULUM_ACTIVITIES', () => {
+    it('finds all validated puzzle activities in CURRICULUM_ACTIVITIES (16 M1–M3 baseline + 5 M4 puzzles)', () => {
       expect(validatedPuzzles.map((a) => a.id)).toEqual([
         '1.1',
         '1.2',
@@ -301,6 +301,11 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
         '3.9',
         '3.10',
         '3A',
+        '4.1',
+        '4.4',
+        '4.5',
+        '4.6',
+        '4A',
       ]);
     });
 

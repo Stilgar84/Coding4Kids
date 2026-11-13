@@ -16,6 +16,7 @@ import { MODULE_3_BEAT_ACTIVITIES } from './module3Beat';
 import { MODULE_3_PART2_ACTIVITIES } from './module3Part2';
 import { MODULE_3_DEPOT_ACTIVITIES } from './module3Depot';
 import { MODULE_4_CREATIVE_ACTIVITIES } from './module4CreativeAndDemo';
+import { MODULE_4_PUZZLE_ACTIVITIES } from './module4Puzzles';
 import { MODULE_5_DEMO_ACTIVITIES } from './module5Demos';
 import { MODULE_6_CREATIVE_ACTIVITIES } from './module6CreativeAndDemo';
 
@@ -41,6 +42,14 @@ export {
   MODULE_4_CREATIVE_ACTIVITIES,
   MODULE_4_TURTLE_ALLOWED_BLOCKS,
 } from './module4CreativeAndDemo';
+export {
+  MODULE_4_PUZZLE_ACTIVITIES,
+  PUZZLE_4_1_GRID,
+  PUZZLE_4_4_GRID,
+  PUZZLE_4_5_GRID,
+  PUZZLE_4_6_DEPOT,
+  CAPSTONE_4A_GRID,
+} from './module4Puzzles';
 export { MODULE_5_DEMO_ACTIVITIES } from './module5Demos';
 export {
   MODULE_6_CREATIVE_ACTIVITIES,
@@ -268,6 +277,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...MODULE_3_PART2_ACTIVITIES,
   ...MODULE_3_DEPOT_ACTIVITIES,
   ...MODULE_4_CREATIVE_ACTIVITIES,
+  ...MODULE_4_PUZZLE_ACTIVITIES,
   ...MODULE_5_DEMO_ACTIVITIES,
   ...MODULE_6_CREATIVE_ACTIVITIES,
 ]);

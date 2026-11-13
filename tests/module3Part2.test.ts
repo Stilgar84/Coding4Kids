@@ -150,9 +150,9 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
       expect(m1Ids.length + m2Ids.length + m3Ids.length).toBe(39);
       expect(CURRICULUM_ACTIVITIES.length).toBeGreaterThanOrEqual(39);
 
-      const validatedPuzzleIds = CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity).map(
-        (a) => a.id
-      );
+      const validatedPuzzleIds = CURRICULUM_ACTIVITIES.filter(
+        (a) => ['module-1', 'module-2', 'module-3'].includes(a.moduleId) && isValidatedPuzzleActivity(a)
+      ).map((a) => a.id);
       expect(validatedPuzzleIds).toEqual([
         '1.1',
         '1.2',
