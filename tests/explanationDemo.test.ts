@@ -22,6 +22,7 @@ import {
 import { GridOverlayLayer } from '../src/simulations/grid/components/GridOverlayLayer';
 import { GridCanvas } from '../src/components/GridCanvas';
 import { WorkspaceCanvas } from '../src/components/WorkspaceCanvas';
+import { Toolbar } from '../src/components/Toolbar';
 import { getProfileProgress } from '../src/services/profileService';
 
 describe('Commit 8a: 📖 Explanation Interactive Demo Runner, Spotlights & Lesson 1.0', () => {
@@ -41,6 +42,7 @@ describe('Commit 8a: 📖 Explanation Interactive Demo Runner, Spotlights & Less
       activeDemoTabIndex: 0,
       demoTabIndexByActivity: {},
       exploredDemoTabs: {},
+      viewedDemoTabs: {},
       sandboxSnapshot: null,
       statusAnnouncement: '',
     });
@@ -439,6 +441,70 @@ describe('Commit 8a: 📖 Explanation Interactive Demo Runner, Spotlights & Less
       expect(computeNextDemoTabIndex('Enter', 1, 3)).toBe(1);
       expect(computeNextDemoTabIndex(' ', 0, 3)).toBe(0);
       expect(computeNextDemoTabIndex('Escape', 0, 2)).toBeNull();
+    });
+  });
+
+  describe('Viewed-Steps Next Gate & Instant Mode Disabled on Explanation Lessons', () => {
+    it('moves Next through every unviewed demo tab before advancing to next lesson (1.0 & 2.6)', () => {
+      const store = useAppStore.getState();
+      store.setCurriculumActivity('1.0');
+
+      // Initially only Tab [1] is viewed -> Next button targets [2] with data-next-action="next-step"
+      let barHtml = renderToStaticMarkup(React.createElement(ExplanationDemoBar));
+      expect(barHtml).toContain('data-next-action="next-step"');
+      expect(barHtml).toContain('data-all-viewed="false"');
+      expect(barHtml).toContain('>Next<');
+
+      // First Next advances to Tab [2] instead of skipping to 1.1
+      const firstResult = useAppStore.getState().completeExplanationAndContinue();
+      expect(firstResult).toBe('1.0');
+      expect(useAppStore.getState().activeActivityId).toBe('1.0');
+      expect(useAppStore.getState().activeDemoTabIndex).toBe(1);
+
+      barHtml = renderToStaticMarkup(React.createElement(ExplanationDemoBar));
+      expect(barHtml).toContain('data-next-action="next-lesson"');
+      expect(barHtml).toContain('data-all-viewed="true"');
+
+      // Second Next advances to 1.1
+      const secondResult = useAppStore.getState().completeExplanationAndContinue();
+      expect(secondResult).toBe('1.1');
+      expect(useAppStore.getState().activeActivityId).toBe('1.1');
+
+      // 3-tab lesson 2.6: jump Tab [1] -> Tab [3], Next wraps back to unviewed Tab [2], then advances to 2.7
+      useAppStore.getState().setCurriculumActivity('2.6');
+      useAppStore.getState().selectExplanationDemoTab(2);
+      expect(useAppStore.getState().activeDemoTabIndex).toBe(2);
+
+      useAppStore.getState().completeExplanationAndContinue();
+      expect(useAppStore.getState().activeActivityId).toBe('2.6');
+      expect(useAppStore.getState().activeDemoTabIndex).toBe(1);
+
+      const finalResult = useAppStore.getState().completeExplanationAndContinue();
+      expect(finalResult).toBe('2.7');
+      expect(useAppStore.getState().activeActivityId).toBe('2.7');
+    });
+
+    it('disables Instant mode on explanation lessons when entering from Instant mode or calling setSpeed', () => {
+      const store = useAppStore.getState();
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('1.1');
+      store.setSpeed('instant');
+      expect(useAppStore.getState().speed).toBe('instant');
+
+      // Entering 1.0 resets speed from 'instant' to 400 and does NOT auto-run demo to SUCCESS
+      useAppStore.getState().setCurriculumActivity('1.0');
+      expect(useAppStore.getState().speed).toBe(400);
+      expect(useAppStore.getState().grid.status).toBe('IDLE');
+
+      // Trying setSpeed('instant') or setSpeed(0) while on an explanation lesson coerces to 400
+      useAppStore.getState().setSpeed('instant');
+      expect(useAppStore.getState().speed).toBe(400);
+      useAppStore.getState().setSpeed(0);
+      expect(useAppStore.getState().speed).toBe(400);
+
+      // Step button remains enabled in Toolbar
+      const toolbarHtml = renderToStaticMarkup(React.createElement(Toolbar));
+      expect(toolbarHtml).not.toContain('Step disabled in Instant mode');
     });
   });
 });

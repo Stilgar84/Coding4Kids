@@ -135,4 +135,62 @@ test.describe('Wave 3: Lesson Save Slots, Constraint Solver, Demo Runner (1.0), 
     await page.getByTestId('btn-play').click();
     await expect(page.getByTestId('status-success')).toBeVisible({ timeout: 8000 });
   });
+
+  test('Next Lesson Progression: pure showing lesson requires viewing all steps + disables instant, solved exercise shows Next, and open LOGO lesson shows Next at 360x640', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 640 });
+    await page.goto('/?mode=curriculum&activity=1.0');
+    await page.waitForSelector('[data-testid="grid-canvas"]');
+
+    // Speed toggle cycles 1x -> 4x -> 16x -> 1x (Instant mode disabled on pure showing lessons)
+    await expect(page.getByTestId('btn-speed')).toContainText('1×');
+    await page.getByTestId('btn-speed').click();
+    await expect(page.getByTestId('btn-speed')).toContainText('4×');
+    await page.getByTestId('btn-speed').click();
+    await expect(page.getByTestId('btn-speed')).toContainText('16×');
+    await page.getByTestId('btn-speed').click();
+    await expect(page.getByTestId('btn-speed')).toContainText('1×');
+    await expect(page.getByTestId('btn-step')).toBeEnabled();
+
+    // Tab [2] not yet viewed -> first Next advances to Tab [2], second Next advances to 1.1
+    const demoNextBtn = page.getByTestId('btn-explanation-continue');
+    await expect(demoNextBtn).toHaveAttribute('data-next-action', 'next-step');
+    await demoNextBtn.click();
+    await expect(page.getByTestId('demo-tab-2')).toHaveAttribute('aria-selected', 'true');
+    await expect(demoNextBtn).toHaveAttribute('data-next-action', 'next-lesson');
+    await demoNextBtn.click();
+    await expect(page.getByTestId('explanation-demo-bar')).toHaveCount(0);
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.1');
+
+    // Solve 1.1, dismiss Victory modal, and verify Bottom Dock Next button advances to 1.2
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 5000 });
+    await page.getByTestId('victory-modal').click({ position: { x: 10, y: 10 } });
+    await expect(page.getByTestId('victory-modal')).toHaveCount(0);
+
+    const solvedNextBtn = page.getByTestId('btn-next-solved-lesson');
+    await expect(solvedNextBtn).toBeVisible();
+    await solvedNextBtn.click();
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.2');
+
+    // Open LOGO lesson 1.6 displays clear Next button and header does not overflow at 360px
+    await page.goto('/?mode=curriculum&activity=1.6');
+    await page.waitForSelector('[data-testid="turtle-canvas-svg"]');
+    const openNextBtn = page.getByTestId('btn-complete-creative-activity');
+    await expect(openNextBtn).toBeVisible();
+    await expect(openNextBtn).toContainText('Next');
+
+    const headerOverflow = await page.evaluate(() => {
+      const header = document.querySelector('header');
+      return header ? header.scrollWidth - header.clientWidth : 0;
+    });
+    expect(headerOverflow).toBeLessThanOrEqual(0);
+
+    await openNextBtn.click();
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('1.7');
+  });
 });

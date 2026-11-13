@@ -78,7 +78,9 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await page.getByTestId('demo-tab-3').click();
     await page.getByTestId('btn-step').click();
 
-    // Continue advances directly to 2.7 (8-slot object puzzle)
+    // Tab [2] hasn't been viewed yet, so first Next click moves to unviewed Tab [2], then second Next advances to 2.7
+    await page.getByTestId('btn-explanation-continue').click();
+    await expect(page.getByTestId('demo-tab-2')).toHaveAttribute('aria-selected', 'true');
     await page.getByTestId('btn-explanation-continue').click();
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('5 × 5');
   });

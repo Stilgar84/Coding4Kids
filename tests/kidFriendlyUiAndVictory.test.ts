@@ -16,6 +16,7 @@ import { Toolbar } from '../src/components/Toolbar';
 import { MobileDrawerMenu } from '../src/components/MobileDrawerMenu';
 import { BlockPalette } from '../src/components/BlockPalette';
 import { VariationCardsPanel } from '../src/components/VariationCardsPanel';
+import { CurriculumNextLessonBar } from '../src/components/CurriculumNextLessonBar';
 
 function resetEverything() {
   clearAllSavedPrograms();
@@ -274,6 +275,65 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
       expect(drawerHtml).toContain('data-testid="drawer-btn-profile-switcher"');
       expect(drawerHtml).toContain('data-testid="drawer-btn-sound"');
       expect(drawerHtml).toContain('data-testid="drawer-btn-redo"');
+    });
+  });
+
+  describe('Clear Next Lesson Progression for Open Lessons & Solved Exercises', () => {
+    it('renders prominent Next CTA on open LOGO lesson 1.6 and advances on second click after creative capstone dismissal', () => {
+      const store = useAppStore.getState();
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('1.6');
+
+      const panelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
+      expect(panelHtml).toContain('data-testid="btn-complete-creative-activity"');
+      expect(panelHtml).toContain('>Next<');
+
+      const advancedFromLogo = store.completeCreativeActivity(true);
+      expect(advancedFromLogo).toBe('1.7');
+      expect(useAppStore.getState().activeActivityId).toBe('1.7');
+
+      // Creative capstone 1B: first completion opens VictoryCelebrationModal; second click after dismissal advances directly to 1C
+      useAppStore.getState().setCurriculumActivity('1B');
+      useAppStore.getState().completeCreativeActivity(true);
+      expect(useAppStore.getState().isVictoryModalOpen).toBe(true);
+      expect(useAppStore.getState().activeActivityId).toBe('1B');
+
+      useAppStore.getState().dismissVictoryModal();
+      const nextAfterDismiss = useAppStore.getState().completeCreativeActivity(true);
+      expect(nextAfterDismiss).toBe('1C');
+      expect(useAppStore.getState().activeActivityId).toBe('1C');
+      expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
+    });
+
+    it('surfaces CurriculumNextLessonBar when a puzzle exercise is solved and hides when unsolved or in sandbox', () => {
+      const store = useAppStore.getState();
+      store.setAppMode('sandbox');
+      expect(renderToStaticMarkup(React.createElement(CurriculumNextLessonBar))).toBe('');
+
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('1.1');
+      expect(renderToStaticMarkup(React.createElement(CurriculumNextLessonBar))).toBe('');
+
+      // Solving via loadSolution (or dismissing VictoryCelebrationModal) surfaces Next button -> 1.2
+      useAppStore.getState().setSpeed('instant');
+      useAppStore.getState().loadSolution();
+      expect(useAppStore.getState().grid.status).toBe('SUCCESS');
+      const solvedHtml = renderToStaticMarkup(React.createElement(CurriculumNextLessonBar));
+      expect(solvedHtml).toContain('data-testid="solved-lesson-next-bar"');
+      expect(solvedHtml).toContain('data-testid="btn-next-solved-lesson"');
+      expect(solvedHtml).toContain('>Next<');
+    });
+
+    it('keeps creative Next CTA reachable when map pane is hidden', () => {
+      const store = useAppStore.getState();
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('1.6');
+      const hiddenMapHtml = renderToStaticMarkup(
+        React.createElement(CurriculumNextLessonBar, { forHiddenMapPane: true })
+      );
+      expect(hiddenMapHtml).toContain('data-testid="hidden-map-creative-next-bar"');
+      expect(hiddenMapHtml).toContain('data-testid="btn-complete-creative-activity"');
+      expect(hiddenMapHtml).toContain('>Next<');
     });
   });
 });

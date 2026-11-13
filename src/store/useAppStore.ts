@@ -77,7 +77,9 @@ import {
 } from '../engine/placeholderHelpers';
 import {
   computeSlotBudget,
+  findNextUnviewedDemoTabIndex,
   formatSlotCapFullAnnouncement,
+  isInstantSpeedDisabled,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
 import {
@@ -267,6 +269,7 @@ interface AppState {
   activeDemoTabIndex: number;
   demoTabIndexByActivity: Record<string, number>;
   exploredDemoTabs: Record<string, string[]>;
+  viewedDemoTabs: Record<string, string[]>;
   curriculumWorkspaces: Record<string, WorkspaceState>;
   sandboxSnapshot: SandboxModeSnapshot | null;
   pendingVersionMismatch: PendingLessonVersionMismatch | null;
@@ -1395,6 +1398,27 @@ export const useAppStore = create<AppState>((set, get) => {
     return Boolean(act && act.format === 'explanation');
   };
 
+  const recordDemoTabViewedMap = (
+    prev: Record<string, string[]>,
+    activity: CurriculumActivity | undefined,
+    tabIndex: number
+  ): Record<string, string[]> => {
+    if (!activity || activity.format !== 'explanation' || !activity.demoTabs?.length) {
+      return prev;
+    }
+    const clampedIdx = Math.min(Math.max(0, tabIndex), activity.demoTabs.length - 1);
+    const tab = activity.demoTabs[clampedIdx];
+    if (!tab) return prev;
+    const existing = prev[activity.id] ?? [];
+    if (existing.includes(tab.id)) {
+      return prev;
+    }
+    return {
+      ...prev,
+      [activity.id]: [...existing, tab.id],
+    };
+  };
+
   const isCreativeCurriculumActivity = (
     act: CurriculumActivity | undefined = getActiveCurriculumActivityObj()
   ): boolean =>
@@ -1584,12 +1608,18 @@ export const useAppStore = create<AppState>((set, get) => {
         : ['MAIN'];
     const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
     const shouldOpenFuncBar = allowedScopes.some((sc) => sc !== 'MAIN');
+    const instantBlocked = activity.format === 'explanation';
+    const shouldResetInstant =
+      instantBlocked && (state.speed === 'instant' || (state.speed as any) === 0);
 
     set({
       appMode: 'curriculum',
       activeActivityId: activity.id,
       activeActivityVersion: activity.version,
+      activeDemoTabIndex: 0,
+      viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, 0),
       activeSimId: targetSimId,
+      ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
       grid: targetGrid,
       turtleState: createInitialTurtleState(),
       beatState: resetBeatState(state.beatState),
@@ -1632,6 +1662,7 @@ export const useAppStore = create<AppState>((set, get) => {
     activeDemoTabIndex: 0,
     demoTabIndexByActivity: {},
     exploredDemoTabs: {},
+    viewedDemoTabs: bootMode === 'curriculum' ? recordDemoTabViewedMap({}, bootActivity, 0) : {},
     curriculumWorkspaces:
       bootMode === 'curriculum' && bootActivity
         ? { ...bootCurriculumAutosaves, [bootActivity.id]: cloneWorkspace(initialWorkspace) }
@@ -1902,6 +1933,9 @@ export const useAppStore = create<AppState>((set, get) => {
           activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
             ? activity.palette.allowedScopes
             : ['MAIN'];
+        const shouldResetInstant =
+          activity.format === 'explanation' &&
+          (state.speed === 'instant' || (state.speed as any) === 0);
 
         set({
           profiles: profilesState.profiles,
@@ -1914,7 +1948,9 @@ export const useAppStore = create<AppState>((set, get) => {
           activeDemoTabIndex: 0,
           demoTabIndexByActivity: {},
           exploredDemoTabs: {},
+          viewedDemoTabs: recordDemoTabViewedMap({}, activity, 0),
           activeSimId: targetSimId,
+          ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
           beatState: resetBeatState(state.beatState),
@@ -1953,6 +1989,7 @@ export const useAppStore = create<AppState>((set, get) => {
           activeDemoTabIndex: 0,
           demoTabIndexByActivity: {},
           exploredDemoTabs: {},
+          viewedDemoTabs: {},
           curriculumWorkspaces: nextCurriculumWorkspaces,
           savedWorkspaces: nextSavedWorkspaces,
           sandboxSnapshot: null,
@@ -2205,13 +2242,18 @@ export const useAppStore = create<AppState>((set, get) => {
             ? activity.palette.allowedScopes
             : ['MAIN'];
         const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
+        const shouldResetInstant =
+          activity.format === 'explanation' &&
+          (state.speed === 'instant' || (state.speed as any) === 0);
 
         set({
           appMode: 'curriculum',
           activeActivityId: activity.id,
           activeActivityVersion: activity.version,
           activeDemoTabIndex: savedTabIdx,
+          viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, savedTabIdx),
           activeSimId: targetSimId,
+          ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
           grid: targetGrid,
           turtleState: createInitialTurtleState(),
           beatState: resetBeatState(state.beatState),
@@ -2360,13 +2402,18 @@ export const useAppStore = create<AppState>((set, get) => {
           ? activity.palette.allowedScopes
           : ['MAIN'];
       const initialScope: ScopeType = allowedScopes.includes('MAIN') ? 'MAIN' : allowedScopes[0];
+      const shouldResetInstant =
+        activity.format === 'explanation' &&
+        (state.speed === 'instant' || (state.speed as any) === 0);
 
       set({
         appMode: 'curriculum',
         activeActivityId: activity.id,
         activeActivityVersion: activity.version,
         activeDemoTabIndex: savedTabIdx,
+        viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, savedTabIdx),
         activeSimId: targetSimId,
+        ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
         grid: targetGrid,
         turtleState: createInitialTurtleState(),
         beatState: resetBeatState(state.beatState),
@@ -2424,6 +2471,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ...state.demoTabIndexByActivity,
           [activity.id]: clampedIndex,
         },
+        viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, clampedIndex),
         grid: nextGrid,
         turtleState: createInitialTurtleState(),
         beatState: resetBeatState(state.beatState),
@@ -2461,6 +2509,27 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!activity || activity.format !== 'explanation') return null;
 
       get().pause();
+
+      const updatedViewed = recordDemoTabViewedMap(
+        state.viewedDemoTabs,
+        activity,
+        state.activeDemoTabIndex
+      );
+      if (updatedViewed !== state.viewedDemoTabs) {
+        set({ viewedDemoTabs: updatedViewed });
+      }
+
+      if (activity.demoTabs && activity.demoTabs.length > 1) {
+        const nextUnviewedIdx = findNextUnviewedDemoTabIndex(
+          activity.demoTabs,
+          state.activeDemoTabIndex,
+          updatedViewed[activity.id] ?? []
+        );
+        if (nextUnviewedIdx !== null) {
+          get().selectExplanationDemoTab(nextUnviewedIdx);
+          return activity.id;
+        }
+      }
 
       markLessonCompleted(state.activeProfileId, activity.id, activity.version);
       const nextCompleted = {
@@ -2504,6 +2573,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       get().pause();
 
+      const wasAlreadyCompleted = Boolean(state.completedActivities[activity.id]);
       const res = markLessonCompleted(state.activeProfileId, activity.id, activity.version);
       const nextCompleted = {
         ...state.completedActivities,
@@ -2513,7 +2583,10 @@ export const useAppStore = create<AppState>((set, get) => {
         completedActivities: nextCompleted,
       });
 
-      if (activity.format === 'capstone' || res.newlyEarnedBadges.length > 0) {
+      if (
+        (activity.format === 'capstone' && (!wasAlreadyCompleted || !advanceToNext)) ||
+        res.newlyEarnedBadges.length > 0
+      ) {
         if (!state.beatState.isMuted && state.speed !== 'instant' && (state.speed as any) !== 0) {
           beatSynth.unlockFromGesture();
         }
@@ -2546,6 +2619,11 @@ export const useAppStore = create<AppState>((set, get) => {
           });
           return nextActivity.id;
         }
+        set({
+          isLessonPickerOpen: true,
+          statusAnnouncement: `Completed Activity ${activity.id}: ${activity.title}.`,
+        });
+        return null;
       }
 
       set({
@@ -3343,7 +3421,14 @@ export const useAppStore = create<AppState>((set, get) => {
       const wasInstant = prevSpeed === 'instant' || (prevSpeed as any) === 0;
       let normalizedSpeed: SimulationSpeed =
         speed === 0 || speed === 'instant' ? 'instant' : (speed as SimulationSpeed);
-      if (get().activeSimId === 'beat' && normalizedSpeed === 'instant') {
+      if (
+        isInstantSpeedDisabled(
+          get().appMode,
+          get().activeSimId,
+          getActiveCurriculumActivityObj()
+        ) &&
+        normalizedSpeed === 'instant'
+      ) {
         normalizedSpeed = 400;
       }
 
@@ -3418,8 +3503,9 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     runInstantIfActive: (options) => {
-      const { speed, workspace, activeSimId, grid, turtleState, beatState } = get();
+      const { appMode, speed, workspace, activeSimId, grid, turtleState, beatState } = get();
       if (speed !== 'instant' && (speed as any) !== 0) return;
+      if (appMode === 'curriculum' && isExplanationActivity()) return;
 
       const result = computeInstantSimulation(
         workspace,
@@ -4425,8 +4511,16 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     step: () => {
-      const { speed, activeSimId } = get();
-      if (speed === 'instant' || (speed as any) === 0) return;
+      let { speed } = get();
+      const { appMode, activeSimId } = get();
+      if (speed === 'instant' || (speed as any) === 0) {
+        if (isInstantSpeedDisabled(appMode, activeSimId, getActiveCurriculumActivityObj())) {
+          set({ speed: 400 });
+          speed = 400;
+        } else {
+          return;
+        }
+      }
 
       if (!get().isPlaying && !get().beatState.isMuted) {
         beatSynth.unlockFromGesture();
@@ -4625,11 +4719,14 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     play: () => {
-      const { speed, workspace, activeSimId } = get();
+      const { appMode, speed, workspace, activeSimId } = get();
       if (get().ghostPreview) {
         set({ ghostPreview: null });
       }
-      if (activeSimId === 'beat' && (speed === 'instant' || (speed as any) === 0)) {
+      if (
+        isInstantSpeedDisabled(appMode, activeSimId, getActiveCurriculumActivityObj()) &&
+        (speed === 'instant' || (speed as any) === 0)
+      ) {
         set({ speed: 400 });
       }
       const effectiveSpeed = get().speed;
@@ -4896,15 +4993,34 @@ export const useAppStore = create<AppState>((set, get) => {
       const restoredBeat = restored.beatState ?? createInitialBeatState(false);
       beatSynth.setMuted(Boolean(restoredBeat.isMuted));
 
+      const restoredAppMode = restored.appMode ?? 'sandbox';
+      const restoredActivityId = restored.activeActivityId ?? '1.1';
+      const restoredActivityVersion = restored.activeActivityVersion ?? 1;
+      const restoredActivity =
+        restoredAppMode === 'curriculum'
+          ? getActivityAtVersion(restoredActivityId, restoredActivityVersion) ??
+            getActivityLatest(restoredActivityId)
+          : undefined;
+      const restoredSpeed: SimulationSpeed =
+        restoredAppMode === 'curriculum' &&
+        restoredActivity?.format === 'explanation' &&
+        (restored.speed === 'instant' || (restored.speed as any) === 0)
+          ? 400
+          : restored.speed;
+
       set({
         profiles: profilesState.profiles,
         activeProfileId: resolvedProfileId,
         unlockAllModules: Boolean(getProfileProgress(resolvedProfileId).unlockAllModules),
         isBadgeModalOpen: false,
         completedActivities: buildCompletedMap(resolvedProfileId),
-        appMode: restored.appMode ?? 'sandbox',
-        activeActivityId: restored.activeActivityId ?? '1.1',
-        activeActivityVersion: restored.activeActivityVersion ?? 1,
+        appMode: restoredAppMode,
+        activeActivityId: restoredActivityId,
+        activeActivityVersion: restoredActivityVersion,
+        viewedDemoTabs:
+          restoredAppMode === 'curriculum'
+            ? recordDemoTabViewedMap({}, restoredActivity, 0)
+            : {},
         curriculumWorkspaces: restored.curriculumWorkspaces ?? {},
         sandboxSnapshot: restored.sandboxSnapshot ?? null,
         activeSimId: restored.activeSimId,
@@ -4921,7 +5037,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ? { isLoopPlayback: restored.isLoopPlayback }
           : {}),
         selectedBlockId: restored.selectedBlockId,
-        speed: restored.speed,
+        speed: restoredSpeed,
         editorTool: restored.editorTool,
         isSubpaletteCollapsed: restored.isSubpaletteCollapsed,
         isMapHidden: restored.isMapHidden,

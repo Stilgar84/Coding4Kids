@@ -24,6 +24,7 @@ import {
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
+import { isInstantSpeedDisabled } from '../utils/curriculumStagePolicy';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
 import { reopenUpdatePrompt, usePwaUpdateStore } from '../services/pwaUpdateManager';
 import {
@@ -107,12 +108,17 @@ export const Toolbar: React.FC = React.memo(() => {
     [workspace]
   );
 
-  const isInstant = activeSimId !== 'beat' && (speed === 'instant' || (speed as any) === 0);
+  const instantDisabled = isInstantSpeedDisabled(
+    appMode,
+    activeSimId,
+    appMode === 'curriculum' ? currentCurriculumActivity : undefined
+  );
+  const isInstant = !instantDisabled && (speed === 'instant' || (speed as any) === 0);
 
   const toggleSpeed = () => {
     if (speed === 400) setSpeed(100);
     else if (speed === 100) setSpeed(25);
-    else if (speed === 25 && activeSimId !== 'beat') setSpeed('instant');
+    else if (speed === 25 && !instantDisabled) setSpeed('instant');
     else setSpeed(400);
   };
 

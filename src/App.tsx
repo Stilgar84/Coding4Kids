@@ -14,6 +14,7 @@ import { BadgeCollectionModal } from './components/BadgeCollectionModal';
 import { VictoryCelebrationModal } from './components/VictoryCelebrationModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStoreSelector, isLowQualityActive } from './store/useAppStore';
+import { CurriculumNextLessonBar } from './components/CurriculumNextLessonBar';
 import { VariationCardsPanel } from './components/VariationCardsPanel';
 import { GridToolbarTools } from './simulations/grid/components/GridToolbarTools';
 import { getSimEnvironment } from './engine/simulation/registry';
@@ -82,6 +83,7 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
 
         {Renderer && <Renderer state={activeState} runtimeStatus={runtimeStatus} />}
       </div>
+      <CurriculumNextLessonBar />
       <VariationCardsPanel />
     </section>
   );
@@ -113,6 +115,7 @@ export const App: React.FC = () => {
         >
           <BlockPalette />
           <WorkspaceCanvas />
+          {isMapHidden && <CurriculumNextLessonBar forHiddenMapPane />}
         </section>
 
         {/* Right Pane: Active Simulation World (Grid, Turtle LOGO, or Beat Matrix) */}

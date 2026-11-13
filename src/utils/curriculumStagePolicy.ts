@@ -7,6 +7,7 @@ import {
 } from '../types';
 import {
   AppMode,
+  CURRICULUM_ACTIVITIES,
   CurriculumActivity,
   PaletteConfig,
   SlotCapConfig,
@@ -311,4 +312,75 @@ export function formatSlotCapFullAnnouncement(
 
   const max = budget.counterMax ?? budget.scopeUsed;
   return `Block tray full (${budget.counterUsed} of ${max} slots used). Remove a block to add another.`;
+}
+
+/**
+ * Returns true when Instant execution speed must be disabled (Beat & Light world, or
+ * pure showing / explanation curriculum lessons so kids watch step-by-step demonstrations).
+ */
+export function isInstantSpeedDisabled(
+  appMode: AppMode,
+  activeSimId: string,
+  activity?: CurriculumActivity
+): boolean {
+  if (activeSimId === 'beat') return true;
+  if (appMode === 'curriculum' && activity?.format === 'explanation') return true;
+  return false;
+}
+
+/**
+ * Returns true when a curriculum activity is a validated puzzle exercise (or puzzle capstone).
+ */
+export function isPuzzleExerciseActivity(activity?: CurriculumActivity): boolean {
+  if (!activity) return false;
+  return (
+    activity.format === 'puzzle' ||
+    (activity.format === 'capstone' &&
+      (activity.capstoneType === 'puzzle' || Boolean(activity.referenceSolution)))
+  );
+}
+
+/**
+ * Returns true when a curriculum activity is an open / creative lesson (or creative capstone).
+ */
+export function isCreativeOpenLessonActivity(activity?: CurriculumActivity): boolean {
+  if (!activity) return false;
+  if (isPuzzleExerciseActivity(activity)) return false;
+  return (
+    activity.format === 'sandbox' ||
+    (activity.format === 'capstone' &&
+      (activity.capstoneType === 'creative' ||
+        (activity.capstoneType as string) === 'sandbox'))
+  );
+}
+
+/**
+ * Finds the next demo tab index after `activeIndex` that has not yet been viewed, wrapping
+ * around once from the end. Returns `null` when every demo tab has been viewed at least once.
+ */
+export function findNextUnviewedDemoTabIndex(
+  demoTabs: readonly { id: string }[],
+  activeIndex: number,
+  viewedTabIds: readonly string[]
+): number | null {
+  if (demoTabs.length <= 1) return null;
+  const clampedActiveIndex = Math.min(Math.max(0, activeIndex), demoTabs.length - 1);
+  const viewedSet = new Set<string>([...viewedTabIds, demoTabs[clampedActiveIndex].id]);
+  for (let offset = 1; offset < demoTabs.length; offset++) {
+    const candidateIdx = (clampedActiveIndex + offset) % demoTabs.length;
+    if (!viewedSet.has(demoTabs[candidateIdx].id)) {
+      return candidateIdx;
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the next curriculum activity in canonical catalog order, or undefined if at the end.
+ */
+export function getNextCurriculumActivity(activityId: string): CurriculumActivity | undefined {
+  const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activityId);
+  return idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1
+    ? CURRICULUM_ACTIVITIES[idx + 1]
+    : undefined;
 }

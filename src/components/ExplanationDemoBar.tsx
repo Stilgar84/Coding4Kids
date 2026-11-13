@@ -1,11 +1,14 @@
 import React, { useRef } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import {
-  CURRICULUM_ACTIVITIES,
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
 import { useAppStoreSelector } from '../store/useAppStore';
+import {
+  findNextUnviewedDemoTabIndex,
+  getNextCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 
 /**
  * Pure helper for WAI-ARIA tablist keyboard navigation.
@@ -51,6 +54,7 @@ export const ExplanationDemoBar: React.FC = () => {
     activeActivityVersion,
     activeDemoTabIndex,
     exploredDemoTabs,
+    viewedDemoTabs,
     completedActivities,
     statusAnnouncement,
     selectExplanationDemoTab,
@@ -61,6 +65,7 @@ export const ExplanationDemoBar: React.FC = () => {
     activeActivityVersion: s.activeActivityVersion,
     activeDemoTabIndex: s.activeDemoTabIndex,
     exploredDemoTabs: s.exploredDemoTabs,
+    viewedDemoTabs: s.viewedDemoTabs,
     completedActivities: s.completedActivities,
     statusAnnouncement: s.statusAnnouncement,
     selectExplanationDemoTab: s.selectExplanationDemoTab,
@@ -93,17 +98,22 @@ export const ExplanationDemoBar: React.FC = () => {
   );
   const activeTab = demoTabs[clampedActiveIdx];
   const exploredForActivity = exploredDemoTabs[activity.id] ?? [];
+  const viewedForActivity = viewedDemoTabs[activity.id] ?? [];
+  const nextUnviewedIdx = findNextUnviewedDemoTabIndex(
+    demoTabs,
+    clampedActiveIdx,
+    viewedForActivity
+  );
+  const allViewed = nextUnviewedIdx === null;
+  const nextUnviewedTab = nextUnviewedIdx !== null ? demoTabs[nextUnviewedIdx] : undefined;
+  const nextUnviewedLabel = nextUnviewedTab
+    ? nextUnviewedTab.label || String(nextUnviewedIdx! + 1)
+    : '';
   const allExplored = demoTabs.every((t) => exploredForActivity.includes(t.id));
   const isCompleted = Boolean(completedActivities[activity.id]);
   const isContinueHighlighted = allExplored || isCompleted;
 
-  const currentIdxInCatalog = CURRICULUM_ACTIVITIES.findIndex(
-    (a) => a.id === activity.id
-  );
-  const nextActivity =
-    currentIdxInCatalog >= 0 && currentIdxInCatalog < CURRICULUM_ACTIVITIES.length - 1
-      ? CURRICULUM_ACTIVITIES[currentIdxInCatalog + 1]
-      : undefined;
+  const nextActivity = getNextCurriculumActivity(activity.id);
 
   const handleTabKeyDown = (
     e: React.KeyboardEvent<HTMLButtonElement>,
@@ -161,6 +171,7 @@ export const ExplanationDemoBar: React.FC = () => {
             const tabNumber = idx + 1;
             const isSelected = idx === clampedActiveIdx;
             const isExplored = exploredForActivity.includes(tab.id);
+            const isViewed = isSelected || viewedForActivity.includes(tab.id);
             const displayLabel = tab.label || String(tabNumber);
 
             return (
@@ -175,6 +186,7 @@ export const ExplanationDemoBar: React.FC = () => {
                 data-testid={`demo-tab-${tabNumber}`}
                 data-tab-id={tab.id}
                 data-explored={isExplored ? 'true' : 'false'}
+                data-viewed={isViewed ? 'true' : 'false'}
                 aria-selected={isSelected}
                 tabIndex={isSelected ? 0 : -1}
                 aria-label={`Example ${displayLabel}${
@@ -223,39 +235,70 @@ export const ExplanationDemoBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right: Prominent 1-Tap Continue (→) Button */}
+      {/* Right: Prominent 1-Tap Next Step / Next Lesson (→) Button */}
       <button
         type="button"
         data-testid="btn-explanation-continue"
         data-all-explored={allExplored ? 'true' : 'false'}
+        data-all-viewed={allViewed ? 'true' : 'false'}
+        data-next-action={allViewed ? 'next-lesson' : 'next-step'}
         onClick={() => completeExplanationAndContinue()}
         aria-label={
-          nextActivity
-            ? `Mark Activity ${activity.id} complete and continue to Activity ${nextActivity.id}: ${nextActivity.title}`
-            : `Mark Activity ${activity.id} complete and continue`
+          !allViewed && nextUnviewedTab
+            ? `Next step [${nextUnviewedLabel}]${nextUnviewedTab.title ? `: ${nextUnviewedTab.title}` : ''}`
+            : nextActivity
+            ? `Next lesson: Activity ${nextActivity.id}: ${nextActivity.title}`
+            : `Complete Activity ${activity.id}`
         }
         title={
-          nextActivity
-            ? `Continue to ${nextActivity.id}: ${nextActivity.title}`
-            : 'Continue'
+          !allViewed && nextUnviewedTab
+            ? `Next step [${nextUnviewedLabel}]${nextUnviewedTab.title ? `: ${nextUnviewedTab.title}` : ''}`
+            : nextActivity
+            ? `Next lesson: Activity ${nextActivity.id}: ${nextActivity.title}`
+            : `Complete Activity ${activity.id}`
         }
-        className={`flex items-center gap-1.5 px-3 md:px-4 h-8 md:h-9 rounded-xl border-2 font-black text-xs md:text-sm transition-all cursor-pointer shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${
-          isContinueHighlighted
-            ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-200 text-slate-950 shadow-[0_0_14px_rgba(16,185,129,0.55)] scale-[1.02]'
-            : 'bg-sky-600 hover:bg-sky-500 border-sky-400 text-white shadow-sm'
+        className={`flex items-center gap-1.5 px-3.5 md:px-4 h-9 md:h-11 rounded-xl border-2 font-black text-xs md:text-sm transition-all cursor-pointer shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${
+          !allViewed
+            ? 'bg-sky-500 hover:bg-sky-400 active:scale-95 border-sky-200 text-slate-950 shadow-sm'
+            : isContinueHighlighted
+            ? 'bg-emerald-500 hover:bg-emerald-400 active:scale-95 border-emerald-200 text-slate-950 shadow-[0_0_14px_rgba(16,185,129,0.5)] scale-[1.02]'
+            : 'bg-emerald-500 hover:bg-emerald-400 active:scale-95 border-emerald-200 text-slate-950 shadow-[0_0_14px_rgba(16,185,129,0.5)]'
         }`}
       >
-        {isContinueHighlighted && (
-          <Check
-            aria-hidden="true"
-            className="w-4 h-4 stroke-[3] shrink-0"
-          />
+        {!allViewed && nextUnviewedTab ? (
+          <>
+            <span>Next</span>
+            <span
+              aria-hidden="true"
+              className="px-1.5 py-0.5 rounded-md bg-slate-950/15 font-black text-[11px] leading-none"
+            >
+              [{nextUnviewedLabel}]
+            </span>
+            <ArrowRight
+              aria-hidden="true"
+              className="w-4 h-4 md:w-4.5 md:h-4.5 stroke-[3] shrink-0"
+            />
+          </>
+        ) : (
+          <>
+            {(isContinueHighlighted || isCompleted) && (
+              <Check
+                aria-hidden="true"
+                className="w-4 h-4 stroke-[3] shrink-0"
+              />
+            )}
+            <span>Next</span>
+            {nextActivity?.icon && (
+              <span aria-hidden="true" className="text-sm leading-none">
+                {nextActivity.icon}
+              </span>
+            )}
+            <ArrowRight
+              aria-hidden="true"
+              className="w-4 h-4 md:w-4.5 md:h-4.5 stroke-[3] shrink-0"
+            />
+          </>
         )}
-        <span className="hidden xs:inline sm:inline">Continue</span>
-        <ArrowRight
-          aria-hidden="true"
-          className="w-4 h-4 md:w-4.5 md:h-4.5 stroke-[3] shrink-0"
-        />
       </button>
     </div>
   );
