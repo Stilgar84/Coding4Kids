@@ -178,13 +178,15 @@ export function writeCodeScopes(
     for (const block of blocks) {
       if (block.type === 'VAR_ASSIGN') {
         const opcode = OP_VAR_ASSIGN;
-        const a = (block.params?.a || 'a') as VariableName;
-        const b = block.params?.b ?? 0;
+        const a = (block.params?.a ?? block.params?.varName ?? 'a') as VariableName;
+        const b = block.params?.b ?? block.params?.value ?? 0;
         const typeB = getOperandType(b);
-        const paramVarMask = typeB & 0x03;
+        // operandDescMask (Byte 1) for VAR_ASSIGN: bits 1..0 = typeB (§6.2)
+        // Byte 0 = raw 0x07 — HasVarParam=0, HasRep=0 (never set for VAR_ASSIGN/VAR_OP)
+        const operandDescMask = typeB & 0x03;
 
         writer.writeUint8(opcode);
-        writer.writeUint8(paramVarMask);
+        writer.writeUint8(operandDescMask);
         writer.writeUint8(varNameToIndex(a));
         writeOperandData(writer, typeB, b);
         continue;
@@ -192,16 +194,18 @@ export function writeCodeScopes(
 
       if (block.type === 'VAR_OP') {
         const opcode = OP_VAR_OP;
-        const a = (block.params?.a || 'a') as VariableName;
-        const b = block.params?.b ?? 0;
+        const a = (block.params?.a ?? block.params?.varName ?? 'a') as VariableName;
+        const b = block.params?.b ?? block.params?.left ?? block.params?.value ?? 0;
         const op = (block.params?.op || '+') as BinaryOp;
-        const c = block.params?.c ?? 0;
+        const c = block.params?.c ?? block.params?.right ?? 0;
         const typeB = getOperandType(b);
         const typeC = getOperandType(c);
-        const paramVarMask = (typeB & 0x03) | ((typeC & 0x03) << 2);
+        // operandDescMask (Byte 1) for VAR_OP: bits 1..0 = typeB, bits 3..2 = typeC (§6.2)
+        // Byte 0 = raw 0x08 — HasVarParam=0, HasRep=0 (never set for VAR_ASSIGN/VAR_OP)
+        const operandDescMask = (typeB & 0x03) | ((typeC & 0x03) << 2);
 
         writer.writeUint8(opcode);
-        writer.writeUint8(paramVarMask);
+        writer.writeUint8(operandDescMask);
         writer.writeUint8(varNameToIndex(a));
         writer.writeUint8(opToByte(op));
         writeOperandData(writer, typeB, b);
@@ -538,9 +542,13 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
         continue;
       }
 
+      // operandDescMask is used for VAR_ASSIGN/VAR_OP (§6.2 Byte 1, unconditionally present).
+      // paramVarMask is used for standard block envelopes (§6.1, present iff hasVar).
+      let operandDescMask = 0;
       let paramVarMask = 0;
       if (opcode === OP_VAR_ASSIGN || opcode === OP_VAR_OP) {
-        paramVarMask = reader.readUint8();
+        // §6.2: Byte 1 is always present for VAR_ASSIGN/VAR_OP (never HasVarParam-gated)
+        operandDescMask = reader.readUint8();
       } else if (hasVar) {
         paramVarMask = reader.readUint8();
       }
@@ -560,7 +568,8 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
       if (opcode === OP_VAR_ASSIGN) {
         type = 'VAR_ASSIGN';
         const a = indexToVarName(reader.readUint8());
-        const typeB = paramVarMask & 0x03;
+        // operandDescMask bits 1..0 = typeB (variable/int/neg-int/double)
+        const typeB = operandDescMask & 0x03;
         const bVal = readOperandData(reader, typeB);
         params = { a, b: bVal };
       } else if (opcode === OP_VAR_OP) {
@@ -568,8 +577,9 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
         const a = indexToVarName(reader.readUint8());
         const opByte = reader.readUint8();
         const op = byteToOp(opByte);
-        const typeB = paramVarMask & 0x03;
-        const typeC = (paramVarMask >> 2) & 0x03;
+        // operandDescMask bits 1..0 = typeB, bits 3..2 = typeC
+        const typeB = operandDescMask & 0x03;
+        const typeC = (operandDescMask >> 2) & 0x03;
         const bVal = readOperandData(reader, typeB);
         const cVal = readOperandData(reader, typeC);
         params = { a, b: bVal, op, c: cVal };

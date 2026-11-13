@@ -57,8 +57,62 @@ export const BlockSubpalette: React.FC = React.memo(() => {
   const targetVarNames = policy.subpaletteVariableNames;
   const operandVarNames =
     policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
-  const simSensors =
-    policy.isCurriculum && !policy.allowVariables ? [] : (currentSimEnv?.sensors || []);
+
+  const availableSensors: Array<{ id: string; label: string; icon: string }> = React.useMemo(() => {
+    if (policy.isCurriculum && !policy.allowVariables) return [];
+    const allKnown = [
+      { id: '$tileDial', label: 'Dial', icon: '🎯 Dial' },
+      { id: '$x', label: 'X', icon: '📍X' },
+      { id: '$y', label: 'Y', icon: '📍Y' },
+      { id: '$heading', label: '∠', icon: '🧭∠' },
+    ];
+    if (policy.allowedValueSensors && policy.allowedValueSensors.length > 0) {
+      return allKnown.filter((s) => policy.allowedValueSensors!.includes(s.id));
+    }
+    if (currentSimEnv?.sensors && currentSimEnv.sensors.length > 0) {
+      return currentSimEnv.sensors.map((s: any) => ({
+        id: s.id,
+        label: s.label || s.id,
+        icon:
+          s.id === '$tileDial'
+            ? '🎯 Dial'
+            : s.id === '$x'
+            ? '📍X'
+            : s.id === '$y'
+            ? '📍Y'
+            : s.id === '$heading'
+            ? '🧭∠'
+            : s.icon || s.id,
+      }));
+    }
+    if (activeSimId === 'grid') {
+      return allKnown.filter((s) => s.id === '$tileDial');
+    }
+    if (activeSimId === 'turtle') {
+      return allKnown.filter((s) => s.id === '$x' || s.id === '$y' || s.id === '$heading');
+    }
+    return [];
+  }, [policy.isCurriculum, policy.allowVariables, policy.allowedValueSensors, currentSimEnv, activeSimId]);
+
+  const availableOps: BinaryOp[] = React.useMemo(() => {
+    if (policy.allowedVarOps && policy.allowedVarOps.length > 0) {
+      return policy.allowedVarOps;
+    }
+    if (policy.isCurriculum) {
+      // M6 core restricts to '+' and '-' by default, keeping '/' and '%' hidden until Module 8
+      return ['+', '-'];
+    }
+    return ALL_OPS;
+  }, [policy.isCurriculum, policy.allowedVarOps]);
+
+  const formatOperandDisplay = (v: any) => {
+    if (v === '$tileDial') return '🎯 Dial';
+    if (v === '$x') return '📍X';
+    if (v === '$y') return '📍Y';
+    if (v === '$heading') return '🧭∠';
+    if (typeof v === 'string') return <span className="italic">{v}</span>;
+    return v;
+  };
 
   // Handle VAR_ASSIGN
   if (selectedBlock.type === 'VAR_ASSIGN') {
@@ -108,7 +162,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 px-1">
             <span>Value / Variable (b)</span>
             <span className="text-violet-300 font-mono font-bold">
-              {typeof currentB === 'string' ? <span className="italic">{currentB}</span> : currentB}
+              {formatOperandDisplay(currentB)}
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
@@ -127,7 +181,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {simSensors.map((s) => (
+            {availableSensors.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -142,7 +196,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {s.icon}
               </button>
             ))}
-            {(operandVarNames.length > 0 || simSensors.length > 0) && (
+            {(operandVarNames.length > 0 || availableSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (
@@ -227,7 +281,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 px-1">
             <span>First Operand (b)</span>
             <span className="text-violet-300 font-mono font-bold">
-              {typeof currentB === 'string' ? <span className="italic">{currentB}</span> : currentB}
+              {formatOperandDisplay(currentB)}
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
@@ -246,11 +300,11 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {simSensors.map((s) => (
+            {availableSensors.map((s) => (
               <button
                 key={s.id}
                 type="button"
-                data-testid={`subpalette-assign-b-sensor-${s.id}`}
+                data-testid={`subpalette-op-b-sensor-${s.id}`}
                 onClick={() => updateBlockParams(activeScope, selectedBlock.id, { b: s.id })}
                 className={`flex-shrink-0 flex items-center justify-center px-1.5 h-[30px] md:h-[34px] rounded-lg border text-xs font-mono font-bold transition-all active:scale-95 ${
                   currentB === s.id
@@ -261,7 +315,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {s.icon}
               </button>
             ))}
-            {(operandVarNames.length > 0 || simSensors.length > 0) && (
+            {(operandVarNames.length > 0 || availableSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (
@@ -300,7 +354,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
             <span className="text-amber-400 font-mono font-bold text-sm">{currentOp}</span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
-            {ALL_OPS.map((op) => (
+            {availableOps.map((op) => (
               <button
                 key={op}
                 type="button"
@@ -323,7 +377,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 px-1">
             <span>Second Operand (c)</span>
             <span className="text-violet-300 font-mono font-bold">
-              {typeof currentC === 'string' ? <span className="italic">{currentC}</span> : currentC}
+              {formatOperandDisplay(currentC)}
             </span>
           </div>
           <div className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1 px-1">
@@ -342,7 +396,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {v}
               </button>
             ))}
-            {simSensors.map((s) => (
+            {availableSensors.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -357,7 +411,7 @@ export const BlockSubpalette: React.FC = React.memo(() => {
                 {s.icon}
               </button>
             ))}
-            {(operandVarNames.length > 0 || simSensors.length > 0) && (
+            {(operandVarNames.length > 0 || availableSensors.length > 0) && (
               <div className="w-[1px] h-6 bg-slate-700/60 mx-0.5 flex-shrink-0" />
             )}
             {COMMON_NUMBERS.map((n) => (

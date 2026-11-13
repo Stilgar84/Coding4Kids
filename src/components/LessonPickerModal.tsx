@@ -4,6 +4,7 @@ import { PRESET_LEVELS, useAppStore, useAppStoreSelector } from '../store/useApp
 import {
   CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
+  MASTERY_CHALLENGE_TIERS,
   CurriculumActivity,
   getActivitiesForModule,
 } from '../data/curriculum';
@@ -18,7 +19,7 @@ import {
  */
 export function isDevQueryEnabled(searchOverride?: string): boolean {
   const rawSearch =
-    searchOverride !== undefined
+    typeof searchOverride === 'string'
       ? searchOverride
       : typeof window !== 'undefined' && window.location?.search
       ? window.location.search
@@ -49,6 +50,38 @@ export function isCurriculumModuleUnlocked(
   if (isDevQueryEnabled(searchOverride)) return true;
   return false;
 }
+
+/**
+ * Determines whether a Mastery Challenge tier is unlocked.
+ * Tier 1 unlocks after Module 6 completion (or unlockAllModules/dev mode).
+ * Tiers 2-5 are previewed as locked milestones (unlocked via unlockAllModules/dev mode).
+ */
+export function isMasteryChallengeTierUnlocked(
+  tier: (typeof MASTERY_CHALLENGE_TIERS)[number],
+  progress?: ProfileCurriculumProgress | null,
+  searchOverride?: string
+): boolean {
+  if (!progress) return false;
+  if (Boolean(progress.unlockAllModules)) return true;
+  if (isDevQueryEnabled(searchOverride)) return true;
+  if (tier.unlockAfterModuleId) {
+    if (progress.earnedBadges && progress.earnedBadges.includes(`badge-${tier.unlockAfterModuleId}`)) return true;
+    const mod = CURRICULUM_MODULES.find((m) => m.id === tier.unlockAfterModuleId);
+    if (
+      mod &&
+      mod.capstoneIds.length > 0 &&
+      mod.capstoneIds.every((capId) => Boolean(progress.completedLessons && progress.completedLessons[capId]))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export const CHALLENGE_PREVIEW_METADATA: Record<string, { title: string; simId: string; icon: string }> = {
+  'C6.1': { title: 'The Multi-Dial Vault Combination', simId: 'grid', icon: '🤖' },
+  'C6.2': { title: 'Counter-Rotating Opposing Spirals', simId: 'turtle', icon: '🐢' },
+};
 
 /**
  * Resolves unmistakable kid-friendly format & world icons (`📖`, `🤖`, `🐢`, `🎵`, `🏆`, `🎨`)
@@ -124,13 +157,17 @@ export function getNextGridFocusIndex(
   }
 }
 
-export const LessonPickerModal: React.FC = () => {
+export interface LessonPickerModalProps {
+  initialTab?: 'curriculum' | 'challenges' | 'sandbox';
+}
+
+export const LessonPickerModal: React.FC<LessonPickerModalProps> = ({ initialTab }) => {
   const isLessonPickerOpen = useAppStoreSelector((s) => s.isLessonPickerOpen);
   if (!isLessonPickerOpen) return null;
-  return <LessonPickerModalContent />;
+  return <LessonPickerModalContent initialTab={initialTab} />;
 };
 
-const LessonPickerModalContent: React.FC = () => {
+const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab }) => {
   useAppStore();
   const {
     isLessonPickerOpen,
@@ -148,6 +185,13 @@ const LessonPickerModalContent: React.FC = () => {
     currentLevel,
     setLevel,
   } = useAppStore.getState();
+
+  const storeMode = useAppStoreSelector((s) => (s as any).lessonPickerMode);
+  const defaultTab =
+    initialTab ??
+    (storeMode === 'challenges' ? 'challenges' : appMode === 'sandbox' ? 'sandbox' : 'curriculum');
+
+  const [pickerTab, setPickerTab] = React.useState<'curriculum' | 'challenges' | 'sandbox'>(defaultTab);
 
   const activeCardRef = useRef<HTMLButtonElement | null>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
@@ -182,9 +226,8 @@ const LessonPickerModalContent: React.FC = () => {
 
   const progress = getProfileProgress(activeProfileId);
   const earnedBadges = progress.earnedBadges || [];
+  const earnedMedals = progress.earnedMedals || [];
   const isUnlockAll = Boolean(progress.unlockAllModules);
-  const challengeActivities = CURRICULUM_ACTIVITIES.filter((a) => a.format === 'challenge');
-  const hasChallenges = challengeActivities.length > 0;
 
   // Highlight the first uncompleted activity inside an unlocked module as "Up Next"
   const nextUpActivity = CURRICULUM_ACTIVITIES.find(
@@ -287,10 +330,10 @@ const LessonPickerModalContent: React.FC = () => {
             <button
               type="button"
               data-testid="picker-mode-curriculum"
-              aria-pressed={appMode === 'curriculum'}
-              onClick={() => setAppMode('curriculum')}
+              aria-pressed={appMode === 'curriculum' && pickerTab === 'curriculum'}
+              onClick={() => { setAppMode('curriculum'); setPickerTab('curriculum'); }}
               className={`h-9 sm:h-11 px-3 sm:px-4 rounded-xl font-extrabold text-xs sm:text-base flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-                appMode === 'curriculum'
+                appMode === 'curriculum' && pickerTab === 'curriculum'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50 ring-2 ring-indigo-300/60'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700'
               }`}
@@ -299,32 +342,29 @@ const LessonPickerModalContent: React.FC = () => {
               <span>Learn</span>
             </button>
 
-            {hasChallenges && (
-              <button
-                type="button"
-                data-testid="picker-mode-challenges"
-                onClick={() => {
-                  setAppMode('curriculum');
-                  const firstChallenge = challengeActivities[0];
-                  if (firstChallenge) {
-                    setCurriculumActivity(firstChallenge.id);
-                    setLessonPickerOpen(false);
-                  }
-                }}
-                className="h-9 sm:h-11 px-2.5 sm:px-4 rounded-xl font-extrabold text-xs sm:text-base flex items-center gap-1.5 bg-slate-800 text-amber-300 hover:bg-slate-700 border border-slate-700 transition-all cursor-pointer"
-              >
-                <Flame className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                <span className="hidden sm:inline">Challenges</span>
-              </button>
-            )}
+            {/* 🔥 Mastery Challenges drawer tab — always shown to preview locked tiers */}
+            <button
+              type="button"
+              data-testid="picker-mode-challenges"
+              aria-pressed={pickerTab === 'challenges'}
+              onClick={() => { setAppMode('curriculum'); setPickerTab('challenges'); }}
+              className={`h-9 sm:h-11 px-2.5 sm:px-4 rounded-xl font-extrabold text-xs sm:text-base flex items-center gap-1.5 transition-all cursor-pointer ${
+                pickerTab === 'challenges'
+                  ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-md ring-2 ring-amber-300/40 border'
+                  : 'bg-slate-800 text-amber-300 hover:bg-slate-700 border border-slate-700'
+              }`}
+            >
+              <Flame className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+              <span className="hidden sm:inline">Challenges</span>
+            </button>
 
             <button
               type="button"
               data-testid="picker-mode-sandbox"
-              aria-pressed={appMode === 'sandbox'}
-              onClick={() => setAppMode('sandbox')}
+              aria-pressed={pickerTab === 'sandbox'}
+              onClick={() => { setAppMode('sandbox'); setPickerTab('sandbox'); }}
               className={`h-9 sm:h-11 px-3 sm:px-4 rounded-xl font-extrabold text-xs sm:text-base flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-                appMode === 'sandbox'
+                pickerTab === 'sandbox'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50 ring-2 ring-emerald-300/60'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700'
               }`}
@@ -397,7 +437,7 @@ const LessonPickerModalContent: React.FC = () => {
           onKeyDown={handleGridKeyDown}
           className="p-3 sm:p-5 overflow-y-auto space-y-4 flex-1"
         >
-          {appMode === 'curriculum' ? (
+          {pickerTab === 'curriculum' ? (
             <div className="space-y-4">
               {CURRICULUM_MODULES.map((mod) => {
                 const activities = getActivitiesForModule(mod.id);
@@ -613,6 +653,167 @@ const LessonPickerModalContent: React.FC = () => {
                   </section>
                 );
               })}
+            </div>
+          ) : pickerTab === 'challenges' ? (
+            <div data-testid="mastery-challenges-view" className="space-y-4">
+              {/* Header summary: flame icon, title, earned medals summary */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl sm:text-3xl" aria-hidden="true">
+                    🔥
+                  </span>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-amber-100 leading-tight">
+                      Mastery Challenges
+                    </h3>
+                    <p className="text-xs text-amber-300/80 font-medium">
+                      Post-module boss challenges &amp; collectible medals
+                    </p>
+                  </div>
+                </div>
+                <div
+                  data-testid="challenge-medals-summary"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/80 border border-amber-500/40 text-xs font-black text-amber-200"
+                >
+                  <span aria-hidden="true">🏅</span>
+                  <span>{earnedMedals.length} Medals Earned</span>
+                </div>
+              </div>
+
+              {/* 5-Tier Roadmap Cards */}
+              <div className="space-y-3">
+                {MASTERY_CHALLENGE_TIERS.map((tier) => {
+                  const unlocked = isMasteryChallengeTierUnlocked(tier, progress);
+                  const isTier1 = tier.tier === 1;
+
+                  return (
+                    <section
+                      key={tier.id}
+                      data-testid={`challenge-tier-${tier.id}`}
+                      data-tier-unlocked={unlocked ? 'true' : 'false'}
+                      className={`rounded-2xl border p-3 sm:p-4 space-y-3 transition-colors ${
+                        unlocked
+                          ? 'bg-slate-800/60 border-amber-500/40'
+                          : 'bg-slate-900/60 border-slate-800 opacity-70'
+                      }`}
+                    >
+                      {/* Tier Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl" aria-hidden="true">
+                            {unlocked ? '🔥' : '🔒'}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm sm:text-base font-extrabold text-white">
+                                {tier.title}
+                              </h4>
+                              {!unlocked && (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-950 border border-amber-500/30 text-amber-300">
+                                  Unlocks after {tier.unlockAfterModuleId.replace('module-', 'Module ')}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-slate-400">
+                              {isTier1
+                                ? 'Test multi-dial combinations & opposing spirals'
+                                : `Future challenge milestone (Module ${tier.unlockAfterModuleId.replace('module-', '')}+)`}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-xs font-black px-2.5 py-1 rounded-full border ${
+                            unlocked
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                              : 'bg-slate-900 border-slate-700 text-slate-500'
+                          }`}
+                        >
+                          Tier {tier.tier}
+                        </span>
+                      </div>
+
+                      {/* Tier Challenge Activities */}
+                      {isTier1 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+                          {tier.challengeIds.map((chalId) => {
+                            const act =
+                              CURRICULUM_ACTIVITIES.find((a) => a.id === chalId) ||
+                              ({
+                                id: chalId,
+                                title: CHALLENGE_PREVIEW_METADATA[chalId]?.title || `Challenge ${chalId}`,
+                                simId: CHALLENGE_PREVIEW_METADATA[chalId]?.simId || 'grid',
+                                format: 'challenge',
+                                version: 1,
+                              } as CurriculumActivity);
+
+                            const isCompleted = Boolean(completedActivities[chalId]);
+                            const medalId = `medal-${chalId.toLowerCase().replace('.', '-')}`;
+                            const hasMedal = earnedMedals.includes(medalId);
+                            const isActive = chalId === activeActivityId;
+
+                            return (
+                              <button
+                                key={chalId}
+                                type="button"
+                                data-testid={`btn-activity-${chalId}`}
+                                disabled={!unlocked}
+                                onClick={() => {
+                                  if (!unlocked) return;
+                                  setAppMode('curriculum');
+                                  setCurriculumActivity(chalId, act.version);
+                                  setLessonPickerOpen(false);
+                                }}
+                                className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
+                                  !unlocked
+                                    ? 'bg-slate-950/70 border-slate-800 text-slate-500 cursor-not-allowed'
+                                    : isActive
+                                    ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400/50 text-white cursor-pointer'
+                                    : 'bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-200 cursor-pointer'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="text-xl" aria-hidden="true">
+                                    {act.simId === 'turtle' ? '🐢' : '🤖'}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono font-black text-xs text-amber-300">
+                                        {chalId}
+                                      </span>
+                                      <span className="font-bold text-xs truncate">
+                                        {act.title}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400">
+                                      {chalId === 'C6.1' ? 'Multi-dial robot vault' : 'Dual spiral choreography'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  <span
+                                    data-testid={`medal-badge-${medalId}`}
+                                    data-earned={hasMedal || isCompleted ? 'true' : 'false'}
+                                    title={hasMedal || isCompleted ? 'Medal Earned!' : 'Medal Locked'}
+                                    className={`px-2 py-0.5 rounded-full text-xs font-black border ${
+                                      hasMedal || isCompleted
+                                        ? 'bg-amber-500/30 border-amber-400 text-amber-200'
+                                        : 'bg-slate-900 border-slate-700 text-slate-500'
+                                    }`}
+                                  >
+                                    🏅
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             /* Sandbox Tab: 4 World Tiles + Grid Course Maps */

@@ -438,6 +438,8 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
             ? 'border-dashed border-emerald-400'
             : placeholderHintCategory === 'item'
             ? 'border-dashed border-teal-400'
+            : placeholderHintCategory === 'variable'
+            ? 'border-dashed border-violet-400'
             : 'border-dashed border-cyan-400';
         break;
 
@@ -755,13 +757,22 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
 
       case 'VAR_ASSIGN': {
         const formatOp = (v: any) =>
-          v === '$x' ? '📍X' : v === '$y' ? '📍Y' : v === '$heading' ? '🧭∠' : v;
+          v === '$tileDial'
+            ? '🎯 Dial'
+            : v === '$x'
+            ? '📍X'
+            : v === '$y'
+            ? '📍Y'
+            : v === '$heading'
+            ? '🧭∠'
+            : v;
         return (
           <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-xs md:text-sm select-none px-1">
+            <span className="text-[10px] opacity-75" aria-hidden="true">📦</span>
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
               {block.params?.a ?? 'a'}
             </span>
-            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
+            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>←</span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
               {formatOp(block.params?.b ?? 1)}
             </span>
@@ -771,13 +782,22 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
 
       case 'VAR_OP': {
         const formatOp = (v: any) =>
-          v === '$x' ? '📍X' : v === '$y' ? '📍Y' : v === '$heading' ? '🧭∠' : v;
+          v === '$tileDial'
+            ? '🎯 Dial'
+            : v === '$x'
+            ? '📍X'
+            : v === '$y'
+            ? '📍Y'
+            : v === '$heading'
+            ? '🧭∠'
+            : v;
         return (
           <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-[10px] md:text-xs select-none px-0.5 md:px-1">
+            <span className="text-[10px] opacity-75" aria-hidden="true">📦</span>
             <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
               {block.params?.a ?? 'a'}
             </span>
-            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>=</span>
+            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>←</span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
               {formatOp(block.params?.b ?? 'a')}
             </span>
@@ -816,6 +836,11 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
             )}
             {placeholderHintCategory === 'item' && (
               <Sparkles className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[2.5]`} />
+            )}
+            {placeholderHintCategory === 'variable' && (
+              <span className={`text-[10px] md:text-xs absolute -bottom-1 -right-1 font-bold ${cueColor}`} aria-hidden="true">
+                📦
+              </span>
             )}
           </div>
         );

@@ -292,20 +292,27 @@ Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
 1. **`OP_VAR_ASSIGN = 0x07` (`a = b`):**
    ```
    Byte 0: 0x07 (OP_VAR_ASSIGN — bits 7..5 MUST be 0)
-   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 7..2 = 0 in M1–M3; bit 4 reserved for M6 sensor)
+   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 7..2 = 0 in M1–M6; bit 6 / 0x40 reserved for M7 color literal)
    Byte 2: targetVarIdx (uint8: 0..25 for 'a'..'z')
    Byte 3+: operandB payload governed by operandDescMask
    ```
 2. **`OP_VAR_OP = 0x08` (`a = b op c`):**
    ```
    Byte 0: 0x08 (OP_VAR_OP — bits 7..5 MUST be 0)
-   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 3..2 = typeC, bits 7..4 = 0 in M1–M3; bits 5..4 reserved for M6 sensors)
+   Byte 1: operandDescMask (ALWAYS present; bits 1..0 = typeB, bits 3..2 = typeC, bits 7..4 = 0 in M1–M6)
    Byte 2: targetVarIdx (uint8: 0..25 for 'a'..'z')
    Byte 3: opByte (uint8: 0x00..0x0C — see §7.1.1)
    Byte 4+: operandB payload, followed immediately by operandC payload
    ```
    **2-Bit Operand Type Codes (`typeB`, `typeC`):**
-   - `0` (`00`): Variable — `varIdx: uint8` (`0..25`)
+   - `0` (`00`): Variable or Sensor Reference (`OPERAND_TYPE_VAR`) — `1 byte` (`varOrSensorIdx: uint8`):
+     - `0x00`..`0x19`: Variables `'a'..'z'` (`0..25`).
+     - `0x80`..`0x83`: Live Sensor References (`SENSOR_REF_FLAG = 0x80`):
+       - `0x80`: `$x` (Turtle / LOGO X position)
+       - `0x81`: `$y` (Turtle / LOGO Y position)
+       - `0x82`: `$heading` (Turtle / LOGO heading angle 0..359°)
+       - `0x83`: `$tileDial` (Grid World rotatable dial sensor)
+       - `0x40`: Reserved for Module 7 color literal.
    - `1` (`01`): Non-negative integer — `VLE(n)`
    - `2` (`10`): Negative integer — `VLE(abs(n))`
    - `3` (`11`): IEEE-754 float64 — `8 bytes` big-endian (`DataView.setFloat64`)
@@ -409,6 +416,10 @@ All Grid action opcodes use the Standard Block Envelope (§6.1) with `MASK_HAS_R
 | `0x19` | `SET_PEN_WIDTH` | `width: VLE \| varIdx` | Line width in pixels (`param0`). |
 | `0x1A` | `FORWARD` | `length: VLE \| varIdx` | Step forward explicit pixel distance (`param0`, supports `HasRep`). |
 | `0x1B` | `BACKWARD` | `length: VLE \| varIdx` | Step backward explicit pixel distance (`param0`, supports `HasRep`). |
+| `0x1C` | `WAIT` | `duration: VLE \| varIdx` | Pause simulation for `duration` (encoded as hundredths of seconds `VLE`, or `varIdx`). |
+| `0x1D` | `SET_INSTANT` | `mode: uint8` | Toggle instant drawing mode (`1` = ON, `0` = OFF). |
+| `0x1E` | `CLEAR_CANVAS` | None | Clears turtle drawing canvas and resets pen state. |
+| `0x1F` | `TELEPORT` | `refMask: uint8`, `x`, `y`, `heading` | Teleport turtle to coordinate `(x, y)` with `heading`. `refMask` bits `0` (x), `1` (y), `2` (heading) indicate if each coordinate is a `varIdx \| sensorIdx` (`uint8`) or signed `VLE`. |
 
 ---
 

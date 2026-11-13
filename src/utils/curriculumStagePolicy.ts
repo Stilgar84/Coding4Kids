@@ -1,6 +1,7 @@
 import { ActionParamDef, SimPaletteItem } from '../engine/simulation/types';
 import {
   ALL_VARIABLE_NAMES,
+  BinaryOp,
   ScopeType,
   VariableName,
   WorkspaceState,
@@ -75,6 +76,8 @@ export interface StagedPalettePolicy {
   subpaletteOperandVarNames: readonly VariableName[];
   allowActionParams: boolean;
   canUseSubpaletteParams: boolean;
+  allowedValueSensors?: string[];
+  allowedVarOps?: BinaryOp[];
 }
 
 /**
@@ -115,6 +118,8 @@ export function computeStagedPalettePolicy(
       subpaletteOperandVarNames: ALL_VARIABLE_NAMES.slice(0, 8),
       allowActionParams: true,
       canUseSubpaletteParams: true,
+      allowedValueSensors: undefined,
+      allowedVarOps: undefined,
     };
   }
 
@@ -182,6 +187,8 @@ export function computeStagedPalettePolicy(
     subpaletteOperandVarNames,
     allowActionParams,
     canUseSubpaletteParams,
+    allowedValueSensors: palette.allowedValueSensors,
+    allowedVarOps: (palette.allowedVarOps as BinaryOp[]) ?? ['+', '-'],
   };
 }
 

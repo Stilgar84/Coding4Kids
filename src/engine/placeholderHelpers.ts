@@ -93,6 +93,7 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'BACKWARD':
     case 'ARC_LEFT':
     case 'ARC_RIGHT':
+    case 'TELEPORT':
     case 'CURSOR_STEP':
     case 'DEPOT_MOVE_TO':
       return 'motion';
@@ -159,6 +160,7 @@ export function doesBlockMatchHintCategory(
         blockType === 'BACKWARD' ||
         blockType === 'ARC_LEFT' ||
         blockType === 'ARC_RIGHT' ||
+        blockType === 'TELEPORT' ||
         blockType === 'CURSOR_STEP' ||
         blockType === 'DEPOT_MOVE_TO' ||
         (itemCategory === 'motion' &&

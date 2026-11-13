@@ -860,14 +860,18 @@ export function markLessonCompleted(
     }
   }
 
+  const medalSet = new Set<string>(current.earnedMedals || []);
+  if (/^C\d+\.\d+$/i.test(lessonId)) {
+    const challengeMedalId = `medal-${lessonId.toLowerCase().replace('.', '-')}`;
+    medalSet.add(challengeMedalId);
+  }
+
   const updated: ProfileCurriculumProgress = {
     completedLessons: current.completedLessons,
     unlockedModules: Array.from(unlockedSet),
     earnedBadges: Array.from(badgeSet),
     unlockAllModules: Boolean(current.unlockAllModules),
-    ...(current.earnedMedals && current.earnedMedals.length > 0
-      ? { earnedMedals: [...current.earnedMedals] }
-      : {}),
+    ...(medalSet.size > 0 ? { earnedMedals: Array.from(medalSet) } : {}),
   };
 
   store.profiles[targetProfileId] = updated;
@@ -926,6 +930,26 @@ export function awardBadgeForProfile(
 
   if (!current.earnedBadges.includes(badgeId)) {
     current.earnedBadges = [...current.earnedBadges, badgeId];
+    store.profiles[targetProfileId] = current;
+    writeProgressStore(store);
+  }
+  return current;
+}
+
+export function awardMedalForProfile(
+  profileId: string,
+  medalId: string
+): ProfileCurriculumProgress {
+  const targetProfileId = profileId || DEFAULT_PROFILE_ID;
+  const store = readProgressStore();
+  const current = store.profiles[targetProfileId]
+    ? sanitizeProgress(store.profiles[targetProfileId])
+    : createDefaultProgress();
+
+  const medals = new Set<string>(current.earnedMedals || []);
+  if (!medals.has(medalId)) {
+    medals.add(medalId);
+    current.earnedMedals = Array.from(medals);
     store.profiles[targetProfileId] = current;
     writeProgressStore(store);
   }
