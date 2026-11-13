@@ -372,6 +372,72 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
           </span>
         );
         break;
+      case 'IF':
+        bg = 'bg-amber-700 border-amber-400 text-white';
+        icon = <span className="font-mono text-xs font-black">IF</span>;
+        break;
+      case 'ELSE_IF':
+        bg = 'bg-amber-800 border-amber-500 text-white';
+        icon = <span className="font-mono text-xs font-black">ELSE IF</span>;
+        break;
+      case 'ELSE':
+        bg = 'bg-amber-900 border-amber-600 text-amber-200';
+        icon = <span className="font-mono text-xs font-black">ELSE</span>;
+        break;
+      case 'END_IF':
+        bg = 'bg-slate-800 border-amber-600/50 text-amber-300';
+        icon = <CornerDownLeft className="w-4 h-4 stroke-[2.5]" />;
+        break;
+      case 'WHILE':
+        bg = 'bg-indigo-700 border-indigo-400 text-white';
+        icon = <Repeat className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'END_WHILE':
+        bg = 'bg-indigo-900 border-indigo-500 text-indigo-200';
+        icon = <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'SWITCH_LEFT':
+        bg = 'bg-blue-700 border-blue-400 text-white';
+        icon = <CornerUpLeft className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'SWITCH_RIGHT':
+        bg = 'bg-violet-700 border-violet-400 text-white';
+        icon = <CornerUpRight className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'SEND_NEXT':
+        bg = 'bg-emerald-700 border-emerald-400 text-white';
+        icon = <ArrowUp className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'SCRAP_ITEM':
+        bg = 'bg-rose-700 border-rose-400 text-white';
+        icon = <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />;
+        break;
+      case 'DEPOT_MOVE_TO':
+      case 'MOVE_TO_S1':
+      case 'MOVE_TO_S2':
+      case 'MOVE_TO_S3':
+      case 'MOVE_TO_QUEUE':
+        bg = 'bg-sky-700 border-sky-400 text-white';
+        icon = <ArrowUp className="w-4 h-4 stroke-[2]" />;
+        label = String(block.params?.station ?? block.type.replace('MOVE_TO_', '')).replace('STACK_', 'S');
+        break;
+      case 'DEPOT_GRAB':
+      case 'GRAB_CRATE':
+        bg = 'bg-teal-700 border-teal-400 text-white';
+        icon = <Hand className="w-5 h-5 stroke-[2.4]" />;
+        break;
+      case 'DEPOT_PLACE':
+      case 'PLACE_CRATE':
+        bg = 'bg-amber-700 border-amber-400 text-white';
+        icon = <Package className="w-5 h-5 stroke-[2.4]" />;
+        break;
+      case 'DEPOT_SEND_OUT':
+      case 'DEPOT_SEND_GATE':
+      case 'SEND_GATE_CAR':
+        bg = 'bg-emerald-700 border-emerald-400 text-white';
+        icon = <ArrowUp className="w-5 h-5 stroke-[2.5]" />;
+        label = String(block.params?.gate ?? 'OUT');
+        break;
       default:
         bg = 'bg-slate-700 border-slate-500 text-white';
         icon = <Sparkles className="w-4 h-4" />;
@@ -750,6 +816,36 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
                           </span>
                         </span>
 
+                        {/* Multi-variant pass/fail pills per docs/ui_guidelines.md: [1 ✓] [2 ✓] ... */}
+                        {constraintReport.referenceCheck.variantResults &&
+                          constraintReport.referenceCheck.variantResults.length > 1 && (
+                            <div
+                              data-testid="constraint-variant-pills"
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800"
+                            >
+                              <span className="text-[11px] font-bold text-slate-400">Variants:</span>
+                              {constraintReport.referenceCheck.variantResults.map((vr) => (
+                                <span
+                                  key={vr.variantIndex}
+                                  data-testid={`constraint-variant-pill-${vr.variantIndex}`}
+                                  data-variant-passed={String(vr.passed)}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold border ${
+                                    vr.passed
+                                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-rose-500/25 text-rose-300 border-dashed border-rose-400/60'
+                                  }`}
+                                >
+                                  <span>{vr.label ?? `${vr.variantIndex + 1}`}</span>
+                                  {vr.passed ? (
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                  ) : (
+                                    <AlertTriangle className="w-3 h-3" />
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                         {constraintReport.scaffoldCheck.applicable && (
                           <span
                             data-testid="constraint-scaffold-badge"
@@ -837,14 +933,31 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
                                     {ruleRes.formattedCounterexample}
                                   </code>
                                 </div>
-                                {ruleRes.counterexampleWorkspace?.MAIN &&
-                                  ruleRes.counterexampleWorkspace.MAIN.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      {ruleRes.counterexampleWorkspace.MAIN.map((blk, bIdx) =>
-                                        renderBlockMini(blk, bIdx)
-                                      )}
-                                    </div>
-                                  )}
+                                {ruleRes.counterexampleWorkspace && (
+                                  <div className="space-y-2 pt-1">
+                                    {(['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).map((scope) => {
+                                      const scopeBlocks = ruleRes.counterexampleWorkspace?.[scope];
+                                      if (!scopeBlocks || scopeBlocks.length === 0) return null;
+                                      return (
+                                        <div
+                                          key={scope}
+                                          data-testid={`counterexample-scope-${scope}`}
+                                          className="space-y-1"
+                                        >
+                                          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-300/80">
+                                            <span>{scope}</span>
+                                            <span className="text-slate-400 font-mono">
+                                              ({scopeBlocks.length})
+                                            </span>
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            {scopeBlocks.map((blk, bIdx) => renderBlockMini(blk, bIdx))}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

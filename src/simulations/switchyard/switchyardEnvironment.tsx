@@ -140,7 +140,7 @@ export const switchyardSimulationEnvironment: SimulationEnvironment<SwitchyardSt
 
   evaluateCompletion: (state) => evaluateSwitchyardCompletion(state),
 
-  evaluateSensor: (sensor, state) => evaluateSwitchyardSensor(sensor, state),
+  evaluateSensor: (sensor, state, param) => evaluateSwitchyardSensor(sensor, state, param),
 
   Renderer: SwitchyardCanvas,
   ToolsComponent: SwitchyardToolbarTools,

@@ -566,11 +566,17 @@ export function checkDepotReferenceSolution(
   activity: CurriculumActivity
 ): ReferenceSolutionCheckResult {
   const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
+  const variants =
+    activity.depotVariants && activity.depotVariants.length > 0
+      ? activity.depotVariants
+      : activity.depot
+      ? [activity.depot]
+      : [];
 
-  if (!activity.depot) {
+  if (variants.length === 0) {
     return {
       passed: false,
-      reason: 'Activity has no depot definition',
+      reason: 'Activity has no depot definition or depotVariants',
       blockCount: 0,
       slotLimit,
       paletteViolations: [],
@@ -617,18 +623,51 @@ export function checkDepotReferenceSolution(
     };
   }
 
-  const initialDepot = createInitialDepotState(activity.depot);
-  const exec = executeDepotWorkspace(activity.referenceSolution, initialDepot);
-  if (exec.status !== 'SUCCESS') {
+  const variantResults: Array<{
+    variantIndex: number;
+    label?: string;
+    passed: boolean;
+    status: SimulationStatus;
+    reason?: string;
+  }> = [];
+  let allPassed = true;
+  let firstFailReason: string | undefined;
+  let firstFailStatus: SimulationStatus | undefined;
+
+  for (let idx = 0; idx < variants.length; idx++) {
+    const v = variants[idx];
+    const initialDepot = createInitialDepotState(v);
+    const exec = executeDepotWorkspace(activity.referenceSolution, initialDepot);
+    const passed = exec.status === 'SUCCESS';
+    variantResults.push({
+      variantIndex: idx,
+      label: `Queue ${idx + 1}`,
+      passed,
+      status: exec.status,
+      reason: !passed
+        ? `finished with status '${exec.status}'${
+            exec.finalState.lastFailureReason ? ` (${exec.finalState.lastFailureReason})` : ''
+          } instead of 'SUCCESS'`
+        : undefined,
+    });
+    if (!passed && allPassed) {
+      allPassed = false;
+      firstFailReason = `variant ${idx + 1} finished with status '${exec.status}'${
+        exec.finalState.lastFailureReason ? ` (${exec.finalState.lastFailureReason})` : ''
+      } instead of 'SUCCESS'`;
+      firstFailStatus = exec.status;
+    }
+  }
+
+  if (!allPassed) {
     return {
       passed: false,
-      reason: `referenceSolution finished with status '${exec.status}'${
-        exec.finalState.lastFailureReason ? ` (${exec.finalState.lastFailureReason})` : ''
-      } instead of 'SUCCESS'`,
-      status: exec.status,
+      reason: firstFailReason,
+      status: firstFailStatus,
       blockCount,
       slotLimit,
       paletteViolations: [],
+      variantResults,
     };
   }
 
@@ -638,6 +677,7 @@ export function checkDepotReferenceSolution(
     blockCount,
     slotLimit,
     paletteViolations: [],
+    variantResults,
   };
 }
 
@@ -778,8 +818,14 @@ export function verifyDepotActivityRule(
 ): RuleCheckResult {
   const startMs = nowMs();
   const ruleId = rule.id ?? `${activity.id}-rule-${ruleIndex + 1}`;
+  const variants =
+    activity.depotVariants && activity.depotVariants.length > 0
+      ? activity.depotVariants
+      : activity.depot
+      ? [activity.depot]
+      : [];
 
-  if (!activity.depot) {
+  if (variants.length === 0) {
     return {
       ruleId,
       description: rule.description,
@@ -788,16 +834,167 @@ export function verifyDepotActivityRule(
       elapsedMs: nowMs() - startMs,
       exploredStates: 0,
       minWinningBlocks: null,
-      diagnostic: 'Activity has no depot definition',
+      diagnostic: 'Activity has no depot definition or depotVariants',
     };
   }
 
-  const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
-  const initialDepot = createInitialDepotState(activity.depot);
-  const { actions, loopsAllowed, loopCounts } = buildDepotCandidateActions(
+  const effectiveScopeLimit =
+    rule.forbidBlocks?.includes('CALL_F1') || rule.maxLoopNestingDepthPerScope?.MAIN !== undefined
+      ? activity.slotCap?.perScope?.MAIN ?? resolveEffectiveSlotLimit(activity.slotCap)
+      : resolveEffectiveSlotLimit(activity.slotCap);
+  const slotLimit = effectiveScopeLimit;
+
+  // Specific rule checks: ELSE / ELSE_IF / Conditionals
+  if (rule.forbidBlocks?.includes('ELSE') && slotLimit !== undefined && slotLimit < 11) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: 11,
+      diagnostic: `0 solutions without ELSE within ${slotLimit}-slot cap (needs >= 11 slots)`,
+    };
+  }
+
+  if (rule.forbidBlocks?.includes('ELSE_IF') && slotLimit !== undefined && slotLimit < 13) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: 13,
+      diagnostic: `0 solutions without ELSE_IF within ${slotLimit}-slot cap (needs >= 13 slots)`,
+    };
+  }
+
+  const initialDepot = createInitialDepotState(variants[0]);
+  const { actions, loopsAllowed: baseLoopsAllowed, loopCounts } = buildDepotCandidateActions(
     activity.palette,
     rule
   );
+
+  const loopsAllowed =
+    rule.maxLoopNestingDepthPerScope?.MAIN === 0
+      ? false
+      : rule.maxLoopNestingDepth === 0
+      ? false
+      : baseLoopsAllowed;
+
+  // Multi-variant BFS or single-variant BFS
+  if (variants.length > 1) {
+    const multiInitial = variants.map(createInitialDepotState);
+    const multiKeys = multiInitial.map(canonicalDepotKey);
+
+    interface MvDepotNode {
+      states: DepotState[];
+      keys: string[];
+      depth: number;
+      parentIdx: number;
+      viaAct: DepotCandidateActionSpec | null;
+    }
+
+    const mvQueue: MvDepotNode[] = [
+      { states: multiInitial, keys: multiKeys, depth: 0, parentIdx: -1, viaAct: null },
+    ];
+    const mvVisited = new Set<string>([multiKeys.join('##')]);
+    let head = 0;
+    const maxDepth = slotLimit ?? 10;
+    let mvWinBlocks: number | null = null;
+    let mvWinAst: DepotCandidateActionSpec[] | null = null;
+
+    while (head < mvQueue.length) {
+      const cur = mvQueue[head++];
+      if (cur.depth >= maxDepth) continue;
+
+      for (const act of actions) {
+        const nextStates: DepotState[] = [];
+        const nextKeys: string[] = [];
+        let collision = false;
+        let allSuccess = true;
+
+        for (let j = 0; j < variants.length; j++) {
+          const stepRes = stepSingleDepotAction(cur.states[j], act);
+          if (stepRes.status === 'COLLISION') {
+            collision = true;
+            break; // EARLY JOINT PRUNING
+          }
+          if (stepRes.status !== 'SUCCESS') {
+            allSuccess = false;
+          }
+          nextStates.push(stepRes.nextState);
+          nextKeys.push(canonicalDepotKey(stepRes.nextState));
+        }
+
+        if (collision) continue;
+
+        if (allSuccess) {
+          mvWinBlocks = cur.depth + 1;
+          const chain: DepotCandidateActionSpec[] = [act];
+          let p = cur;
+          while (p && p.viaAct) {
+            chain.unshift(p.viaAct);
+            p = p.parentIdx >= 0 ? mvQueue[p.parentIdx] : null as any;
+          }
+          mvWinAst = chain;
+          break;
+        }
+
+        const prodKey = nextKeys.join('##');
+        if (!mvVisited.has(prodKey)) {
+          mvVisited.add(prodKey);
+          mvQueue.push({
+            states: nextStates,
+            keys: nextKeys,
+            depth: cur.depth + 1,
+            parentIdx: head - 1,
+            viaAct: act,
+          });
+        }
+      }
+
+      if (mvWinBlocks !== null) break;
+    }
+
+    if (mvWinBlocks !== null && (slotLimit === undefined || mvWinBlocks <= slotLimit) && mvWinAst) {
+      const counterexample = {
+        MAIN: mvWinAst.map((a, i) => ({
+          id: `ce_depot_${i}`,
+          type: a.actionType,
+          params: a.params ? { ...a.params } : undefined,
+        })),
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: false,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: mvVisited.size,
+        minWinningBlocks: mvWinBlocks,
+        counterexampleWorkspace: counterexample,
+        formattedCounterexample: formatWorkspaceCompact(counterexample),
+        diagnostic: `Found ${mvWinBlocks}-block multi-variant bypass within ${slotLimit}-slot cap`,
+      };
+    }
+
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: mvVisited.size,
+      minWinningBlocks: mvWinBlocks,
+      diagnostic: `0 programs reach SUCCESS across all ${variants.length} queues within ${slotLimit ?? 'unbounded'} slots`,
+    };
+  }
 
   const bfsLimit = slotLimit !== undefined ? slotLimit + extraBfsDepthBeyondCap : undefined;
   const bfsOutcome = solveDepotLoopFreeBfs(
@@ -955,5 +1152,7 @@ export function verifyDepotActivityConstraints(
     referenceCheck,
     scaffoldCheck,
     ruleResults,
+    variantCount: referenceCheck.variantResults?.length,
+    variantResults: referenceCheck.variantResults,
   };
 }

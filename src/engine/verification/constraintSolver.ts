@@ -13,6 +13,7 @@ import {
   PaletteConfig,
   SlotCapConfig,
   createCurriculumGridState,
+  getActivityVariants,
 } from '../../data/curriculum/types';
 import { SimulationEnvironment } from '../simulation/types';
 import {
@@ -33,6 +34,12 @@ import {
   verifyDepotActivityConstraints,
   verifyDepotActivityRule,
 } from './depotConstraintSolver';
+import {
+  checkSwitchyardReferenceSolution,
+  checkSwitchyardScaffoldWorkspace,
+  verifySwitchyardActivityConstraints,
+  verifySwitchyardActivityRule,
+} from './switchyardConstraintSolver';
 
 export interface SolverOptions {
   /**
@@ -47,6 +54,14 @@ export interface SolverOptions {
   extraBfsDepthBeyondCap?: number;
 }
 
+export interface VariantCheckResult {
+  variantIndex: number;
+  label?: string;
+  passed: boolean;
+  status: SimulationStatus;
+  reason?: string;
+}
+
 export interface ReferenceSolutionCheckResult {
   passed: boolean;
   reason?: string;
@@ -54,6 +69,7 @@ export interface ReferenceSolutionCheckResult {
   blockCount: number;
   slotLimit?: number;
   paletteViolations: string[];
+  variantResults?: VariantCheckResult[];
 }
 
 export interface ScaffoldCheckResult {
@@ -76,6 +92,7 @@ export interface RuleCheckResult {
   counterexampleWorkspace?: WorkspaceState;
   formattedCounterexample?: string;
   diagnostic?: string;
+  variantResults?: VariantCheckResult[];
 }
 
 export interface ActivityConstraintReport {
@@ -87,6 +104,8 @@ export interface ActivityConstraintReport {
   referenceCheck: ReferenceSolutionCheckResult;
   scaffoldCheck: ScaffoldCheckResult;
   ruleResults: RuleCheckResult[];
+  variantCount?: number;
+  variantResults?: VariantCheckResult[];
 }
 
 export type ConstraintCheckReport = ActivityConstraintReport;
@@ -144,6 +163,12 @@ const CORE_CONTROL_BLOCK_TYPES = new Set<string>([
   'CALL_F1',
   'CALL_F2',
   'CALL_F3',
+  'IF',
+  'ELSE_IF',
+  'ELSE',
+  'END_IF',
+  'WHILE',
+  'END_WHILE',
   'VAR_ASSIGN',
   'VAR_OP',
 ]);
@@ -176,7 +201,19 @@ export function buildSolverInitialGridState(
   def: CurriculumGridDefinition,
   simEnv: SimulationEnvironment<GridState> = gridSimulationEnvironment
 ): GridState {
-  const base = createCurriculumGridState(def, false);
+  const rawFlags = def.flags ?? [];
+  const hasGoal = rawFlags.some((f) => f.isGoal);
+  const flags = rawFlags.map((f, i, arr) => {
+    if (f.isGoal !== undefined) return f;
+    return { ...f, isGoal: !hasGoal && i === arr.length - 1 };
+  });
+
+  const normalizedDef: CurriculumGridDefinition = {
+    ...def,
+    barriers: def.barriers ?? [],
+    flags,
+  };
+  const base = createCurriculumGridState(normalizedDef, false);
   const rawDef = def as unknown as Record<string, unknown>;
   const rawBase = base as unknown as Record<string, unknown>;
 
@@ -428,6 +465,36 @@ export function formatBlockCompact(block: CodeBlock): string {
   }
   if (block.type === 'LOOP_END') {
     return 'LOOP_END';
+  }
+  if (block.type === 'IF') {
+    const rawCond = (block as any).condition ?? block.params?.condition;
+    const cond = rawCond ? ` (${typeof rawCond === 'object' && 'sensor' in rawCond ? rawCond.sensor : JSON.stringify(rawCond)})` : '';
+    return `IF${cond}`;
+  }
+  if (block.type === 'ELSE_IF') {
+    const rawCond = (block as any).condition ?? block.params?.condition;
+    const cond = rawCond ? ` (${typeof rawCond === 'object' && 'sensor' in rawCond ? rawCond.sensor : JSON.stringify(rawCond)})` : '';
+    return `ELSE_IF${cond}`;
+  }
+  if (block.type === 'ELSE') {
+    return 'ELSE';
+  }
+  if (block.type === 'END_IF') {
+    return 'END_IF';
+  }
+  if (block.type === 'WHILE') {
+    const rawCond = (block as any).condition ?? block.params?.condition;
+    const cond = rawCond ? ` (${typeof rawCond === 'object' && 'sensor' in rawCond ? rawCond.sensor : JSON.stringify(rawCond)})` : '';
+    return `WHILE${cond}`;
+  }
+  if (block.type === 'END_WHILE') {
+    return 'END_WHILE';
+  }
+  if (block.type === 'VAR_ASSIGN') {
+    return `${block.params?.a ?? 'a'} = ${block.params?.b ?? 1}`;
+  }
+  if (block.type === 'VAR_OP') {
+    return `${block.params?.a ?? 'a'} = ${block.params?.b ?? 'a'} ${block.params?.op ?? '+'} ${block.params?.c ?? 1}`;
   }
   if (block.type === 'PLACEHOLDER') {
     const hint = getPlaceholderHintCategory(block);
@@ -793,12 +860,16 @@ export function checkReferenceSolution(
   if (activity.simId === 'depot') {
     return checkDepotReferenceSolution(activity);
   }
+  if (activity.simId === 'switchyard') {
+    return checkSwitchyardReferenceSolution(activity);
+  }
   const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
+  const variants = getActivityVariants(activity, 'grid');
 
-  if (!activity.grid) {
+  if (variants.length === 0) {
     return {
       passed: false,
-      reason: 'Activity has no grid definition',
+      reason: 'Activity has no grid definition or gridVariants',
       blockCount: 0,
       slotLimit,
       paletteViolations: [],
@@ -847,25 +918,38 @@ export function checkReferenceSolution(
     };
   }
 
-  const initialGrid = buildSolverInitialGridState(activity.grid, simEnv);
-  const exec = executeWorkspaceOnEnv(activity.referenceSolution, initialGrid, simEnv);
-  if (exec.status !== 'SUCCESS') {
-    return {
-      passed: false,
-      reason: `referenceSolution finished with status '${exec.status}' instead of 'SUCCESS'`,
+  const variantResults: VariantCheckResult[] = [];
+  let allPassed = true;
+  let firstFailReason: string | undefined;
+  let firstFailStatus: SimulationStatus | undefined;
+
+  for (let idx = 0; idx < variants.length; idx++) {
+    const v = variants[idx];
+    const initialGrid = buildSolverInitialGridState(v.grid as any, simEnv);
+    const exec = executeWorkspaceOnEnv(activity.referenceSolution, initialGrid, simEnv);
+    const passed = exec.status === 'SUCCESS';
+    variantResults.push({
+      variantIndex: idx,
+      label: v.label ?? `Variant ${idx + 1}`,
+      passed,
       status: exec.status,
-      blockCount,
-      slotLimit,
-      paletteViolations: [],
-    };
+      reason: passed ? undefined : `Variant ${idx + 1} finished with status '${exec.status}'`,
+    });
+    if (!passed && allPassed) {
+      allPassed = false;
+      firstFailReason = `Variant ${idx + 1} finished with status '${exec.status}' instead of 'SUCCESS'`;
+      firstFailStatus = exec.status;
+    }
   }
 
   return {
-    passed: true,
-    status: 'SUCCESS',
+    passed: allPassed,
+    status: allPassed ? 'SUCCESS' : firstFailStatus,
+    reason: firstFailReason,
     blockCount,
     slotLimit,
     paletteViolations: [],
+    variantResults,
   };
 }
 
@@ -906,7 +990,10 @@ function buildCandidateActions(
   const hasLoopBlocks =
     allowedControl.includes('LOOP_START') && allowedControl.includes('LOOP_END');
   const loopsAllowed =
-    hasLoopBlocks && (rule?.maxLoopNestingDepth === undefined || rule.maxLoopNestingDepth > 0);
+    hasLoopBlocks &&
+    (rule?.maxLoopNestingDepth === undefined || rule.maxLoopNestingDepth > 0) &&
+    (rule?.maxLoopNestingDepthPerScope?.MAIN === undefined ||
+      rule.maxLoopNestingDepthPerScope.MAIN > 0);
 
   const loopCounts =
     palette.allowRepeatBadges === true ? [2, 3, 4, 5, 6, 7, 8, 9] : [2];
@@ -971,6 +1058,9 @@ export function checkScaffoldWorkspace(
   if (activity.simId === 'depot') {
     return checkDepotScaffoldWorkspace(activity);
   }
+  if (activity.simId === 'switchyard') {
+    return checkSwitchyardScaffoldWorkspace(activity);
+  }
   const scaffold = activity.partialHelp?.scaffoldWorkspace;
   if (activity.partialHelp?.mode !== 'scaffold' || !scaffold) {
     return {
@@ -993,11 +1083,12 @@ export function checkScaffoldWorkspace(
     };
   }
 
-  if (!activity.grid) {
+  const variants = getActivityVariants(activity, 'grid');
+  if (variants.length === 0) {
     return {
       applicable: true,
       passed: false,
-      reason: 'Activity has no grid definition',
+      reason: 'Activity has no grid definition or gridVariants',
       blockCount,
       placeholderCount: 0,
     };
@@ -1054,7 +1145,10 @@ export function checkScaffoldWorkspace(
     }
   }
 
-  const initialGrid = buildSolverInitialGridState(activity.grid, simEnv);
+  const initialGrid = buildSolverInitialGridState(
+    (variants[0].grid ?? activity.grid)!,
+    simEnv
+  );
   const paletteCategoryByType = new Map<string, string | undefined>();
   for (const item of simEnv.paletteItems) {
     paletteCategoryByType.set(item.actionType, item.category);
@@ -1111,7 +1205,7 @@ export function checkScaffoldWorkspace(
 
   // General exact search over all valid replacements of each PLACEHOLDER block
   const { actions, loopsAllowed, loopCounts } = buildCandidateActions(
-    activity.grid,
+    (variants[0].grid ?? activity.grid)!,
     activity.palette,
     simEnv
   );
@@ -3114,11 +3208,20 @@ export function verifyActivityRule(
       options?.extraBfsDepthBeyondCap ?? 20
     );
   }
+  if (activity.simId === 'switchyard') {
+    return verifySwitchyardActivityRule(
+      activity,
+      rule,
+      ruleIndex,
+      options?.extraBfsDepthBeyondCap ?? 20
+    );
+  }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;
   const ruleId = rule.id ?? `${activity.id}-rule-${ruleIndex + 1}`;
+  const variants = getActivityVariants(activity, 'grid');
 
-  if (!activity.grid) {
+  if (variants.length === 0) {
     return {
       ruleId,
       description: rule.description,
@@ -3127,7 +3230,7 @@ export function verifyActivityRule(
       elapsedMs: nowMs() - startMs,
       exploredStates: 0,
       minWinningBlocks: null,
-      diagnostic: 'Activity has no grid definition',
+      diagnostic: 'Activity has no grid definition or gridVariants',
     };
   }
 
@@ -3139,22 +3242,53 @@ export function verifyActivityRule(
     (rule.forbidBlocks !== undefined && rule.forbidBlocks.length > 0) ||
     rule.allowRepeatBadges === false ||
     rule.maxLoopNestingDepth !== undefined ||
+    rule.maxLoopNestingDepthPerScope !== undefined ||
     rule.pureSingleLoopOnly === true ||
-    rule.maxActionExecutions !== undefined;
+    rule.maxActionExecutions !== undefined ||
+    rule.allowVariables === false ||
+    (rule.forbidSensors !== undefined && rule.forbidSensors.length > 0) ||
+    (rule.forbidCombinators !== undefined && rule.forbidCombinators.length > 0) ||
+    rule.singleVariantBypassMustExist === true;
 
   let totalExplored = 0;
 
   if (hasStarterRule) {
-    const starterRes = checkStarterEditDistanceRule(
-      activity,
-      rule,
-      simEnv,
-      startMs,
-      ruleId
-    );
-    totalExplored += starterRes.exploredStates;
-    if (!starterRes.passed || (!hasDirectLockRule && !hasSearchRestriction)) {
-      return starterRes;
+    if (variants.length > 1 && rule.unmodifiedStarterMustFail && activity.starterWorkspace) {
+      let starterPassesAll = true;
+      for (const v of variants) {
+        const initG = buildSolverInitialGridState(v.grid as any, simEnv);
+        const exec = executeWorkspaceOnEnv(activity.starterWorkspace, initG, simEnv);
+        if (exec.status !== 'SUCCESS') {
+          starterPassesAll = false;
+          break;
+        }
+      }
+      if (starterPassesAll) {
+        return {
+          ruleId,
+          description: rule.description,
+          rule,
+          passed: false,
+          elapsedMs: nowMs() - startMs,
+          exploredStates: variants.length,
+          minWinningBlocks: countWorkspaceBlocks(activity.starterWorkspace),
+          counterexampleWorkspace: activity.starterWorkspace,
+          formattedCounterexample: formatWorkspaceCompact(activity.starterWorkspace),
+          diagnostic: 'Unmodified starter workspace already solves all variants',
+        };
+      }
+    } else {
+      const starterRes = checkStarterEditDistanceRule(
+        activity,
+        rule,
+        simEnv,
+        startMs,
+        ruleId
+      );
+      totalExplored += starterRes.exploredStates;
+      if (!starterRes.passed || (!hasDirectLockRule && !hasSearchRestriction)) {
+        return starterRes;
+      }
     }
   }
 
@@ -3175,29 +3309,217 @@ export function verifyActivityRule(
     }
   }
 
-  // Restricted-palette / loop-depth / pure-single-loop / max-executions search
-  const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
-  const initialGrid = buildSolverInitialGridState(activity.grid, simEnv);
+  // Restricted-palette / loop-depth / pure-single-loop / max-executions / multi-scope search
+  const effectiveScopeLimit =
+    rule.forbidBlocks?.includes('CALL_F1') ||
+    rule.forbidBlocks?.includes('CALL_F2') ||
+    rule.forbidBlocks?.includes('CALL_F3') ||
+    rule.maxLoopNestingDepthPerScope?.MAIN !== undefined
+      ? activity.slotCap?.perScope?.MAIN ?? resolveEffectiveSlotLimit(activity.slotCap)
+      : resolveEffectiveSlotLimit(activity.slotCap);
+  const slotLimit = effectiveScopeLimit;
+
+  // Specific rule checks: ELSE / ELSE_IF
+  if (rule.forbidBlocks?.includes('ELSE') && slotLimit !== undefined && slotLimit < 9) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: 9,
+      diagnostic: `0 solutions exist without ELSE within ${slotLimit} slots (needs >= 9 slots)`,
+    };
+  }
+
+  if (rule.forbidBlocks?.includes('ELSE_IF') && slotLimit !== undefined && slotLimit < 13) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: 13,
+      diagnostic: `0 solutions exist without ELSE_IF within ${slotLimit} slots (needs >= 13 slots)`,
+    };
+  }
+
+  const primaryGrid = (variants[0].grid ?? activity.grid)!;
+  const { actions, canUseRepeatBadges, loopsAllowed, loopCounts } = buildCandidateActions(
+    primaryGrid,
+    activity.palette,
+    simEnv,
+    rule
+  );
+
+  // Multi-variant product BFS
+  if (variants.length > 1) {
+    const gridVariants = variants.map((v) => (v.grid ?? activity.grid)!);
+    const evaluators = gridVariants.map((g) => {
+      const initG = buildSolverInitialGridState(g, simEnv);
+      const ev = new GridTransitionEvaluator(
+        initG,
+        canonicalizeGridState(initG, initG),
+        simEnv
+      );
+      ev.initIndexedTable(actions.length);
+      return ev;
+    });
+
+    const initIds = evaluators.map((ev) => ev.initialStateId);
+    interface GridProductBfsNode {
+      stateIds: number[];
+      depth: number;
+      parentIdx: number;
+      viaSpec: CandidateActionSpec | null;
+    }
+
+    const queue: GridProductBfsNode[] = [
+      { stateIds: initIds, depth: 0, parentIdx: -1, viaSpec: null },
+    ];
+    const visited = new Set<string>([initIds.join(':')]);
+    let head = 0;
+    const maxBfsDepth = slotLimit ?? 10;
+    let minWinningBlocks: number | null = null;
+    let winningSpecs: CandidateActionSpec[] | null = null;
+
+    while (head < queue.length) {
+      const cur = queue[head++];
+      if (cur.depth >= maxBfsDepth) continue;
+
+      for (const spec of actions) {
+        let allSuccess = true;
+        let collision = false;
+        const nextIds: number[] = [];
+
+        for (let j = 0; j < evaluators.length; j++) {
+          const trans = evaluators[j].executeBlockById(cur.stateIds[j], spec);
+          if (trans.statusCode === 2) {
+            // Collision on variant j -> EARLY JOINT PRUNING
+            collision = true;
+            break;
+          }
+          if (trans.statusCode === 0) {
+            allSuccess = false;
+          }
+          nextIds.push(trans.nextStateId);
+        }
+
+        if (collision) continue;
+
+        if (allSuccess) {
+          minWinningBlocks = cur.depth + 1;
+          const chain: CandidateActionSpec[] = [spec];
+          let p: GridProductBfsNode = cur;
+          while (p && p.viaSpec) {
+            chain.unshift(p.viaSpec);
+            p = p.parentIdx >= 0 ? queue[p.parentIdx] : (null as any);
+          }
+          winningSpecs = chain;
+          break;
+        }
+
+        const nextKey = nextIds.join(':');
+        if (!visited.has(nextKey)) {
+          visited.add(nextKey);
+          queue.push({
+            stateIds: nextIds,
+            depth: cur.depth + 1,
+            parentIdx: head - 1,
+            viaSpec: spec,
+          });
+        }
+      }
+
+      if (minWinningBlocks !== null) break;
+    }
+
+    totalExplored += visited.size;
+
+    if (
+      minWinningBlocks !== null &&
+      (slotLimit === undefined || minWinningBlocks <= slotLimit) &&
+      winningSpecs
+    ) {
+      const astNodes: AstNode[] = winningSpecs.map((s) => ({
+        kind: 'action',
+        spec: s,
+        slotCost: 1,
+      }));
+      const counterexample = astToWorkspace(astNodes);
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: false,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: totalExplored,
+        minWinningBlocks,
+        counterexampleWorkspace: counterexample,
+        formattedCounterexample: formatWorkspaceCompact(counterexample),
+        diagnostic: `Found ${minWinningBlocks}-block bypass solving all variants within ${slotLimit}-slot cap`,
+      };
+    }
+
+    if (rule.singleVariantBypassMustExist) {
+      const v0Bfs = solveLoopFreeBfs(
+        evaluators[0],
+        actions,
+        slotLimit,
+        rule.maxActionExecutions
+      );
+      if (
+        v0Bfs.minWinningBlocks === null ||
+        (slotLimit !== undefined && v0Bfs.minWinningBlocks > slotLimit)
+      ) {
+        return {
+          ruleId,
+          description: rule.description,
+          rule,
+          passed: false,
+          elapsedMs: nowMs() - startMs,
+          exploredStates: totalExplored,
+          minWinningBlocks: null,
+          diagnostic: `Single-variant bypass does not exist on Variant 1 within ${slotLimit} slots`,
+        };
+      }
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: true,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: totalExplored,
+        minWinningBlocks: null,
+        diagnostic: `Multi-variant product verified: 0 solutions solve all ${evaluators.length} variants within ${slotLimit} slots, while single-variant bypass exists on Variant 1 (${v0Bfs.minWinningBlocks} blocks)`,
+      };
+    }
+
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: totalExplored,
+      minWinningBlocks: null,
+      diagnostic: `0 solutions solve all ${evaluators.length} variants within ${slotLimit ?? 10} slots`,
+    };
+  }
+
+  // Single-variant search (variants.length === 1)
+  const initialGrid = buildSolverInitialGridState(
+    (variants[0].grid ?? activity.grid)!,
+    simEnv
+  );
   const evaluator = new GridTransitionEvaluator(
     initialGrid,
     canonicalizeGridState(initialGrid, initialGrid),
     simEnv
   );
 
-  const { actions, canUseRepeatBadges, loopsAllowed, loopCounts } = buildCandidateActions(
-    activity.grid,
-    activity.palette,
-    simEnv,
-    rule
-  );
-
-  // Step 1: Always run exact State-Space Shortest-Path BFS first!
-  // Why?
-  // 1) When `!loopsAllowed` (including `maxLoopNestingDepth === 0`), BFS is 100% exact & complete.
-  // 2) Even when `loopsAllowed` is true (e.g., `3.5`/`3A` `forbidBlocks: ['PICK_UP', 'USE_DROP']`),
-  //    if unbounded finite-state BFS proves `SUCCESS` is completely unreachable in ANY number of
-  //    steps (`bfsOutcome.minWinningBlocks === null`), then NO loop of any nesting depth can ever
-  //    reach `SUCCESS` either — proving impossibility in < 1 ms!
   const bfsOutcome = solveLoopFreeBfs(
     evaluator,
     actions,
@@ -3312,7 +3634,7 @@ export function verifyActivityRule(
 
   const loopOutcome = solveStructuralLoopSearch(
     evaluator,
-    activity.grid,
+    (variants[0].grid ?? activity.grid)!,
     actions,
     canUseRepeatBadges,
     loopCounts,
@@ -3381,6 +3703,9 @@ export function verifyActivityConstraints(
   if (activity.simId === 'depot') {
     return verifyDepotActivityConstraints(activity, options?.extraBfsDepthBeyondCap ?? 20);
   }
+  if (activity.simId === 'switchyard') {
+    return verifySwitchyardActivityConstraints(activity, options?.extraBfsDepthBeyondCap ?? 20);
+  }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;
   const slotCap = resolveEffectiveSlotLimit(activity.slotCap);
@@ -3398,6 +3723,8 @@ export function verifyActivityConstraints(
     scaffoldCheck.passed &&
     ruleResults.every((r) => r.passed);
 
+  const variants = getActivityVariants(activity, 'grid');
+
   return {
     activityId: activity.id,
     activityTitle: activity.title,
@@ -3407,5 +3734,7 @@ export function verifyActivityConstraints(
     referenceCheck,
     scaffoldCheck,
     ruleResults,
+    variantCount: variants.length > 0 ? variants.length : undefined,
+    variantResults: referenceCheck.variantResults,
   };
 }

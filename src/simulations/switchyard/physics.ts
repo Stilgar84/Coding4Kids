@@ -60,19 +60,34 @@ export function resetSwitchyardState(state: SwitchyardState): SwitchyardState {
 // ─── Sensor evaluation ────────────────────────────────────────────────────
 
 export function evaluateSwitchyardSensor(
-  sensor: { type: string; colorIdx?: number; iconIdx?: number; stationCode?: number },
-  state: SwitchyardState
+  sensor: { type: string; colorIdx?: number; iconIdx?: number; stationCode?: number } | string,
+  state: SwitchyardState,
+  param?: string
 ): boolean {
   const item = state.queue[0] ?? null;
-  switch (sensor.type) {
+  const sensorType = typeof sensor === 'string' ? sensor : sensor?.type;
+  const colorIdx =
+    typeof sensor === 'object' && sensor.colorIdx !== undefined
+      ? sensor.colorIdx
+      : param !== undefined
+      ? ((ITEM_COLOR_INDEX as Record<string, number>)[param] ?? Number(param))
+      : 0;
+  const iconIdx =
+    typeof sensor === 'object' && sensor.iconIdx !== undefined
+      ? sensor.iconIdx
+      : param !== undefined
+      ? ((ITEM_ICON_INDEX as Record<string, number>)[param] ?? Number(param))
+      : 0;
+
+  switch (sensorType) {
     case 'hasNextItem':
       return state.queue.length > 0;
     case 'itemDamaged':
       return item !== null && item.damaged;
     case 'itemColor':
-      return item !== null && ITEM_COLOR_INDEX[item.color] === (sensor.colorIdx ?? 0);
+      return item !== null && ITEM_COLOR_INDEX[item.color] === colorIdx;
     case 'itemIcon':
-      return item !== null && ITEM_ICON_INDEX[item.icon] === (sensor.iconIdx ?? 0);
+      return item !== null && ITEM_ICON_INDEX[item.icon] === iconIdx;
     default:
       return false;
   }
