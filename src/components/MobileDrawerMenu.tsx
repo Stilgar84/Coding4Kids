@@ -350,7 +350,7 @@ const MobileDrawerMenuContent: React.FC = () => {
 
           {/* Sandbox World Switcher Tiles */}
           {appMode === 'sandbox' && (
-            <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
               <button
                 type="button"
                 data-testid="drawer-tab-grid"
@@ -389,6 +389,19 @@ const MobileDrawerMenuContent: React.FC = () => {
               >
                 <span aria-hidden="true">🎵</span>
                 <span>Beat</span>
+              </button>
+              <button
+                type="button"
+                data-testid="drawer-tab-depot"
+                onClick={() => setSimEnvironment('depot')}
+                className={`flex items-center justify-center gap-1 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                  activeSimId === 'depot'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span aria-hidden="true">🏗️</span>
+                <span>Depot</span>
               </button>
             </div>
           )}

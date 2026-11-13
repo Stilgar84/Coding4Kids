@@ -195,7 +195,7 @@ export function createPresetLedGrid(
   colorOverride?: string | null
 ): (string | null)[][] {
   const def = getPresetDef(preset);
-  const fill = colorOverride || def.defaultColor;
+  const fill = colorOverride !== undefined ? colorOverride : def.defaultColor;
   return Array.from({ length: BEAT_GRID_SIZE }, (_, r) => {
     const rowStr = def.pattern[r] || '........';
     return Array.from({ length: BEAT_GRID_SIZE }, (__, c) =>

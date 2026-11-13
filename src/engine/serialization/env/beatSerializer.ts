@@ -142,7 +142,10 @@ export function getBeatParamVarFlags(
     case OP_BEAT_LIGHT_PIXEL:
       return { param0IsVar: isVarVal(params.x), param1IsVar: isVarVal(params.y) };
     case OP_BEAT_SET_DELAY:
-      return { param0IsVar: isVarVal(params.multiplier), param1IsVar: false };
+      return {
+        param0IsVar: isVarVal(params.delay ?? params.multiplier),
+        param1IsVar: false,
+      };
     case OP_BEAT_WAIT_DURATION:
       return { param0IsVar: isVarVal(params.duration), param1IsVar: false };
     default:
@@ -223,10 +226,11 @@ export function writeBeatParams(
     }
 
     case OP_BEAT_SET_DELAY: {
+      const delayVal = params?.delay ?? params?.multiplier;
       if ((paramVarMask & 0x02) !== 0) {
-        writer.writeUint8(varNameToIndex(String(params?.multiplier ?? 'a')));
+        writer.writeUint8(varNameToIndex(String(delayVal ?? 'a')));
       } else {
-        const mult = Number(params?.multiplier ?? 0);
+        const mult = Number(delayVal ?? 0);
         const scaled = Math.max(0, Math.round((Number.isFinite(mult) ? mult : 0) * 100));
         writer.writeVLE(scaled);
       }
@@ -317,11 +321,11 @@ export function readBeatBlock(
       return { type: 'CURSOR_TURN', params: { direction: dirByte === 0 ? 'LEFT' : 'RIGHT' } };
     }
     case OP_BEAT_SET_DELAY: {
-      const multiplier =
+      const delay =
         (paramVarMask & 0x02) !== 0
           ? indexToVarName(reader.readUint8())
           : reader.readVLE() / 100;
-      return { type: 'SET_BEAT_DELAY', params: { multiplier } };
+      return { type: 'SET_BEAT_DELAY', params: { delay } };
     }
     case OP_BEAT_WAIT_DURATION: {
       const duration =

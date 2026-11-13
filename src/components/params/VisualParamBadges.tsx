@@ -280,11 +280,19 @@ export const ColorVisual: React.FC<ColorVisualProps> = ({
   className = '',
 }) => {
   const effectiveColor = color || '#0f172a';
+  const normalized = effectiveColor.toLowerCase();
+  const isWhite = normalized === '#ffffff' || normalized === '#fff';
+  const isBlack = normalized === '#0f172a' || normalized === '#000000';
+  const borderClass = isWhite
+    ? 'border-slate-500 ring-1 ring-slate-900/50'
+    : isBlack
+    ? 'border-slate-400/90 ring-1 ring-white/25'
+    : 'border-white/90';
 
   return (
     <div
       data-testid="color-swatch-visual"
-      className={`inline-flex items-center justify-center rounded-full border-2 border-white/90 shadow-sm transition-transform select-none ${className}`}
+      className={`inline-flex items-center justify-center rounded-full border-2 shadow-sm transition-transform select-none ${borderClass} ${className}`}
       style={{
         backgroundColor: effectiveColor,
         width: `${size}px`,
@@ -832,6 +840,53 @@ export const CoordVisual: React.FC<{ value: number; axis?: string; compact?: boo
   );
 };
 
+export const DepotStationVisual: React.FC<{ station: string | number; compact?: boolean }> = ({
+  station,
+  compact = true,
+}) => {
+  const norm = String(station ?? 'STACK_1').trim().toUpperCase();
+  const num = norm === 'STACK_2' || norm === '2' ? 2 : norm === 'STACK_3' || norm === '3' ? 3 : 1;
+
+  if (compact) {
+    return (
+      <div className="inline-flex items-center gap-0.5 leading-none select-none">
+        {[1, 2, 3].map((slot) => (
+          <span
+            key={slot}
+            className={`inline-flex items-center justify-center rounded text-[10px] font-black transition-colors ${
+              slot === num
+                ? 'w-4 h-4 bg-amber-400 text-slate-950 shadow-sm'
+                : 'w-2.5 h-3.5 bg-slate-800 text-slate-500 border border-slate-700'
+            }`}
+          >
+            {slot === num ? slot : ''}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1 select-none">
+      <div className="flex items-end gap-1">
+        {[1, 2, 3].map((slot) => (
+          <div
+            key={slot}
+            className={`w-3.5 rounded-t border-x border-b flex items-center justify-center ${
+              slot === num
+                ? 'h-5 bg-amber-400/25 border-amber-400 text-amber-200'
+                : 'h-3.5 bg-slate-800/60 border-slate-600/60 text-slate-500'
+            }`}
+          />
+        ))}
+      </div>
+      <span className="font-mono font-black text-xs text-amber-200 leading-none">
+        #{num}
+      </span>
+    </div>
+  );
+};
+
 export const ParamVisual: React.FC<ParamVisualProps> = ({
   paramDef,
   value,
@@ -955,6 +1010,8 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
           compact={compact}
         />
       );
+    case 'depot-station':
+      return <DepotStationVisual station={effectiveValue} compact={compact} />;
     default:
       return (
         <span className="text-xs font-bold text-white">

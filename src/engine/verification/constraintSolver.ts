@@ -27,6 +27,12 @@ import {
 } from '../placeholderHelpers';
 import { ALL_SCOPES, computeSlotBudget } from '../../utils/curriculumStagePolicy';
 import { gridSimulationEnvironment } from '../../simulations/grid/gridEnvironment';
+import {
+  checkDepotReferenceSolution,
+  checkDepotScaffoldWorkspace,
+  verifyDepotActivityConstraints,
+  verifyDepotActivityRule,
+} from './depotConstraintSolver';
 
 export interface SolverOptions {
   /**
@@ -784,6 +790,9 @@ export function checkReferenceSolution(
   activity: CurriculumActivity,
   simEnv: SimulationEnvironment<GridState> = gridSimulationEnvironment
 ): ReferenceSolutionCheckResult {
+  if (activity.simId === 'depot') {
+    return checkDepotReferenceSolution(activity);
+  }
   const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
 
   if (!activity.grid) {
@@ -959,6 +968,9 @@ export function checkScaffoldWorkspace(
   activity: CurriculumActivity,
   simEnv: SimulationEnvironment<GridState> = gridSimulationEnvironment
 ): ScaffoldCheckResult {
+  if (activity.simId === 'depot') {
+    return checkDepotScaffoldWorkspace(activity);
+  }
   const scaffold = activity.partialHelp?.scaffoldWorkspace;
   if (activity.partialHelp?.mode !== 'scaffold' || !scaffold) {
     return {
@@ -3094,6 +3106,14 @@ export function verifyActivityRule(
   ruleIndex = 0,
   options?: SolverOptions
 ): RuleCheckResult {
+  if (activity.simId === 'depot') {
+    return verifyDepotActivityRule(
+      activity,
+      rule,
+      ruleIndex,
+      options?.extraBfsDepthBeyondCap ?? 20
+    );
+  }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;
   const ruleId = rule.id ?? `${activity.id}-rule-${ruleIndex + 1}`;
@@ -3358,6 +3378,9 @@ export function verifyActivityConstraints(
   activity: CurriculumActivity,
   options?: SolverOptions
 ): ActivityConstraintReport {
+  if (activity.simId === 'depot') {
+    return verifyDepotActivityConstraints(activity, options?.extraBfsDepthBeyondCap ?? 20);
+  }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;
   const slotCap = resolveEffectiveSlotLimit(activity.slotCap);

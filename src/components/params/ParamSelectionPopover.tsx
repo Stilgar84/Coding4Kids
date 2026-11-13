@@ -177,7 +177,8 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     paramDef.type === 'beat-delay' ||
     paramDef.type === 'wait-duration' ||
     paramDef.type === 'instant-mode' ||
-    paramDef.type === 'coord';
+    paramDef.type === 'coord' ||
+    paramDef.type === 'depot-station';
 
   const content = (
     <div
@@ -225,7 +226,11 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
       {/* Options Grid / Row */}
       <div
         className={`grid ${
-          paramDef.options.length === 2 ? 'grid-cols-2' : 'grid-cols-4'
+          paramDef.options.length === 2
+            ? 'grid-cols-2'
+            : paramDef.options.length === 3
+            ? 'grid-cols-3'
+            : 'grid-cols-4'
         } gap-1.5 max-h-56 overflow-y-auto p-0.5`}
       >
         {paramDef.options.map((opt) => {

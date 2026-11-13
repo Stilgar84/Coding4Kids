@@ -337,7 +337,7 @@ const LoadProgramModalContent: React.FC = () => {
                     {/* Screenshot Thumbnail */}
                     <div
                       className={`relative w-full h-36 p-2 flex items-center justify-center border-b border-slate-800 overflow-hidden ${
-                        entry.simId === 'grid' || entry.simId === 'beat'
+                        entry.simId === 'grid' || entry.simId === 'beat' || entry.simId === 'depot'
                           ? 'bg-slate-950'
                           : 'bg-white'
                       }`}
@@ -369,6 +369,8 @@ const LoadProgramModalContent: React.FC = () => {
                             ? '🐢'
                             : entry.simId === 'beat'
                             ? '🎵'
+                            : entry.simId === 'depot'
+                            ? '🏗️'
                             : '🤖'}
                         </span>
                       </div>

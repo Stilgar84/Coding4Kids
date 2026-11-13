@@ -12,6 +12,7 @@ import {
 import { GridState } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { resetBeatState } from '../simulations/beat/beatEnvironment';
+import { resetDepotState } from '../simulations/depot/depotPhysics';
 import {
   X,
   Save,
@@ -42,6 +43,7 @@ const SaveProgramModalContent: React.FC = () => {
     grid,
     turtleState,
     beatState,
+    depotState,
     currentLevel,
     exportCode,
   } = useAppStore.getState();
@@ -150,6 +152,21 @@ const SaveProgramModalContent: React.FC = () => {
         stepCount: result.stepCount,
         screenshot,
       };
+    } else if (activeSimId === 'depot') {
+      const initialState = resetDepotState(depotState);
+      const result = runHeadlessSimulation(
+        workspace,
+        'depot',
+        initialState,
+        MAX_SAVE_SIMULATION_STEPS
+      );
+      const screenshot = generateSimulationThumbnail('depot', result.finalState);
+
+      return {
+        status: result.status,
+        stepCount: result.stepCount,
+        screenshot,
+      };
     } else {
       const initialState: TurtleState = {
         ...turtleState,
@@ -173,7 +190,7 @@ const SaveProgramModalContent: React.FC = () => {
         screenshot,
       };
     }
-  }, [isSaveModalOpen, activeSimId, grid, turtleState, beatState, workspace]);
+  }, [isSaveModalOpen, activeSimId, grid, turtleState, beatState, depotState, workspace]);
 
   useEffect(() => {
     if (isSaveModalOpen) {
@@ -188,6 +205,8 @@ const SaveProgramModalContent: React.FC = () => {
         setTitle(`Level ${currentLevel} (${timeStr})`);
       } else if (activeSimId === 'beat') {
         setTitle(`Beat Mix (${timeStr})`);
+      } else if (activeSimId === 'depot') {
+        setTitle(`Crate Depot (${timeStr})`);
       } else {
         setTitle(`Turtle Art (${timeStr})`);
       }
@@ -393,7 +412,9 @@ const SaveProgramModalContent: React.FC = () => {
           {/* 2. Compact Preview Thumbnail + Overlaid Outcome Pill */}
           <div
             className={`relative w-full h-28 sm:h-36 rounded-2xl border-2 border-slate-700 p-2 overflow-hidden flex items-center justify-center shadow-inner ${
-              activeSimId === 'grid' || activeSimId === 'beat' ? 'bg-slate-950' : 'bg-white'
+              activeSimId === 'grid' || activeSimId === 'beat' || activeSimId === 'depot'
+                ? 'bg-slate-950'
+                : 'bg-white'
             }`}
           >
             <img

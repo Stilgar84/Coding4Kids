@@ -607,7 +607,7 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
       );
       expect(presetPopoverSandbox).toContain('data-testid="param-option-ROBOT"');
       expect(presetPopoverSandbox).not.toContain('param-option-var-');
-      expect(BEAT_COLOR_PARAM_DEF.options).toHaveLength(8);
+      expect(BEAT_COLOR_PARAM_DEF.options).toHaveLength(10);
     });
   });
 
@@ -646,18 +646,19 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
     });
   });
 
-  describe('4. Module 2 Creative Lessons (2.2-2.5) & Capstone 2B Execution, Thumbnails & Staged Palettes', () => {
-    it('registers 2.1-2.5 and 2B in MODULE_2_PARAMS_ACTIVITIES and CURRICULUM_ACTIVITIES', () => {
+  describe('4. Module 2 Creative Lessons (2.2-2.5a) & Capstone 2B Execution, Thumbnails & Staged Palettes', () => {
+    it('registers 2.1-2.5a and 2B in MODULE_2_PARAMS_ACTIVITIES and CURRICULUM_ACTIVITIES', () => {
       expect(MODULE_2_PARAMS_ACTIVITIES.map((a) => a.id)).toEqual([
         '2.1',
         '2.2',
         '2.3',
         '2.4',
         '2.5',
+        '2.5a',
         '2B',
       ]);
       const m2Ids = getActivitiesForModule('module-2').map((a) => a.id);
-      for (const id of ['2.1', '2.2', '2.3', '2.4', '2.5', '2B']) {
+      for (const id of ['2.1', '2.2', '2.3', '2.4', '2.5', '2.5a', '2B']) {
         expect(m2Ids).toContain(id);
         expect(CURRICULUM_ACTIVITIES.some((a) => a.id === id)).toBe(true);
       }

@@ -4,6 +4,7 @@ import { BinaryWriter } from './binaryWriter';
 import {
   ENV_ID_TURTLE,
   ENV_ID_BEAT,
+  ENV_ID_DEPOT,
   SCOPE_ID_MAIN,
   SCOPE_ID_F1,
   SCOPE_ID_F2,
@@ -59,6 +60,13 @@ import {
   writeBeatParams,
   readBeatBlock,
 } from './env/beatSerializer';
+import {
+  getDepotOpcodeForBlock,
+  getDepotParamVarFlags,
+  writeDepotParams,
+  readDepotBlock,
+  readDepotState,
+} from './env/depotSerializer';
 
 let blockIdCounter = 0;
 
@@ -271,6 +279,8 @@ export function writeCodeScopes(
         }
       } else if (envByte === ENV_ID_BEAT) {
         opcode = getBeatOpcodeForBlock(block);
+      } else if (envByte === ENV_ID_DEPOT) {
+        opcode = getDepotOpcodeForBlock(block);
       } else {
         // Grid or generic
         switch (block.type) {
@@ -311,6 +321,10 @@ export function writeCodeScopes(
       if (block.params) {
         if (envByte === ENV_ID_BEAT) {
           const flags = getBeatParamVarFlags(opcode, block.params);
+          param0IsVar = flags.param0IsVar;
+          param1IsVar = flags.param1IsVar;
+        } else if (envByte === ENV_ID_DEPOT) {
+          const flags = getDepotParamVarFlags(opcode, block.params);
           param0IsVar = flags.param0IsVar;
           param1IsVar = flags.param1IsVar;
         } else if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
@@ -359,6 +373,8 @@ export function writeCodeScopes(
         writeTurtleParams(writer, opcode, block.params, paramVarMask);
       } else if (envByte === ENV_ID_BEAT) {
         writeBeatParams(writer, opcode, block.type, block.params, paramVarMask);
+      } else if (envByte === ENV_ID_DEPOT) {
+        writeDepotParams(writer, opcode, block.params, paramVarMask);
       }
     }
   }
@@ -510,6 +526,10 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
         const decodedBeat = readBeatBlock(reader, opcode, paramVarMask);
         type = decodedBeat.type;
         params = decodedBeat.params;
+      } else if (envByte === ENV_ID_DEPOT) {
+        const decodedDepot = readDepotBlock(reader, opcode, paramVarMask);
+        type = decodedDepot.type;
+        params = decodedDepot.params;
       } else {
         // Grid or generic
         switch (opcode) {
@@ -557,7 +577,7 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
  */
 export function exportCodeOnlyToBinary(
   workspace: WorkspaceState,
-  envId: 'generic' | 'turtle' | 'beat'
+  envId: 'generic' | 'turtle' | 'beat' | 'depot'
 ): Uint8Array {
   const writer = new BinaryWriter();
   writer.writeUint8(1); // FORMAT_VERSION = 1
@@ -566,9 +586,11 @@ export function exportCodeOnlyToBinary(
       ? ENV_ID_TURTLE
       : envId === 'beat'
       ? ENV_ID_BEAT
+      : envId === 'depot'
+      ? ENV_ID_DEPOT
       : 0x00; // ENV_ID_GENERIC
   writer.writeUint8(envByte);
-  writer.writeUint8(1); // envVersion = 1
+  writer.writeUint8(1); // envVersion = 1 (code-only)
   writeCodeScopes(writer, workspace, envByte);
   return writer.getBytes();
 }
@@ -587,10 +609,18 @@ export function importCodeOnlyFromBinary(bytes: Uint8Array): WorkspaceState {
     throw new Error(`Unsupported format version: ${formatVersion}`);
   }
   const envByte = reader.readUint8();
-  const _envVersion = reader.readUint8();
-  void _envVersion;
-  if (envByte !== 0x00 && envByte !== 0x01 && envByte !== ENV_ID_TURTLE && envByte !== ENV_ID_BEAT) {
+  const envVersion = reader.readUint8();
+  if (
+    envByte !== 0x00 &&
+    envByte !== 0x01 &&
+    envByte !== ENV_ID_TURTLE &&
+    envByte !== ENV_ID_BEAT &&
+    envByte !== ENV_ID_DEPOT
+  ) {
     throw new Error(`Unsupported autosave environment ID: 0x${envByte.toString(16)}`);
+  }
+  if (envByte === ENV_ID_DEPOT && envVersion >= 2) {
+    readDepotState(reader);
   }
   return readCodeScopes(reader, envByte);
 }

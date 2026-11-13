@@ -39,7 +39,6 @@ export const MODULE_2_BEAT_ALLOWED_BLOCKS: string[] = [
   'LIGHT_COL',
   'LIGHT_PIXEL',
   'STAMP_PRESET',
-  'SET_BEAT_DELAY',
 ];
 
 /**
@@ -542,6 +541,107 @@ export const MODULE_2_PARAMS_ACTIVITIES: CurriculumActivity[] = [
           ],
           'm2_5_bassline'
         ),
+      },
+    ],
+  },
+
+  // =========================================================================
+  // 2.5a [📖 🎵 Explanation]: Speed Control & Instant Light Frames
+  // =========================================================================
+  {
+    id: '2.5a',
+    moduleId: 'module-2',
+    version: 1,
+    format: 'explanation',
+    simId: 'beat',
+    icon: '📖',
+    title: 'Speed Control & Instant Light Frames',
+    concept: 'Using Set Step Delay (Instant) + Wait + Black LED Cutouts to Flash Clean Pictures',
+    description:
+      'Compare beat-by-beat light drawing (Tab 1) with Instant Step Delay + Wait (Tab 2) to flash complete multi-color pictures in one beat, then use Black (#0f172a) to punch clean LED cutouts (Tab 3).',
+    hint: 'Step through Demo [1], [2], and [3] to see how Set Step Delay (Instant), Wait, and Black LED cutouts build clean frames without loops or variables.',
+    palette: {
+      allowedSimBlocks: [...MODULE_2_BEAT_ALLOWED_BLOCKS, 'SET_BEAT_DELAY'],
+      allowedControlBlocks: [],
+      allowedScopes: ['MAIN'],
+      allowRepeatBadges: true,
+      allowActionParams: true,
+      allowVariables: false,
+    },
+    starterWorkspace: buildModule2Workspace(
+      [
+        { type: 'SET_BEAT_DELAY', params: { delay: 1 } },
+        { type: 'SET_LED_COLOR', params: { color: '#06b6d4' } },
+        { type: 'LIGHT_ROW', params: { y: 2 } },
+        { type: 'LIGHT_ROW', params: { y: 4 } },
+        { type: 'LIGHT_ROW', params: { y: 6 } },
+        { type: 'PLAY_CHIME' },
+      ],
+      'm2_5a_t1'
+    ),
+    demoTabs: [
+      {
+        id: '2.5a-tab-1',
+        label: '1',
+        icon: '🐢',
+        title: 'Normal Beat-by-Beat Paint',
+        workspace: buildModule2Workspace(
+          [
+            { type: 'SET_BEAT_DELAY', params: { delay: 1 } },
+            { type: 'SET_LED_COLOR', params: { color: '#06b6d4' } },
+            { type: 'LIGHT_ROW', params: { y: 2 } },
+            { type: 'LIGHT_ROW', params: { y: 4 } },
+            { type: 'LIGHT_ROW', params: { y: 6 } },
+            { type: 'PLAY_CHIME' },
+          ],
+          'm2_5a_t1'
+        ),
+        spotlights: ['execution-order'],
+      },
+      {
+        id: '2.5a-tab-2',
+        label: '2',
+        icon: '⚡',
+        title: 'Instant Frame + Wait Flip',
+        workspace: buildModule2Workspace(
+          [
+            { type: 'SET_BEAT_DELAY', params: { delay: 0 } },
+            { type: 'SET_LED_COLOR', params: { color: '#fbbf24' } },
+            { type: 'STAMP_PRESET', params: { preset: 'STAR' } },
+            { type: 'SET_LED_COLOR', params: { color: '#ffffff' } },
+            { type: 'LIGHT_ROW', params: { y: 8 } },
+            { type: 'DRUM_KICK' },
+            { type: 'WAIT_BEAT', params: { duration: 1 } },
+            { type: 'CLEAR_LEDS' },
+            { type: 'SET_LED_COLOR', params: { color: '#06b6d4' } },
+            { type: 'STAMP_PRESET', params: { preset: 'DIAMOND' } },
+            { type: 'PLAY_CHIME' },
+            { type: 'WAIT_BEAT', params: { duration: 1 } },
+          ],
+          'm2_5a_t2'
+        ),
+        spotlights: ['execution-order'],
+      },
+      {
+        id: '2.5a-tab-3',
+        label: '3',
+        icon: '🕳️',
+        title: 'Black Cutout + White Sparkle',
+        workspace: buildModule2Workspace(
+          [
+            { type: 'SET_BEAT_DELAY', params: { delay: 0 } },
+            { type: 'SET_LED_COLOR', params: { color: '#f43f5e' } },
+            { type: 'STAMP_PRESET', params: { preset: 'HEART' } },
+            { type: 'SET_LED_COLOR', params: { color: '#0f172a' } },
+            { type: 'LIGHT_PIXEL', params: { x: 4, y: 4 } },
+            { type: 'LIGHT_PIXEL', params: { x: 5, y: 4 } },
+            { type: 'SET_LED_COLOR', params: { color: '#ffffff' } },
+            { type: 'LIGHT_PIXEL', params: { x: 3, y: 2 } },
+            { type: 'WAIT_BEAT', params: { duration: 1 } },
+          ],
+          'm2_5a_t3'
+        ),
+        spotlights: ['execution-order'],
       },
     ],
   },

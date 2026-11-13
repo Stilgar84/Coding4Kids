@@ -17,10 +17,11 @@ import {
   cloneWorldItems,
   syncWorldSwitchesAndGates,
 } from '../../engine/physics';
+import type { DepotState } from '../../simulations/depot/types';
 
 export type AppMode = 'curriculum' | 'sandbox';
 
-export type CurriculumSimId = 'grid' | 'turtle' | 'beat' | 'switchyard';
+export type CurriculumSimId = 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard';
 
 export type ActivityFormat =
   | 'explanation'
@@ -166,6 +167,7 @@ export interface ExplanationDemoTab {
   icon?: string;
   title?: string;
   gridState?: CurriculumGridDefinition;
+  depotState?: DepotState;
   workspace: WorkspaceState;
   spotlights?: DemoSpotlightType[];
 }
@@ -173,6 +175,10 @@ export interface ExplanationDemoTab {
 export interface ActivityVersionPayload {
   /** Read-only Grid map definition when simId === 'grid' */
   grid?: CurriculumGridDefinition;
+  /** Read-only Depot initial & target stack definition when simId === 'depot' */
+  depot?: DepotState;
+  /** Whether continuous loop playback is enabled automatically on load (e.g., frame animation lessons) */
+  defaultLoopPlayback?: boolean;
   /** Optional pre-populated starter blocks loaded on first visit or Reset to Starter */
   starterWorkspace?: WorkspaceState;
   /** Staged block & badge availability for this activity */

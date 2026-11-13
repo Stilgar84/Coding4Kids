@@ -139,6 +139,8 @@ export const TURTLE_COLOR_PARAM_DEF: ActionParamDef = {
     { value: '#8b5cf6', label: 'Purple' },
     { value: '#ec4899', label: 'Pink' },
     { value: '#06b6d4', label: 'Cyan' },
+    { value: '#f97316', label: 'Orange' },
+    { value: '#ffffff', label: 'White' },
   ],
 };
 

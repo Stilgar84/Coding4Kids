@@ -16,7 +16,8 @@ export type ActionParamType =
   | 'beat-delay'
   | 'wait-duration'
   | 'instant-mode'
-  | 'coord';
+  | 'coord'
+  | 'depot-station';
 
 export interface ActionParamOption<T = any> {
   value: T;

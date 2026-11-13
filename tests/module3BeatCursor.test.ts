@@ -435,7 +435,7 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
         status: 'IDLE',
         stepCount: 0,
         lessonId: '3.4',
-        lessonVersion: 1,
+        lessonVersion: lesson34.version,
       });
       expect(savedEntry.lessonId).toBe('3.4');
       expect(savedEntry.simId).toBe('beat');
@@ -497,21 +497,22 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
     });
   });
 
-  describe('4. Curriculum Lesson 3.4 Schema, Staged Palette, Perimeter Starter & 3 Playable Variations', () => {
-    it('registers Lesson 3.4 in MODULE_3_BEAT_ACTIVITIES and CURRICULUM_ACTIVITIES with staged Beat + Loop + Cursor palette', () => {
-      expect(MODULE_3_BEAT_ACTIVITIES.map((a) => a.id)).toEqual(['3.4']);
+  describe('4. Curriculum Lesson 3.4 Schema, Staged Palette, Perimeter Starter & 4 Playable Variations', () => {
+    it('registers Lesson 3.4 and 3.4a in MODULE_3_BEAT_ACTIVITIES and CURRICULUM_ACTIVITIES with staged Beat + Loop + Cursor palette', () => {
+      expect(MODULE_3_BEAT_ACTIVITIES.map((a) => a.id)).toEqual(['3.4', '3.4a']);
       expect(CURRICULUM_ACTIVITIES.some((a) => a.id === '3.4')).toBe(true);
       expect(getActivitiesForModule('module-3').map((a) => a.id)).toContain('3.4');
 
       const lesson34 = getActivityLatest('3.4')!;
       expect(lesson34.moduleId).toBe('module-3');
-      expect(lesson34.version).toBe(1);
+      expect(lesson34.version).toBe(2);
       expect(lesson34.format).toBe('sandbox');
       expect(lesson34.simId).toBe('beat');
       expect(lesson34.title).toBe('Rhythm Loops & Chasing Border LEDs');
 
       expect(MODULE_3_BEAT_ALLOWED_BLOCKS).toEqual([
         ...MODULE_2_BEAT_ALLOWED_BLOCKS,
+        'SET_BEAT_DELAY',
         'CURSOR_STEP',
         'CURSOR_TURN',
       ]);
@@ -577,7 +578,7 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
       expect(paletteHtml).not.toContain('data-testid="palette-call-f1"');
 
       const lesson34 = getActivityLatest('3.4')!;
-      expect(lesson34.variations?.length).toBe(3);
+      expect(lesson34.variations?.length).toBe(4);
 
       const thumbnails = new Set<string>();
       for (const card of lesson34.variations!) {
@@ -587,17 +588,21 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
 
         const types = card.workspace.MAIN.map((b) => b.type);
         expect(types).toContain('LOOP_START');
-        expect(types).toContain('CURSOR_STEP');
-        expect(types).toContain('CURSOR_TURN');
+        if (card.id !== '3.4-instant-beacon') {
+          expect(types).toContain('CURSOR_STEP');
+          expect(types).toContain('CURSOR_TURN');
+        }
 
         const preview = renderBeatVariationPreview(card.workspace);
         expect(preview.totalBeats).toBeGreaterThan(0);
         expect(countLitLeds(preview.representativeState.leds)).toBeGreaterThan(0);
-        expect(preview.representativeState.cursor.visible).toBe(true);
+        if (card.id !== '3.4-instant-beacon') {
+          expect(preview.representativeState.cursor.visible).toBe(true);
+        }
         thumbnails.add(preview.thumbnailUrl);
       }
-      // All 3 variation cards produce distinct 8x8 visual thumbnails
-      expect(thumbnails.size).toBe(3);
+      // All 4 variation cards produce distinct 8x8 visual thumbnails
+      expect(thumbnails.size).toBe(4);
 
       // SSR check on VariationCardsPanel
       const cardsHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));

@@ -364,7 +364,7 @@ describe('Beat Delay/Wait/Loop & Turtle Animation/Teleport/Sensors/Instant/Loop'
     it('round-trips Beat SET_BEAT_DELAY and parameterized WAIT_BEAT', () => {
       const ws = createEmptyWorkspace();
       ws.MAIN = [
-        { id: 'b1', type: 'SET_BEAT_DELAY', params: { multiplier: 0.25 } },
+        { id: 'b1', type: 'SET_BEAT_DELAY', params: { delay: 0.25 } },
         { id: 'b2', type: 'WAIT_BEAT', params: { duration: 1 } },
         { id: 'b3', type: 'WAIT_BEAT', params: { duration: 2 } },
       ];
@@ -372,10 +372,17 @@ describe('Beat Delay/Wait/Loop & Turtle Animation/Teleport/Sensors/Instant/Loop'
       const decoded = importFromString(encoded);
       expect(decoded.success).toBe(true);
       expect(decoded.workspace?.MAIN[0].type).toBe('SET_BEAT_DELAY');
-      expect(decoded.workspace?.MAIN[0].params?.multiplier).toBe(0.25);
+      expect(decoded.workspace?.MAIN[0].params?.delay).toBe(0.25);
       expect(decoded.workspace?.MAIN[1].type).toBe('WAIT_BEAT');
       expect(decoded.workspace?.MAIN[2].type).toBe('WAIT_BEAT');
       expect(decoded.workspace?.MAIN[2].params?.duration).toBe(2);
+
+      // Legacy params.multiplier input also encodes cleanly into params.delay
+      const legacyWs = createEmptyWorkspace();
+      legacyWs.MAIN = [{ id: 'b4', type: 'SET_BEAT_DELAY', params: { multiplier: 0.5 } }];
+      const decodedLegacy = importFromString(exportToString(legacyWs, 'beat'));
+      expect(decodedLegacy.success).toBe(true);
+      expect(decodedLegacy.workspace?.MAIN[0].params?.delay).toBe(0.5);
     });
 
     it('round-trips Turtle WAIT, SET_INSTANT, CLEAR_CANVAS, TELEPORT (negative + sensor), and sensor VAR_ASSIGN', () => {

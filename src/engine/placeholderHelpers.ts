@@ -94,6 +94,7 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'ARC_LEFT':
     case 'ARC_RIGHT':
     case 'CURSOR_STEP':
+    case 'DEPOT_MOVE_TO':
       return 'motion';
     case 'TURN_LEFT':
     case 'TURN_RIGHT':
@@ -105,6 +106,9 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'PEN_DOWN':
     case 'SET_PEN_COLOR':
     case 'SET_PEN_WIDTH':
+    case 'DEPOT_GRAB':
+    case 'DEPOT_PLACE':
+    case 'DEPOT_SEND_OUT':
       return 'item';
     case 'LOOP_START':
     case 'LOOP_END':
@@ -154,6 +158,7 @@ export function doesBlockMatchHintCategory(
         blockType === 'ARC_LEFT' ||
         blockType === 'ARC_RIGHT' ||
         blockType === 'CURSOR_STEP' ||
+        blockType === 'DEPOT_MOVE_TO' ||
         (itemCategory === 'motion' &&
           blockType !== 'TURN_LEFT' &&
           blockType !== 'TURN_RIGHT' &&
@@ -163,6 +168,9 @@ export function doesBlockMatchHintCategory(
       return (
         blockType === 'PICK_UP' ||
         blockType === 'USE_DROP' ||
+        blockType === 'DEPOT_GRAB' ||
+        blockType === 'DEPOT_PLACE' ||
+        blockType === 'DEPOT_SEND_OUT' ||
         itemCategory === 'item' ||
         itemCategory === 'pen' ||
         itemCategory === 'sound' ||

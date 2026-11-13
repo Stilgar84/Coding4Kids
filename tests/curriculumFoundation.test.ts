@@ -18,6 +18,7 @@ import { runHeadlessSimulation } from '../src/engine/simulationRunner';
 import { exportToString } from '../src/engine/serialization/codeSerializer';
 import { clearPendingUpdateState } from '../src/services/pwaStateRestoreService';
 import { GridOverlayLayer, GRID_CELL_SIZE } from '../src/simulations/grid/components/GridOverlayLayer';
+import { createInitialDepotState } from '../src/simulations/depot/depotPhysics';
 import { useAppStore } from '../src/store/useAppStore';
 
 // Ensure simulation environments are registered
@@ -71,22 +72,34 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       for (const activity of CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity)) {
         expect(isValidatedPuzzleActivity(activity)).toBe(true);
         expect(activity.version).toBeGreaterThanOrEqual(1);
-        expect(activity.grid).toBeDefined();
         expect(activity.referenceSolution).toBeDefined();
         expect(activity.slotCap?.maxTotal).toBeDefined();
         expect(activity.antiBypassRules?.length).toBeGreaterThan(0);
 
-        const initialGrid = createCurriculumGridState(activity.grid!);
         const blockCount = activity.referenceSolution!.MAIN.length;
         expect(blockCount).toBeLessThanOrEqual(activity.slotCap!.maxTotal!);
 
-        const simResult = runHeadlessSimulation(
-          activity.referenceSolution!,
-          'grid',
-          initialGrid,
-          200
-        );
-        expect(simResult.status).toBe('SUCCESS');
+        if (activity.simId === 'depot') {
+          expect(activity.depot).toBeDefined();
+          const initialDepot = createInitialDepotState(activity.depot!);
+          const simResult = runHeadlessSimulation(
+            activity.referenceSolution!,
+            'depot',
+            initialDepot,
+            200
+          );
+          expect(simResult.status).toBe('SUCCESS');
+        } else {
+          expect(activity.grid).toBeDefined();
+          const initialGrid = createCurriculumGridState(activity.grid!);
+          const simResult = runHeadlessSimulation(
+            activity.referenceSolution!,
+            'grid',
+            initialGrid,
+            200
+          );
+          expect(simResult.status).toBe('SUCCESS');
+        }
       }
     });
 

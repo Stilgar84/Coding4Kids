@@ -1,8 +1,10 @@
 import { WorkspaceState, GridState } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
 import { BeatState } from '../../simulations/beat/types';
+import { DepotState } from '../../simulations/depot/types';
 import { createInitialTurtleState } from '../../simulations/turtle/turtleEnvironment';
 import { createInitialBeatState } from '../../simulations/beat/beatEnvironment';
+import { createInitialDepotState } from '../../simulations/depot/depotPhysics';
 import { BinaryReader, base64URLToUint8Array } from './binaryReader';
 import { BinaryWriter, uint8ArrayToBase64URL } from './binaryWriter';
 import {
@@ -10,10 +12,13 @@ import {
   ENV_VERSION_GRID,
   ENV_VERSION_TURTLE,
   ENV_VERSION_BEAT,
+  ENV_VERSION_DEPOT,
+  ENV_VERSION_DEPOT_STATE,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
   ENV_ID_TURTLE,
   ENV_ID_BEAT,
+  ENV_ID_DEPOT,
   ENV_ID_LESSON,
   ENV_ID_PROFILE,
   ImportResult,
@@ -25,6 +30,7 @@ import {
   writeGridState,
   readGridState,
 } from './env/gridSerializer';
+import { writeDepotState, readDepotState } from './env/depotSerializer';
 import { writeCodeScopes, readCodeScopes } from './codeScopes';
 
 export { writeCodeScopes, readCodeScopes };
@@ -37,8 +43,8 @@ const utf8Decoder = new TextDecoder();
  */
 export function exportToBinary(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'beat' | 'generic',
-  envState?: GridState | TurtleState | BeatState
+  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
+  envState?: GridState | TurtleState | BeatState | DepotState
 ): Uint8Array {
   const writer = new BinaryWriter();
 
@@ -52,6 +58,8 @@ export function exportToBinary(
       ? ENV_ID_TURTLE
       : envId === 'beat'
       ? ENV_ID_BEAT
+      : envId === 'depot'
+      ? ENV_ID_DEPOT
       : ENV_ID_GENERIC;
   writer.writeUint8(envByte);
 
@@ -62,12 +70,18 @@ export function exportToBinary(
         : ENV_VERSION_GRID
       : envId === 'beat'
       ? ENV_VERSION_BEAT
+      : envId === 'depot'
+      ? envState && 'stacks' in envState
+        ? ENV_VERSION_DEPOT_STATE
+        : ENV_VERSION_DEPOT
       : ENV_VERSION_TURTLE;
   writer.writeUint8(envVersion);
 
-  // 2. Environment State (if Grid)
+  // 2. Environment State (if Grid or parameterized Depot)
   if (envByte === ENV_ID_GRID && envState && 'width' in envState) {
     writeGridState(writer, envState as GridState, envVersion);
+  } else if (envByte === ENV_ID_DEPOT && envState && 'stacks' in envState) {
+    writeDepotState(writer, envState as DepotState);
   }
 
   // 3. Code Payload
@@ -81,20 +95,20 @@ export function exportToBinary(
  */
 export function exportToString(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'beat' | 'generic',
-  envState?: GridState | TurtleState | BeatState
+  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
+  envState?: GridState | TurtleState | BeatState | DepotState
 ): string {
   return uint8ArrayToBase64URL(exportToBinary(workspace, envId, envState));
 }
 
 /**
  * Path A helper: Exports a curriculum lesson attempt as a code-only Base64URL string
- * (`envId = 0x00` for Grid lessons, `0x02` for Turtle, `0x03` for Beat) so read-only map
- * geometry is never duplicated inside `SavedProgramEntry`.
+ * (`envId = 0x00` for Grid lessons, `0x02` for Turtle, `0x03` for Beat, `0x07` for Depot) so
+ * read-only map geometry is never duplicated inside `SavedProgramEntry`.
  */
 export function exportLessonCodeOnly(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'generic'
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic'
 ): string {
   const codeOnlyEnvId = simId === 'grid' ? 'generic' : simId;
   return exportToString(workspace, codeOnlyEnvId);
@@ -106,7 +120,7 @@ export function exportLessonCodeOnly(
  */
 export function exportLessonToBinary(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'generic',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
   lessonId: string,
   lessonVersion: number = 1
 ): Uint8Array {
@@ -120,6 +134,8 @@ export function exportLessonToBinary(
       ? ENV_ID_TURTLE
       : simId === 'beat'
       ? ENV_ID_BEAT
+      : simId === 'depot'
+      ? ENV_ID_DEPOT
       : ENV_ID_GENERIC;
 
   const writer = new BinaryWriter();
@@ -142,7 +158,7 @@ export function exportLessonToBinary(
  */
 export function exportLessonToString(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'generic',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
   lessonId: string,
   lessonVersion: number = 1
 ): string {
@@ -186,7 +202,8 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
         innerEnvByte !== ENV_ID_GENERIC &&
         innerEnvByte !== ENV_ID_GRID &&
         innerEnvByte !== ENV_ID_TURTLE &&
-        innerEnvByte !== ENV_ID_BEAT
+        innerEnvByte !== ENV_ID_BEAT &&
+        innerEnvByte !== ENV_ID_DEPOT
       ) {
         return {
           success: false,
@@ -214,6 +231,8 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
           ? 'turtle'
           : innerEnvByte === ENV_ID_BEAT
           ? 'beat'
+          : innerEnvByte === ENV_ID_DEPOT
+          ? 'depot'
           : innerEnvByte === ENV_ID_GRID
           ? 'grid'
           : 'generic';
@@ -231,6 +250,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
         workspace,
         turtleState: innerEnvByte === ENV_ID_TURTLE ? createInitialTurtleState() : undefined,
         beatState: innerEnvByte === ENV_ID_BEAT ? createInitialBeatState() : undefined,
+        depotState: innerEnvByte === ENV_ID_DEPOT ? createInitialDepotState() : undefined,
       };
     }
 
@@ -240,6 +260,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     if (envByte === ENV_ID_GRID) envId = 'grid';
     else if (envByte === ENV_ID_TURTLE) envId = 'turtle';
     else if (envByte === ENV_ID_BEAT) envId = 'beat';
+    else if (envByte === ENV_ID_DEPOT) envId = 'depot';
     else if (envByte !== ENV_ID_GENERIC) {
       return { success: false, error: `Unsupported environment ID: 0x${envByte.toString(16)}` };
     }
@@ -248,6 +269,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     let gridState: GridState | undefined;
     let turtleState: TurtleState | undefined;
     let beatState: BeatState | undefined;
+    let depotState: DepotState | undefined;
 
     if (envByte === ENV_ID_GRID) {
       gridState = readGridState(reader, envVersion);
@@ -255,6 +277,9 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       turtleState = createInitialTurtleState();
     } else if (envByte === ENV_ID_BEAT) {
       beatState = createInitialBeatState();
+    } else if (envByte === ENV_ID_DEPOT) {
+      depotState =
+        envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader) : undefined;
     }
 
     // 3. Code Payload
@@ -269,6 +294,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       gridState,
       turtleState,
       beatState,
+      depotState,
     };
   } catch (err: any) {
     return {

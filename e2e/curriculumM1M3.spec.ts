@@ -165,7 +165,7 @@ test.describe('Wave 6 (Commit 18): Full Module 1–3 Curriculum E2E Suite (Deskt
     // Click Next inside VictoryCelebrationModal -> advances directly to Creative Capstone 3B (Kaleidoscope Medallion)
     await page.getByTestId('btn-victory-next').click();
     await expect(page.getByTestId('variation-cards-panel')).toBeVisible();
-    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(3);
+    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(4);
 
     // Complete 3B via Done CTA -> opens Capstone celebration -> click Next to advance to 3C (Looping Lightshow)
     await page.getByTestId('btn-complete-creative-activity').click();
@@ -275,13 +275,13 @@ test.describe('Wave 6 (Commit 18): Full Module 1–3 Curriculum E2E Suite (Deskt
     });
     expect(migratedProfileId).toBe('default');
 
-    // Verify full 32-activity curriculum catalog & keyboard modal navigation (Enter + Space + Tab + Escape)
+    // Verify full 39-activity M1–M3 curriculum catalog & keyboard modal navigation (Enter + Space + Tab + Escape)
     const pickerBtn = page.getByTestId('btn-lesson-picker');
     await pickerBtn.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
     await page.getByTestId('picker-mode-curriculum').click();
-    await expect(page.locator('[data-testid^="btn-activity-"]')).toHaveCount(32);
+    await expect(page.locator('[data-testid^="btn-activity-"]')).toHaveCount(39);
     await expect(page.getByTestId('mode-status-announcer')).toHaveAttribute('aria-live', 'polite');
 
     // Open BadgeCollectionModal from LessonPickerModal via keyboard Space, Tab focus-trap, and close with Escape
@@ -303,5 +303,77 @@ test.describe('Wave 6 (Commit 18): Full Module 1–3 Curriculum E2E Suite (Deskt
     await expect(legacyCard).toBeVisible();
     await legacyCard.locator('[data-testid^="btn-load-entry-"]').click();
     await expect(page.locator('[data-block-type]')).toHaveCount(3);
+  });
+
+  test('6. runs 2.5a speed demo, 3.3a looped animation, 3.8–3.9 Crate Depot LIFO puzzle + constraint proofs & Depot Sandbox', async ({
+    page,
+  }) => {
+    // 1. Lesson 2.5a Explanation Demo (Speed Control & Instant Light Frames)
+    await page.goto('/?mode=curriculum&activity=2.5a');
+    await page.waitForSelector('[data-testid="beat-canvas"]');
+    await expect(page.getByTestId('explanation-demo-bar')).toBeVisible();
+    await expect(page.getByTestId('demo-tab-1')).toBeVisible();
+    await expect(page.getByTestId('demo-tab-2')).toBeVisible();
+    await page.getByTestId('demo-tab-2').click();
+    await page.getByTestId('btn-step').click();
+
+    // 2. Lesson 3.3a Spinning Windmill (defaultLoopPlayback: true + 4 variation cards)
+    await page.goto('/?mode=curriculum&activity=3.3a');
+    await page.waitForSelector('[data-testid="turtle-canvas-svg"]');
+    await expect(page.getByTestId('variation-cards-panel')).toBeVisible();
+    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(4);
+    await page.getByTestId('btn-hamburger-menu').click();
+    await expect(page.getByTestId('drawer-btn-loop')).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
+
+    // 3. Lesson 3.8 Explanation Demo (Crate Depot LIFO Stacks)
+    await page.goto('/?mode=curriculum&activity=3.8');
+    await page.waitForSelector('[data-testid="depot-canvas"]');
+    await expect(page.getByTestId('explanation-demo-bar')).toBeVisible();
+    await expect(page.getByTestId('demo-tab-1')).toBeVisible();
+    await expect(page.getByTestId('demo-tab-2')).toBeVisible();
+    await expect(page.getByTestId('demo-tab-3')).toBeVisible();
+
+    // 4. Puzzle 3.9 Stack Transfer — LIFO Discovery (6 slots + constraint proof + scaffold completion)
+    await page.goto('/?mode=curriculum&activity=3.9&dev=1');
+    await page.waitForSelector('[data-testid="depot-canvas"]');
+    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 6');
+
+    await page.getByTestId('btn-solution').click();
+    await expect(page.getByTestId('constraint-overall-badge')).toContainText('Verified');
+    await page.getByTestId('btn-load-scaffold').click();
+    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('6 / 6');
+    await expect(page.locator('[data-block-type="PLACEHOLDER"]')).toHaveCount(2);
+
+    // Replace ? motion placeholder with DEPOT_MOVE_TO [STACK_2], and ? item placeholder with DEPOT_PLACE
+    await page.locator('[data-block-type="PLACEHOLDER"]').nth(0).click();
+    await page.getByTestId('palette-depot-move-to').click();
+    await page.getByTestId('subpalette-param-station-STACK_2').click();
+    await expect(page.locator('[data-block-type="PLACEHOLDER"]')).toHaveCount(1);
+
+    await page.locator('[data-block-type="PLACEHOLDER"]').nth(0).click();
+    await page.getByTestId('palette-depot-place').click();
+    await expect(page.locator('[data-block-type="PLACEHOLDER"]')).toHaveCount(0);
+
+    await page.getByTestId('btn-speed').click(); // 4x
+    await page.getByTestId('btn-speed').click(); // 16x
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId('status-success')).toBeVisible();
+    await page.getByTestId('victory-modal').click({ position: { x: 20, y: 20 } });
+    await expect(page.getByTestId('victory-modal')).toHaveCount(0);
+    await expect(page.getByTestId('status-success')).toBeVisible();
+
+    // 5. Switch to Sandbox Depot via LessonPickerModal and verify 360px single-row header
+    await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('picker-mode-sandbox').click();
+    await page.getByTestId('sim-tab-depot').click();
+    await expect(page.getByTestId('depot-canvas')).toBeVisible();
+    await page.setViewportSize({ width: 360, height: 640 });
+    const headerOverflow = await page.evaluate(() => {
+      const header = document.querySelector('header');
+      return header ? header.scrollWidth - header.clientWidth : 0;
+    });
+    expect(headerOverflow).toBeLessThanOrEqual(0);
   });
 });

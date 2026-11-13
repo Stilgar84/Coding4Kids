@@ -103,7 +103,7 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await page.goto('/?mode=curriculum&activity=3.3');
     await page.waitForSelector('[data-testid="variation-cards-panel"]');
     const loadButtons = page.locator('[data-testid^="btn-load-variation-"]');
-    await expect(loadButtons).toHaveCount(3);
+    await expect(loadButtons).toHaveCount(4);
     await loadButtons.nth(2).click();
 
     // Verify both depth-1 and depth-2 loop bracket rails render as solid lines without marker symbols

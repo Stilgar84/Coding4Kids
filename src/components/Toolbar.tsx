@@ -294,6 +294,13 @@ export const Toolbar: React.FC = React.memo(() => {
                   </span>
                   <span className="truncate font-bold text-fuchsia-200">Beat</span>
                 </>
+              ) : activeSimId === 'depot' ? (
+                <>
+                  <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">
+                    🏗️
+                  </span>
+                  <span className="truncate font-bold text-amber-200">Depot</span>
+                </>
               ) : (
                 <>
                   <span className="text-sm sm:text-base leading-none shrink-0" aria-hidden="true">

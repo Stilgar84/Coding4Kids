@@ -22,6 +22,7 @@ import { BinaryWriter, uint8ArrayToBase64URL } from './binaryWriter';
 import { exportCodeOnlyToBinary, importCodeOnlyFromBinary } from './codeScopes';
 import {
   ENV_ID_BEAT,
+  ENV_ID_DEPOT,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
   ENV_ID_LESSON,
@@ -77,6 +78,7 @@ const SIM_CODE_GRID = 0;
 const SIM_CODE_TURTLE = 1;
 const SIM_CODE_BEAT = 2;
 const SIM_CODE_SWITCHYARD = 3;
+const SIM_CODE_DEPOT = 4;
 const SIM_CODE_CUSTOM_UTF8 = 7;
 
 const BEAT_EXCLUSIVE_BLOCKS = new Set<string>([
@@ -125,6 +127,13 @@ const SWITCHYARD_EXCLUSIVE_BLOCKS = new Set<string>([
   'MOVE_TRAIN',
   'SEND_TRAIN',
   'WAIT_SIGNAL',
+]);
+
+const DEPOT_EXCLUSIVE_BLOCKS = new Set<string>([
+  'DEPOT_MOVE_TO',
+  'DEPOT_GRAB',
+  'DEPOT_PLACE',
+  'DEPOT_SEND_OUT',
 ]);
 
 /**
@@ -273,7 +282,7 @@ function createEmptyWorkspace(): WorkspaceState {
 
 function inferSimIdFromWorkspace(
   ws: WorkspaceState
-): 'grid' | 'turtle' | 'beat' | 'switchyard' {
+): 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' {
   const allBlocks: CodeBlock[] = [
     ...(ws.MAIN ?? []),
     ...(ws.F1 ?? []),
@@ -283,6 +292,9 @@ function inferSimIdFromWorkspace(
 
   for (const block of allBlocks) {
     if (!block || typeof block.type !== 'string') continue;
+    if (DEPOT_EXCLUSIVE_BLOCKS.has(block.type)) {
+      return 'depot';
+    }
     if (BEAT_EXCLUSIVE_BLOCKS.has(block.type)) {
       return 'beat';
     }
@@ -311,9 +323,10 @@ function inferSimIdFromWorkspace(
   return 'grid';
 }
 
-function toCodeOnlySerializerEnv(simId: string): 'generic' | 'turtle' | 'beat' {
+function toCodeOnlySerializerEnv(simId: string): 'generic' | 'turtle' | 'beat' | 'depot' {
   if (simId === 'turtle') return 'turtle';
   if (simId === 'beat') return 'beat';
+  if (simId === 'depot') return 'depot';
   return 'generic';
 }
 
@@ -337,6 +350,7 @@ function simIdToCode(simId: string): number {
   if (simId === 'turtle') return SIM_CODE_TURTLE;
   if (simId === 'beat') return SIM_CODE_BEAT;
   if (simId === 'switchyard') return SIM_CODE_SWITCHYARD;
+  if (simId === 'depot') return SIM_CODE_DEPOT;
   return SIM_CODE_CUSTOM_UTF8;
 }
 
@@ -350,6 +364,8 @@ function codeToSimId(simCode: number, reader: BinaryReader): string {
       return 'beat';
     case SIM_CODE_SWITCHYARD:
       return 'switchyard';
+    case SIM_CODE_DEPOT:
+      return 'depot';
     case SIM_CODE_CUSTOM_UTF8:
       return readUtf8String(reader, 256);
     default:
@@ -370,9 +386,10 @@ function readExplicitSimId(reader: BinaryReader): string {
   return codeToSimId(code, reader);
 }
 
-function normalizeManualSaveSimId(simId: string): 'grid' | 'turtle' | 'beat' {
+function normalizeManualSaveSimId(simId: string): 'grid' | 'turtle' | 'beat' | 'depot' {
   if (simId === 'turtle') return 'turtle';
   if (simId === 'beat') return 'beat';
+  if (simId === 'depot') return 'depot';
   return 'grid';
 }
 
@@ -382,12 +399,14 @@ function deduceSimIdFromBinaryHeader(bytes: Uint8Array): string | null {
   if (envByte === ENV_ID_GENERIC || envByte === ENV_ID_GRID) return 'grid';
   if (envByte === ENV_ID_TURTLE) return 'turtle';
   if (envByte === ENV_ID_BEAT) return 'beat';
+  if (envByte === ENV_ID_DEPOT) return 'depot';
   if (envByte === 0x05) return 'switchyard';
   if (envByte === ENV_ID_LESSON) {
     const inner = bytes[2];
     if (inner === ENV_ID_GENERIC || inner === ENV_ID_GRID) return 'grid';
     if (inner === ENV_ID_TURTLE) return 'turtle';
     if (inner === ENV_ID_BEAT) return 'beat';
+    if (inner === ENV_ID_DEPOT) return 'depot';
     if (inner === 0x05) return 'switchyard';
   }
   return null;

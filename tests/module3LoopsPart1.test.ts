@@ -453,7 +453,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         'LOOP_START',
         'LOOP_END',
       ]);
-      expect(activity?.variations).toHaveLength(3);
+      expect(activity?.variations).toHaveLength(4);
 
       const allowedSet = new Set([
         ...(activity!.palette.allowedSimBlocks ?? []),
@@ -467,7 +467,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
 
       for (const item of workspacesToVerify) {
         expect(item.ws.MAIN.length).toBeGreaterThanOrEqual(4);
-        expect(item.ws.MAIN.length).toBeLessThanOrEqual(8);
+        expect(item.ws.MAIN.length).toBeLessThanOrEqual(14);
         expect(validateLoopStructure(item.ws.MAIN).hasError).toBe(false);
 
         for (const blk of item.ws.MAIN) {
@@ -479,18 +479,18 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         }
 
         const preview = renderTurtleVariationPreview(item.ws);
-        expect(preview.finalState.paths.length, item.label).toBeGreaterThanOrEqual(5);
+        expect(preview.finalState.paths.length, item.label).toBeGreaterThanOrEqual(4);
         expect(preview.svgMarkup).toContain('<line');
         expect(preview.thumbnailUrl.startsWith('data:image/svg+xml')).toBe(true);
 
         // Verify binary serialization round-trip (OP_LOOP_START / OP_LOOP_END + Turtle params)
-        const encoded = exportLessonToString(item.ws, 'turtle', '3.3', 1);
+        const encoded = exportLessonToString(item.ws, 'turtle', '3.3', activity!.version);
         const decoded = importFromString(encoded);
         expect(decoded.success).toBe(true);
         if (decoded.success) {
           expect(decoded.envId).toBe('lesson');
           expect(decoded.lessonId).toBe('3.3');
-          expect(decoded.lessonVersion).toBe(1);
+          expect(decoded.lessonVersion).toBe(activity!.version);
           expect(decoded.workspace.MAIN.map((b) => b.type)).toEqual(
             item.ws.MAIN.map((b) => b.type)
           );
@@ -502,13 +502,17 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         '3.0',
         '3.1',
         '3.2',
+        '3.2a',
         '3.3',
+        '3.3a',
       ]);
-      expect(getActivitiesForModule('module-3').map((a) => a.id).slice(0, 4)).toEqual([
+      expect(getActivitiesForModule('module-3').map((a) => a.id).slice(0, 6)).toEqual([
         '3.0',
         '3.1',
         '3.2',
+        '3.2a',
         '3.3',
+        '3.3a',
       ]);
       expect(CURRICULUM_ACTIVITIES.some((a) => a.id === '3.3')).toBe(true);
     });

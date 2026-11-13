@@ -10,6 +10,7 @@ import { MODULE_2_OBJECTS_ACTIVITIES } from './module2Objects';
 import { MODULE_3_PART1_ACTIVITIES } from './module3Part1';
 import { MODULE_3_BEAT_ACTIVITIES } from './module3Beat';
 import { MODULE_3_PART2_ACTIVITIES } from './module3Part2';
+import { MODULE_3_DEPOT_ACTIVITIES } from './module3Depot';
 
 export { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 export { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
@@ -25,6 +26,10 @@ export {
   LESSON_3_6_GRID,
   CAPSTONE_3A_GRID,
 } from './module3Part2';
+export {
+  MODULE_3_DEPOT_ACTIVITIES,
+  MODULE_3_DEPOT_ALLOWED_BLOCKS,
+} from './module3Depot';
 
 /**
  * Static Module catalog for Modules 1–3.
@@ -57,7 +62,7 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
   {
     id: 'module-3',
     number: 3,
-    title: 'Loops — Repeating Sequences & Nested Patterns',
+    title: 'Loops — Repeating Sequences, Frame Animation & LIFO Stacks',
     shortTitle: 'Module 3',
     icon: '🔁',
     badgeId: 'badge-module-3',
@@ -163,6 +168,7 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...MODULE_3_PART1_ACTIVITIES,
   ...MODULE_3_BEAT_ACTIVITIES,
   ...MODULE_3_PART2_ACTIVITIES,
+  ...MODULE_3_DEPOT_ACTIVITIES,
 ]);
 
 export function getCurriculumModules(): CurriculumModule[] {
@@ -228,6 +234,8 @@ export function getActivityAtVersion(
     description: latest.description,
     hint: latest.hint,
     grid: historical.grid,
+    depot: historical.depot ?? latest.depot,
+    defaultLoopPlayback: historical.defaultLoopPlayback,
     starterWorkspace: historical.starterWorkspace,
     palette: historical.palette,
     slotCap: historical.slotCap,

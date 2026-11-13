@@ -12,6 +12,12 @@ import { TurtleState } from '../simulations/turtle/types';
 import { createInitialTurtleState } from '../simulations/turtle/turtleEnvironment';
 import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 import { createInitialBeatState } from '../simulations/beat/beatEnvironment';
+import { DepotState } from '../simulations/depot/types';
+import {
+  cloneStacks,
+  createInitialDepotState,
+  normalizeDepotStation,
+} from '../simulations/depot/depotPhysics';
 import type { EditorTool, HistorySnapshot, SandboxModeSnapshot } from '../store/useAppStore';
 import type { AppMode } from '../data/curriculum/types';
 
@@ -27,13 +33,14 @@ export interface AppUpdateStateInput {
   activeActivityVersion?: number;
   curriculumWorkspaces?: Record<string, WorkspaceState>;
   sandboxSnapshot?: SandboxModeSnapshot | null;
-  activeSimId: 'grid' | 'turtle' | 'beat';
+  activeSimId: 'grid' | 'turtle' | 'beat' | 'depot';
   currentLevel: number;
   workspace: WorkspaceState;
   savedWorkspaces: Record<string, WorkspaceState>;
   grid: GridState;
   turtleState: TurtleState;
   beatState?: BeatState;
+  depotState?: DepotState;
   runtime: InterpreterRuntimeState | null;
   activeScope: ScopeType;
   selectedBlockId: string | null;
@@ -397,9 +404,41 @@ function sanitizeBeatState(raw: unknown): BeatState {
   };
 }
 
-function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' {
+function sanitizeDepotState(raw: unknown): DepotState {
+  const defaults = createInitialDepotState();
+  if (!raw || typeof raw !== 'object') {
+    return defaults;
+  }
+  const d = raw as Record<string, any>;
+  const validColors = new Set(['RED', 'BLUE', 'GREEN', 'AMBER']);
+  const cleanList = (arr: unknown) =>
+    Array.isArray(arr) ? arr.filter((c) => typeof c === 'string' && validColors.has(c)) : [];
+  const cleanStacks = (s: unknown): [any[], any[], any[]] => {
+    if (!Array.isArray(s) || s.length < 3) return cloneStacks(defaults.initialStacks);
+    return [cleanList(s[0]), cleanList(s[1]), cleanList(s[2])];
+  };
+  const initialStacks = cleanStacks(d.initialStacks ?? d.stacks);
+  const stacks = cleanStacks(d.stacks ?? initialStacks);
+  const status: SimulationStatus = VALID_STATUSES.includes(d.status) ? d.status : 'IDLE';
+  return {
+    stacks,
+    initialStacks,
+    output: cleanList(d.output),
+    ...(d.targetStacks ? { targetStacks: cleanStacks(d.targetStacks) } : {}),
+    ...(Array.isArray(d.targetOutput) ? { targetOutput: cleanList(d.targetOutput) } : {}),
+    workerStation: normalizeDepotStation(d.workerStation),
+    initialWorkerStation: normalizeDepotStation(d.initialWorkerStation),
+    heldCrate: typeof d.heldCrate === 'string' && validColors.has(d.heldCrate) ? (d.heldCrate as any) : null,
+    lastFailureReason: typeof d.lastFailureReason === 'string' ? (d.lastFailureReason as any) : null,
+    status: status === 'RUNNING' ? 'PAUSED' : status,
+    stepCount: typeof d.stepCount === 'number' && Number.isFinite(d.stepCount) ? d.stepCount : 0,
+  };
+}
+
+function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' | 'depot' {
   if (raw === 'turtle') return 'turtle';
   if (raw === 'beat') return 'beat';
+  if (raw === 'depot') return 'depot';
   return 'grid';
 }
 
@@ -420,6 +459,7 @@ function sanitizeHistoryList(raw: unknown, fallbackGrid: GridState): HistorySnap
       grid: sanitizeGridState(s.grid, fallbackGrid),
       turtleState: s.turtleState ? sanitizeTurtleState(s.turtleState) : undefined,
       beatState: s.beatState ? sanitizeBeatState(s.beatState) : undefined,
+      depotState: s.depotState ? sanitizeDepotState(s.depotState) : undefined,
       activeScope: VALID_SCOPES.includes(s.activeScope) ? s.activeScope : 'MAIN',
       selectedBlockId: typeof s.selectedBlockId === 'string' ? s.selectedBlockId : null,
       activeSimId: sanitizeSimId(s.activeSimId),
@@ -462,6 +502,9 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
   const cleanBeat: BeatState = state.beatState
     ? JSON.parse(JSON.stringify(state.beatState))
     : createInitialBeatState(false);
+  const cleanDepot: DepotState = state.depotState
+    ? JSON.parse(JSON.stringify(state.depotState))
+    : createInitialDepotState();
 
   const payload: PersistedUpdatePayload = {
     version: UPDATE_SNAPSHOT_VERSION,
@@ -480,6 +523,7 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     grid: JSON.parse(JSON.stringify(state.grid)),
     turtleState: cleanTurtle,
     beatState: cleanBeat,
+    depotState: cleanDepot,
     runtime: state.runtime ? JSON.parse(JSON.stringify(state.runtime)) : null,
     activeScope: state.activeScope,
     selectedBlockId: state.selectedBlockId,
@@ -559,7 +603,7 @@ export function consumeRestoredStateAfterUpdate(
       }
     }
 
-    const activeSimId: 'grid' | 'turtle' | 'beat' = sanitizeSimId(parsed.activeSimId);
+    const activeSimId: 'grid' | 'turtle' | 'beat' | 'depot' = sanitizeSimId(parsed.activeSimId);
     const currentLevel =
       typeof parsed.currentLevel === 'number' && Number.isInteger(parsed.currentLevel) && parsed.currentLevel >= 1
         ? parsed.currentLevel
@@ -591,6 +635,7 @@ export function consumeRestoredStateAfterUpdate(
         grid: sanitizeGridState(snap.grid, fallbackGrid),
         turtleState: sanitizeTurtleState(snap.turtleState),
         beatState: sanitizeBeatState(snap.beatState),
+        depotState: sanitizeDepotState(snap.depotState),
         workspace: sanitizeWorkspace(snap.workspace),
         savedWorkspaces: snapSaved,
       };
@@ -599,6 +644,7 @@ export function consumeRestoredStateAfterUpdate(
     const grid = sanitizeGridState(parsed.grid, fallbackGrid);
     const turtleState = sanitizeTurtleState(parsed.turtleState);
     const beatState = sanitizeBeatState(parsed.beatState);
+    const depotState = sanitizeDepotState(parsed.depotState);
     const runtime = sanitizeRuntime(parsed.runtime);
     const activeScope: ScopeType = VALID_SCOPES.includes(parsed.activeScope) ? parsed.activeScope : 'MAIN';
     const selectedBlockId = typeof parsed.selectedBlockId === 'string' ? parsed.selectedBlockId : null;
@@ -626,6 +672,7 @@ export function consumeRestoredStateAfterUpdate(
       grid,
       turtleState,
       beatState,
+      depotState,
       runtime,
       activeScope,
       selectedBlockId,

@@ -2,6 +2,7 @@ import { WorkspaceState, GridState, VariableName, toVariableName, BinaryOp, Code
 import { TurtleState } from '../../simulations/turtle/types';
 import { PlaceholderHintCategory } from '../../data/curriculum/types';
 import { BeatState } from '../../simulations/beat/types';
+import { DepotState } from '../../simulations/depot/types';
 
 // Format versions
 export const FORMAT_VERSION = 1;
@@ -9,6 +10,8 @@ export const ENV_VERSION_GRID = 1;
 export const ENV_VERSION_GRID_V2 = 2;
 export const ENV_VERSION_TURTLE = 1;
 export const ENV_VERSION_BEAT = 1;
+export const ENV_VERSION_DEPOT = 1;
+export const ENV_VERSION_DEPOT_STATE = 2;
 export const ENV_VERSION_PROFILE = 1;
 
 // Environment IDs
@@ -19,8 +22,9 @@ export const ENV_ID_BEAT = 0x03;
 export const ENV_ID_LESSON = 0x04;
 // 0x05 is reserved for Module 5 Switchyard ('switchyard')
 export const ENV_ID_PROFILE = 0x06;
+export const ENV_ID_DEPOT = 0x07;
 
-export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat';
+export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat' | 'depot';
 export type EnvIdName = InnerLessonEnvIdName | 'lesson';
 
 // Scope IDs
@@ -208,6 +212,8 @@ export const TURTLE_COLOR_PALETTE: readonly string[] = [
   '#8b5cf6', // 5: Purple
   '#ec4899', // 6: Pink
   '#06b6d4', // 7: Cyan
+  '#f97316', // 8: Orange
+  '#ffffff', // 9: White
 ];
 
 // Beat & Light Matrix Opcodes (envId = 0x03, envVersion = 1)
@@ -230,6 +236,12 @@ export const OP_BEAT_CURSOR_TURN = 0x1d;
 export const OP_BEAT_SET_DELAY = 0x1e;
 export const OP_BEAT_WAIT_DURATION = 0x1f;
 
+// Crate Depot Opcodes (envId = 0x07, envVersion = 1)
+export const OP_DEPOT_MOVE_TO = 0x10;
+export const OP_DEPOT_GRAB = 0x11;
+export const OP_DEPOT_PLACE = 0x12;
+export const OP_DEPOT_SEND_OUT = 0x13;
+
 export interface ImportResult {
   success: boolean;
   formatVersion?: number;
@@ -242,5 +254,6 @@ export interface ImportResult {
   gridState?: GridState;
   turtleState?: TurtleState;
   beatState?: BeatState;
+  depotState?: DepotState;
   error?: string;
 }

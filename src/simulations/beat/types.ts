@@ -19,6 +19,8 @@ export const BEAT_LED_PALETTE: readonly BeatColorSwatch[] = [
   { id: 5, hex: '#3b82f6', label: 'Blue' },
   { id: 6, hex: '#f97316', label: 'Orange' },
   { id: 7, hex: '#ec4899', label: 'Pink' },
+  { id: 8, hex: '#0f172a', label: 'Black' },
+  { id: 9, hex: '#ffffff', label: 'White' },
 ];
 
 export type BeatPresetName =

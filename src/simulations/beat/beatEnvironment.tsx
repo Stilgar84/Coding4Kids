@@ -770,9 +770,15 @@ function turnBeatCursor(
   };
 }
 
+const BEAT_LED_OFF_HEX = '#0f172a';
+
+function resolvePaintLedCell(color: string): string | null {
+  return color.toLowerCase() === BEAT_LED_OFF_HEX ? null : color;
+}
+
 function resolveLedColor(rawColor: unknown, fallback: string): string {
   if (typeof rawColor === 'number') {
-    // 1..8 variable index (Module 6+) or 0 fallback to first swatch
+    // 1..10 variable index (Module 6+) or 0 fallback to first swatch
     const normalized = rawColor >= 1 ? Math.round(rawColor) - 1 : 0;
     const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, normalized));
     return BEAT_LED_PALETTE[idx].hex;
@@ -782,7 +788,7 @@ function resolveLedColor(rawColor: unknown, fallback: string): string {
     if (trimmed.startsWith('#')) return trimmed;
     const byNum = Number(trimmed);
     if (Number.isFinite(byNum)) {
-      // 1..8 variable index or 0..7 colorId
+      // 1..10 variable index or 0..9 colorId
       const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(byNum) - 1));
       return BEAT_LED_PALETTE[idx].hex;
     }
@@ -868,14 +874,16 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
             ? 'SMILE'
             : options?.params?.preset ?? options?.params?.presetId ?? 'HEART';
         const presetDef = getPresetDef(requestedPreset);
-        const stampColor = nextIsColorCustomized ? nextActiveColor : presetDef.defaultColor;
+        const stampColor = nextIsColorCustomized
+          ? resolvePaintLedCell(nextActiveColor)
+          : presetDef.defaultColor;
         nextLeds = createPresetLedGrid(presetDef.name, stampColor);
         lastTriggeredEvent = {
           kind: 'STAMP',
           actionType,
           beatIndex: nextBeatIndex,
           preset: presetDef.name,
-          color: stampColor,
+          color: stampColor ?? BEAT_LED_OFF_HEX,
         };
         break;
       }
@@ -893,7 +901,7 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'SET_BEAT_DELAY': {
-        const rawDelay = Number(options?.params?.delay ?? 0);
+        const rawDelay = Number(options?.params?.delay ?? options?.params?.multiplier ?? 0);
         nextStepDelayMultiplier =
           Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : 0;
         lastTriggeredEvent = {
@@ -947,8 +955,9 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
           Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
         );
         nextLeds = cloneLedGrid(state.leds);
+        const paintColor = resolvePaintLedCell(nextActiveColor);
         for (let c = 0; c < BEAT_GRID_SIZE; c++) {
-          nextLeds[rowIdx][c] = nextActiveColor;
+          nextLeds[rowIdx][c] = paintColor;
         }
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
@@ -965,8 +974,9 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
           Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.x ?? 1)) - 1)
         );
         nextLeds = cloneLedGrid(state.leds);
+        const paintColor = resolvePaintLedCell(nextActiveColor);
         for (let r = 0; r < BEAT_GRID_SIZE; r++) {
-          nextLeds[r][colIdx] = nextActiveColor;
+          nextLeds[r][colIdx] = paintColor;
         }
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
@@ -987,7 +997,7 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
           Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
         );
         nextLeds = cloneLedGrid(state.leds);
-        nextLeds[rowIdx][colIdx] = nextActiveColor;
+        nextLeds[rowIdx][colIdx] = resolvePaintLedCell(nextActiveColor);
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
           actionType,
@@ -1000,7 +1010,7 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       case 'CURSOR_STEP': {
         nextCursor = stepBeatCursor(nextCursor);
         nextLeds = cloneLedGrid(state.leds);
-        nextLeds[nextCursor.y - 1][nextCursor.x - 1] = nextActiveColor;
+        nextLeds[nextCursor.y - 1][nextCursor.x - 1] = resolvePaintLedCell(nextActiveColor);
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
           actionType,

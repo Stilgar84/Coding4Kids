@@ -454,19 +454,18 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
   {
     id: '3.7',
     moduleId: 'module-3',
-    version: 1,
+    version: 2,
     format: 'sandbox',
     simId: 'turtle',
     icon: '🐢',
     title: 'Nested Loop Rosettes & Spirographs',
     concept: 'Inner Shape Loop + Outer Rotation / Translation Loop',
     description:
-      'Put a shape loop inside an outer rotation or stepping loop to spin squares, arc petals, triangles, and stars into dazzling geometric rosettes!',
-    hint: 'Run the 6-rotated-squares rosette, preview the Arc Flower, Triangle Pinwheel, or Star Row cards, and tweak inner vs. outer repeat counts to invent new spirographs.',
+      'Put a shape loop inside an outer rotation or stepping loop to spin squares, arc petals, triangles, stars, and animated rosettes into dazzling geometric spirographs!',
+    hint: 'Run the 6-rotated-squares rosette, preview the Arc Flower, Triangle Pinwheel, Star Row, or Spinning Square Frame cards, and tweak inner vs. outer repeat counts to invent new spirographs.',
     palette: {
       allowedSimBlocks: [
         ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
-        'TELEPORT',
         'WAIT',
         'SET_INSTANT',
         'CLEAR_CANVAS',
@@ -548,7 +547,121 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
           'm3_7_star_row'
         ),
       },
+      {
+        id: '3.7-spinning-square-frame',
+        title: 'Spinning Square Animation',
+        icon: '🎬',
+        workspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_PEN_COLOR', params: { color: '#f97316' } },
+            { type: 'SET_PEN_WIDTH', params: { width: 6 } },
+            { type: 'LOOP_START', repeatCount: 6 },
+            { type: 'CLEAR_CANVAS' },
+            { type: 'SET_INSTANT', params: { mode: 'ON' } },
+            { type: 'LOOP_START', repeatCount: 4 },
+            { type: 'FORWARD', params: { length: 100 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'LOOP_END' },
+            { type: 'WAIT', params: { duration: 0.25 } },
+            { type: 'TURN_RIGHT', params: { angle: 15 } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_7_spinning_square'
+        ),
+      },
     ],
+    historicalVersions: {
+      1: {
+        version: 1,
+        archivedNote: 'v1 included TELEPORT in palette and 3 static nested loop variations',
+        palette: {
+          allowedSimBlocks: [
+            ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
+            'TELEPORT',
+            'WAIT',
+            'SET_INSTANT',
+            'CLEAR_CANVAS',
+          ],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+          allowedScopes: ['MAIN'],
+          allowRepeatBadges: true,
+          allowActionParams: true,
+          allowVariables: false,
+        },
+        starterWorkspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_PEN_COLOR', params: { color: '#8b5cf6' } },
+            { type: 'SET_PEN_WIDTH', params: { width: 4 } },
+            { type: 'LOOP_START', repeatCount: 6 },
+            { type: 'LOOP_START', repeatCount: 4 },
+            { type: 'FORWARD', params: { length: 75 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'LOOP_END' },
+            { type: 'TURN_RIGHT', params: { angle: 60 } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_7_starter'
+        ),
+        variations: [
+          {
+            id: '3.7-arc-flower',
+            title: '8-Petal Arc Flower',
+            icon: '🌸',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#ec4899' } },
+                { type: 'LOOP_START', repeatCount: 8 },
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'ARC_RIGHT', params: { radius: 75, angle: 90 } },
+                { type: 'TURN_RIGHT', params: { angle: 90 } },
+                { type: 'LOOP_END' },
+                { type: 'TURN_RIGHT', params: { angle: 45 } },
+                { type: 'LOOP_END' },
+              ],
+              'm3_7_arc_flower'
+            ),
+          },
+          {
+            id: '3.7-triangle-pinwheel',
+            title: '6-Wing Pinwheel',
+            icon: '🌀',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#06b6d4' } },
+                { type: 'LOOP_START', repeatCount: 6 },
+                { type: 'LOOP_START', repeatCount: 3 },
+                { type: 'FORWARD', params: { length: 100 } },
+                { type: 'TURN_RIGHT', params: { angle: 120 } },
+                { type: 'LOOP_END' },
+                { type: 'TURN_LEFT', params: { angle: 60 } },
+                { type: 'LOOP_END' },
+              ],
+              'm3_7_pinwheel'
+            ),
+          },
+          {
+            id: '3.7-star-row',
+            title: 'Spaced Star Row',
+            icon: '🌟',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#f59e0b' } },
+                { type: 'LOOP_START', repeatCount: 4 },
+                { type: 'LOOP_START', repeatCount: 8 },
+                { type: 'FORWARD', params: { length: 50 } },
+                { type: 'TURN_RIGHT', params: { angle: 135 } },
+                { type: 'LOOP_END' },
+                { type: 'PEN_UP' },
+                { type: 'FORWARD', params: { length: 75 } },
+                { type: 'PEN_DOWN' },
+                { type: 'LOOP_END' },
+              ],
+              'm3_7_star_row'
+            ),
+          },
+        ],
+      },
+    },
   },
 
   // =========================================================================
@@ -653,7 +766,7 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
   {
     id: '3B',
     moduleId: 'module-3',
-    version: 1,
+    version: 2,
     format: 'capstone',
     capstoneType: 'creative',
     simId: 'turtle',
@@ -661,12 +774,11 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
     title: 'Kaleidoscope Medallion',
     concept: 'Creative Synthesis — Layered Nested Loop Mandalas, Colors & Arcs',
     description:
-      'Design a multi-layered kaleidoscope medallion by combining nested polygon loops, sweeping outer arc rings, and bold pen colors!',
-    hint: 'Run the two-layer mandala starter, explore the Crystal Snowflake, Gondola Ferris Wheel, or Honeycomb Ring cards, and tap ✓ Done when your medallion is complete!',
+      'Design a multi-layered kaleidoscope medallion by combining nested polygon loops, sweeping outer arc rings, animated frame spins, and bold pen colors!',
+    hint: 'Run the two-layer mandala starter, explore the Crystal Snowflake, Gondola Ferris Wheel, Honeycomb Ring, or Animated Mandala Frame cards, and tap ✓ Done when your medallion is complete!',
     palette: {
       allowedSimBlocks: [
         ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
-        'TELEPORT',
         'WAIT',
         'SET_INSTANT',
         'CLEAR_CANVAS',
@@ -766,7 +878,142 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
           'm3_3B_honeycomb'
         ),
       },
+      {
+        id: '3B-animated-kaleidoscope',
+        title: 'Animated Kaleidoscope Spin',
+        icon: '💫',
+        workspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_PEN_WIDTH', params: { width: 6 } },
+            { type: 'LOOP_START', repeatCount: 6 },
+            { type: 'CLEAR_CANVAS' },
+            { type: 'SET_INSTANT', params: { mode: 'ON' } },
+            { type: 'SET_PEN_COLOR', params: { color: '#f97316' } },
+            { type: 'LOOP_START', repeatCount: 3 },
+            { type: 'FORWARD', params: { length: 100 } },
+            { type: 'TURN_RIGHT', params: { angle: 120 } },
+            { type: 'LOOP_END' },
+            { type: 'SET_PEN_COLOR', params: { color: '#ffffff' } },
+            { type: 'FORWARD', params: { length: 50 } },
+            { type: 'BACKWARD', params: { length: 50 } },
+            { type: 'WAIT', params: { duration: 0.25 } },
+            { type: 'TURN_RIGHT', params: { angle: 30 } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_3B_animated'
+        ),
+      },
     ],
+    historicalVersions: {
+      1: {
+        version: 1,
+        archivedNote: 'v1 included TELEPORT in palette and 3 static kaleidoscope variations',
+        palette: {
+          allowedSimBlocks: [
+            ...MODULE_3_TURTLE_ALLOWED_BLOCKS,
+            'TELEPORT',
+            'WAIT',
+            'SET_INSTANT',
+            'CLEAR_CANVAS',
+          ],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+          allowedScopes: ['MAIN'],
+          allowRepeatBadges: true,
+          allowActionParams: true,
+          allowVariables: false,
+        },
+        starterWorkspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_PEN_COLOR', params: { color: '#8b5cf6' } },
+            { type: 'SET_PEN_WIDTH', params: { width: 4 } },
+            { type: 'LOOP_START', repeatCount: 6 },
+            { type: 'LOOP_START', repeatCount: 4 },
+            { type: 'FORWARD', params: { length: 50 } },
+            { type: 'TURN_RIGHT', params: { angle: 90 } },
+            { type: 'LOOP_END' },
+            { type: 'TURN_RIGHT', params: { angle: 60 } },
+            { type: 'LOOP_END' },
+            { type: 'SET_PEN_COLOR', params: { color: '#ec4899' } },
+            { type: 'LOOP_START', repeatCount: 6 },
+            { type: 'ARC_LEFT', params: { radius: 100, angle: 120 } },
+            { type: 'TURN_LEFT', params: { angle: 180 } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_3B_starter'
+        ),
+        variations: [
+          {
+            id: '3B-crystal-snowflake',
+            title: 'Crystal Snowflake Ring',
+            icon: '❄️',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#06b6d4' } },
+                { type: 'SET_PEN_WIDTH', params: { width: 4 } },
+                { type: 'LOOP_START', repeatCount: 6 },
+                { type: 'FORWARD', params: { length: 75 } },
+                { type: 'TURN_LEFT', params: { angle: 60 } },
+                { type: 'LOOP_START', repeatCount: 3 },
+                { type: 'FORWARD', params: { length: 25 } },
+                { type: 'BACKWARD', params: { length: 25 } },
+                { type: 'TURN_RIGHT', params: { angle: 60 } },
+                { type: 'LOOP_END' },
+                { type: 'TURN_LEFT', params: { angle: 120 } },
+                { type: 'BACKWARD', params: { length: 75 } },
+                { type: 'TURN_RIGHT', params: { angle: 60 } },
+                { type: 'LOOP_END' },
+              ],
+              'm3_3B_snowflake'
+            ),
+          },
+          {
+            id: '3B-ferris-wheel',
+            title: 'Gondola Ferris Wheel',
+            icon: '🎡',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#f59e0b' } },
+                { type: 'SET_PEN_WIDTH', params: { width: 4 } },
+                { type: 'LOOP_START', repeatCount: 8 },
+                { type: 'FORWARD', params: { length: 100 } },
+                { type: 'SET_PEN_COLOR', params: { color: '#3b82f6' } },
+                { type: 'LOOP_START', repeatCount: 4 },
+                { type: 'FORWARD', params: { length: 25 } },
+                { type: 'TURN_RIGHT', params: { angle: 90 } },
+                { type: 'LOOP_END' },
+                { type: 'SET_PEN_COLOR', params: { color: '#f59e0b' } },
+                { type: 'BACKWARD', params: { length: 100 } },
+                { type: 'TURN_RIGHT', params: { angle: 45 } },
+                { type: 'LOOP_END' },
+              ],
+              'm3_3B_ferris'
+            ),
+          },
+          {
+            id: '3B-honeycomb-ring',
+            title: 'Honeycomb Medallion',
+            icon: '🐝',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_PEN_COLOR', params: { color: '#10b981' } },
+                { type: 'SET_PEN_WIDTH', params: { width: 4 } },
+                { type: 'LOOP_START', repeatCount: 6 },
+                { type: 'LOOP_START', repeatCount: 6 },
+                { type: 'FORWARD', params: { length: 50 } },
+                { type: 'TURN_RIGHT', params: { angle: 60 } },
+                { type: 'LOOP_END' },
+                { type: 'TURN_RIGHT', params: { angle: 60 } },
+                { type: 'LOOP_END' },
+                { type: 'SET_PEN_COLOR', params: { color: '#ef4444' } },
+                { type: 'ARC_RIGHT', params: { radius: 50, angle: 360 } },
+                { type: 'ARC_LEFT', params: { radius: 50, angle: 360 } },
+              ],
+              'm3_3B_honeycomb'
+            ),
+          },
+        ],
+      },
+    },
   },
 
   // =========================================================================
@@ -775,7 +1022,7 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
   {
     id: '3C',
     moduleId: 'module-3',
-    version: 1,
+    version: 2,
     format: 'capstone',
     capstoneType: 'creative',
     simId: 'beat',
@@ -783,8 +1030,8 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
     title: 'Looping Lightshow',
     concept: 'Creative Synthesis — Nested Rhythm Ostinatos & Synchronized 8×8 LED Sweeps',
     description:
-      'Combine nested beat loops, synth melodies, LED matrix stamps, and perimeter cursor sweeps to choreograph your own concert lightshow!',
-    hint: 'Press Play to launch the Star Border Lightshow, preview the Equalizer Pulse, Radar Crosshair, or Arcade Heartbeat cards, and tap ✓ Done when your show rocks!',
+      'Combine nested beat loops, synth melodies, LED matrix stamps, perimeter cursor sweeps, and instant light frames to choreograph your own concert lightshow!',
+    hint: 'Press Play to launch the Star Border Lightshow, preview the Equalizer Pulse, Radar Crosshair, Arcade Heartbeat, or Instant Stage Flash cards, and tap ✓ Done when your show rocks!',
     palette: {
       allowedSimBlocks: [...MODULE_3_BEAT_ALLOWED_BLOCKS],
       allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
@@ -880,6 +1127,133 @@ export const MODULE_3_PART2_ACTIVITIES: CurriculumActivity[] = [
           'm3_3C_arcade'
         ),
       },
+      {
+        id: '3C-instant-stage-flash',
+        title: 'Instant Frame Stage Show',
+        icon: '⚡',
+        workspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_BEAT_DELAY', params: { delay: 0 } },
+            { type: 'LOOP_START', repeatCount: 4 },
+            { type: 'CLEAR_LEDS' },
+            { type: 'SET_LED_COLOR', params: { color: '#fbbf24' } },
+            { type: 'STAMP_PRESET', params: { preset: 'STAR' } },
+            { type: 'SET_LED_COLOR', params: { color: '#0f172a' } },
+            { type: 'LIGHT_PIXEL', params: { x: 4, y: 4 } },
+            { type: 'SET_LED_COLOR', params: { color: '#ffffff' } },
+            { type: 'LOOP_START', repeatCount: 2 },
+            { type: 'CURSOR_STEP', repeatCount: 2 },
+            { type: 'PLAY_NOTE', params: { pitch: 5, duration: 0.25 } },
+            { type: 'LOOP_END' },
+            { type: 'CURSOR_TURN', params: { direction: 'RIGHT' } },
+            { type: 'WAIT_BEAT', params: { duration: 0.5 } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_3C_instant_flash'
+        ),
+      },
     ],
+    historicalVersions: {
+      1: {
+        version: 1,
+        archivedNote: 'v1 included 3 nested beat & cursor variations',
+        palette: {
+          allowedSimBlocks: [...MODULE_3_BEAT_ALLOWED_BLOCKS],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+          allowedScopes: ['MAIN'],
+          allowRepeatBadges: true,
+          allowActionParams: true,
+          allowVariables: false,
+        },
+        starterWorkspace: buildWorkspaceFromSpecs(
+          [
+            { type: 'SET_LED_COLOR', params: { color: '#06b6d4' } },
+            { type: 'STAMP_PRESET', params: { preset: 'STAR' } },
+            { type: 'LOOP_START', repeatCount: 4 },
+            { type: 'DRUM_KICK' },
+            { type: 'LOOP_START', repeatCount: 2 },
+            { type: 'CURSOR_STEP', repeatCount: 3 },
+            { type: 'PLAY_NOTE', params: { pitch: 5, duration: 0.5 } },
+            { type: 'LOOP_END' },
+            { type: 'CURSOR_STEP' },
+            { type: 'DRUM_SNARE' },
+            { type: 'CURSOR_TURN', params: { direction: 'RIGHT' } },
+            { type: 'LOOP_END' },
+          ],
+          'm3_3C_starter'
+        ),
+        variations: [
+          {
+            id: '3C-equalizer-pulse',
+            title: 'Equalizer Column Pulse',
+            icon: '📊',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'SET_LED_COLOR', params: { color: '#10b981' } },
+                { type: 'LIGHT_COL', params: { x: 2 } },
+                { type: 'LIGHT_COL', params: { x: 7 } },
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'DRUM_KICK' },
+                { type: 'PLAY_NOTE', params: { pitch: 2, duration: 0.5 } },
+                { type: 'LOOP_END' },
+                { type: 'SET_LED_COLOR', params: { color: '#fbbf24' } },
+                { type: 'LIGHT_COL', params: { x: 4 } },
+                { type: 'LIGHT_COL', params: { x: 5 } },
+                { type: 'DRUM_CLAP' },
+                { type: 'LOOP_END' },
+              ],
+              'm3_3C_equalizer'
+            ),
+          },
+          {
+            id: '3C-radar-sweep',
+            title: 'Radar Crosshair Sweep',
+            icon: '📡',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'SET_LED_COLOR', params: { color: '#a855f7' } },
+                { type: 'LIGHT_ROW', params: { y: 4 } },
+                { type: 'LIGHT_COL', params: { x: 4 } },
+                { type: 'SET_LED_COLOR', params: { color: '#f43f5e' } },
+                { type: 'LOOP_START', repeatCount: 4 },
+                { type: 'PLAY_NOTE', params: { pitch: 6, duration: 0.5 } },
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'CURSOR_STEP', repeatCount: 3 },
+                { type: 'DRUM_CLAP' },
+                { type: 'LOOP_END' },
+                { type: 'CURSOR_STEP' },
+                { type: 'CURSOR_TURN', params: { direction: 'RIGHT' } },
+                { type: 'LOOP_END' },
+              ],
+              'm3_3C_radar'
+            ),
+          },
+          {
+            id: '3C-arcade-heartbeat',
+            title: 'Arcade Heartbeat Loop',
+            icon: '🕹️',
+            workspace: buildWorkspaceFromSpecs(
+              [
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'SET_LED_COLOR', params: { color: '#ec4899' } },
+                { type: 'STAMP_PRESET', params: { preset: 'HEART' } },
+                { type: 'LOOP_START', repeatCount: 2 },
+                { type: 'DRUM_KICK' },
+                { type: 'PLAY_NOTE', params: { pitch: 3, duration: 0.5 } },
+                { type: 'PLAY_NOTE', params: { pitch: 5, duration: 0.5 } },
+                { type: 'LOOP_END' },
+                { type: 'SET_LED_COLOR', params: { color: '#3b82f6' } },
+                { type: 'LIGHT_ROW', params: { y: 1 } },
+                { type: 'LIGHT_ROW', params: { y: 8 } },
+                { type: 'PLAY_CHIME' },
+                { type: 'LOOP_END' },
+              ],
+              'm3_3C_arcade'
+            ),
+          },
+        ],
+      },
+    },
   },
 ];

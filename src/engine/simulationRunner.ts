@@ -14,11 +14,13 @@ import { registerSimulation, getSimEnvironment } from './simulation/registry';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
 import { beatSimulationEnvironment } from '../simulations/beat/beatEnvironment';
+import { depotSimulationEnvironment } from '../simulations/depot/depotEnvironment';
 
 // Ensure environments are registered for headless simulation
 registerSimulation(gridSimulationEnvironment);
 registerSimulation(turtleSimulationEnvironment);
 registerSimulation(beatSimulationEnvironment);
+registerSimulation(depotSimulationEnvironment);
 
 export const MAX_SAVE_SIMULATION_STEPS = 1000;
 export const MAX_INSTANT_SIMULATION_STEPS = 1000;
@@ -36,7 +38,7 @@ export interface SimulationRunResult<TState = any> {
  */
 export function runHeadlessSimulation<TState = any>(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot',
   simState: TState,
   maxSteps: number = MAX_SAVE_SIMULATION_STEPS
 ): SimulationRunResult<TState> {

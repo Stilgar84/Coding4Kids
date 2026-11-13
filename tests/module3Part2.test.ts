@@ -118,6 +118,7 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
         '2.3',
         '2.4',
         '2.5',
+        '2.5a',
         '2.6',
         '2.7',
         '2A',
@@ -127,20 +128,26 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
         '3.0',
         '3.1',
         '3.2',
+        '3.2a',
         '3.3',
+        '3.3a',
         '3.4',
+        '3.4a',
         '3.5',
         '3.6',
         '3.7',
+        '3.8',
+        '3.9',
+        '3.10',
         '3A',
         '3B',
         '3C',
       ]);
 
       expect(m1Ids).toHaveLength(12);
-      expect(m2Ids).toHaveLength(9);
-      expect(m3Ids).toHaveLength(11);
-      expect(CURRICULUM_ACTIVITIES).toHaveLength(32);
+      expect(m2Ids).toHaveLength(10);
+      expect(m3Ids).toHaveLength(17);
+      expect(CURRICULUM_ACTIVITIES).toHaveLength(39);
 
       const validatedPuzzleIds = CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity).map(
         (a) => a.id
@@ -159,6 +166,8 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
         '3.2',
         '3.5',
         '3.6',
+        '3.9',
+        '3.10',
         '3A',
       ]);
     });
@@ -371,12 +380,12 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
   });
 
   describe('3. Creative Sandboxes & Capstones (3.7, 3B, 3C): Nested Starters, Distinct Variations & Round-Trip', () => {
-    it.each(['3.7', '3B'])('executes %s starter and 3 Turtle variations cleanly with distinct non-empty geometries', (activityId) => {
+    it.each(['3.7', '3B'])('executes %s starter and 4 Turtle variations cleanly with distinct non-empty geometries', (activityId) => {
       const activity = getActivityLatest(activityId)!;
       expect(activity).toBeDefined();
       expect(activity.simId).toBe('turtle');
       expect(activity.starterWorkspace).toBeDefined();
-      expect(activity.variations).toHaveLength(3);
+      expect(activity.variations).toHaveLength(4);
 
       expect(validateLoopStructure(activity.starterWorkspace!.MAIN).hasError).toBe(false);
       expect(computeLoopNestingMetadata(activity.starterWorkspace!.MAIN).maxDepth).toBe(2);
@@ -394,28 +403,28 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
         expect(cardPreview.finalState.paths.length).toBeGreaterThan(0);
         svgs.add(cardPreview.svgMarkup);
 
-        const shareStr = exportLessonToString(card.workspace, 'turtle', activityId, 1);
+        const shareStr = exportLessonToString(card.workspace, 'turtle', activityId, activity.version);
         const decoded = importFromString(shareStr);
         expect(decoded.envId).toBe('lesson');
         expect(decoded.innerEnvId).toBe('turtle');
         expect(decoded.lessonId).toBe(activityId);
-        expect(decoded.lessonVersion).toBe(1);
+        expect(decoded.lessonVersion).toBe(activity.version);
         expect(decoded.workspace!.MAIN.map((b) => b.type)).toEqual(
           card.workspace.MAIN.map((b) => b.type)
         );
       }
-      // Starter + 3 variations produce 4 distinct visual drawings
-      expect(svgs.size).toBe(4);
+      // Starter + 4 variations produce 5 distinct visual drawings
+      expect(svgs.size).toBe(5);
     });
 
-    it('executes Capstone 3C (Looping Lightshow) starter and 3 Beat variations with nested loops, LED cursor sweeps, and Beat binary round-trip', () => {
+    it('executes Capstone 3C (Looping Lightshow) starter and 4 Beat variations with nested loops, LED cursor sweeps, and Beat binary round-trip', () => {
       const activity = getActivityLatest('3C')!;
       expect(activity).toBeDefined();
       expect(activity.format).toBe('capstone');
       expect(activity.capstoneType).toBe('creative');
       expect(activity.simId).toBe('beat');
       expect(activity.palette.allowedSimBlocks).toEqual(MODULE_3_BEAT_ALLOWED_BLOCKS);
-      expect(activity.variations).toHaveLength(3);
+      expect(activity.variations).toHaveLength(4);
 
       expect(validateLoopStructure(activity.starterWorkspace!.MAIN).hasError).toBe(false);
       expect(computeLoopNestingMetadata(activity.starterWorkspace!.MAIN).maxDepth).toBe(2);
@@ -435,17 +444,17 @@ describe('Wave 6 (Commit 18): Module 3 Part 2 (3.5–3.7, 3A, 3B, 3C) & Full 32-
         expect(countLitLeds(preview.representativeState.leds)).toBeGreaterThan(0);
         thumbnailUrls.add(preview.thumbnailUrl);
 
-        const shareStr = exportLessonToString(card.workspace, 'beat', '3C', 1);
+        const shareStr = exportLessonToString(card.workspace, 'beat', '3C', activity.version);
         const decoded = importFromString(shareStr);
         expect(decoded.envId).toBe('lesson');
         expect(decoded.innerEnvId).toBe('beat');
         expect(decoded.lessonId).toBe('3C');
-        expect(decoded.lessonVersion).toBe(1);
+        expect(decoded.lessonVersion).toBe(activity.version);
         expect(decoded.workspace!.MAIN.map((b) => b.type)).toEqual(
           card.workspace.MAIN.map((b) => b.type)
         );
       }
-      expect(thumbnailUrls.size).toBe(4);
+      expect(thumbnailUrls.size).toBe(5);
     });
   });
 

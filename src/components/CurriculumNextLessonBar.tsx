@@ -42,6 +42,8 @@ export const CurriculumNextLessonBar: React.FC<CurriculumNextLessonBarProps> = (
         ? s.grid.status
         : s.activeSimId === 'beat'
         ? s.beatState.status
+        : s.activeSimId === 'depot'
+        ? s.depotState.status
         : s.turtleState.status,
     runtimeStatus: s.runtime?.status,
     setCurriculumActivity: s.setCurriculumActivity,
