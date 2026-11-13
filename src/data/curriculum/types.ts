@@ -85,6 +85,22 @@ export interface PaletteConfig {
    * Optional subset of variable names exposed in the palette when allowVariables is true.
    */
   allowedVariableNames?: VariableName[];
+  /**
+   * Allowed boolean sensor names in conditional / while blocks (Module 5+).
+   */
+  allowedSensors?: string[];
+  /**
+   * Allowed boolean combinators (NOT / AND / OR) in conditional / while blocks (Module 5+).
+   */
+  allowedCombinators?: ('NOT' | 'AND' | 'OR')[];
+  /**
+   * Allowed numeric value sensors (e.g., ['$x', '$y', '$heading', '$tileDial']) (Module 6+).
+   */
+  allowedValueSensors?: string[];
+  /**
+   * Allowed variable operation symbols (e.g., ['+', '-']) (Module 6+).
+   */
+  allowedVarOps?: string[];
 }
 
 export interface SlotCapConfig {
@@ -119,6 +135,90 @@ export interface AntiBypassRule {
   minStarterEditDistance?: number;
   /** Asserts that reaching the goal coordinate directly without prior ordered flags leaves Goal padlocked */
   directToGoalMustFailLock?: boolean;
+  /** When false, disables/forbids variable assignments & variable badges during bypass search */
+  allowVariables?: boolean;
+  /** Forbids boolean combinators (NOT, AND, OR) during bypass search */
+  forbidCombinators?: ('NOT' | 'AND' | 'OR')[];
+  /** Forbids specific sensor types during bypass search */
+  forbidSensors?: string[];
+  /** Per-scope loop nesting caps (e.g., { MAIN: 1, F1: 0 }) */
+  maxLoopNestingDepthPerScope?: Partial<Record<ScopeType, number>>;
+  /** Requires that a single-variant bypass solution exists while failing multi-variant */
+  singleVariantBypassMustExist?: boolean;
+}
+
+export type GridConditionSensor =
+  | 'pathAhead'
+  | 'pathLeft'
+  | 'pathRight'
+  | 'itemHere'
+  | 'carryingItem'
+  | 'atGoal'
+  | 'tileColor'
+  | 'unvisitedAhead';
+
+export type SwitchyardConditionSensor =
+  | 'hasNextItem'
+  | 'itemDamaged'
+  | 'itemColor'
+  | 'itemIcon';
+
+export type DepotConditionSensor =
+  | 'stationEmpty'
+  | 'hasItem'
+  | 'itemDamaged'
+  | 'heldColor'
+  | 'topColor';
+
+export type ConditionSensorType =
+  | GridConditionSensor
+  | SwitchyardConditionSensor
+  | DepotConditionSensor;
+
+export type ConditionCombinatorOp = 'NOT' | 'AND' | 'OR';
+export type ConditionCompareOp = '=' | '!=' | '<' | '<=' | '>' | '>=';
+
+export type ConditionExpr =
+  | {
+      kind: 'sensor';
+      sensor: ConditionSensorType;
+      /** Optional color/icon filter (e.g., for tileColor, itemColor, itemIcon, heldColor, topColor) */
+      param?: string;
+    }
+  | {
+      kind: 'not';
+      operand: ConditionExpr;
+    }
+  | {
+      kind: 'and';
+      left: ConditionExpr;
+      right: ConditionExpr;
+    }
+  | {
+      kind: 'or';
+      left: ConditionExpr;
+      right: ConditionExpr;
+    }
+  | {
+      /** Reserved for Module 7-8 typed numeric comparisons */
+      kind: 'cmp';
+      op: ConditionCompareOp;
+      left: string | number;
+      right: string | number;
+    };
+
+export interface CurriculumBeaconTile {
+  x: number;
+  y: number;
+  color: 'amber' | 'sky' | 'emerald' | 'rose' | string;
+  label?: string;
+}
+
+export interface CurriculumDialTile {
+  x: number;
+  y: number;
+  value: number;
+  label?: string;
 }
 
 export interface CurriculumGridDefinition {
@@ -127,11 +227,73 @@ export interface CurriculumGridDefinition {
   robot: { x: number; y: number; dir: Direction };
   barriers: WallEdge[];
   flags: FlagObjective[];
+  /** Optional display label when rendered as a multi-variant map */
+  label?: string;
   // Module 2+ interactive world items (Commit 14)
   waterCells?: CellCoord[];
   lockedGates?: LockedGate[];
   floorSwitches?: FloorSwitch[];
   worldItems?: WorldItem[];
+  // Module 5-6 interactive beacon/dial tiles & validation guards
+  beaconTiles?: CurriculumBeaconTile[];
+  dialTiles?: CurriculumDialTile[];
+  requireAllItemsCollected?: boolean;
+  requireEmptyBackpackAtGoal?: boolean;
+  strictInteractionCollision?: boolean;
+}
+
+export type SwitchyardColor = 'amber' | 'sky' | 'emerald' | 'rose' | 'slate' | string;
+export type SwitchyardIcon = 'crate' | 'gear' | 'gem' | 'battery' | 'bolt' | string;
+
+export interface SwitchyardItemDef {
+  id: string;
+  color: SwitchyardColor;
+  icon: SwitchyardIcon;
+  damaged?: boolean;
+  weight?: number;
+}
+
+export interface SwitchyardSwitchDef {
+  id: string;
+  label?: string;
+  initialDirection: 'left' | 'right';
+  /** Target dock ID or downstream switch ID when toggled left */
+  leftTarget: string;
+  /** Target dock ID or downstream switch ID when toggled right */
+  rightTarget: string;
+}
+
+export interface SwitchyardDockDef {
+  id: string;
+  label?: string;
+  expectedColor?: SwitchyardColor;
+  expectedIcon?: SwitchyardIcon;
+  expectedItems?: Array<{
+    color?: SwitchyardColor;
+    icon?: SwitchyardIcon;
+  }>;
+  acceptsDamaged?: boolean;
+}
+
+export interface CurriculumSwitchyardDefinition {
+  label?: string;
+  incomingStream: SwitchyardItemDef[];
+  switches: SwitchyardSwitchDef[];
+  docks: SwitchyardDockDef[];
+  scrapChute?: {
+    label?: string;
+    expectedDamagedOnly?: boolean;
+    expectedCount?: number;
+  };
+}
+
+export interface CurriculumVariant {
+  index: number;
+  label?: string;
+  kind: 'grid' | 'depot' | 'switchyard';
+  grid?: CurriculumGridDefinition;
+  depot?: DepotState;
+  switchyard?: CurriculumSwitchyardDefinition;
 }
 
 export interface GhostStepPreview {
@@ -168,6 +330,7 @@ export interface ExplanationDemoTab {
   title?: string;
   gridState?: CurriculumGridDefinition;
   depotState?: DepotState;
+  switchyardState?: CurriculumSwitchyardDefinition;
   workspace: WorkspaceState;
   spotlights?: DemoSpotlightType[];
 }
@@ -175,8 +338,16 @@ export interface ExplanationDemoTab {
 export interface ActivityVersionPayload {
   /** Read-only Grid map definition when simId === 'grid' */
   grid?: CurriculumGridDefinition;
+  /** Ordered multi-map variants evaluated simultaneously on the same student program (M5–M6+) */
+  gridVariants?: CurriculumGridDefinition[];
   /** Read-only Depot initial & target stack definition when simId === 'depot' */
   depot?: DepotState;
+  /** Ordered multi-run Depot test cases evaluated simultaneously (M5–M6+) */
+  depotVariants?: DepotState[];
+  /** Read-only Switchyard train sorting definition when simId === 'switchyard' */
+  switchyard?: CurriculumSwitchyardDefinition;
+  /** Ordered multi-stream Switchyard variants evaluated simultaneously */
+  switchyardVariants?: CurriculumSwitchyardDefinition[];
   /** Whether continuous loop playback is enabled automatically on load (e.g., frame animation lessons) */
   defaultLoopPlayback?: boolean;
   /** Optional pre-populated starter blocks loaded on first visit or Reset to Starter */
@@ -250,6 +421,76 @@ export interface CurriculumModule {
   badgeIcon: string;
   /** Static list of capstone activity IDs that award this module's Mastery Badge */
   capstoneIds: string[];
+}
+
+export interface MasteryChallengeTier {
+  /** 1-based Challenge Tier number (Tier 1..5) */
+  tier: number;
+  /** Canonical tier identifier (e.g., 'tier-1') */
+  id: string;
+  /** Tier display title */
+  title: string;
+  /** Collectible tier mastery badge ID */
+  badgeId: string;
+  /** Module ID whose completion unlocks this challenge tier */
+  unlockAfterModuleId: string;
+  /** Ordered challenge activity IDs belonging to this tier */
+  challengeIds: string[];
+}
+
+export function getActivityVariants(
+  payload: ActivityVersionPayload,
+  simId: CurriculumSimId
+): CurriculumVariant[] {
+  if (simId === 'grid') {
+    if (payload.gridVariants && payload.gridVariants.length > 0) {
+      return payload.gridVariants.map((grid, index) => ({
+        index,
+        label: grid.label,
+        kind: 'grid',
+        grid,
+      }));
+    }
+    if (payload.grid) {
+      return [{ index: 0, label: payload.grid.label, kind: 'grid', grid: payload.grid }];
+    }
+    return [];
+  }
+  if (simId === 'depot') {
+    if (payload.depotVariants && payload.depotVariants.length > 0) {
+      return payload.depotVariants.map((depot, index) => ({
+        index,
+        kind: 'depot',
+        depot,
+      }));
+    }
+    if (payload.depot) {
+      return [{ index: 0, kind: 'depot', depot: payload.depot }];
+    }
+    return [];
+  }
+  if (simId === 'switchyard') {
+    if (payload.switchyardVariants && payload.switchyardVariants.length > 0) {
+      return payload.switchyardVariants.map((switchyard, index) => ({
+        index,
+        label: switchyard.label,
+        kind: 'switchyard',
+        switchyard,
+      }));
+    }
+    if (payload.switchyard) {
+      return [
+        {
+          index: 0,
+          label: payload.switchyard.label,
+          kind: 'switchyard',
+          switchyard: payload.switchyard,
+        },
+      ];
+    }
+    return [];
+  }
+  return [];
 }
 
 export function createCurriculumBlock(
@@ -332,7 +573,7 @@ export function createCurriculumGridState(
 }
 
 export function isValidatedPuzzleActivity(activity: CurriculumActivity): boolean {
-  if (activity.format === 'puzzle') return true;
+  if (activity.format === 'puzzle' || activity.format === 'challenge') return true;
   if (activity.format === 'capstone' && activity.capstoneType === 'puzzle') return true;
   return Boolean(activity.referenceSolution);
 }

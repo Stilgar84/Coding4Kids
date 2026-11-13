@@ -2,11 +2,11 @@ import React, { useEffect } from 'react';
 import { Play, Sparkles } from 'lucide-react';
 import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
 import {
-  CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
+import { getNextCurriculumActivity } from '../utils/curriculumStagePolicy';
 
 export const VictoryCelebrationModal: React.FC = () => {
   const isVictoryModalOpen = useAppStoreSelector((s) => s.isVictoryModalOpen);
@@ -24,6 +24,8 @@ const VictoryCelebrationModalContent: React.FC = () => {
     speed,
     setCurriculumActivity,
     isLowQuality,
+    variantRuns,
+    completedActivities,
   } = useAppStoreSelector((s) => ({
     victoryEarnedBadges: s.victoryEarnedBadges,
     dismissVictoryModal: s.dismissVictoryModal,
@@ -33,6 +35,8 @@ const VictoryCelebrationModalContent: React.FC = () => {
     speed: s.speed,
     setCurriculumActivity: s.setCurriculumActivity,
     isLowQuality: isLowQualityActive(s),
+    variantRuns: s.variantRuns,
+    completedActivities: s.completedActivities,
   }));
 
   useEffect(() => {
@@ -51,6 +55,15 @@ const VictoryCelebrationModalContent: React.FC = () => {
       ? getActivityAtVersion(activeActivityId, activeActivityVersion) ??
         getActivityLatest(activeActivityId)
       : undefined;
+
+  if (
+    appMode === 'curriculum' &&
+    variantRuns.length > 1 &&
+    !variantRuns.every((v) => v.status === 'SUCCESS') &&
+    !completedActivities[activeActivityId]
+  ) {
+    return null;
+  }
 
   const isCapstone = Boolean(activeActivity && activeActivity.format === 'capstone');
   const earnedModules = CURRICULUM_MODULES.filter((m) =>
@@ -73,13 +86,9 @@ const VictoryCelebrationModalContent: React.FC = () => {
       ? `Capstone completed${activeActivity ? `: ${activeActivity.title}` : ''}!`
       : `Puzzle completed${activeActivity ? `: ${activeActivity.title}` : ''}!`;
 
-  const currentActivityIdx =
-    appMode === 'curriculum' && activeActivity
-      ? CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivity.id)
-      : -1;
   const nextActivity =
-    currentActivityIdx >= 0 && currentActivityIdx < CURRICULUM_ACTIVITIES.length - 1
-      ? CURRICULUM_ACTIVITIES[currentActivityIdx + 1]
+    appMode === 'curriculum' && activeActivity
+      ? getNextCurriculumActivity(activeActivity.id)
       : undefined;
 
   const entranceClass =

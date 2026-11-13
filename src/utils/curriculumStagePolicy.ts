@@ -376,11 +376,62 @@ export function findNextUnviewedDemoTabIndex(
 }
 
 /**
- * Returns the next curriculum activity in canonical catalog order, or undefined if at the end.
+ * Returns the ordered track of activities isolated to the same track as `activityId`:
+ * - When `current.format === 'challenge'`, returns only challenge activities.
+ * - Otherwise returns only core curriculum activities (`format !== 'challenge'`).
  */
-export function getNextCurriculumActivity(activityId: string): CurriculumActivity | undefined {
-  const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activityId);
-  return idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1
-    ? CURRICULUM_ACTIVITIES[idx + 1]
-    : undefined;
+export function getCurriculumTrackActivities(
+  activityId: string,
+  catalog: readonly CurriculumActivity[] = CURRICULUM_ACTIVITIES
+): CurriculumActivity[] {
+  const current = catalog.find((a) => a.id === activityId);
+  if (!current) {
+    return catalog.filter((a) => a.format !== 'challenge');
+  }
+  const isChallenge = current.format === 'challenge';
+  return catalog.filter((a) =>
+    isChallenge ? a.format === 'challenge' : a.format !== 'challenge'
+  );
+}
+
+/**
+ * Returns the next curriculum activity in the same isolated track (core vs challenge),
+ * or undefined if at the end (unless `wrap` is true).
+ */
+export function getNextCurriculumActivity(
+  activityId: string,
+  catalog: readonly CurriculumActivity[] = CURRICULUM_ACTIVITIES,
+  wrap = false
+): CurriculumActivity | undefined {
+  const track = getCurriculumTrackActivities(activityId, catalog);
+  if (track.length === 0) return undefined;
+  const idx = track.findIndex((a) => a.id === activityId);
+  if (idx < 0) {
+    return wrap ? track[0] : undefined;
+  }
+  if (idx < track.length - 1) {
+    return track[idx + 1];
+  }
+  return wrap ? track[0] : undefined;
+}
+
+/**
+ * Returns the previous curriculum activity in the same isolated track (core vs challenge),
+ * or undefined if at the start (unless `wrap` is true).
+ */
+export function getPrevCurriculumActivity(
+  activityId: string,
+  catalog: readonly CurriculumActivity[] = CURRICULUM_ACTIVITIES,
+  wrap = false
+): CurriculumActivity | undefined {
+  const track = getCurriculumTrackActivities(activityId, catalog);
+  if (track.length === 0) return undefined;
+  const idx = track.findIndex((a) => a.id === activityId);
+  if (idx < 0) {
+    return wrap ? track[track.length - 1] : undefined;
+  }
+  if (idx > 0) {
+    return track[idx - 1];
+  }
+  return wrap ? track[track.length - 1] : undefined;
 }

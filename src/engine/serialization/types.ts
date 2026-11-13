@@ -8,10 +8,13 @@ import { DepotState } from '../../simulations/depot/types';
 export const FORMAT_VERSION = 1;
 export const ENV_VERSION_GRID = 1;
 export const ENV_VERSION_GRID_V2 = 2;
+export const ENV_VERSION_GRID_V3 = 3;
 export const ENV_VERSION_TURTLE = 1;
 export const ENV_VERSION_BEAT = 1;
 export const ENV_VERSION_DEPOT = 1;
 export const ENV_VERSION_DEPOT_STATE = 2;
+export const ENV_VERSION_DEPOT_QUEUE = 3;
+export const ENV_VERSION_SWITCHYARD = 1;
 export const ENV_VERSION_PROFILE = 1;
 
 // Environment IDs
@@ -20,11 +23,11 @@ export const ENV_ID_GRID = 0x01;
 export const ENV_ID_TURTLE = 0x02;
 export const ENV_ID_BEAT = 0x03;
 export const ENV_ID_LESSON = 0x04;
-// 0x05 is reserved for Module 5 Switchyard ('switchyard')
+export const ENV_ID_SWITCHYARD = 0x05;
 export const ENV_ID_PROFILE = 0x06;
 export const ENV_ID_DEPOT = 0x07;
 
-export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat' | 'depot';
+export type InnerLessonEnvIdName = 'generic' | 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard';
 export type EnvIdName = InnerLessonEnvIdName | 'lesson';
 
 // Scope IDs
@@ -44,6 +47,9 @@ export const OP_END_IF = 0x06;
 export const OP_VAR_ASSIGN = 0x07;
 export const OP_VAR_OP = 0x08;
 export const OP_PLACEHOLDER = 0x09;
+export const OP_WHILE = 0x0a;
+export const OP_END_WHILE = 0x0b;
+// 0x0C..0x0E reserved for future Tape/Universal opcodes
 
 export const PLACEHOLDER_HINT_CATEGORIES: readonly PlaceholderHintCategory[] = [
   'any',         // 0
@@ -104,6 +110,7 @@ export function getPlaceholderHintCategory(block?: CodeBlock | null): Placeholde
 // Block Header Bitmasks
 export const MASK_HAS_VAR_PARAM = 0x80; // Bit 7 of block header byte
 export const MASK_HAS_REP = 0x40;       // Bit 6 of block header byte
+export const MASK_ELSE_HAS_COND = 0x20; // Bit 5 of block header byte (ELSE IF condition)
 
 // 2-Bit Operand Types for VAR_ASSIGN and VAR_OP
 export const OPERAND_TYPE_VAR = 0;     // 00: Variable (1 byte: 0..25)
@@ -147,7 +154,7 @@ export function indexToVarName(idx: number): VariableName {
 }
 
 export const SENSOR_REF_FLAG = 0x80;
-export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading'] as const;
+export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading', '$tileDial'] as const;
 
 export function sensorNameToByte(name: string): number {
   const idx = SERIALIZED_SENSOR_IDS.indexOf(name as (typeof SERIALIZED_SENSOR_IDS)[number]);
@@ -236,11 +243,12 @@ export const OP_BEAT_CURSOR_TURN = 0x1d;
 export const OP_BEAT_SET_DELAY = 0x1e;
 export const OP_BEAT_WAIT_DURATION = 0x1f;
 
-// Crate Depot Opcodes (envId = 0x07, envVersion = 1)
+// Crate Depot Opcodes (envId = 0x07, envVersion = 1..3)
 export const OP_DEPOT_MOVE_TO = 0x10;
 export const OP_DEPOT_GRAB = 0x11;
 export const OP_DEPOT_PLACE = 0x12;
 export const OP_DEPOT_SEND_OUT = 0x13;
+export const OP_DEPOT_SEND_GATE = 0x14;
 
 export interface ImportResult {
   success: boolean;

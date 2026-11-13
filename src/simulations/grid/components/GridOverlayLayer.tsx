@@ -18,6 +18,7 @@ export interface GridOverlayLayerProps extends GridOverlaySlotProps {
    * - 'all': renders all four isolated mount points (default for standalone tests)
    */
   layer?: 'under-robot' | 'over-robot' | 'all';
+  beaconAndDialSlot?: React.ReactNode;
   worldItemsSlot?: React.ReactNode;
   flagPadlockSlot?: React.ReactNode;
   ghostStepSlot?: React.ReactNode;
@@ -27,6 +28,7 @@ export interface GridOverlayLayerProps extends GridOverlaySlotProps {
 /**
  * Pluggable SVG overlay container inside GridCanvas exposing isolated mount points
  * for parallel curriculum worktracks:
+ * - Beacon & Dial Tiles (Commit 25-26)
  * - WorldItemsLayer (Commit 14)
  * - FlagPadlockOverlay (Commit 6)
  * - GhostStepOverlay (Commit 7)
@@ -34,6 +36,7 @@ export interface GridOverlayLayerProps extends GridOverlaySlotProps {
  */
 export const GridOverlayLayer: React.FC<GridOverlayLayerProps> = ({
   layer = 'all',
+  beaconAndDialSlot = null,
   worldItemsSlot = null,
   flagPadlockSlot = null,
   ghostStepSlot = null,
@@ -48,9 +51,14 @@ export const GridOverlayLayer: React.FC<GridOverlayLayerProps> = ({
       className="pointer-events-none"
     >
       {showUnder && (
-        <g data-testid="grid-slot-world-items" className="pointer-events-none">
-          {worldItemsSlot}
-        </g>
+        <>
+          <g data-testid="grid-slot-beacon-dial" className="pointer-events-none">
+            {beaconAndDialSlot}
+          </g>
+          <g data-testid="grid-slot-world-items" className="pointer-events-none">
+            {worldItemsSlot}
+          </g>
+        </>
       )}
 
       {showOver && (

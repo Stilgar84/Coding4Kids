@@ -71,9 +71,10 @@ const CrateBox: React.FC<{
 };
 
 export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runtimeStatus }) => {
-  const { storeDepotState, isLowQuality } = useAppStoreSelector((s) => ({
+  const { storeDepotState, isLowQuality, hasMultiVariant } = useAppStoreSelector((s) => ({
     storeDepotState: s.depotState,
     isLowQuality: isLowQualityActive(s),
+    hasMultiVariant: s.variantRuns.length > 1,
   }));
 
   const state = propState || storeDepotState;
@@ -98,7 +99,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
       {isCollision && (
         <div
           data-testid="status-collision"
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 ${
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-3'} left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 ${
             isLowQuality ? '' : 'animate-bounce '
           }flex items-center gap-2 pointer-events-none`}
         >
@@ -109,7 +110,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({ state: propState, runt
       {isSuccess && (
         <div
           data-testid="status-success"
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 ${
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-3'} left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 ${
             isLowQuality ? '' : 'animate-pulse '
           }flex items-center gap-2 pointer-events-none`}
         >

@@ -103,6 +103,7 @@ export interface SimulationEnvironment<TState = any> {
   // Hook for sensor queries
   getSensorInfo?: (state: TState, sensorId: string) => any;
   readSensor?: (sensorId: string, state: TState) => number;
+  evaluateSensor?: (sensor: any, state: TState, params?: any) => boolean;
 
   // Victory / Completion evaluation when call stack finishes
   evaluateCompletion?: (state: TState) => SimulationStatus;

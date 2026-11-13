@@ -2,7 +2,6 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  CURRICULUM_MODULES,
   CURRICULUM_ACTIVITIES,
   CurriculumActivity,
   createCurriculumBlock,
@@ -12,6 +11,7 @@ import {
   getActivitiesForModule,
   getActivityLatest,
   getActivityAtVersion,
+  getActivityVariants,
   isValidatedPuzzleActivity,
 } from '../src/data/curriculum';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
@@ -45,10 +45,17 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
   });
 
   describe('Curriculum Module & Activity Schema', () => {
-    it('declares static badgeId and capstoneIds for Modules 1–3', () => {
+    it('declares static badgeId and capstoneIds for Modules 1–6', () => {
       const modules = getCurriculumModules();
-      expect(modules).toHaveLength(3);
-      expect(modules.map((m) => m.id)).toEqual(['module-1', 'module-2', 'module-3']);
+      expect(modules).toHaveLength(6);
+      expect(modules.map((m) => m.id)).toEqual([
+        'module-1',
+        'module-2',
+        'module-3',
+        'module-4',
+        'module-5',
+        'module-6',
+      ]);
 
       const m1 = getCurriculumModule('module-1')!;
       expect(m1.badgeId).toBe('badge-module-1');
@@ -61,9 +68,21 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       const m3 = getCurriculumModule('module-3')!;
       expect(m3.badgeId).toBe('badge-module-3');
       expect(m3.capstoneIds).toEqual(['3A', '3B', '3C']);
+
+      const m4 = getCurriculumModule('module-4')!;
+      expect(m4.badgeId).toBe('badge-module-4');
+      expect(m4.capstoneIds).toEqual(['4A', '4B', '4C']);
+
+      const m5 = getCurriculumModule('module-5')!;
+      expect(m5.badgeId).toBe('badge-module-5');
+      expect(m5.capstoneIds).toEqual(['5A', '5B']);
+
+      const m6 = getCurriculumModule('module-6')!;
+      expect(m6.badgeId).toBe('badge-module-6');
+      expect(m6.capstoneIds).toEqual(['6A', '6B']);
     });
 
-    it('seeds Module 1 Robot puzzles whose referenceSolutions solve their maps within slotCap', () => {
+    it('seeds validated puzzles whose referenceSolutions solve their maps/variants within slotCap', () => {
       const m1RobotPuzzles = getActivitiesForModule('module-1').filter(isValidatedPuzzleActivity);
       expect(m1RobotPuzzles.map((a) => a.id)).toEqual(
         expect.arrayContaining(['1.1', '1.2', '1.3'])
@@ -73,32 +92,36 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
         expect(isValidatedPuzzleActivity(activity)).toBe(true);
         expect(activity.version).toBeGreaterThanOrEqual(1);
         expect(activity.referenceSolution).toBeDefined();
-        expect(activity.slotCap?.maxTotal).toBeDefined();
         expect(activity.antiBypassRules?.length).toBeGreaterThan(0);
 
-        const blockCount = activity.referenceSolution!.MAIN.length;
-        expect(blockCount).toBeLessThanOrEqual(activity.slotCap!.maxTotal!);
+        const sol = activity.referenceSolution!;
+        const totalBlocks =
+          sol.MAIN.length + sol.F1.length + sol.F2.length + sol.F3.length;
+        if (activity.slotCap?.maxTotal !== undefined) {
+          expect(totalBlocks).toBeLessThanOrEqual(activity.slotCap.maxTotal);
+        }
+        if (activity.slotCap?.perScope) {
+          for (const scope of ['MAIN', 'F1', 'F2', 'F3'] as const) {
+            const cap = activity.slotCap.perScope[scope];
+            if (cap !== undefined) {
+              expect(sol[scope].length).toBeLessThanOrEqual(cap);
+            }
+          }
+        }
 
-        if (activity.simId === 'depot') {
-          expect(activity.depot).toBeDefined();
-          const initialDepot = createInitialDepotState(activity.depot!);
-          const simResult = runHeadlessSimulation(
-            activity.referenceSolution!,
-            'depot',
-            initialDepot,
-            200
-          );
-          expect(simResult.status).toBe('SUCCESS');
-        } else {
-          expect(activity.grid).toBeDefined();
-          const initialGrid = createCurriculumGridState(activity.grid!);
-          const simResult = runHeadlessSimulation(
-            activity.referenceSolution!,
-            'grid',
-            initialGrid,
-            200
-          );
-          expect(simResult.status).toBe('SUCCESS');
+        const variants = getActivityVariants(activity, activity.simId);
+        expect(variants.length).toBeGreaterThan(0);
+
+        for (const variant of variants) {
+          if (variant.kind === 'depot' && variant.depot) {
+            const initialDepot = createInitialDepotState(variant.depot);
+            const simResult = runHeadlessSimulation(sol, 'depot', initialDepot, 200);
+            expect(simResult.status).toBe('SUCCESS');
+          } else if (variant.kind === 'grid' && variant.grid) {
+            const initialGrid = createCurriculumGridState(variant.grid);
+            const simResult = runHeadlessSimulation(sol, 'grid', initialGrid, 200);
+            expect(simResult.status).toBe('SUCCESS');
+          }
         }
       }
     });
@@ -395,6 +418,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
             isInstant: false,
             isReadOnly: true,
             layer: 'all',
+            beaconAndDialSlot: React.createElement('rect', { id: 'mock-beacon', width: 20, height: 20 }),
             worldItemsSlot: React.createElement('circle', { id: 'mock-world-item', r: 5 }),
             flagPadlockSlot: React.createElement('rect', { id: 'mock-padlock', width: 8, height: 8 }),
             ghostStepSlot: React.createElement('circle', { id: 'mock-ghost', r: 10 }),
@@ -404,10 +428,12 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       );
 
       expect(allMarkup).toContain('data-testid="grid-overlay-layer"');
+      expect(allMarkup).toContain('data-testid="grid-slot-beacon-dial"');
       expect(allMarkup).toContain('data-testid="grid-slot-world-items"');
       expect(allMarkup).toContain('data-testid="grid-slot-flag-padlocks"');
       expect(allMarkup).toContain('data-testid="grid-slot-ghost-preview"');
       expect(allMarkup).toContain('data-testid="grid-slot-demo-spotlights"');
+      expect(allMarkup).toContain('id="mock-beacon"');
       expect(allMarkup).toContain('id="mock-world-item"');
       expect(allMarkup).toContain('id="mock-padlock"');
       expect(allMarkup).toContain('id="mock-ghost"');
@@ -426,6 +452,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
           })
         )
       );
+      expect(underOnlyMarkup).toContain('data-testid="grid-slot-beacon-dial"');
       expect(underOnlyMarkup).toContain('data-testid="grid-slot-world-items"');
       expect(underOnlyMarkup).not.toContain('data-testid="grid-slot-flag-padlocks"');
 
@@ -442,6 +469,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
           })
         )
       );
+      expect(overOnlyMarkup).not.toContain('data-testid="grid-slot-beacon-dial"');
       expect(overOnlyMarkup).not.toContain('data-testid="grid-slot-world-items"');
       expect(overOnlyMarkup).toContain('data-testid="grid-slot-flag-padlocks"');
       expect(overOnlyMarkup).toContain('data-testid="grid-slot-ghost-preview"');

@@ -28,6 +28,7 @@ export const CurriculumNextLessonBar: React.FC<CurriculumNextLessonBarProps> = (
     completedActivities,
     activeSimStatus,
     runtimeStatus,
+    variantRuns,
     setCurriculumActivity,
     completeCreativeActivity,
     dismissVictoryModal,
@@ -46,6 +47,7 @@ export const CurriculumNextLessonBar: React.FC<CurriculumNextLessonBarProps> = (
         ? s.depotState.status
         : s.turtleState.status,
     runtimeStatus: s.runtime?.status,
+    variantRuns: s.variantRuns,
     setCurriculumActivity: s.setCurriculumActivity,
     completeCreativeActivity: s.completeCreativeActivity,
     dismissVictoryModal: s.dismissVictoryModal,
@@ -125,8 +127,11 @@ export const CurriculumNextLessonBar: React.FC<CurriculumNextLessonBarProps> = (
     return null;
   }
 
+  const allVariantsSucceeded =
+    variantRuns.length <= 1 || variantRuns.every((v) => v.status === 'SUCCESS');
   const isSolved =
-    isCompleted || activeSimStatus === 'SUCCESS' || runtimeStatus === 'SUCCESS';
+    isCompleted ||
+    ((activeSimStatus === 'SUCCESS' || runtimeStatus === 'SUCCESS') && allVariantsSucceeded);
   if (!isSolved) {
     return null;
   }

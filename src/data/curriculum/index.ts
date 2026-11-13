@@ -1,6 +1,10 @@
 export * from './types';
 
-import { CurriculumActivity, CurriculumModule } from './types';
+import {
+  CurriculumActivity,
+  CurriculumModule,
+  MasteryChallengeTier,
+} from './types';
 import { MODULE_1_DEMO_ACTIVITIES } from './module1Demo';
 import { MODULE_1_ROBOT_ACTIVITIES } from './module1Robot';
 import { MODULE_1_LOGO_ACTIVITIES } from './module1Logo';
@@ -32,9 +36,9 @@ export {
 } from './module3Depot';
 
 /**
- * Static Module catalog for Modules 1–3.
- * Declaring badgeId and capstoneIds statically in Commit 1 decouples
- * Reward/Badge UI (Commit 12) from individual Capstone authoring slices.
+ * Static Module catalog for Modules 1–6.
+ * Declaring badgeId and capstoneIds statically decouples
+ * Reward/Badge UI from individual Capstone authoring slices.
  */
 export const CURRICULUM_MODULES: CurriculumModule[] = [
   {
@@ -69,6 +73,87 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
     badgeTitle: 'Loop Architect',
     badgeIcon: '🏆',
     capstoneIds: ['3A', '3B', '3C'],
+  },
+  {
+    id: 'module-4',
+    number: 4,
+    title: 'Functions — Abstraction, Naming & Decomposition',
+    shortTitle: 'Module 4',
+    icon: '🧩',
+    badgeId: 'badge-module-4',
+    badgeTitle: 'Function Composer',
+    badgeIcon: '🧩',
+    capstoneIds: ['4A', '4B', '4C'],
+  },
+  {
+    id: 'module-5',
+    number: 5,
+    title: 'Sensors, Conditionals & FIFO Queues',
+    shortTitle: 'Module 5',
+    icon: '📡',
+    badgeId: 'badge-module-5',
+    badgeTitle: 'Sensor Navigator',
+    badgeIcon: '📡',
+    capstoneIds: ['5A', '5B'],
+  },
+  {
+    id: 'module-6',
+    number: 6,
+    title: 'Variables, Pose Sensors & Stepping Counters',
+    shortTitle: 'Module 6',
+    icon: '📦',
+    badgeId: 'badge-module-6',
+    badgeTitle: 'Memory Master',
+    badgeIcon: '📦',
+    capstoneIds: ['6A', '6B'],
+  },
+];
+
+/**
+ * 5-Tier Post-Module Mastery Challenge metadata.
+ * Tier 1 unlocks after Module 6 completion (challengeIds C6.1 & C6.2); Tiers 2–5 are
+ * reserved for Modules 8–11.
+ */
+export const MASTERY_CHALLENGE_TIERS: MasteryChallengeTier[] = [
+  {
+    tier: 1,
+    id: 'tier-1',
+    title: 'Tier 1 Mastery Challenges',
+    badgeId: 'badge-challenge-tier-1',
+    unlockAfterModuleId: 'module-6',
+    challengeIds: ['C6.1', 'C6.2'],
+  },
+  {
+    tier: 2,
+    id: 'tier-2',
+    title: 'Tier 2 Mastery Challenges',
+    badgeId: 'badge-challenge-tier-2',
+    unlockAfterModuleId: 'module-8',
+    challengeIds: [],
+  },
+  {
+    tier: 3,
+    id: 'tier-3',
+    title: 'Tier 3 Mastery Challenges',
+    badgeId: 'badge-challenge-tier-3',
+    unlockAfterModuleId: 'module-9',
+    challengeIds: [],
+  },
+  {
+    tier: 4,
+    id: 'tier-4',
+    title: 'Tier 4 Mastery Challenges',
+    badgeId: 'badge-challenge-tier-4',
+    unlockAfterModuleId: 'module-10',
+    challengeIds: [],
+  },
+  {
+    tier: 5,
+    id: 'tier-5',
+    title: 'Tier 5 Mastery Challenges',
+    badgeId: 'badge-challenge-tier-5',
+    unlockAfterModuleId: 'module-11',
+    challengeIds: [],
   },
 ];
 
@@ -234,7 +319,11 @@ export function getActivityAtVersion(
     description: latest.description,
     hint: latest.hint,
     grid: historical.grid,
+    gridVariants: historical.gridVariants,
     depot: historical.depot ?? latest.depot,
+    depotVariants: historical.depotVariants,
+    switchyard: historical.switchyard ?? latest.switchyard,
+    switchyardVariants: historical.switchyardVariants,
     defaultLoopPlayback: historical.defaultLoopPlayback,
     starterWorkspace: historical.starterWorkspace,
     palette: historical.palette,

@@ -20,6 +20,7 @@ import {
   LockedGate,
   FloorSwitch,
   WorldItem,
+  SimulationStatus,
 } from '../types';
 import {
   DEFAULT_COLOR_FOR_SHAPE,
@@ -68,11 +69,13 @@ import { LESSONS } from '../data/lessons';
 import {
   AppMode,
   CurriculumActivity,
+  CurriculumSwitchyardDefinition,
   CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
   createCurriculumGridState,
   getActivityAtVersion,
   getActivityLatest,
+  getActivityVariants,
   isValidatedPuzzleActivity,
 } from '../data/curriculum';
 import {
@@ -86,6 +89,7 @@ import {
   computeSlotBudget,
   findNextUnviewedDemoTabIndex,
   formatSlotCapFullAnnouncement,
+  getNextCurriculumActivity,
   isInstantSpeedDisabled,
   resolveActiveCurriculumActivity,
 } from '../utils/curriculumStagePolicy';
@@ -257,6 +261,17 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
   flags: lesson.grid.flags,
 }));
 
+export interface VariantRunSnapshot {
+  index: number;
+  label?: string;
+  kind: 'grid' | 'depot' | 'switchyard';
+  status: SimulationStatus;
+  gridState?: GridState;
+  depotState?: DepotState;
+  switchyardState?: CurriculumSwitchyardDefinition;
+  runtime?: InterpreterRuntimeState | null;
+}
+
 export interface PendingLessonVersionMismatch {
   source: 'slot' | 'share';
   lessonId: string;
@@ -292,6 +307,8 @@ interface AppState {
   ghostPreview: GhostPreviewState | null;
   slotCapRejectionCount: number;
   lastSlotCapRejectedAt: number | null;
+  variantRuns: VariantRunSnapshot[];
+  focusedVariantIndex: number;
 
   // Environment selection
   activeSimId: 'grid' | 'turtle' | 'beat' | 'depot';
@@ -356,6 +373,7 @@ interface AppState {
   // Mode & Curriculum actions
   setAppMode: (mode: AppMode) => void;
   setCurriculumActivity: (activityId: string, version?: number) => void;
+  setFocusedVariantIndex: (index: number) => void;
   selectExplanationDemoTab: (tabIndex: number) => void;
   markActiveDemoTabExplored: () => void;
   completeExplanationAndContinue: () => string | null;
@@ -1279,6 +1297,43 @@ export const useAppStore = create<AppState>((set, get) => {
     };
   };
 
+  const buildVariantRunsForActivity = (
+    activity?: CurriculumActivity,
+    fitToView = false
+  ): VariantRunSnapshot[] => {
+    if (!activity) return [];
+    const variants = getActivityVariants(activity, activity.simId);
+    if (variants.length <= 1) return [];
+    return variants.map((v) => ({
+      index: v.index,
+      label: v.label,
+      kind: v.kind,
+      status: 'IDLE',
+      ...(v.kind === 'grid' && v.grid
+        ? { gridState: createCurriculumGridState(v.grid, fitToView) }
+        : {}),
+      ...(v.kind === 'depot' && v.depot
+        ? { depotState: createInitialDepotState(v.depot) }
+        : {}),
+      ...(v.kind === 'switchyard' && v.switchyard
+        ? { switchyardState: JSON.parse(JSON.stringify(v.switchyard)) }
+        : {}),
+      runtime: null,
+    }));
+  };
+
+  const resetVariantRunsList = (runs: VariantRunSnapshot[]): VariantRunSnapshot[] =>
+    runs.map((v) => ({
+      ...v,
+      status: 'IDLE',
+      runtime: null,
+      ...(v.gridState ? { gridState: getInitialGridState(v.gridState) } : {}),
+      ...(v.depotState ? { depotState: getInitialDepotState(v.depotState) } : {}),
+    }));
+
+  const areAllVariantsSucceeded = (runs: VariantRunSnapshot[]): boolean =>
+    runs.length <= 1 || runs.every((v) => v.status === 'SUCCESS');
+
   let bootMode: AppMode = 'sandbox';
   let bootActivity = defaultActivity;
   if (typeof window !== 'undefined' && window.location?.search) {
@@ -1388,11 +1443,7 @@ export const useAppStore = create<AppState>((set, get) => {
     const allExploredNow = activity.demoTabs.every((t) =>
       nextExploredForActivity.includes(t.id)
     );
-    const nextIdxInCatalog = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
-    const nextActivity =
-      nextIdxInCatalog >= 0 && nextIdxInCatalog < CURRICULUM_ACTIVITIES.length - 1
-        ? CURRICULUM_ACTIVITIES[nextIdxInCatalog + 1]
-        : undefined;
+    const nextActivity = getNextCurriculumActivity(activity.id);
 
     set((curr) => ({
       exploredDemoTabs: {
@@ -1625,12 +1676,15 @@ export const useAppStore = create<AppState>((set, get) => {
 
     const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' = resolveCurriculumSimId(activity.simId);
     const prevFitToView = state.grid.fitToView ?? false;
-    const targetGrid = activity.grid
-      ? createCurriculumGridState(activity.grid, prevFitToView)
+    const resolvedGridDef = activity.grid ?? activity.gridVariants?.[0];
+    const targetGrid = resolvedGridDef
+      ? createCurriculumGridState(resolvedGridDef, prevFitToView)
       : state.grid;
-    const targetDepot = activity.depot
-      ? createInitialDepotState(activity.depot)
+    const resolvedDepotDef = activity.depot ?? activity.depotVariants?.[0];
+    const targetDepot = resolvedDepotDef
+      ? createInitialDepotState(resolvedDepotDef)
       : createInitialDepotState();
+    const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
     const allowedScopes: ScopeType[] =
       activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
@@ -1668,6 +1722,8 @@ export const useAppStore = create<AppState>((set, get) => {
       ghostPreview: null,
       slotCapRejectionCount: 0,
       lastSlotCapRejectedAt: null,
+      variantRuns: targetVariantRuns,
+      focusedVariantIndex: 0,
       pendingVersionMismatch: null,
       statusAnnouncement:
         announcement ||
@@ -1705,6 +1761,8 @@ export const useAppStore = create<AppState>((set, get) => {
     ghostPreview: null,
     slotCapRejectionCount: 0,
     lastSlotCapRejectedAt: null,
+    variantRuns: bootMode === 'curriculum' ? buildVariantRunsForActivity(bootActivity, false) : [],
+    focusedVariantIndex: 0,
 
     activeSimId: bootSimId,
     currentLevel: 1,
@@ -1964,12 +2022,15 @@ export const useAppStore = create<AppState>((set, get) => {
         if (!activity) return;
 
         const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' = resolveCurriculumSimId(activity.simId);
-        const targetGrid = activity.grid
-          ? createCurriculumGridState(activity.grid, prevFitToView)
+        const resolvedGridDef = activity.grid ?? activity.gridVariants?.[0];
+        const targetGrid = resolvedGridDef
+          ? createCurriculumGridState(resolvedGridDef, prevFitToView)
           : getInitialGridState(state.grid);
-        const targetDepot = activity.depot
-          ? createInitialDepotState(activity.depot)
+        const resolvedDepotDef = activity.depot ?? activity.depotVariants?.[0];
+        const targetDepot = resolvedDepotDef
+          ? createInitialDepotState(resolvedDepotDef)
           : createInitialDepotState();
+        const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
         const targetWs = nextCurriculumWorkspaces[activity.id]
           ? cloneWorkspace(nextCurriculumWorkspaces[activity.id])
@@ -2022,6 +2083,8 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           slotCapRejectionCount: 0,
           lastSlotCapRejectedAt: null,
+          variantRuns: targetVariantRuns,
+          focusedVariantIndex: 0,
         });
       } else {
         const fallbackPreset =
@@ -2044,6 +2107,8 @@ export const useAppStore = create<AppState>((set, get) => {
           savedWorkspaces: nextSavedWorkspaces,
           sandboxSnapshot: null,
           pendingVersionMismatch: null,
+          variantRuns: [],
+          focusedVariantIndex: 0,
           grid: createGridFromPreset(fallbackPreset, prevFitToView),
           turtleState: createInitialTurtleState(),
           beatState: resetBeatState(state.beatState),
@@ -2296,15 +2361,22 @@ export const useAppStore = create<AppState>((set, get) => {
         const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' = resolveCurriculumSimId(activity.simId);
         const prevFitToView = state.grid.fitToView ?? false;
         const resolvedGridDef =
-          activeTab?.gridState ?? activity.grid ?? activity.demoTabs?.[0]?.gridState;
+          activeTab?.gridState ??
+          activity.grid ??
+          activity.gridVariants?.[0] ??
+          activity.demoTabs?.[0]?.gridState;
         const targetGrid = resolvedGridDef
           ? createCurriculumGridState(resolvedGridDef, prevFitToView)
           : state.grid;
         const resolvedDepotDef =
-          activeTab?.depotState ?? activity.depot ?? activity.demoTabs?.[0]?.depotState;
+          activeTab?.depotState ??
+          activity.depot ??
+          activity.depotVariants?.[0] ??
+          activity.demoTabs?.[0]?.depotState;
         const targetDepot = resolvedDepotDef
           ? createInitialDepotState(resolvedDepotDef)
           : createInitialDepotState();
+        const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
         const targetWs = state.curriculumWorkspaces[activity.id]
           ? cloneWorkspace(state.curriculumWorkspaces[activity.id])
@@ -2354,6 +2426,8 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           slotCapRejectionCount: 0,
           lastSlotCapRejectedAt: null,
+          variantRuns: targetVariantRuns,
+          focusedVariantIndex: 0,
           statusAnnouncement: `Learn mode: Activity ${activity.id} ${activity.title}. Map is read-only.`,
         });
 
@@ -2424,6 +2498,8 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           slotCapRejectionCount: 0,
           lastSlotCapRejectedAt: null,
+          variantRuns: [],
+          focusedVariantIndex: 0,
           statusAnnouncement: 'Sandbox mode: map and blocks are editable.',
         });
 
@@ -2467,15 +2543,22 @@ export const useAppStore = create<AppState>((set, get) => {
       const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' = resolveCurriculumSimId(activity.simId);
       const prevFitToView = state.grid.fitToView ?? false;
       const resolvedGridDef =
-        activeTab?.gridState ?? activity.grid ?? activity.demoTabs?.[0]?.gridState;
+        activeTab?.gridState ??
+        activity.grid ??
+        activity.gridVariants?.[0] ??
+        activity.demoTabs?.[0]?.gridState;
       const targetGrid = resolvedGridDef
         ? createCurriculumGridState(resolvedGridDef, prevFitToView)
         : state.grid;
       const resolvedDepotDef =
-        activeTab?.depotState ?? activity.depot ?? activity.demoTabs?.[0]?.depotState;
+        activeTab?.depotState ??
+        activity.depot ??
+        activity.depotVariants?.[0] ??
+        activity.demoTabs?.[0]?.depotState;
       const targetDepot = resolvedDepotDef
         ? createInitialDepotState(resolvedDepotDef)
         : createInitialDepotState();
+      const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
       const targetWs = nextCurriculumWorkspaces[activity.id]
         ? cloneWorkspace(nextCurriculumWorkspaces[activity.id])
@@ -2523,11 +2606,26 @@ export const useAppStore = create<AppState>((set, get) => {
         ghostPreview: null,
         slotCapRejectionCount: 0,
         lastSlotCapRejectedAt: null,
+        variantRuns: targetVariantRuns,
+        focusedVariantIndex: 0,
         statusAnnouncement: `Activity ${activity.id}: ${activity.title}`,
       });
 
       get().reset();
       get().runInstantIfActive();
+    },
+
+    setFocusedVariantIndex: (index) => {
+      const state = get();
+      if (state.variantRuns.length <= 1) return;
+      const target = state.variantRuns[index];
+      if (!target) return;
+      set({
+        focusedVariantIndex: index,
+        ...(target.gridState ? { grid: target.gridState } : {}),
+        ...(target.depotState ? { depotState: target.depotState } : {}),
+        ...(target.runtime !== undefined ? { runtime: target.runtime } : {}),
+      });
     },
 
     selectExplanationDemoTab: (tabIndex) => {
@@ -2638,11 +2736,7 @@ export const useAppStore = create<AppState>((set, get) => {
         completedActivities: nextCompleted,
       });
 
-      const currentIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
-      const nextActivity =
-        currentIdx >= 0 && currentIdx < CURRICULUM_ACTIVITIES.length - 1
-          ? CURRICULUM_ACTIVITIES[currentIdx + 1]
-          : undefined;
+      const nextActivity = getNextCurriculumActivity(activity.id);
 
       if (nextActivity) {
         get().setCurriculumActivity(nextActivity.id, nextActivity.version);
@@ -2701,11 +2795,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       if (advanceToNext) {
-        const currentIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activity.id);
-        const nextActivity =
-          currentIdx >= 0 && currentIdx < CURRICULUM_ACTIVITIES.length - 1
-            ? CURRICULUM_ACTIVITIES[currentIdx + 1]
-            : undefined;
+        const nextActivity = getNextCurriculumActivity(activity.id);
         if (nextActivity) {
           get().setCurriculumActivity(nextActivity.id, nextActivity.version);
           set({
@@ -2790,6 +2880,8 @@ export const useAppStore = create<AppState>((set, get) => {
         isMobileMenuOpen: false,
         slotCapRejectionCount: 0,
         lastSlotCapRejectedAt: null,
+        variantRuns: [],
+        focusedVariantIndex: 0,
         statusAnnouncement: `Opened editable copy of Activity ${state.activeActivityId} in Sandbox mode.`,
       });
 
@@ -3641,9 +3733,89 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     runInstantIfActive: (options) => {
-      const { appMode, speed, workspace, activeSimId, grid, turtleState, beatState, depotState } = get();
+      const {
+        appMode,
+        speed,
+        workspace,
+        activeSimId,
+        grid,
+        turtleState,
+        beatState,
+        depotState,
+        variantRuns,
+        focusedVariantIndex,
+      } = get();
       if (speed !== 'instant' && (speed as any) !== 0) return;
       if (appMode === 'curriculum' && isExplanationActivity()) return;
+
+      if (variantRuns.length > 1 && (activeSimId === 'grid' || activeSimId === 'depot')) {
+        const freshRuns = resetVariantRunsList(variantRuns);
+        const evaluatedRuns: VariantRunSnapshot[] = freshRuns.map((v) => {
+          const vGrid = activeSimId === 'grid' && v.gridState ? v.gridState : grid;
+          const vDepot = activeSimId === 'depot' && v.depotState ? v.depotState : depotState;
+          const res = computeInstantSimulation(
+            workspace,
+            activeSimId,
+            vGrid,
+            turtleState,
+            beatState,
+            vDepot
+          );
+          const isPausedOnPlaceholder = res.status === 'PAUSED';
+          const vRuntime: InterpreterRuntimeState = {
+            ...res.finalRuntime,
+            activeBlockId: isPausedOnPlaceholder ? res.finalRuntime.activeBlockId : null,
+            activeRepeatProgress: null,
+          };
+          return {
+            ...v,
+            status: res.status,
+            runtime: vRuntime,
+            ...(activeSimId === 'grid'
+              ? { gridState: res.finalState as GridState }
+              : { depotState: res.finalState as DepotState }),
+          };
+        });
+
+        const allSucceeded = evaluatedRuns.every((v) => v.status === 'SUCCESS');
+        const safeIdx = Math.min(Math.max(0, focusedVariantIndex), evaluatedRuns.length - 1);
+        const firstFailIdx = evaluatedRuns.findIndex((v) => v.status !== 'SUCCESS');
+        const nextFocusIdx =
+          !allSucceeded && evaluatedRuns[safeIdx]?.status === 'SUCCESS' && firstFailIdx >= 0
+            ? firstFailIdx
+            : safeIdx;
+        const focused = evaluatedRuns[nextFocusIdx] ?? evaluatedRuns[0];
+        const focusedRuntime = focused?.runtime ?? createInitialInterpreterState();
+        const isPausedOnPlaceholder = focusedRuntime.status === 'PAUSED';
+
+        set({
+          variantRuns: evaluatedRuns,
+          focusedVariantIndex: nextFocusIdx,
+          ...(activeSimId === 'grid' && focused?.gridState ? { grid: focused.gridState } : {}),
+          ...(activeSimId === 'depot' && focused?.depotState
+            ? { depotState: focused.depotState }
+            : {}),
+          runtime: focusedRuntime,
+          isPlaying: false,
+          ghostPreview: null,
+          ...(isPausedOnPlaceholder
+            ? {
+                activeScope: focusedRuntime.activeScope,
+                selectedBlockId: focusedRuntime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, focusedRuntime),
+              }
+            : {}),
+        });
+
+        if (allSucceeded) {
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (options?.allowVictoryModal) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], false);
+          }
+        }
+        markDemoTabExploredInternal(true);
+        return;
+      }
 
       const result = computeInstantSimulation(
         workspace,
@@ -4683,6 +4855,124 @@ export const useAppStore = create<AppState>((set, get) => {
         set({ ghostPreview: null });
       }
 
+      if ((activeSimId === 'grid' || activeSimId === 'depot') && get().variantRuns.length > 1) {
+        const currentVariants = get().variantRuns;
+        const {
+          runtime: prevRuntime,
+          workspace,
+          focusedVariantIndex,
+          isPlaying,
+          activeScope: prevScope,
+        } = get();
+        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+          if (workspace[sc]?.length > 0) {
+            const val = validateLoopStructure(workspace[sc]);
+            if (val.hasError) {
+              return;
+            }
+          }
+        }
+        const simEnv = getSimEnvironment(activeSimId);
+        if (!simEnv) return;
+
+        const wasAllSuccess = areAllVariantsSucceeded(currentVariants);
+        let anyPaused = false;
+        let allDone = true;
+
+        const nextVariants: VariantRunSnapshot[] = currentVariants.map((v) => {
+          const vState = activeSimId === 'grid' ? v.gridState : v.depotState;
+          if (!vState || v.status === 'SUCCESS' || v.status === 'COLLISION') {
+            return v;
+          }
+          const vRuntime = v.runtime || createInitialInterpreterState();
+          const res = tickInterpreter(vRuntime, workspace, vState, simEnv);
+          const nextState = res.nextGrid as GridState & DepotState;
+          const paused = res.nextRuntime.status === 'PAUSED';
+          if (paused) anyPaused = true;
+          const vStatus: SimulationStatus =
+            nextState.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS'
+              ? 'SUCCESS'
+              : nextState.status === 'COLLISION' || res.nextRuntime.status === 'COLLISION'
+              ? 'COLLISION'
+              : paused
+              ? 'PAUSED'
+              : res.done
+              ? nextState.status
+              : 'RUNNING';
+          const vDone = res.done || vStatus === 'SUCCESS' || vStatus === 'COLLISION';
+          if (!vDone) allDone = false;
+          return {
+            ...v,
+            status: vStatus,
+            runtime: res.nextRuntime,
+            ...(activeSimId === 'grid'
+              ? { gridState: res.nextGrid as GridState }
+              : { depotState: res.nextGrid as DepotState }),
+          };
+        });
+
+        const allSucceeded = nextVariants.every((v) => v.status === 'SUCCESS');
+        const safeIdx = Math.min(Math.max(0, focusedVariantIndex), nextVariants.length - 1);
+        const firstFailIdx = nextVariants.findIndex((v) => v.status !== 'SUCCESS');
+        const nextFocusIdx =
+          allDone &&
+          !allSucceeded &&
+          !anyPaused &&
+          nextVariants[safeIdx]?.status === 'SUCCESS' &&
+          firstFailIdx >= 0
+            ? firstFailIdx
+            : safeIdx;
+        const focused = nextVariants[nextFocusIdx] ?? nextVariants[0];
+        const focusedRuntime = focused?.runtime ?? prevRuntime ?? createInitialInterpreterState();
+        const activeScope =
+          focusedRuntime.callStack.length > 0
+            ? focusedRuntime.callStack[focusedRuntime.callStack.length - 1].scope
+            : prevScope;
+
+        set({
+          variantRuns: nextVariants,
+          focusedVariantIndex: nextFocusIdx,
+          runtime: focusedRuntime,
+          ...(activeSimId === 'grid' && focused?.gridState ? { grid: focused.gridState } : {}),
+          ...(activeSimId === 'depot' && focused?.depotState
+            ? { depotState: focused.depotState }
+            : {}),
+          activeScope,
+          ...(activeScope !== prevScope && activeScope !== 'MAIN'
+            ? { isFunctionBarOpen: true }
+            : {}),
+          isPlaying: !allDone && !anyPaused && isPlaying,
+          ...(anyPaused
+            ? {
+                selectedBlockId: focusedRuntime.activeBlockId,
+                statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, focusedRuntime),
+              }
+            : {}),
+        });
+
+        if (allSucceeded) {
+          const reward = recordCurriculumSuccessIfApplicable();
+          if (!wasAllSuccess) {
+            triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+          }
+        } else if (
+          isPlaying &&
+          allDone &&
+          !anyPaused &&
+          nextVariants.every((v) => v.status !== 'COLLISION')
+        ) {
+          recordCreativePlayCompletionIfApplicable(true);
+        }
+
+        if ((allDone || anyPaused) && timerId) {
+          clearTimeout(timerId);
+          timerId = null;
+          set({ isPlaying: false });
+        }
+        markDemoTabExploredInternal(true);
+        return;
+      }
+
       if (activeSimId === 'grid') {
         const { runtime, workspace, grid } = get();
 
@@ -5106,7 +5396,9 @@ export const useAppStore = create<AppState>((set, get) => {
       beatPassHadDelay = false;
       beatSynth.stopAll();
 
-      const { grid, turtleState, beatState, depotState, activeSimId } = get();
+      const { grid, turtleState, beatState, depotState, activeSimId, variantRuns } = get();
+      const resetVariants = variantRuns.length > 1 ? resetVariantRunsList(variantRuns) : variantRuns;
+      const firstVariant = resetVariants.length > 1 ? resetVariants[0] : undefined;
 
       if (activeSimId === 'grid') {
         set({
@@ -5115,7 +5407,9 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           isVictoryModalOpen: false,
           victoryEarnedBadges: [],
-          grid: getInitialGridState(grid),
+          variantRuns: resetVariants,
+          focusedVariantIndex: 0,
+          grid: firstVariant?.gridState ?? getInitialGridState(grid),
         });
       } else if (activeSimId === 'beat') {
         set({
@@ -5123,6 +5417,8 @@ export const useAppStore = create<AppState>((set, get) => {
           runtime: null,
           isVictoryModalOpen: false,
           victoryEarnedBadges: [],
+          variantRuns: resetVariants,
+          focusedVariantIndex: 0,
           beatState: getInitialBeatState(beatState),
         });
       } else if (activeSimId === 'depot') {
@@ -5132,7 +5428,9 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           isVictoryModalOpen: false,
           victoryEarnedBadges: [],
-          depotState: getInitialDepotState(depotState),
+          variantRuns: resetVariants,
+          focusedVariantIndex: 0,
+          depotState: firstVariant?.depotState ?? getInitialDepotState(depotState),
         });
       } else {
         set({
@@ -5141,6 +5439,8 @@ export const useAppStore = create<AppState>((set, get) => {
           ghostPreview: null,
           isVictoryModalOpen: false,
           victoryEarnedBadges: [],
+          variantRuns: resetVariants,
+          focusedVariantIndex: 0,
           turtleState: getInitialTurtleState(turtleState),
         });
       }

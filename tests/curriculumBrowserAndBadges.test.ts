@@ -374,7 +374,7 @@ describe('Commit 12: Hierarchical Curriculum Browser, Victory Celebrations & Col
   });
 
   describe('BadgeCollectionModal Showcase', () => {
-    it('renders earned vs locked badges across M1-M3 and capstone completion chips accurately', () => {
+    it('renders earned vs locked badges across M1-M6 and capstone completion chips accurately', () => {
       const snapshot = [...CURRICULUM_ACTIVITIES];
       try {
         for (const synth of createSyntheticModuleActivities()) {
@@ -396,9 +396,9 @@ describe('Commit 12: Hierarchical Curriculum Browser, Victory Celebrations & Col
         const html = renderToStaticMarkup(React.createElement(BadgeCollectionModal));
         expect(html).toContain('data-testid="badge-collection-modal"');
         expect(html).toContain('data-testid="badge-collection-count"');
-        expect(html).toContain('1/3');
+        expect(html).toContain('1/6');
 
-        // M1 earned; M2 and M3 unearned
+        // M1 earned; M2 and M3 unearned (M4-M6 also shown but locked)
         expect(html).toContain(
           'data-testid="badge-card-module-1" data-badge-id="badge-module-1" data-earned="true"'
         );

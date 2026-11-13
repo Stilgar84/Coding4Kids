@@ -13,8 +13,10 @@ import { LessonPickerModal } from './components/LessonPickerModal';
 import { BadgeCollectionModal } from './components/BadgeCollectionModal';
 import { VictoryCelebrationModal } from './components/VictoryCelebrationModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
-import { useAppStoreSelector, isLowQualityActive } from './store/useAppStore';
+import { useAppStoreSelector } from './store/useAppStore';
 import { CurriculumNextLessonBar } from './components/CurriculumNextLessonBar';
+import { MultiRunPipsBar } from './components/MultiRunPipsBar';
+import { SimulationTopLeftHud } from './components/SimulationTopLeftHud';
 import { VariationCardsPanel } from './components/VariationCardsPanel';
 import { GridToolbarTools } from './simulations/grid/components/GridToolbarTools';
 import { getSimEnvironment } from './engine/simulation/registry';
@@ -22,7 +24,7 @@ import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 import { usePerformanceMonitor } from './utils/performanceMonitor';
 
 const ActiveSimulationPane: React.FC = React.memo(() => {
-  const { appMode, activeSimId, activeState, runtimeStatus, runtimeVariables, isLowQuality } =
+  const { appMode, activeSimId, activeState, runtimeStatus, runtimeVariables } =
     useAppStoreSelector((s) => ({
       appMode: s.appMode,
       activeSimId: s.activeSimId,
@@ -36,7 +38,6 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
           : s.turtleState,
       runtimeStatus: s.runtime?.status,
       runtimeVariables: s.runtime?.variables,
-      isLowQuality: isLowQualityActive(s),
     }));
 
   const simEnv = getSimEnvironment(activeSimId);
@@ -58,30 +59,16 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
       )}
 
       <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col">
-        {/* Runtime Variables HUD for Turtle & Beat (Grid renders inside its non-overlapping top-left HUD stack) */}
-        {activeSimId !== 'grid' &&
-          runtimeVariables &&
-          Object.keys(runtimeVariables).length > 0 && (
-            <div
-              data-testid="toolbar-variables"
-              className={`absolute top-3 left-3 z-20 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 ${
-                isLowQuality ? '' : 'backdrop-blur '
-              }border border-indigo-500/50 rounded-xl text-xs shadow-lg`}
-            >
-              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">
-                VARS
-              </span>
-              {Object.entries(runtimeVariables).map(([k, v]) => (
-                <span
-                  key={k}
-                  data-testid={`var-badge-${k}`}
-                  className="px-1.5 py-0.5 rounded bg-indigo-950/90 border border-indigo-500/40 font-mono font-bold text-indigo-200"
-                >
-                  {k}={v}
-                </span>
-              ))}
-            </div>
-          )}
+        {/* Runtime Variables HUD for Turtle, Beat, Depot & Switchyard (Grid renders inside GridCanvas) */}
+        {activeSimId !== 'grid' && (
+          <SimulationTopLeftHud
+            variables={runtimeVariables}
+            positionClassName={activeSimId === 'depot' ? 'top-12 left-3' : 'top-3 left-3'}
+          />
+        )}
+
+        {/* Top-Center Multi-Run Pips Bar for multi-variant M5–M6+ challenges */}
+        <MultiRunPipsBar />
 
         {Renderer && <Renderer state={activeState} runtimeStatus={runtimeStatus} />}
       </div>

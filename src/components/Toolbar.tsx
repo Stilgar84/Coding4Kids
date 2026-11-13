@@ -24,6 +24,10 @@ import {
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
+import {
+  getNextCurriculumActivity,
+  getPrevCurriculumActivity,
+} from '../utils/curriculumStagePolicy';
 import { isInstantSpeedDisabled } from '../utils/curriculumStagePolicy';
 import { MobileDrawerMenu } from './MobileDrawerMenu';
 import { reopenUpdatePrompt, usePwaUpdateStore } from '../services/pwaUpdateManager';
@@ -138,10 +142,9 @@ export const Toolbar: React.FC = React.memo(() => {
 
   const handlePrev = () => {
     if (appMode === 'curriculum') {
-      if (CURRICULUM_ACTIVITIES.length === 0) return;
-      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-      const prevIdx = idx > 0 ? idx - 1 : CURRICULUM_ACTIVITIES.length - 1;
-      setCurriculumActivity(CURRICULUM_ACTIVITIES[prevIdx].id);
+      const prevActivity = getPrevCurriculumActivity(activeActivityId, undefined, true);
+      if (!prevActivity) return;
+      setCurriculumActivity(prevActivity.id, prevActivity.version);
     } else {
       const prevId = currentLevel > 1 ? currentLevel - 1 : PRESET_LEVELS.length;
       setLevel(prevId);
@@ -150,10 +153,9 @@ export const Toolbar: React.FC = React.memo(() => {
 
   const handleNext = () => {
     if (appMode === 'curriculum') {
-      if (CURRICULUM_ACTIVITIES.length === 0) return;
-      const idx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === activeActivityId);
-      const nextIdx = idx >= 0 && idx < CURRICULUM_ACTIVITIES.length - 1 ? idx + 1 : 0;
-      setCurriculumActivity(CURRICULUM_ACTIVITIES[nextIdx].id);
+      const nextActivity = getNextCurriculumActivity(activeActivityId, undefined, true);
+      if (!nextActivity) return;
+      setCurriculumActivity(nextActivity.id, nextActivity.version);
     } else {
       const nextId = currentLevel < PRESET_LEVELS.length ? currentLevel + 1 : 1;
       setLevel(nextId);

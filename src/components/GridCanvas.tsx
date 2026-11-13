@@ -7,6 +7,7 @@ import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOv
 import { GhostStepOverlay } from '../simulations/grid/components/GhostStepOverlay';
 import { DemoSpotlightOverlay } from '../simulations/grid/components/DemoSpotlightOverlay';
 import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/WorldItemsLayer';
+import { SimulationTopLeftHud } from './SimulationTopLeftHud';
 
 const CELL_SIZE = 72; // pixels per cell
 
@@ -223,6 +224,7 @@ export const GridCanvas: React.FC = () => {
     startHistoryBatch,
     endHistoryBatch,
     isLowQuality,
+    hasMultiVariant,
   } = useAppStoreSelector((s) => ({
     appMode: s.appMode,
     grid: s.grid,
@@ -238,6 +240,7 @@ export const GridCanvas: React.FC = () => {
     startHistoryBatch: s.startHistoryBatch,
     endHistoryBatch: s.endHistoryBatch,
     isLowQuality: isLowQualityActive(s),
+    hasMultiVariant: s.variantRuns.length > 1,
   }));
 
   const isReadOnly = appMode === 'curriculum';
@@ -541,34 +544,16 @@ export const GridCanvas: React.FC = () => {
       className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none"
     >
       {/* Top-Left Non-Overlapping HUD Stack: 1-Slot Backpack + Runtime Variables */}
-      <div className="absolute top-3 left-3 z-20 flex flex-col items-start gap-1.5 pointer-events-none">
-        <BackpackHud grid={grid} stacked />
-        {runtime?.variables && Object.keys(runtime.variables).length > 0 && (
-          <div
-            data-testid="toolbar-variables"
-            className={`flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/90 ${isLowQuality ? '' : 'backdrop-blur '}border border-indigo-500/50 rounded-xl text-xs shadow-lg`}
-          >
-            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">
-              VARS
-            </span>
-            {Object.entries(runtime.variables).map(([k, v]) => (
-              <span
-                key={k}
-                data-testid={`var-badge-${k}`}
-                className="px-1.5 py-0.5 rounded bg-indigo-950/90 border border-indigo-500/40 font-mono font-bold text-indigo-200"
-              >
-                {k}={v}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      <SimulationTopLeftHud
+        topSlot={<BackpackHud grid={grid} stacked />}
+        variables={runtime?.variables}
+      />
 
-      {/* Simulation status banner if collision or victory */}
+      {/* Simulation status banner if collision or victory (shifted down below MultiRunPipsBar when active) */}
       {status === 'COLLISION' && (
         <div
           data-testid="status-collision"
-          className={`absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 ${isLowQuality ? '' : 'animate-bounce '}flex items-center gap-2 pointer-events-none`}
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-4'} left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-red-600/90 text-white rounded-full font-bold shadow-lg shadow-red-500/30 ${isLowQuality ? '' : 'animate-bounce '}flex items-center gap-2 pointer-events-none`}
         >
           <span className="text-xl">💥</span>
         </div>
@@ -577,7 +562,7 @@ export const GridCanvas: React.FC = () => {
       {status === 'SUCCESS' && (
         <div
           data-testid="status-success"
-          className={`absolute top-4 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 ${isLowQuality ? '' : 'animate-pulse '}flex items-center gap-2 pointer-events-none`}
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-4'} left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-slate-900 rounded-full font-extrabold shadow-lg shadow-amber-500/40 ${isLowQuality ? '' : 'animate-pulse '}flex items-center gap-2 pointer-events-none`}
         >
           <Trophy className="w-6 h-6" />
           <span className="text-xl">⭐ ⭐ ⭐</span>
