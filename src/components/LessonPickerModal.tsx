@@ -617,8 +617,8 @@ const LessonPickerModalContent: React.FC = () => {
           ) : (
             /* Sandbox Tab: 4 World Tiles + Grid Course Maps */
             <div className="space-y-4">
-              {/* 4 Colorful World Tiles */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              {/* 5 Colorful World Tiles */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
                 <button
                   type="button"
                   data-testid="sim-tab-grid"
@@ -701,6 +701,27 @@ const LessonPickerModalContent: React.FC = () => {
                     🏗️
                   </span>
                   <span className="text-xs sm:text-sm">Crate Depot</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="sim-tab-switchyard"
+                  aria-pressed={activeSimId === 'switchyard'}
+                  onClick={() => {
+                    setAppMode('sandbox');
+                    setSimEnvironment('switchyard');
+                    setLessonPickerOpen(false);
+                  }}
+                  className={`flex flex-col items-center justify-center gap-1.5 p-3 sm:p-4 rounded-2xl border-2 font-extrabold transition-all cursor-pointer ${
+                    activeSimId === 'switchyard'
+                      ? 'bg-blue-600/30 border-blue-400 text-white shadow-lg ring-2 ring-blue-400/40'
+                      : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-300'
+                  }`}
+                >
+                  <span className="text-3xl sm:text-4xl" aria-hidden="true">
+                    🚂
+                  </span>
+                  <span className="text-xs sm:text-sm">Switchyard</span>
                 </button>
               </div>
 

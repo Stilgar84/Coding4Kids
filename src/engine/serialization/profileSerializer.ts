@@ -27,6 +27,7 @@ import {
   ENV_ID_GRID,
   ENV_ID_LESSON,
   ENV_ID_PROFILE,
+  ENV_ID_SWITCHYARD,
   ENV_ID_TURTLE,
   ENV_VERSION_PROFILE,
   FORMAT_VERSION,
@@ -119,14 +120,11 @@ const GRID_EXCLUSIVE_BLOCKS = new Set<string>([
   'USE_DROP',
 ]);
 
-const SWITCHYARD_EXCLUSIVE_BLOCKS = new Set<string>([
-  'COUPLE',
-  'UNCOUPLE',
-  'SWITCH_TRACK',
-  'TOGGLE_SWITCH',
-  'MOVE_TRAIN',
-  'SEND_TRAIN',
-  'WAIT_SIGNAL',
+export const SWITCHYARD_EXCLUSIVE_BLOCKS = new Set<string>([
+  'SWITCH_LEFT',
+  'SWITCH_RIGHT',
+  'SEND_NEXT',
+  'SCRAP_ITEM',
 ]);
 
 const DEPOT_EXCLUSIVE_BLOCKS = new Set<string>([
@@ -323,10 +321,11 @@ function inferSimIdFromWorkspace(
   return 'grid';
 }
 
-function toCodeOnlySerializerEnv(simId: string): 'generic' | 'turtle' | 'beat' | 'depot' {
+function toCodeOnlySerializerEnv(simId: string): 'generic' | 'turtle' | 'beat' | 'depot' | 'switchyard' {
   if (simId === 'turtle') return 'turtle';
   if (simId === 'beat') return 'beat';
   if (simId === 'depot') return 'depot';
+  if (simId === 'switchyard') return 'switchyard';
   return 'generic';
 }
 
@@ -386,10 +385,11 @@ function readExplicitSimId(reader: BinaryReader): string {
   return codeToSimId(code, reader);
 }
 
-function normalizeManualSaveSimId(simId: string): 'grid' | 'turtle' | 'beat' | 'depot' {
+function normalizeManualSaveSimId(simId: string): 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' {
   if (simId === 'turtle') return 'turtle';
   if (simId === 'beat') return 'beat';
   if (simId === 'depot') return 'depot';
+  if (simId === 'switchyard') return 'switchyard';
   return 'grid';
 }
 
@@ -400,14 +400,14 @@ function deduceSimIdFromBinaryHeader(bytes: Uint8Array): string | null {
   if (envByte === ENV_ID_TURTLE) return 'turtle';
   if (envByte === ENV_ID_BEAT) return 'beat';
   if (envByte === ENV_ID_DEPOT) return 'depot';
-  if (envByte === 0x05) return 'switchyard';
+  if (envByte === ENV_ID_SWITCHYARD) return 'switchyard';
   if (envByte === ENV_ID_LESSON) {
     const inner = bytes[2];
     if (inner === ENV_ID_GENERIC || inner === ENV_ID_GRID) return 'grid';
     if (inner === ENV_ID_TURTLE) return 'turtle';
     if (inner === ENV_ID_BEAT) return 'beat';
     if (inner === ENV_ID_DEPOT) return 'depot';
-    if (inner === 0x05) return 'switchyard';
+    if (inner === ENV_ID_SWITCHYARD) return 'switchyard';
   }
   return null;
 }

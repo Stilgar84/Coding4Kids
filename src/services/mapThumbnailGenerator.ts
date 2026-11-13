@@ -9,6 +9,7 @@ import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
 import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 import { DEPOT_CRATE_COLORS, DepotState } from '../simulations/depot/types';
+import { ITEM_COLORS, SwitchyardState } from '../simulations/switchyard/types';
 import { stationToIndex } from '../simulations/depot/depotPhysics';
 
 const CELL_SIZE = 40;
@@ -585,11 +586,51 @@ export function generateBeatMapThumbnail(beatState: BeatState): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+export function renderSwitchyardMapSvg(switchyard?: SwitchyardState): string {
+  const w = 180;
+  const h = 132;
+  const parts: string[] = [];
+  parts.push(`<rect width="${w}" height="${h}" rx="12" fill="#0f172a" />`);
+  // Track lines
+  parts.push(`<rect x="12" y="58" width="70" height="16" rx="3" fill="#1e293b" />`);
+  parts.push(`<line x1="82" y1="66" x2="110" y2="66" stroke="#475569" stroke-width="3" />`);
+  parts.push(`<line x1="110" y1="66" x2="140" y2="40" stroke="#475569" stroke-width="2.5" />`);
+  parts.push(`<line x1="110" y1="66" x2="140" y2="92" stroke="#475569" stroke-width="2.5" />`);
+
+  // Scanner arch
+  parts.push(`<rect x="68" y="48" width="22" height="36" rx="3" fill="#1e3a5f" stroke="#38bdf8" stroke-width="1.5" />`);
+
+  // Switch indicator
+  parts.push(`<circle cx="110" cy="66" r="6" fill="#3b82f6" stroke="#bfdbfe" stroke-width="1" />`);
+
+  // Docks
+  parts.push(`<rect x="140" y="28" width="28" height="24" rx="4" fill="#1e293b" stroke="#ef4444" stroke-width="1.2" />`);
+  parts.push(`<rect x="140" y="80" width="28" height="24" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1.2" />`);
+
+  // Item preview
+  const items = switchyard?.queue ?? switchyard?.initialQueue ?? [];
+  if (items.length > 0) {
+    const itemHex =
+      ITEM_COLORS.find((c) => c.id === items[0].color)?.hex ?? '#ef4444';
+    parts.push(`<rect x="71" y="55" width="16" height="16" rx="3" fill="${itemHex}" />`);
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
+}
+
+/**
+ * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a Switchyard state.
+ */
+export function generateSwitchyardMapThumbnail(switchyardState?: SwitchyardState): string {
+  const svg = renderSwitchyardMapSvg(switchyardState);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 /**
  * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a given simulation state.
  */
 export function generateSimulationThumbnail(
-  simId: 'grid' | 'turtle' | 'beat' | 'depot',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard',
   state: any
 ): string {
   if (simId === 'turtle') {
@@ -600,6 +641,9 @@ export function generateSimulationThumbnail(
   }
   if (simId === 'depot') {
     return generateDepotMapThumbnail(state as DepotState);
+  }
+  if (simId === 'switchyard') {
+    return generateSwitchyardMapThumbnail(state as SwitchyardState);
   }
   return generateGridMapThumbnail(state as GridState);
 }

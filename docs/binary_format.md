@@ -23,11 +23,11 @@ The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items, `3` sensors/beacons/dials/stack depots)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5+)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
-| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`, `2`, or `3` for `grid`; `1` for `turtle`, `beat`, and `profile`). Governs env-specific opcode mapping and payload layout. |
+| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items, `3` sensors/beacons/dials/stack depots)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: `switchyard` (Switchyard sorting conveyor & docks — see §4.4 & §7.5)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
+| `0x02` | `envVersion` | `uint8` | Environment-specific version (`1`, `2`, or `3` for `grid`; `1` for `turtle`, `beat`, `switchyard`, and `profile`). Governs env-specific opcode mapping and payload layout. |
 
 > **Environment State Deduction:**
-> For `envId = 0x01` (`grid`), the Grid map payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
+> For `envId = 0x01` (`grid`) and `envId = 0x05` (`switchyard`), the environment state payload (§4) immediately follows byte 2. For `envId = 0x00` (`generic`), `0x02` (`turtle`), and `0x03` (`beat`), there is no map payload, and the Code Payload (§5) starts immediately at byte 3.
 
 ### 2.2 Standalone Curriculum Lesson Share Envelope (`ENV_ID_LESSON = 0x04`)
 
@@ -40,7 +40,7 @@ Used when exporting or sharing a curriculum attempt as a self-contained Base64UR
 +----------------------------------------------------------------------------------------------------------+
 ```
 
-- `innerEnvByte` (`uint8` at offset `0x02`): Governs the domain opcode table used inside Code Scopes (`0x00` `generic` or `0x01` `grid` = Grid opcodes, `0x02` `turtle` = Turtle opcodes, `0x03` `beat` = Beat & Light opcodes).
+- `innerEnvByte` (`uint8` at offset `0x02`): Governs the domain opcode table used inside Code Scopes (`0x00` `generic` or `0x01` `grid` = Grid opcodes, `0x02` `turtle` = Turtle opcodes, `0x03` `beat` = Beat & Light opcodes, `0x05` `switchyard` = Switchyard opcodes).
 - `lessonIdLen` (`VLE`, `> 0`) + `lessonId` (`UTF-8` bytes): Canonical activity ID (e.g., `"1.2"`, `"2A"`, `"3A"`, `"3C"`).
 - `lessonVersion` (`VLE`, `≥ 1`): Integer version of the curriculum activity definition against which the attempt was authored (`getActivityAtVersion(lessonId, lessonVersion)` reconstructs the matching map/palette).
 
@@ -174,6 +174,45 @@ Emitted only when a Grid map contains Module 5–6 extensions: `beaconTiles`, `d
 12. **Stack Count Overrides (`stackCountOverridesCount: VLE`):** For each world item with `count > 1`:
     - `itemIdx: VLE` (0-based index into the `worldItems` table).
     - `count: VLE` (total stack count, e.g. `3` or `5`).
+
+### 4.4 Switchyard Environment State Payload (`ENV_ID_SWITCHYARD = 0x05`, `ENV_VERSION_SWITCHYARD = 1`)
+
+When `envId = 0x05`, the Switchyard layout and queue payload immediately follows the 3-byte header:
+
+```
++-------------------------------------------------------------------------+
+| hasLayout (uint8)                                                       |
+| [If hasLayout == 1]:                                                    |
+|   layoutFlags (uint8: 0)                                                |
+|   switchCount (uint8: 1..2)                                             |
+|   ... switchDirections (1 byte each: 0=LEFT, 1=RIGHT) ...               |
+|   dockCount (uint8: 2..3)                                               |
+|   ... dockSpecs: dockFlags (1B), [acceptColorIdx: 1B], [acceptIconIdx: 1B] |
+|   queueLength (VLE)                                                     |
+|   ... queueItems (1 byte each: [damaged: 1b | icon: 2b | color: 2b]) ... |
++-------------------------------------------------------------------------+
+```
+
+1. **Layout Flag (`hasLayout: uint8`):**
+   - `0x00`: Default sandbox layout (reconstructs via `createInitialSwitchyardState()`).
+   - `0x01`: Custom or lesson layout follows.
+2. **Layout Header:**
+   - `layoutFlags` (`uint8`): Reserved flags (`0x00`).
+   - `switchCount` (`uint8`, `1..2`): Number of track diverter switches (`1` for Switch A, `2` for Switches A and B).
+   - For each switch: `direction: uint8` (`0` = `LEFT`, `1` = `RIGHT`).
+3. **Target Docks (`dockCount: uint8`, `2..3`):** For each dock:
+   - `dockFlags: uint8`:
+     - `bit 0 (0x01)`: `hasAcceptColor`
+     - `bit 1 (0x02)`: `hasAcceptIcon`
+     - `bit 2 (0x04)`: `rejectDamaged`
+   - If `hasAcceptColor` (`bit 0`): `acceptColorIdx: uint8` (`0` = `RED`, `1` = `BLUE`, `2` = `GREEN`, `3` = `YELLOW`).
+   - If `hasAcceptIcon` (`bit 1`): `acceptIconIdx: uint8` (`0` = `CRATE`, `1` = `BATTERY`, `2` = `GEAR`, `3` = `CRYSTAL`).
+4. **Queue (`queueLength: VLE`):**
+   - For each item in the conveyor queue: 1 byte `itemByte`:
+     - `bits 1..0`: `colorIdx` (`0` = `RED`, `1` = `BLUE`, `2` = `GREEN`, `3` = `YELLOW`).
+     - `bits 3..2`: `iconIdx` (`0` = `CRATE`, `1` = `BATTERY`, `2` = `GEAR`, `3` = `CRYSTAL`).
+     - `bit 4 (0x10)`: `damaged` flag (`1` = damaged / hazard item, `0` = intact).
+     - `bits 7..5`: Reserved (`0`).
 
 ---
 
@@ -377,6 +416,19 @@ All Beat & Light opcodes use the Standard Block Envelope (§6.1). When any repea
 | `0x1B` | `OP_BEAT_LIGHT_PIXEL` (`LIGHT_PIXEL`) | `x: VLE \| varIdx`, `y: VLE \| varIdx` | Lights pixel `(x, y)` (`param0` via `0x02`, `param1` via `0x04`) in active LED color. |
 | `0x1C` | `OP_BEAT_CURSOR_STEP` (`CURSOR_STEP`) | None | Advances LED cursor 1 pixel and lights it (supports `MASK_HAS_REP` + variable repeat). |
 | `0x1D` | `OP_BEAT_CURSOR_TURN` (`CURSOR_TURN`) | `dirByte: uint8` | Rotates LED cursor 90° (`0` = `LEFT`, `1` = `RIGHT`). |
+
+---
+
+### 7.5 Switchyard Conveyor & Sorter Opcodes (`ENV_ID_SWITCHYARD = 0x05`, `ENV_VERSION_SWITCHYARD = 1`)
+
+All Switchyard action opcodes use the Standard Block Envelope (§6.1). `SEND_NEXT` supports `MASK_HAS_REP (0x40)` for batch dispatch badges (`×2..×9` or `VLE`) and `MASK_HAS_VAR_PARAM (0x80)` (`paramVarMask & 0x01`) when repeat count is a variable name (`'a'..'z'`).
+
+| Opcode | Constant / Action Type | Parameters | Description |
+| :--- | :--- | :--- | :--- |
+| `0x10` | `OP_SWITCHYARD_SWITCH_LEFT` (`SWITCH_LEFT`) | None | Toggle track switch A to `LEFT` branch (or toggles designated junction switch). |
+| `0x11` | `OP_SWITCHYARD_SWITCH_RIGHT` (`SWITCH_RIGHT`) | None | Toggle track switch A to `RIGHT` branch (or toggles designated junction switch). |
+| `0x12` | `OP_SWITCHYARD_SEND_NEXT` (`SEND_NEXT`) | None | Releases front car from the conveyor queue down track into the active switch network (supports `MASK_HAS_REP` + variable repeat). |
+| `0x13` | `OP_SWITCHYARD_SCRAP_ITEM` (`SCRAP_ITEM`) | None | Diverts front car from the scanner gate directly into the scrap chute. Intact cars entering scrap cause `COLLISION`. |
 
 ---
 

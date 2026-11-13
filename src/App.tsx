@@ -35,6 +35,8 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
           ? s.beatState
           : s.activeSimId === 'depot'
           ? s.depotState
+          : s.activeSimId === 'switchyard'
+          ? s.switchyardState
           : s.turtleState,
       runtimeStatus: s.runtime?.status,
       runtimeVariables: s.runtime?.variables,

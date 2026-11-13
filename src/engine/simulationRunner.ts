@@ -38,7 +38,7 @@ export interface SimulationRunResult<TState = any> {
  */
 export function runHeadlessSimulation<TState = any>(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'depot',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard',
   simState: TState,
   maxSteps: number = MAX_SAVE_SIMULATION_STEPS
 ): SimulationRunResult<TState> {

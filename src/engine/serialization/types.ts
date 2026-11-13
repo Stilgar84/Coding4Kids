@@ -3,6 +3,7 @@ import { TurtleState } from '../../simulations/turtle/types';
 import { PlaceholderHintCategory } from '../../data/curriculum/types';
 import { BeatState } from '../../simulations/beat/types';
 import { DepotState } from '../../simulations/depot/types';
+import { SwitchyardState } from '../../simulations/switchyard/types';
 
 // Format versions
 export const FORMAT_VERSION = 1;
@@ -250,6 +251,12 @@ export const OP_DEPOT_PLACE = 0x12;
 export const OP_DEPOT_SEND_OUT = 0x13;
 export const OP_DEPOT_SEND_GATE = 0x14;
 
+// Switchyard Opcodes (envId = 0x05, envVersion = 1)
+export const OP_SWITCHYARD_SWITCH_LEFT = 0x10;
+export const OP_SWITCHYARD_SWITCH_RIGHT = 0x11;
+export const OP_SWITCHYARD_SEND_NEXT = 0x12;
+export const OP_SWITCHYARD_SCRAP_ITEM = 0x13;
+
 export interface ImportResult {
   success: boolean;
   formatVersion?: number;
@@ -263,5 +270,6 @@ export interface ImportResult {
   turtleState?: TurtleState;
   beatState?: BeatState;
   depotState?: DepotState;
+  switchyardState?: SwitchyardState;
   error?: string;
 }

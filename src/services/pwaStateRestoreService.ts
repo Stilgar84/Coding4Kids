@@ -18,6 +18,8 @@ import {
   createInitialDepotState,
   normalizeDepotStation,
 } from '../simulations/depot/depotPhysics';
+import { SwitchyardState } from '../simulations/switchyard/types';
+import { createInitialSwitchyardState } from '../simulations/switchyard/physics';
 import type { EditorTool, HistorySnapshot, SandboxModeSnapshot } from '../store/useAppStore';
 import type { AppMode } from '../data/curriculum/types';
 
@@ -33,7 +35,7 @@ export interface AppUpdateStateInput {
   activeActivityVersion?: number;
   curriculumWorkspaces?: Record<string, WorkspaceState>;
   sandboxSnapshot?: SandboxModeSnapshot | null;
-  activeSimId: 'grid' | 'turtle' | 'beat' | 'depot';
+  activeSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard';
   currentLevel: number;
   workspace: WorkspaceState;
   savedWorkspaces: Record<string, WorkspaceState>;
@@ -41,6 +43,7 @@ export interface AppUpdateStateInput {
   turtleState: TurtleState;
   beatState?: BeatState;
   depotState?: DepotState;
+  switchyardState?: SwitchyardState;
   runtime: InterpreterRuntimeState | null;
   activeScope: ScopeType;
   selectedBlockId: string | null;
@@ -435,10 +438,19 @@ function sanitizeDepotState(raw: unknown): DepotState {
   };
 }
 
-function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' | 'depot' {
+function sanitizeSwitchyardState(raw: unknown): SwitchyardState {
+  const defaults = createInitialSwitchyardState();
+  if (!raw || typeof raw !== 'object') {
+    return defaults;
+  }
+  return createInitialSwitchyardState(raw as any);
+}
+
+function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' {
   if (raw === 'turtle') return 'turtle';
   if (raw === 'beat') return 'beat';
   if (raw === 'depot') return 'depot';
+  if (raw === 'switchyard') return 'switchyard';
   return 'grid';
 }
 
@@ -460,6 +472,7 @@ function sanitizeHistoryList(raw: unknown, fallbackGrid: GridState): HistorySnap
       turtleState: s.turtleState ? sanitizeTurtleState(s.turtleState) : undefined,
       beatState: s.beatState ? sanitizeBeatState(s.beatState) : undefined,
       depotState: s.depotState ? sanitizeDepotState(s.depotState) : undefined,
+      switchyardState: s.switchyardState ? sanitizeSwitchyardState(s.switchyardState) : undefined,
       activeScope: VALID_SCOPES.includes(s.activeScope) ? s.activeScope : 'MAIN',
       selectedBlockId: typeof s.selectedBlockId === 'string' ? s.selectedBlockId : null,
       activeSimId: sanitizeSimId(s.activeSimId),
@@ -505,6 +518,9 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
   const cleanDepot: DepotState = state.depotState
     ? JSON.parse(JSON.stringify(state.depotState))
     : createInitialDepotState();
+  const cleanSwitchyard: SwitchyardState = (state as any).switchyardState
+    ? JSON.parse(JSON.stringify((state as any).switchyardState))
+    : createInitialSwitchyardState();
 
   const payload: PersistedUpdatePayload = {
     version: UPDATE_SNAPSHOT_VERSION,
@@ -524,6 +540,7 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     turtleState: cleanTurtle,
     beatState: cleanBeat,
     depotState: cleanDepot,
+    switchyardState: cleanSwitchyard,
     runtime: state.runtime ? JSON.parse(JSON.stringify(state.runtime)) : null,
     activeScope: state.activeScope,
     selectedBlockId: state.selectedBlockId,
@@ -603,7 +620,7 @@ export function consumeRestoredStateAfterUpdate(
       }
     }
 
-    const activeSimId: 'grid' | 'turtle' | 'beat' | 'depot' = sanitizeSimId(parsed.activeSimId);
+    const activeSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = sanitizeSimId(parsed.activeSimId);
     const currentLevel =
       typeof parsed.currentLevel === 'number' && Number.isInteger(parsed.currentLevel) && parsed.currentLevel >= 1
         ? parsed.currentLevel
@@ -645,6 +662,7 @@ export function consumeRestoredStateAfterUpdate(
     const turtleState = sanitizeTurtleState(parsed.turtleState);
     const beatState = sanitizeBeatState(parsed.beatState);
     const depotState = sanitizeDepotState(parsed.depotState);
+    const switchyardState = sanitizeSwitchyardState(parsed.switchyardState);
     const runtime = sanitizeRuntime(parsed.runtime);
     const activeScope: ScopeType = VALID_SCOPES.includes(parsed.activeScope) ? parsed.activeScope : 'MAIN';
     const selectedBlockId = typeof parsed.selectedBlockId === 'string' ? parsed.selectedBlockId : null;
@@ -673,6 +691,7 @@ export function consumeRestoredStateAfterUpdate(
       turtleState,
       beatState,
       depotState,
+      switchyardState,
       runtime,
       activeScope,
       selectedBlockId,

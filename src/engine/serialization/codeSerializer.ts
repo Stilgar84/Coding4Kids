@@ -2,9 +2,11 @@ import { WorkspaceState, GridState } from '../../types';
 import { TurtleState } from '../../simulations/turtle/types';
 import { BeatState } from '../../simulations/beat/types';
 import { DepotState } from '../../simulations/depot/types';
+import { SwitchyardState } from '../../simulations/switchyard/types';
 import { createInitialTurtleState } from '../../simulations/turtle/turtleEnvironment';
 import { createInitialBeatState } from '../../simulations/beat/beatEnvironment';
 import { createInitialDepotState } from '../../simulations/depot/depotPhysics';
+import { createInitialSwitchyardState } from '../../simulations/switchyard/physics';
 import { BinaryReader, base64URLToUint8Array } from './binaryReader';
 import { BinaryWriter, uint8ArrayToBase64URL } from './binaryWriter';
 import {
@@ -14,11 +16,13 @@ import {
   ENV_VERSION_BEAT,
   ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_STATE,
+  ENV_VERSION_SWITCHYARD,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
   ENV_ID_TURTLE,
   ENV_ID_BEAT,
   ENV_ID_DEPOT,
+  ENV_ID_SWITCHYARD,
   ENV_ID_LESSON,
   ENV_ID_PROFILE,
   ImportResult,
@@ -31,6 +35,7 @@ import {
   readGridState,
 } from './env/gridSerializer';
 import { writeDepotState, readDepotState } from './env/depotSerializer';
+import { writeSwitchyardState, readSwitchyardState } from './env/switchyardSerializer';
 import { writeCodeScopes, readCodeScopes } from './codeScopes';
 
 export { writeCodeScopes, readCodeScopes };
@@ -43,8 +48,8 @@ const utf8Decoder = new TextDecoder();
  */
 export function exportToBinary(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
-  envState?: GridState | TurtleState | BeatState | DepotState
+  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' | 'generic',
+  envState?: GridState | TurtleState | BeatState | DepotState | SwitchyardState
 ): Uint8Array {
   const writer = new BinaryWriter();
 
@@ -60,6 +65,8 @@ export function exportToBinary(
       ? ENV_ID_BEAT
       : envId === 'depot'
       ? ENV_ID_DEPOT
+      : envId === 'switchyard'
+      ? ENV_ID_SWITCHYARD
       : ENV_ID_GENERIC;
   writer.writeUint8(envByte);
 
@@ -74,14 +81,18 @@ export function exportToBinary(
       ? envState && 'stacks' in envState
         ? ENV_VERSION_DEPOT_STATE
         : ENV_VERSION_DEPOT
+      : envId === 'switchyard'
+      ? ENV_VERSION_SWITCHYARD
       : ENV_VERSION_TURTLE;
   writer.writeUint8(envVersion);
 
-  // 2. Environment State (if Grid or parameterized Depot)
+  // 2. Environment State (if Grid, parameterized Depot, or Switchyard)
   if (envByte === ENV_ID_GRID && envState && 'width' in envState) {
     writeGridState(writer, envState as GridState, envVersion);
   } else if (envByte === ENV_ID_DEPOT && envState && 'stacks' in envState) {
     writeDepotState(writer, envState as DepotState);
+  } else if (envByte === ENV_ID_SWITCHYARD && envState && 'switches' in envState) {
+    writeSwitchyardState(writer, envState as SwitchyardState);
   }
 
   // 3. Code Payload
@@ -95,20 +106,20 @@ export function exportToBinary(
  */
 export function exportToString(
   workspace: WorkspaceState,
-  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
-  envState?: GridState | TurtleState | BeatState | DepotState
+  envId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' | 'generic',
+  envState?: GridState | TurtleState | BeatState | DepotState | SwitchyardState
 ): string {
   return uint8ArrayToBase64URL(exportToBinary(workspace, envId, envState));
 }
 
 /**
  * Path A helper: Exports a curriculum lesson attempt as a code-only Base64URL string
- * (`envId = 0x00` for Grid lessons, `0x02` for Turtle, `0x03` for Beat, `0x07` for Depot) so
+ * (`envId = 0x00` for Grid lessons, `0x02` for Turtle, `0x03` for Beat, `0x07` for Depot, `0x05` for Switchyard) so
  * read-only map geometry is never duplicated inside `SavedProgramEntry`.
  */
 export function exportLessonCodeOnly(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic'
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' | 'generic'
 ): string {
   const codeOnlyEnvId = simId === 'grid' ? 'generic' : simId;
   return exportToString(workspace, codeOnlyEnvId);
@@ -120,7 +131,7 @@ export function exportLessonCodeOnly(
  */
 export function exportLessonToBinary(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' | 'generic',
   lessonId: string,
   lessonVersion: number = 1
 ): Uint8Array {
@@ -136,6 +147,8 @@ export function exportLessonToBinary(
       ? ENV_ID_BEAT
       : simId === 'depot'
       ? ENV_ID_DEPOT
+      : simId === 'switchyard'
+      ? ENV_ID_SWITCHYARD
       : ENV_ID_GENERIC;
 
   const writer = new BinaryWriter();
@@ -158,7 +171,7 @@ export function exportLessonToBinary(
  */
 export function exportLessonToString(
   workspace: WorkspaceState,
-  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'generic',
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' | 'generic',
   lessonId: string,
   lessonVersion: number = 1
 ): string {
@@ -203,7 +216,8 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
         innerEnvByte !== ENV_ID_GRID &&
         innerEnvByte !== ENV_ID_TURTLE &&
         innerEnvByte !== ENV_ID_BEAT &&
-        innerEnvByte !== ENV_ID_DEPOT
+        innerEnvByte !== ENV_ID_DEPOT &&
+        innerEnvByte !== ENV_ID_SWITCHYARD
       ) {
         return {
           success: false,
@@ -233,6 +247,8 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
           ? 'beat'
           : innerEnvByte === ENV_ID_DEPOT
           ? 'depot'
+          : innerEnvByte === ENV_ID_SWITCHYARD
+          ? 'switchyard'
           : innerEnvByte === ENV_ID_GRID
           ? 'grid'
           : 'generic';
@@ -251,6 +267,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
         turtleState: innerEnvByte === ENV_ID_TURTLE ? createInitialTurtleState() : undefined,
         beatState: innerEnvByte === ENV_ID_BEAT ? createInitialBeatState() : undefined,
         depotState: innerEnvByte === ENV_ID_DEPOT ? createInitialDepotState() : undefined,
+        switchyardState: innerEnvByte === ENV_ID_SWITCHYARD ? createInitialSwitchyardState() : undefined,
       };
     }
 
@@ -261,6 +278,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     else if (envByte === ENV_ID_TURTLE) envId = 'turtle';
     else if (envByte === ENV_ID_BEAT) envId = 'beat';
     else if (envByte === ENV_ID_DEPOT) envId = 'depot';
+    else if (envByte === ENV_ID_SWITCHYARD) envId = 'switchyard';
     else if (envByte !== ENV_ID_GENERIC) {
       return { success: false, error: `Unsupported environment ID: 0x${envByte.toString(16)}` };
     }
@@ -270,6 +288,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     let turtleState: TurtleState | undefined;
     let beatState: BeatState | undefined;
     let depotState: DepotState | undefined;
+    let switchyardState: SwitchyardState | undefined;
 
     if (envByte === ENV_ID_GRID) {
       gridState = readGridState(reader, envVersion);
@@ -280,6 +299,8 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     } else if (envByte === ENV_ID_DEPOT) {
       depotState =
         envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader) : undefined;
+    } else if (envByte === ENV_ID_SWITCHYARD) {
+      switchyardState = readSwitchyardState(reader);
     }
 
     // 3. Code Payload
@@ -295,6 +316,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       turtleState,
       beatState,
       depotState,
+      switchyardState,
     };
   } catch (err: any) {
     return {

@@ -9,7 +9,7 @@ export interface SavedProgramEntry {
   id: string;
   title: string;
   createdAt: number;
-  simId: 'grid' | 'turtle' | 'beat' | 'depot';
+  simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard';
   code: string; // Base64URL payload according to binary_format.md
   screenshot: string; // SVG data URL thumbnail
   status: SimulationStatus;
@@ -80,13 +80,15 @@ export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
   const title =
     typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : 'Untitled Program';
   const createdAt = typeof raw.createdAt === 'number' ? raw.createdAt : Date.now();
-  const simId: 'grid' | 'turtle' | 'beat' | 'depot' =
+  const simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' =
     raw.simId === 'turtle'
       ? 'turtle'
       : raw.simId === 'beat'
       ? 'beat'
       : raw.simId === 'depot'
       ? 'depot'
+      : raw.simId === 'switchyard'
+      ? 'switchyard'
       : 'grid';
   const screenshot =
     typeof raw.screenshot === 'string' && raw.screenshot.trim()

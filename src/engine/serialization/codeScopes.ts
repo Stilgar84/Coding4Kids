@@ -5,6 +5,7 @@ import {
   ENV_ID_TURTLE,
   ENV_ID_BEAT,
   ENV_ID_DEPOT,
+  ENV_ID_SWITCHYARD,
   SCOPE_ID_MAIN,
   SCOPE_ID_F1,
   SCOPE_ID_F2,
@@ -74,6 +75,12 @@ import {
   readDepotBlock,
   readDepotState,
 } from './env/depotSerializer';
+import {
+  getSwitchyardOpcodeForBlock,
+  getSwitchyardParamVarFlags,
+  writeSwitchyardParams,
+  readSwitchyardBlock,
+} from './env/switchyardSerializer';
 
 let blockIdCounter = 0;
 
@@ -345,6 +352,8 @@ export function writeCodeScopes(
         opcode = getBeatOpcodeForBlock(block);
       } else if (envByte === ENV_ID_DEPOT) {
         opcode = getDepotOpcodeForBlock(block);
+      } else if (envByte === ENV_ID_SWITCHYARD) {
+        opcode = getSwitchyardOpcodeForBlock(block);
       } else {
         // Grid or generic
         switch (block.type) {
@@ -389,6 +398,10 @@ export function writeCodeScopes(
           param1IsVar = flags.param1IsVar;
         } else if (envByte === ENV_ID_DEPOT) {
           const flags = getDepotParamVarFlags(opcode, block.params);
+          param0IsVar = flags.param0IsVar;
+          param1IsVar = flags.param1IsVar;
+        } else if (envByte === ENV_ID_SWITCHYARD) {
+          const flags = getSwitchyardParamVarFlags(opcode, block.params);
           param0IsVar = flags.param0IsVar;
           param1IsVar = flags.param1IsVar;
         } else if (block.type === 'FORWARD' || block.type === 'BACKWARD') {
@@ -439,6 +452,8 @@ export function writeCodeScopes(
         writeBeatParams(writer, opcode, block.type, block.params, paramVarMask);
       } else if (envByte === ENV_ID_DEPOT) {
         writeDepotParams(writer, opcode, block.params, paramVarMask);
+      } else if (envByte === ENV_ID_SWITCHYARD) {
+        writeSwitchyardParams(writer, opcode, block.params, paramVarMask);
       }
     }
   }
@@ -634,6 +649,10 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
         const decodedDepot = readDepotBlock(reader, opcode, paramVarMask);
         type = decodedDepot.type;
         params = decodedDepot.params;
+      } else if (envByte === ENV_ID_SWITCHYARD) {
+        const decodedSwitchyard = readSwitchyardBlock(reader, opcode, paramVarMask);
+        type = decodedSwitchyard.type;
+        params = decodedSwitchyard.params;
       } else {
         // Grid or generic
         switch (opcode) {
@@ -681,7 +700,7 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
  */
 export function exportCodeOnlyToBinary(
   workspace: WorkspaceState,
-  envId: 'generic' | 'turtle' | 'beat' | 'depot'
+  envId: 'generic' | 'turtle' | 'beat' | 'depot' | 'switchyard'
 ): Uint8Array {
   const writer = new BinaryWriter();
   writer.writeUint8(1); // FORMAT_VERSION = 1
@@ -692,6 +711,8 @@ export function exportCodeOnlyToBinary(
       ? ENV_ID_BEAT
       : envId === 'depot'
       ? ENV_ID_DEPOT
+      : envId === 'switchyard'
+      ? ENV_ID_SWITCHYARD
       : 0x00; // ENV_ID_GENERIC
   writer.writeUint8(envByte);
   writer.writeUint8(1); // envVersion = 1 (code-only)
@@ -719,7 +740,8 @@ export function importCodeOnlyFromBinary(bytes: Uint8Array): WorkspaceState {
     envByte !== 0x01 &&
     envByte !== ENV_ID_TURTLE &&
     envByte !== ENV_ID_BEAT &&
-    envByte !== ENV_ID_DEPOT
+    envByte !== ENV_ID_DEPOT &&
+    envByte !== ENV_ID_SWITCHYARD
   ) {
     throw new Error(`Unsupported autosave environment ID: 0x${envByte.toString(16)}`);
   }
