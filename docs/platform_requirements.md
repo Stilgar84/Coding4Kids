@@ -1,25 +1,28 @@
 # Shared Language, Lesson Mechanics & Platform Requirements (High-Level)
 
-This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum.md): shared language/block extensions, zero-reading pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards. For concrete layout budgets, HUD slots, iconography, and kid-UX rules, see [Kid-Friendly UI Principles & Guidelines (`ui_guidelines.md`)](./ui_guidelines.md).
+This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum.md): shared language/block extensions, zero-reading pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards. For concrete layout budgets, HUD slots, iconography, and kid-UX rules, see [Kid-Friendly UI Principles & Guidelines (`ui_guidelines.md`)](./ui_guidelines.md); for the Depot world, shared sparse Memory Tape, and typed color data, see [`env_depot_and_tape.md`](./env_depot_and_tape.md); for frame-by-frame animation blocks and loop-mode mechanics, see [`env_animation_lessons.md`](./env_animation_lessons.md).
 
 ---
 
 ## 1. Shared Language & Workspace UI Extensions
 
-These language and workspace capabilities apply universally across **🤖 Robot Grid**, **🐢 Turtle LOGO**, **🎵 Beat & Light Matrix**, and **🚂 Switchyard**:
+These language and workspace capabilities apply universally across **🤖 Robot Grid**, **🐢 Turtle LOGO**, **🎵 Beat & Light Matrix**, **🏗️ Depot**, and **🚂 Switchyard**:
 
 - **Explicit Conditional & Loop Blocks (Module 5+):**
   - `IF [condition] ... END_IF` — Executes inner blocks once if true; otherwise jumps past `END_IF`.
   - `IF [condition] ... ELSE ... END_IF` — Runs the top branch when true and skips `ELSE`, or jumps directly to `ELSE` when false (visually spotlighted during step-by-step playback).
   - `WHILE [condition] ... END_WHILE` — Repeats enclosed blocks while `[condition]` remains true (guarded against infinite loops by the interpreter step cap).
   - **Boolean Combinators:** Visual `NOT`, `AND`, and `OR` wrappers for sensor and comparison badges.
-- **Visual Memory Watch Tray (Module 6+):**
+- **Visual Memory Watch Tray & Typed Color Values (Module 6+, Typed in Module 7+):**
   - Displays live, color-coded boxes only for variables present in the active workspace, updating on every tick and animating values when read from world sensors.
-- **Shape-Socket Function Parameters & Local Stack Scope (Modules 8–9):**
+  - Starting in **Module 7**, variables can hold either a **number** or a **color swatch** (`TypedValue`), with tactile bounce/shake feedback when an arithmetic operator or typed parameter receives a mismatched type (see [`env_depot_and_tape.md` §3](./env_depot_and_tape.md)).
+- **Shared Sparse Memory Tape Subsystem (Module 7+):**
+  - Optional 1-indexed memory strip (`cells` + movable read/write head, supporting up to `10,000` sparse cells in Sandboxes and Mastery Challenges with a windowed 7–9 cell viewport dock) available across **🏗️ Depot**, **🐢 LOGO**, and **🎵 Beat & Light** (`TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`, `TAPE_CLEAR`, `$headPos`, `$tapeLen`, `$cellValue`, `$cellColor`; see [`env_depot_and_tape.md` §1](./env_depot_and_tape.md)).
+- **Shape-Socket Function Parameters & Local Stack Scope (Modules 10–11):**
   - Functions `F1`, `F2`, `F3` support up to **3 visual shape sockets (`●`, `▲`, `■`)** instead of text parameter names, with matching plug slots on `Call F1([●], [▲], [■])`.
   - Socket values are stored locally on each `StackFrame` in the call stack so recursive or nested calls never overwrite the caller's socket values.
 - **Physical Block-Budget Slot Trays:**
-  - When a lesson enforces a block cap (global or per function tab, e.g., `≤ 5 blocks`), the workspace renders visible slot trays (`[■][■][■][□][□]`) that visually fill up and gently shake/cap when full—communicating limits with zero text.
+  - When a lesson enforces a block cap (global or per function tab, e.g., `≤ 8 blocks` on constrained puzzles or `≤ 14 blocks` per tab in sandbox reference examples), the workspace renders visible slot trays (`[■][■][■][□][□]`) that visually fill up and gently shake/cap when full—communicating limits with zero text.
 
 ---
 
@@ -35,14 +38,14 @@ These language and workspace capabilities apply universally across **🤖 Robot 
 - Renders a translucent "ghost" agent on the simulation canvas that animates only the first 1–2 moves/turns (or the first cycle of a repeating motif) without altering the learner's workspace blocks.
 
 ### Partial & Full Visual Solution System (with Undo Safety)
-- Every constrained puzzle (**🤖 Robot** & **🚂 Switchyard**) supports two progressive help tiers:
+- Every constrained puzzle (**🤖 Robot**, **🏗️ Depot**, & **🚂 Switchyard**) supports two progressive help tiers:
   1. **Partial Help:** Displays the Ghost-Step Preview or lets the learner view/load the `?` Partial Block Scaffold (or single helper tab).
   2. **Full Working Solution:** Displays the complete verified block program visually and offers a 1-tap **Load into Workspace** action.
 - **Non-Destructive Load:** Loading a partial scaffold, full solution, or creative variation pushes the learner's prior blocks onto the **Undo** stack so a single tap on Undo restores their own work.
 
 ### Illustrated & Playable Creative Variations (🐢 LOGO & 🎵 Beat & Light)
-- Sandbox lessons pre-load a **working starter example** and present **2–3 Variation Cards**:
-  - **LOGO Cards:** Auto-rendered visual thumbnail generated from the variation's actual block program.
+- Sandbox lessons pre-load a **working starter example** and present **3–4 Variation Cards** (2–4 across creative modules):
+  - **LOGO Cards:** Auto-rendered visual thumbnail generated from the variation's actual block program (animated variations place `CLEAR_CANVAS` at the **start** of the frame loop so the final frame remains visible in static thumbnails; see [`env_animation_lessons.md`](./env_animation_lessons.md)).
   - **Beat & Light Cards:** Animated mini 8×8 preview with an **in-card Play/Listen (`▶`)** button so learners can hear and watch the target pattern without overwriting their workspace.
   - **Copy / Load Code:** Every card includes a 1-tap button to load its blocks into the workspace for study or remixing (Undo-protected).
 
@@ -76,9 +79,10 @@ These language and workspace capabilities apply universally across **🤖 Robot 
 - **Multiple Manual Save Slots per Lesson:** Learners can also save **multiple distinct versions** on the same lesson, capstone, or mastery challenge (represented visually with slot numbers/thumbnails) and switch between them freely.
 
 ### Lesson Save Format & Versioning Rules
-- **Code-Only Lesson Save Payload:**
-  - Saving a curriculum attempt serializes **only the user's block code** in the code payload, while the **environment section stores only `(lessonId, version)`** rather than duplicating the map geometry.
-  - Keeps saves tiny (ideal for storage and QR sharing) and guarantees map integrity.
+- **Code-Only Lesson Save Payload (with Sparse Tape Exception for Creative Sandboxes):**
+  - Saving a constrained curriculum puzzle attempt serializes **only the user's block code** in the code payload, while the **environment section stores only `(lessonId, version)`** rather than duplicating the read-only map geometry.
+  - Free-play Sandboxes (and creative Tape Sandboxes where learners hand-paint initial tape cells) serialize only non-empty sparse `(index, TypedValue)` tape entries (`0 bytes` overhead for untouched default cells; see [`env_depot_and_tape.md` §1 & §5](./env_depot_and_tape.md)).
+  - Keeps saves tiny (ideal for storage and QR sharing) and guarantees puzzle map integrity.
 - **Retaining All Historical Lesson Versions in Code:**
   - Every curriculum activity definition carries an explicit `version` integer.
   - If a lesson's map, starter, or budget is revised in a future update, **all older `version` definitions remain in the codebase** alongside the newest version rather than being overwritten.
@@ -88,7 +92,7 @@ These language and workspace capabilities apply universally across **🤖 Robot 
     2. **Open in Original Lesson Version** — Runs their saved code against the preserved historical `version` definition so their prior solution continues to work exactly as originally built.
 
 ### Progression Tracking & Full Profile Export / Import
-- **Completion & Unlocks:** Tracks per-lesson completion state per profile, unlocking modules sequentially while unlocking **Optional `🔥 Mastery Challenges`** in a dedicated bonus drawer as Modules 6, 7, 8, and 9 finish.
+- **Completion & Unlocks:** Tracks per-lesson completion state per profile, unlocking modules sequentially while unlocking **Optional `🔥 Mastery Challenges`** across **5 Tiers** in a dedicated bonus drawer as Modules 6, 8, 9, 10, and 11 finish.
 - **Whole-Profile Export & Import:**
   - Allows exporting and importing **all content belonging to a user profile** in one operation—profile avatar, all lesson/capstone/challenge completion records, earned badges, all per-lesson save slots, and free-play saves (via portable backup file and/or multi-QR transfer for offline tablets).
   - Importing prompts safely to add as a new profile or merge/replace an existing profile.
@@ -99,6 +103,6 @@ These language and workspace capabilities apply universally across **🤖 Robot 
 - **Capstone (`🏆`/`🎨`) & Mastery Challenge (`🔥`) Grand Celebration:**
   - Triggers a **larger celebratory showcase**—richer fanfare audio, full-screen confetti/fireworks graphics, and a **Badge Unlock ceremony**.
 - **Collectible Module Badges & Challenge Medals:**
-  - Completing all Capstones in each of the **9 Modules** awards that module's unique **Module Mastery Badge**.
+  - Completing all Capstones in each of the **11 Modules** awards that module's unique **Module Mastery Badge**.
   - Completing each **Optional `🔥 Mastery Challenge`** awards a distinct **Challenge Medal**.
   - Earned badges and medals appear on the child's profile card and inside a visual **Badge / Trophy Collection** screen.

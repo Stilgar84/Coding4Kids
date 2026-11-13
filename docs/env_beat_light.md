@@ -1,6 +1,6 @@
 # 🎵 Beat & Light Matrix Environment Specification (High-Level)
 
-`Beat & Light Matrix` is an **open-ended creative sandbox** environment paired alongside Turtle LOGO in [the curriculum](./curriculum.md) (Modules 1–4 and 6). It gives learners a rhythmic, musical, and pixel-art canvas—ideal for newcomers who resonate strongly with sound, animation, and pattern play—while adhering strictly to `robotemu`'s **zero-reading** design.
+`Beat & Light Matrix` is an **open-ended creative sandbox** environment paired alongside Turtle LOGO in [the curriculum](./curriculum.md) (Modules 1–4, 6–7, and 10; see also [Frame-by-Frame Animation Lessons (`env_animation_lessons.md`)](./env_animation_lessons.md) and [Depot & Sparse Memory Tape (`env_depot_and_tape.md`)](./env_depot_and_tape.md)). It gives learners a rhythmic, musical, and pixel-art canvas—ideal for newcomers who resonate strongly with sound, animation, and pattern play—while adhering strictly to `robotemu`'s **zero-reading** design.
 
 ---
 
@@ -31,15 +31,16 @@ To prevent cognitive overload, the palette exposes simple **parameterless blocks
 | `DRUM_CLAP` | Clapping hands | Repeat badge (`×N` in M2+) | Plays a handclap accent (1 beat). |
 | `PLAY_CHIME` | Bell / sparkle | Repeat badge (`×N` in M2+) | Plays a bright celebratory chime (1 beat). |
 | `STAMP_HEART` / `STAMP_STAR` / `STAMP_SMILE` *(grouped under `STAMP_PRESET` in M2+)* | Mini 8×8 pixel glyph | Preset icon badge (in M2+) | Lights a recognizable 8×8 pixel icon on the matrix. |
-| `WAIT_BEAT` | Hourglass / rest note | Repeat badge (`×N` in M2+) | Holds current LEDs silent for 1 beat. |
-| `CLEAR_LEDS` | Eraser / dark grid | None | Clears all 64 LEDs to off. |
+| `WAIT_BEAT` | Hourglass / rest note | Repeat badge (`×N` or variable `a..z` in M2+) | Holds current LEDs silent for `N` beats (essential frame-hold block for pixel animations; see [`env_animation_lessons.md`](./env_animation_lessons.md)). |
+| `CLEAR_LEDS` | Eraser / dark grid | None | Clears all 64 LEDs to off (placed at the **start** of animation frame loops so the final frame stays visible). |
 
-### Tier 2: Parameterized Sound, Style & Grid Blocks (Modules 2–6)
+### Tier 2: Parameterized Sound, Style & Grid Blocks (Modules 2–10)
 
 | Block ID | Visual Icon | Parameters | Behavior |
 | :--- | :--- | :--- | :--- |
 | `PLAY_NOTE` | Musical note | **Pitch** (`1..8` visual scale bar / variable `a..z`), **Duration** (`½`, `1`, `2` beats) | Plays the selected scale note for the chosen beat length. |
-| `SET_LED_COLOR` | Palette swatch | **Color** (8 high-contrast swatches, or color index `1..8` via variable in M6+) | Sets the active LED color (persists until changed, mirroring LOGO `Pen Color`). |
+| `SET_LED_COLOR` | Palette swatch | **Color** (10 swatches: backward-compatible `0..7` Cyan..Pink + `8=Black` pixel-off eraser + `9=White`, or typed color variable / `$cellColor` in M7+) | Sets the active LED color (persists until changed, mirroring LOGO `Pen Color`; `Black` selectively extinguishes single pixels/rows/columns). |
+| `SET_BEAT_DELAY` | Metronome / tempo slider | **Delay ms** (`50`, `100`, `200`, `400`, `800` ms or variable `a..z`) | Sets the tempo/frame interval for `WAIT_BEAT` and synth hits in animation & music lessons (M2+; see [`env_animation_lessons.md`](./env_animation_lessons.md)). |
 | `LIGHT_ROW` | Horizontal lit bar | **Row `y`** (`1..8` or variable `a..z`) | Lights all 8 pixels in row `y` using the active LED color. |
 | `LIGHT_COL` | Vertical lit bar | **Col `x`** (`1..8` or variable `a..z`) | Lights all 8 pixels in column `x` using the active LED color. |
 | `LIGHT_PIXEL` | Single lit dot | **Col `x`** (`1..8` or var), **Row `y`** (`1..8` or var) | Lights pixel `(x, y)` using the active LED color. |
@@ -50,5 +51,5 @@ To prevent cognitive overload, the palette exposes simple **parameterless blocks
 
 ## 3. Sensors & State
 
-- **Sensors:** None required. As an open creative sandbox, Beat & Light relies on loops, helper functions (`F1`–`F3` for `Intro / Verse / Chorus`), and variables (`p = p + 1` pitch sweeps, `x = x + 1` laser/equalizer animations) without needing conditional sensor blocks.
+- **Sensors:** No matrix-specific world sensors are required; in Module 7 & Module 10 Tape lessons (`7.4`, `7.4a`, `7C`, `10.7`, `10.8`), Beat & Light pairs with the shared **Sparse Memory Tape** (`$cellValue`, `$cellColor`, `$headPos`, `$tapeLen`; see [`env_depot_and_tape.md`](./env_depot_and_tape.md)) alongside loops, parameterized functions (`F1`–`F3`), and variables.
 - **Reset Behavior:** Pressing Reset clears all 64 LEDs, resets active LED color to default cyan/amber, resets cursor to `(1, 1)` facing East, and stops active synth notes.

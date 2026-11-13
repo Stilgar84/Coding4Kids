@@ -1,6 +1,6 @@
 # 🚂 Switchyard / Conveyor Sorter Environment Specification (High-Level)
 
-`Switchyard` is a **constrained, validated puzzle environment** introduced in Module 5 of [the curriculum](./curriculum.md) (used across Modules 5, 7, 8, and Optional **Mastery Challenges**).
+`Switchyard` is a **constrained, validated puzzle environment** introduced in Module 5 of [the curriculum](./curriculum.md) (used across Modules 5, 8, 10, and Optional **Mastery Challenges**).
 
 While **🤖 Robot Grid** excels at spatial navigation, orientation turns (`Left`/`Right` relative to robot heading) add extra mental load when newcomers first learn `If / Else` branching, numeric comparisons (`<`, `>`, `==`), modulo (`%`), and running totals. `Switchyard` removes egocentric turning completely—onboarding first with simple `If` hazard scrapping (`Lessons 5.2–5.3`) before introducing `If / Else` (`Lessons 5.4–5.5`)—so learners can focus purely on **inspecting data, making decisions, and routing streams**.
 
@@ -12,7 +12,7 @@ While **🤖 Robot Grid** excels at spatial navigation, orientation turns (`Left
   - **Color:** High-contrast body color (Red, Blue, Green, Amber).
   - **Cargo Emblem:** Distinct icon (Crate, Battery, Gear, Crystal).
   - **Condition Visual:** Intact vs. cracked/sparking (`itemDamaged`) for hazard rejection puzzles.
-  - **Weight / Value Badge (Module 7+):** Large number (`1..99`) printed directly on the item.
+  - **Weight / Value Badge (Module 8+):** Large number (`1..99`) printed directly on the item.
 - **Inspection Scanner Gate:** An illuminated arch right before the switches; when an item sits under the scanner, sensor badges highlight live with the item's readouts.
 - **1 to 3 Track Switches (`Switch A`, `Switch B`):** Animated rail/conveyor diverters showing which branch is currently open (`Left` vs. `Right`).
 - **Self-Documenting Target Docks & Scrap Chute (Zero Text Required):**
@@ -20,7 +20,7 @@ While **🤖 Robot Grid** excels at spatial navigation, orientation turns (`Left
     - Color swatch / cargo emblem (e.g., Red Crate icon = accepts only undamaged Red Crates).
     - Weight limit scale badge (e.g., `≤ 10` = rejects items heavier than `10`).
     - Segmented **Quota Gauge** (`[■■□□]`, e.g., `2 / 4`) that fills visually as valid items arrive.
-    - Balance beam connecting twin docks (for *Challenge 7.2* weight-balancing puzzles).
+    - Balance beam connecting twin docks (for *Challenge 8.2* weight-balancing puzzles).
   - Routing a wrong or damaged item into a dock—or leaving items unsorted when the program ends—triggers an immediate visual collision/mismatch highlight on that dock.
 
 ---
@@ -58,7 +58,7 @@ Switchyard sensors plug visually into `If`, `If / Else`, `While`, and variable a
 | `itemIcon == [Emblem]` | Cargo icon badge | Scanned item matches the selected cargo icon (`Crate`, `Battery`, `Gear`, `Crystal`). |
 | `itemDamaged` | Cracked/sparking icon | Scanned item is damaged/hazardous and must be sent to `SCRAP_ITEM`. |
 
-### Numeric Readouts (Module 7+)
+### Numeric Readouts (Module 8+)
 
 | Readout | Visual Badge | Numeric Value Returned |
 | :--- | :--- | :--- |

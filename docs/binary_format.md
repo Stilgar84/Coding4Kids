@@ -23,7 +23,7 @@ The raw binary stream is serialized as a plain **Base64URL** string (RFC 4648 §
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
 | `0x00` | `formatVersion` | `uint8` | Global format version (`1`). Governs universal layout, VLE, and control flow opcodes. |
-| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`+: Reserved for future environments |
+| `0x01` | `envId` | `uint8` | Simulation / Envelope ID:<br>• `0x00`: `generic` / Code-only (uses Grid action opcodes, no map payload)<br>• `0x01`: `grid` (includes Grid map payload; `envVersion = 1` classic, `2` interactive items)<br>• `0x02`: `turtle` (Turtle LOGO canvas, no map payload)<br>• `0x03`: `beat` (Beat & Light 8×8 Matrix, no map payload)<br>• `0x04`: `lesson` (Standalone Curriculum Lesson envelope — see §2.2)<br>• `0x05`: Reserved for `switchyard` (Module 5+)<br>• `0x06`: `profile` (Whole-Profile Backup Envelope — see §2.3)<br>• `0x07`: Reserved for `depot` (Module 3+ — see [`env_depot_and_tape.md`](./env_depot_and_tape.md))<br>• `0x08`+: Reserved for future environments |
 | `0x02` | `envVersion` | `uint8` | Environment-specific version (`1` or `2` for `grid`; `1` for `turtle`, `beat`, and `profile`). Governs env-specific opcode mapping and payload layout. |
 
 > **Environment State Deduction:**
@@ -69,7 +69,7 @@ Curriculum attempts support complementary, lossless representations sharing the 
 #### 2.3.2 Compact Lesson Identifier (`CompactLessonId`)
 - `0x80..0xFD` (**1 byte**): Canonical Modules `1..9` × 14 sub-codes (`0..10` for numbered lessons `M.0`–`M.10`, `11..13` for capstones `MA`–`MC`): `0x80 + (moduleNum - 1) * 14 + subCode`.
 - `0xFE` (**2 bytes**): Canonical Mastery Challenges `C1.1`–`C16.16`: `[0xFE, ((modNum - 1) << 4) | (chalNum - 1)]`.
-- `0x01..0x7F`: Short UTF-8 lesson ID (`tag = utf8Len` `1..127` + UTF-8 bytes).
+- `0x01..0x7F`: Short UTF-8 lesson ID (`tag = utf8Len` `1..127` + UTF-8 bytes — handles suffixed IDs such as `"2.5a"`, `"3.3a"`, lessons `>= M.11`, and Modules `10..11`).
 - `0x00`: Long (`>= 128` bytes) or empty UTF-8 escape: `[0x00, utf8Len: VLE, ...utf8Bytes]`. (`0xFF` reserved.)
 
 #### 2.3.3 Compact Curriculum Progress (`progressFlags: uint8`)
@@ -224,7 +224,7 @@ Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
 3. **`OP_PLACEHOLDER = 0x09` (`?` Scaffold Block):**
    ```
    Byte 0: 0x09 (OP_PLACEHOLDER — bits 7..5 MUST be 0)
-   Byte 1+: hintCategory (VLE: 0..4 active in M1–M3; 5..15 reserved for M4–M9; unknown codes fall back to 'any')
+   Byte 1+: hintCategory (VLE: 0..4 active in M1–M3; 5..15 reserved for M4–M11; unknown codes fall back to 'any')
    ```
 
 ---
@@ -245,8 +245,8 @@ Governed by `FORMAT_VERSION = 1` across all environments.
 | `0x06` | `OP_END_IF` (`END_IF`) | None (M5) | Conditional branch closer (activated in Module 5). |
 | `0x07` | `OP_VAR_ASSIGN` (`VAR_ASSIGN`) | `operandDescMask`, `varIdx`, `operandB` | Assigns `a = b` (see §6.2). |
 | `0x08` | `OP_VAR_OP` (`VAR_OP`) | `operandDescMask`, `varIdx`, `opByte`, `operandB`, `operandC` | Evaluates `a = b op c` (see §6.2 & §7.1.1). |
-| `0x09` | `OP_PLACEHOLDER` (`PLACEHOLDER`) | `hintCategory: VLE` | `?` scaffold slot. **Active in M1–M3 (`0..4`):** `0`=any, `1`=motion, `2`=turn, `3`=item, `4`=loop. **Reserved for M4–M9 (`5..15`):** `5`=function, `6`=conditional, `7`=sensor, `8`=variable, `9`=operator, `10`=socket (`11..15` unassigned; VLE-extensible). |
-| `0x0A`–`0x0F` | Reserved | Reserved | Reserved for Module 5–9 control extensions (`ELSE_IF`, `WHILE`, `END_WHILE`, etc.). |
+| `0x09` | `OP_PLACEHOLDER` (`PLACEHOLDER`) | `hintCategory: VLE` | `?` scaffold slot. **Active in M1–M3 (`0..4`):** `0`=any, `1`=motion, `2`=turn, `3`=item, `4`=loop. **Reserved for M4–M11 (`5..15`):** `5`=function, `6`=conditional, `7`=sensor, `8`=variable, `9`=operator, `10`=socket (`11..15` unassigned; VLE-extensible). |
+| `0x0A`–`0x0F` | Reserved | Reserved | Reserved for Module 5–11 control & shared tape extensions (`ELSE_IF`, `WHILE`, `END_WHILE`, `TAPE_*`; see [`env_depot_and_tape.md`](./env_depot_and_tape.md)). |
 
 #### 7.1.1 `VAR_OP` Binary Operator Codes (`opByte: uint8`)
 

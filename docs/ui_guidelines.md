@@ -1,6 +1,6 @@
 # Kid-Friendly UI Principles & Guidelines (Ages 5–7)
 
-This document defines the mandatory UI, layout, iconography, and accessibility rules for all components across **🤖 Robot Grid**, **🐢 Turtle LOGO**, **🎵 Beat & Light Matrix**, and **🚂 Switchyard** (see also [curriculum.md](./curriculum.md) and [platform_requirements.md](./platform_requirements.md)).
+This document defines the mandatory UI, layout, iconography, and accessibility rules for all components across **🤖 Robot Grid**, **🐢 Turtle LOGO**, **🎵 Beat & Light Matrix**, **🏗️ Depot**, and **🚂 Switchyard** (see also [curriculum.md](./curriculum.md), [platform_requirements.md](./platform_requirements.md), [env_depot_and_tape.md](./env_depot_and_tape.md), and [env_animation_lessons.md](./env_animation_lessons.md)).
 
 ---
 
@@ -20,7 +20,7 @@ This document defines the mandatory UI, layout, iconography, and accessibility r
   - **Left cluster:** `☰ Menu` (`btn-hamburger-menu`), `👤 Profile` (`hidden md:flex`), and `[◀ (hidden sm:flex) | Lesson/World Picker Pill (min-w-0 shrink truncate) | ▶ (hidden sm:flex)]`.
   - **Right cluster:** Optional `Update` pill (`hidden md:flex`), `💡 Hint` (`btn-solution` when available) or `💾 Save` (`btn-save-modal`, always visible on `md+` and visible on `<md` whenever `💡 Hint` is absent), `↶ Undo` (`btn-undo`), `⏮ Rewind` (`btn-reset`), `⏭ Step` (`btn-step`), `▶ Play / ⏸ Pause` (`btn-play` / `btn-pause`), and `⚡ Speed` (`btn-speed`).
 - **Explicitly Forbidden in `<header>`:**
-  - Numbered lesson pill strips (`1..16`, `1.0..9B`), `<select>` dropdowns, or `Learn / Sandbox` / `World` tab bars (use `LessonPickerModal` and `☰ Menu`).
+  - Numbered lesson pill strips (`1..16`, `1.0..11B`), `<select>` dropdowns, or `Learn / Sandbox` / `World` tab bars (use `LessonPickerModal` and `☰ Menu`).
   - Simulation/map editor toolbars (`GridToolbarTools`, `TurtleToolbarTools`, `BeatToolbarTools`).
   - Live runtime watch bars (`VARS`), backpack indicators, or multi-map/multi-stream validation pips.
   - Secondary actions like `Redo`, `Start Over`, `Edit in Sandbox`, `Load`, `Share`, or `Fullscreen` (all live in `☰ Menu`).
@@ -33,14 +33,14 @@ Every overlay or toolbar inside `pane-simulation` has a dedicated, non-colliding
 
 | Slot | Location inside `pane-simulation` | Assigned Controls |
 | :--- | :--- | :--- |
-| **Top Dock (`shrink-0`)** | Flex row above canvas (Sandbox Grid only) | `GridToolbarTools` (`Robot`, `Wall`, `Flag`, `Goal`, `World Items` popover, `Erase`, `Clear Map`; collapsible behind `✏️ Edit Map` on `<640px`). Never floats over grid cells or resize handles. |
-| **Top-Left Stack** | `absolute top-3 left-3 flex flex-col items-start gap-1.5` | Shared vertical HUD stack for `BackpackHud` (`🎒`), `toolbar-variables` (`VARS` live memory watch boxes), and Module 9 `CallStack` frames—guaranteeing zero overlap. |
+| **Top Dock (`shrink-0`)** | Flex row(s) above canvas | `GridToolbarTools` in Sandbox Grid (`Robot`, `Wall`, `Flag`, `Goal`, `World Items` popover, `Erase`, `Clear Map`; collapsible behind `✏️ Edit Map` on `<640px`), and/or the windowed 7–9 cell `TapeDock` (`shrink-0`) whenever the shared Sparse Memory Tape is active (`Module 7+`). Never floats over canvas cells or resize handles. |
+| **Top-Left Stack** | `absolute top-3 left-3 flex flex-col items-start gap-1.5` | Shared vertical HUD stack for `BackpackHud` (`🎒` / Depot arm cargo), `toolbar-variables` (`VARS` live numeric & color-swatch memory watch boxes), and Module 11 `CallStack` frames—guaranteeing zero overlap. |
 | **Top-Center Pill** | `absolute top-3 left-1/2 -translate-x-1/2` | `status-success` (`🏁`), `status-collision` (`💥`), and Module 5+ multi-map / multi-stream status pips (`[1 ✓] [2 ✗] [3 ·]`). |
-| **Top-Right Badge** | `absolute top-3 right-3` | Compact `🔒` read-only map indicator (`grid-readonly-badge` with `sr-only` text) + board size badge (`grid-size-indicator`). |
+| **Top-Right Badge** | `absolute top-3 right-3` | Compact `🔒` read-only map indicator (`grid-readonly-badge` with `sr-only` text) + board size badge (`grid-size-indicator`) in Grid/Depot, or `Hide Turtle` (`🐢`) + `Loop Mode` (`∞`) toggle pills in Turtle LOGO (`env_animation_lessons.md`). |
 | **Bottom-Left Pill** | `absolute bottom-3 left-3` | Compact `turtle-info-pill` (`X:` / `Y:` + heading) in Turtle LOGO. |
 | **Bottom-Right Controls** | `absolute bottom-3 right-3` | Grid `Trace` + `Fit` buttons (`GridCanvas`), or compact `TurtleToolbarTools` (`+`, `-`, `Fit`, `Center`) in Turtle LOGO. |
-| **Canvas Header Row** | `BeatCanvas` `shrink-0` top bar | Beat step counter + `tool-beat-active-color` swatch + `tool-beat-mute` (`🔊`/`🔇`). |
-| **Bottom Dock (`shrink-0`)** | Flex dock below canvas | `VariationCardsPanel` (illustrated/playable creative cards + `✓ Done / Next →` completion CTA). |
+| **Canvas Header Row** | `BeatCanvas` `shrink-0` top bar | Beat step counter + `tool-beat-active-color` swatch + `Loop Mode` (`∞`) toggle + `tool-beat-mute` (`🔊`/`🔇`). |
+| **Bottom Dock (`shrink-0`)** | Flex dock below canvas | `VariationCardsPanel` (illustrated/playable creative cards + `Next →` open-lesson CTA) and `CurriculumNextLessonBar` (`⭐ Next →` bar on solved puzzle exercises). |
 
 ---
 
