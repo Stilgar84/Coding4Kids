@@ -1,5 +1,13 @@
 # RobotEmu Binary Serialization Format Specification
 
+> **TODO (Pending Curriculum & Platform Updates):**
+> - **Slug Lesson/Module IDs:** Document legacy numeric ID aliasing (`"1.2"` → `"seq.2"`, `"8.1"` → `"cmp.M1"`) and note `CompactLessonId` UTF-8 encoding for slug IDs across all modules.
+> - **Beat & Light (`BEAT_VERSION = 2`):** Add `OP_BEAT_STAMP_FROM_TAPE` (`📼→🟦` customizable `W×H` Tape sprite blit), optional `width` / `height` dimensions (`8×8`, `16×16`, `32×32`), and queued event handler scopes (`On Key`, `On Tap`).
+> - **Turtle LOGO Flipbook & Live Modes:** Add optional LOGO animation mode flags (`flipbook` / `live`, `totalFrames`, `clearBetweenFrames`).
+> - **Shared Sensors & Randomness:** Reserve sensor tokens for `$input`, `insideCanvas`, `cursorAtEdge`, `$frame`, `$time`, `$pointerX`/`$pointerY`/`$pointerDown`, and `🎲` random presets (`Coin`, `D4`, `D6`, `D8`, `D20`, `[0,1)` float, `$randomColor`).
+> - **Concurrency (`conc`) Primitives:** Reserve opcodes/scopes for multiple `Main` tabs (`Main 1..N`), `SYNC_BARRIER`, `SEND` / `$recv` channels, `FORK` / `JOIN`, `LOCK` / `UNLOCK`, multi-robot Grid layouts, and multi-claw Depot layouts.
+> - **Future `fp` Side Module:** Reserve higher-order function socket references (`F1([Fn])`).
+
 ## 1. Overview
 
 This document specifies the compact binary format (`FORMAT_VERSION = 1`) for serializing RobotEmu programs (code workspace), environment states (such as Grid world layouts), standalone curriculum lesson attempts, and whole-profile player backups (`ENV_ID_PROFILE = 0x06`).
@@ -312,7 +320,7 @@ Optional Byte 1 (paramVarMask — PRESENT ONLY IF HasVarParam == 1):
        - `0x81`: `$y` (Turtle / LOGO Y position)
        - `0x82`: `$heading` (Turtle / LOGO heading angle 0..359°)
        - `0x83`: `$tileDial` (Grid World rotatable dial sensor)
-       - `0x40`: Reserved for Module 7 color literal.
+       - `0x40`: `COLOR_LITERAL_FLAG = 0x40` for Module 7 color literals (`0x40 | colorIdx`, using canonical `PALETTE_COLORS` indices `0..9`, disjoint from variables `a`–`z` at `0x00..0x19` and sensors at `0x80 | sensorIdx`).
    - `1` (`01`): Non-negative integer — `VLE(n)`
    - `2` (`10`): Negative integer — `VLE(abs(n))`
    - `3` (`11`): IEEE-754 float64 — `8 bytes` big-endian (`DataView.setFloat64`)
@@ -334,7 +342,7 @@ Governed by `FORMAT_VERSION = 1` across all environments.
 | :--- | :--- | :--- | :--- |
 | `0x01` | `OP_LOOP_START` (`LOOP_START`) | None (uses `MASK_HAS_REP`) | Loop iteration count via `MASK_HAS_REP (0x40)` (`VLE` or `varIdx` via `MASK_HAS_VAR_PARAM (0x80)`). |
 | `0x02` | `OP_LOOP_END` (`LOOP_END`) | None | Closes matching `LOOP_START` (supports arbitrary nesting depth). |
-| `0x03` | `OP_CALL_FN` (`CALL_FN`) | `fnIndex: uint8` | Calls helper scope: `1` = `F1`, `2` = `F2`, `3` = `F3`. |
+| `0x03` | `OP_CALL_FN` (`CALL_FN`) | `fnIndex: uint8` (+ optional socket args) | Calls helper scope: `1` = `F1`, `2` = `F2`, `3` = `F3`. Argument tags include `socket`, `socket - 1`, and `socket + 1` so recursive calls (`Call F1(● - 1)`) never clobber global variables `a`–`z`. |
 | `0x04` | `OP_IF` (`IF`) | `condition: ConditionExpr` | Conditional branch start; followed immediately by `ConditionExpr` prefix tree (§7.1.2). |
 | `0x05` | `OP_ELSE` (`ELSE` / `ELSE_IF`) | None (`ELSE`), `condition: ConditionExpr` (`ELSE_IF`) | Branch separator. Plain `ELSE` emits `0x05` (0 param bytes, 1 byte total); `ELSE_IF` sets `MASK_ELSE_HAS_COND = 0x20` (`0x25`) followed immediately by `ConditionExpr` (§7.1.2). |
 | `0x06` | `OP_END_IF` (`END_IF`) | None | Conditional branch closer (0 parameter bytes, 1 byte total). |
@@ -343,7 +351,7 @@ Governed by `FORMAT_VERSION = 1` across all environments.
 | `0x09` | `OP_PLACEHOLDER` (`PLACEHOLDER`) | `hintCategory: VLE` | `?` scaffold slot. **Active in M1–M3 (`0..4`):** `0`=any, `1`=motion, `2`=turn, `3`=item, `4`=loop. **Reserved for M4–M11 (`5..15`):** `5`=function, `6`=conditional, `7`=sensor, `8`=variable, `9`=operator, `10`=socket (`11..15` unassigned; VLE-extensible). |
 | `0x0A` | `OP_WHILE` (`WHILE`) | `condition: ConditionExpr` | Conditional loop start; followed immediately by `ConditionExpr` prefix tree (§7.1.2). |
 | `0x0B` | `OP_END_WHILE` (`END_WHILE`) | None | Conditional loop closer (0 parameter bytes, 1 byte total). |
-| `0x0C`–`0x0E` | Reserved | Reserved | Reserved for Module 7 shared tape opcodes (`OP_TAPE_SEEK = 0x0C`, `OP_TAPE_STEP = 0x0D`, `OP_TAPE_WRITE = 0x0E`; see [`env_depot_and_tape.md`](./env_depot_and_tape.md)). |
+| `0x0C`–`0x0E` | Reserved / Module 7 | Reserved / Sparse Tape | Reserved for Module 7 shared tape opcodes (`OP_TAPE_SEEK = 0x0C`, `OP_TAPE_STEP = 0x0D`, `OP_TAPE_WRITE = 0x0E`; see [`platform_requirements.md`](./platform_requirements.md)). |
 | `0x0F` | Reserved | Reserved | Reserved for future universal extensions. |
 
 #### 7.1.1 `VAR_OP` Binary Operator Codes (`opByte: uint8`)
@@ -485,3 +493,10 @@ The resulting byte sequence (`Uint8Array`) is encoded as Base64URL (no padding):
 - Standard Base64 `/` replaced with `_`.
 - Trailing `=` padding characters omitted.
 - Decoding converts `-` to `+`, `_` to `/`, re-adds padding, and decodes with `atob`.
+
+---
+
+## 9. Sparse Tape Persistence (Creative Sandboxes & Free-Play)
+
+- **Puzzles & Mastery Challenges:** Tape initial cells come from the versioned lesson definition; user saves remain strictly code-only per [`platform_requirements.md`](./platform_requirements.md#3-curriculum-runner-profiles-saves--rewards-infrastructure).
+- **Creative Sandboxes & Free-Play:** Only non-empty edited cells serialize: `VLE(nonEmptyCount)` followed by `[VLE(index), tagAndValue]` pairs sorted by `index`. Unset cells (`null`) are never written, so a `10,000`-cell sandbox tape with 8 user values takes ~18 bytes (`1` byte `count = 0` when empty).

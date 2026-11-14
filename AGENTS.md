@@ -1,5 +1,10 @@
 # Workspace Agent Rules
 
+## General rules
+- When asked for a review, a report, a plan or anything similar,
+  create an artifact (or a md file if asked for it) instead of putting long response in the output. In the output only put a very short summary with main point as well as things link next steps (which are not part of the artifact).
+- Very important, when addressing comments on report/plan/review (be it artifact or file). Modify the part of the report which should change but also **keep all previous parts which did not change**! don't focus only on modified part. **No comment on a section mean its approved (or is pending review) and must be kept as is (can be updated but not removed)** and not lost!
+
 ## UI Principles & Kid-Friendly Design Contract
 - **Mandatory UI Guidelines**: Before creating or modifying any UI component, toolbar, HUD overlay, palette control, or modal, read and follow [`docs/ui_guidelines.md`](./docs/ui_guidelines.md) (5–7y Zero-Reading Rule, strict single-row `<header>` budget, non-overlapping `pane-simulation` HUD slots, strict icon disambiguation, 2-tap destructive safety, click-to-dismiss `VictoryCelebrationModal` guards, and Zustand v5 SSR-safe store reads).
 

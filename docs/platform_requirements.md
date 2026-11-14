@@ -1,108 +1,246 @@
 # Shared Language, Lesson Mechanics & Platform Requirements (High-Level)
 
-This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum.md): shared language/block extensions, zero-reading pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards. For concrete layout budgets, HUD slots, iconography, and kid-UX rules, see [Kid-Friendly UI Principles & Guidelines (`ui_guidelines.md`)](./ui_guidelines.md); for the Depot world, shared sparse Memory Tape, and typed color data, see [`env_depot_and_tape.md`](./env_depot_and_tape.md); for frame-by-frame animation blocks and loop-mode mechanics, see [`env_animation_lessons.md`](./env_animation_lessons.md).
+This document captures the high-level functional requirements needed across **all simulation environments** to run [the programming curriculum](./curriculum/overview.md): shared language/block extensions, typed variables, random & interactive input sensors, the shared sparse Memory Tape (including per-worker heads for concurrency), animation & event dispatch models, pedagogical mechanics, multi-profile progression, versioned lesson saves, and celebratory rewards. For concrete layout budgets, HUD slots, iconography, and UX rules, see [Kid-Friendly UI Principles & Guidelines (`ui_guidelines.md`)](./ui_guidelines.md); for environment-specific ops and sensors, see [`envs/`](./envs/); for binary encoding, see [`binary_format.md`](./binary_format.md); for non-curriculum future concepts, see [`sandbox_ideas.md`](./sandbox_ideas.md).
 
 ---
 
 ## 1. Shared Language & Workspace UI Extensions
 
-These language and workspace capabilities apply universally across **🤖 Robot Grid**, **🐢 Turtle LOGO**, **🎵 Beat & Light Matrix**, **🏗️ Depot**, and **🚂 Switchyard**:
+These language and workspace capabilities apply universally across **[🤖 Robot Grid](./envs/robot_grid.md)**, **[🐢 Turtle LOGO](./envs/turtle_logo.md)**, **[🎵 Beat & Light Matrix](./envs/beat_light.md)**, **[🏗️ Depot](./envs/depot.md)**, and **[🚂 Switchyard](./envs/switchyard.md)**, unlocking progressively across the curriculum (or immediately in Free-Play via **Unlock All / Pro Sandbox**):
 
-- **Explicit Conditional & Loop Blocks (Module 5+):**
+- **Explicit Conditional & Loop Blocks (`branch` & `while`+):**
   - `IF [condition] ... END_IF` — Executes inner blocks once if true; otherwise jumps past `END_IF`.
-  - `IF [condition] ... ELSE ... END_IF` — Runs the top branch when true and skips `ELSE`, or jumps directly to `ELSE` when false (visually spotlighted during step-by-step playback).
+  - `IF [condition] ... ELSE ... END_IF` (and `ELSE IF`) — Runs the matching branch and skips remaining branches (visually spotlighted during step-by-step playback).
   - `WHILE [condition] ... END_WHILE` — Repeats enclosed blocks while `[condition]` remains true (guarded against infinite loops by the interpreter step cap).
   - **Boolean Combinators:** Visual `NOT`, `AND`, and `OR` wrappers for sensor and comparison badges.
-- **Visual Memory Watch Tray & Typed Color Values (Module 6+, Typed in Module 7+):**
+- **Scene Input Selector (`🎛️ $input` — `branch`+) & Random Sensors (`🎲` — `var`+ / Sandboxes):**
+  - **`🎛️ $input` Dock Widget:** Compact integer (`1..8`) or color-swatch selector pill in creative/interactive lessons that exposes `$input` and **triggers an immediate auto-rerun/redraw on change**—enabling conditional art and jukeboxes before variables or memory exist.
+  - **`🎲 $rand` & `🎨🎲 $randomColor`:** Fresh random roll on every evaluation! Visual preset badges include **🪙 Coin (`0..1`)**, **🔺 D4 (`1..4`)**, **🎲 D6 (`1..6`)**, **🔷 D8 (`1..8` — matches Beat notes/grid)**, **🔮 D20 (`1..20`)**, and **🌊 `[0, 1)` continuous float** (composable with float-preserving `*` to generate arbitrary ranges without custom range dialogs), alongside **`$randomColor`** (vibrant palette swatches excluding canvas-erasing `white`/`black`). Seeded or disabled in deterministic puzzles.
+- **Visual Memory Watch Tray & Typed Color Values (`var`+, Typed in `tape`+):**
   - Displays live, color-coded boxes only for variables present in the active workspace, updating on every tick and animating values when read from world sensors.
-  - Starting in **Module 7**, variables can hold either a **number** or a **color swatch** (`TypedValue`), with tactile bounce/shake feedback when an arithmetic operator or typed parameter receives a mismatched type (see [`env_depot_and_tape.md` §3](./env_depot_and_tape.md)).
-- **Shared Sparse Memory Tape Subsystem (Module 7+):**
-  - Optional 1-indexed memory strip (`cells` + movable read/write head, supporting up to `10,000` sparse cells in Sandboxes and Mastery Challenges with a windowed 7–9 cell viewport dock) available across **🏗️ Depot**, **🐢 LOGO**, and **🎵 Beat & Light** (`TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`, `TAPE_CLEAR`, `$headPos`, `$tapeLen`, `$cellValue`, `$cellColor`; see [`env_depot_and_tape.md` §1](./env_depot_and_tape.md)).
-- **Shape-Socket Function Parameters & Local Stack Scope (Modules 10–11):**
-  - Functions `F1`, `F2`, `F3` support up to **3 visual shape sockets (`●`, `▲`, `■`)** instead of text parameter names, with matching plug slots on `Call F1([●], [▲], [■])`.
-  - Socket values are stored locally on each `StackFrame` in the call stack so recursive or nested calls never overwrite the caller's socket values.
-- **Physical Block-Budget Slot Trays:**
-  - When a lesson enforces a block cap (global or per function tab, e.g., `≤ 8 blocks` on constrained puzzles or `≤ 14 blocks` per tab in sandbox reference examples), the workspace renders visible slot trays (`[■][■][■][□][□]`) that visually fill up and gently shake/cap when full—communicating limits with zero text.
+  - Starting in **`tape`** (after numeric comparisons `<`, `>`, `==`, `/`, `%` in **`cmp`**), variables hold either a **number** or a **color swatch** (`TypedValue`; see §1.1).
+- **Shared Sparse Memory Tape Subsystem (`tape`+):**
+  - Optional 1-indexed memory strip (`cells` + movable read/write head(s), supporting up to `10,000` sparse cells in Sandboxes and Mastery Challenges with a windowed 7–9 cell viewport dock; see §1.2).
+- **Wall-Clock Tick Speedometer (`⏱️` — `sort` & `conc`+):**
+  - Live non-verbal badge tracking elapsed **wall-clock beats/ticks (`⏱️`)** (where simultaneous lockstep ticks across `K` workers advance wall-clock ticks by `1`), letting learners viscerally observe algorithmic and parallel speedups (`48 ⏱️` → `16 ⏱️`).
+- **Shape-Socket Function Parameters & Local Stack Scope (`args` & `rec`+):**
+  - Functions `F1`, `F2`, `F3` support up to **3 visual shape sockets (`●`, `▲`, `■`)** instead of text parameter names, with matching plug slots on `Call F1([●], [▲], [■])` and `Fork F1([●], [▲], [■])`.
+  - Socket values live privately on each `StackFrame` (isolated from shared globals `a`–`z` and Tape) so recursive calls and concurrent forks never overwrite each other's parameters. *(Future side module `fp` extends sockets to accept helper function badges `[Fn]`.)*
+- **Physical Block-Budget Slot Trays & Pre-Scaffolded Starters:**
+  - When a puzzle enforces a block cap to prevent brute force, the workspace renders visible slot trays (`[■][■][■][□][□]`) that fill and gently shake when full. Boilerplate setup is pre-populated in Starter Workspaces so learner authoring stays within compact **Edit-Delta** budgets (`≤ 6–8` blocks added/changed).
+
+### 1.1 Typed Variable System (`number` vs `color`)
+
+Single-letter variables (`a`–`z`), message channels, and non-empty tape cells hold either a `number` or a `PaletteColor` from a unified 10-swatch palette. **Crucially, indices `0..7` preserve the exact existing `TURTLE_COLOR_PALETTE` byte order in `src/engine/serialization/types.ts`**, appending only `orange = 8` and `white = 9` at the end so zero existing saved programs break (for Beat serializer compatibility, see [`envs/beat_light.md`](./envs/beat_light.md#1-visual--audio-simulation-model)):
+
+```typescript
+// Canonical PaletteColor index order (0..7 match TURTLE_COLOR_PALETTE byte-for-byte!)
+export const PALETTE_COLORS = [
+  'black',   // 0: #0f172a — dark ink in LOGO; turns OFF ("erases") LEDs on Beat's dark #020617 pad
+  'red',     // 1: #ef4444 — maps to Beat Rose #f43f5e
+  'blue',    // 2: #3b82f6
+  'green',   // 3: #10b981 — maps to Beat Emerald #10b981
+  'yellow',  // 4: #f59e0b — Amber (maps to Beat Amber #fbbf24)
+  'purple',  // 5: #8b5cf6 — maps to Beat Purple #a855f7
+  'pink',    // 6: #ec4899
+  'cyan',    // 7: #06b6d4
+  'orange',  // 8: #f97316 — NEW appended index 8
+  'white',   // 9: #ffffff — NEW appended index 9; bright white LED in Beat, selectively "erases" strokes on LOGO's #ffffff canvas
+] as const;
+
+export type PaletteColor = (typeof PALETTE_COLORS)[number];
+
+export type TypedValue =
+  | { type: 'number'; value: number }
+  | { type: 'color'; value: PaletteColor };
+
+export interface InterpreterRuntimeState {
+  // ...existing fields...
+  variables: Record<VariableName, TypedValue>;
+}
+```
+
+#### Type & Arithmetic Rules
+
+| Expression / Block | Required Operand Types | Behavior / On Type Mismatch or Empty Cell |
+| :--- | :--- | :--- |
+| `a + b`, `a - b`, `a * b`, `a / b`, `a % b` | Both **number** | Preserves floating-point results on `*` and `/` (so `$rand01 * 360` works smoothly; `TAPE_SEEK` truncates via `Math.trunc`); ⚠️ `TYPE_ERROR` if non-number |
+| `a == b`, `a != b` | Both **same type** (`number == number` or `color == color`) | ⚠️ `TYPE_ERROR` on cross-type comparison |
+| `a < b`, `a > b`, `a <= b`, `a >= b` | Both **number** | ⚠️ `TYPE_ERROR` |
+| `a && b`, `a \|\| b` | Both **number** (truthy `!= 0`) | ⚠️ `TYPE_ERROR` |
+| `FORWARD [a]`, `TURN [a]`, `Loop [a]`, `TAPE_SEEK [a]`, `LIGHT_ROW [a]` | **number** | ⚠️ `TYPE_ERROR` |
+| `SET_PEN_COLOR [a]`, `SET_LED_COLOR [a]` | **color** | ⚠️ `TYPE_ERROR` |
+| `a = $cellValue` | Cell at worker's `headPos` holds **number** | ⚠️ `TYPE_ERROR` if cell holds color or is empty |
+| `a = $cellColor` | Cell at worker's `headPos` holds **color** | ⚠️ `TYPE_ERROR` if cell holds number or is empty |
+| `a = 5` / `a = Red` | Stores **number** / **color** | Always OK |
+| `a = b` / `TAPE_WRITE [a]` / `SEND [ch, a]` | Copies `TypedValue` of `b` / `a` (unset variable defaults to `{ type: 'number', value: 0 }`) | Always OK |
+
+#### Interpreter Type Checking
+
+```typescript
+export function resolveOperand(
+  op: OperandValue | PaletteColor | string,
+  vars: Record<string, TypedValue>,
+  simEnv?: SimulationEnvironment<any>,
+  simState?: any,
+  tape?: TapeState,
+  workerId = 'main'
+): TypedValue | 'TYPE_ERROR' {
+  if (typeof op === 'number') {
+    return { type: 'number', value: Number.isFinite(op) ? op : 0 };
+  }
+  if (isPaletteColor(op)) {
+    return { type: 'color', value: op };
+  }
+  const head = tape?.workerHeads?.[workerId] ?? tape?.headPos ?? 1;
+  if (op === '$cellValue') {
+    const cell = tape?.cells[head];
+    return cell?.type === 'number' ? cell : 'TYPE_ERROR';
+  }
+  if (op === '$cellColor') {
+    const cell = tape?.cells[head];
+    return cell?.type === 'color' ? cell : 'TYPE_ERROR';
+  }
+  if (typeof op === 'string' && isSensorToken(op)) {
+    return readTypedSensor(op, simEnv, simState, tape, workerId);
+  }
+  if (typeof op === 'string' && /^[a-z]$/.test(op)) {
+    return vars[op] ?? { type: 'number', value: 0 };
+  }
+  return { type: 'number', value: 0 };
+}
+```
+
+#### Zero-Reading Type Error & Watch Tray Visualization
+
+When `TYPE_ERROR` occurs:
+1. Execution **halts** on the offending block (`status: 'TYPE_ERROR'`, treated as a non-passing terminal error like `'COLLISION'`).
+2. The offending block **shakes** with an amber/red outline.
+3. In the Watch Tray (`toolbar-variables`), a round color swatch visibly bounces off a square `#` number slot (or vice versa) while pulsing the offending variable and block — communicating *"a color doesn't fit in a distance slot"* with zero reading.
+
+| Variable State | Watch Box Display (`toolbar-variables`) |
+| :--- | :--- |
+| **Number** | `[a: 42]` — monospace numeric badge |
+| **Color** | `[a: 🔴]` — filled circular swatch (high-contrast ring around `white` and `black`) |
+| **Unset** | Hidden until referenced; animates digits or color dot flying in on `VAR_ASSIGN` |
+
+### 1.2 Shared Sparse Memory Tape Subsystem (with Per-Worker Heads in `conc`)
+
+To scale cleanly from 8-cell beginner puzzles to **10,000-cell** sandboxes and Mastery Challenges—and support true lock-free **Parallel Sort** on disjoint sub-arrays in `conc`—the tape stores **only non-empty cells** and tracks **per-worker read/write heads** when multiple workers are active:
+
+```typescript
+export const DEFAULT_PUZZLE_TAPE_LENGTH = 8;
+export const SANDBOX_MAX_TAPE_LENGTH = 10_000;
+
+export interface TapeState {
+  /** Valid index range is 1 .. length (e.g. 8 in guided puzzles; 10,000 in Sandboxes & Mastery) */
+  length: number;
+  /** Primary 1-based read/write head index (starts at 1) */
+  headPos: number;
+  /** Per-worker 1-based head positions in concurrent programs (keyed by fiber/worker ID; defaults to 1) */
+  workerHeads?: Record<string, number>;
+  /** Sparse dictionary of non-empty cells keyed by 1-based index. Empty cells are omitted! */
+  cells: Record<number, TypedValue>;
+}
+```
+
+- **Zero Default-Value Storage:** Unset cells are absent from `cells` (`$cellEmpty` evaluates to `1`). Clearing a cell deletes `cells[index]`.
+- **Per-Worker Color-Coded Heads (`▲1`, `▲2` in `conc`):** Each concurrent worker moves and reads through its **own** head position over the shared `cells` array—so Worker 1 sorting `1..4` and Worker 2 sorting `5..8` execute in parallel without hijacking each other's seek position, while simultaneous writes to the *same* cell index still race if unsynchronized!
+- **Strict Out-of-Bounds Collision (`status = 'COLLISION'`):**
+  - Valid cell positions are strictly `1 .. tape.length`.
+  - **`TAPE_SEEK [target]`:** Truncates fractional targets via `Math.trunc(target)`. Errors out immediately (`status = 'COLLISION'`) with an end-bumper shake if `< 1` or `> tape.length`.
+  - **`TAPE_STEP [→ / ←]`:** Stepping right from `tape.length` or left from `1` likewise errors out immediately (`status = 'COLLISION'`).
+
+#### Windowed Viewport UI & `shrink-0` Dock
+
+The UI renders a **7-to-9 cell sliding window** centered around the active head (displaying color-coded head markers `▲1`, `▲2` when multiple workers are visible), with a Sandbox Cell Editor Popover (10 Color Swatches, Number Stepper, `∅` Eraser) in creative/free-play modes:
+
+```
+  ┌─ 📼 Tape (10,000) ────────────────────────── [Jump #] ──┐
+  │ ◀ [1] … ┌─────┬─────┬─────╦═════╦─────┬─────┬─────┐ … ▶ │
+  │         │  40 │  60 │  ·  ║ 🔴  ║  25 │  ·  │  90 │     │
+  │         ├─────┼─────┼─────╫─────╫─────┼─────┼─────┤     │
+  │         │ #47 │ #48 │ #49 ║ #50 ║ #51 │ #52 │ #53 │     │
+  │         └─────┴─────┴─────╩══▲══╩─────┴─────┴─────┘     │
+  └───────────────────────────── Head ──────────────────────┘
+```
+
+#### Shared Tape Blocks (3) & Shared Sensors (5)
+
+| Block | Icon | Parameters | Behavior |
+| :--- | :--- | :--- | :--- |
+| `TAPE_SEEK` | Head → `[N]` | Index `N`: literal, variable (`a`–`z`), or socket (`●`, `▲`, `■`) | Truncates `N` via `Math.trunc(N)`. Moves active worker's head to `N` (1 tick). Errors (`COLLISION`) if `< 1` or `> tape.length`. |
+| `TAPE_STEP` | Head `→` / `←` | Direction (`RIGHT` / `LEFT`), optional `×N` repeat badge | Steps active worker's head `+1` or `-1` per sub-tick. Errors (`COLLISION`) if `< 1` or `> tape.length`. |
+| `TAPE_WRITE` | ✏️ → cell | Value: number, color swatch, variable, socket, or `CLEAR` (`∅`) | Writes `TypedValue` into `cells[head]` (or deletes `cells[head]` when `CLEAR`). |
+
+| Sensor | Badge | Return Type | Meaning |
+| :--- | :--- | :---: | :--- |
+| `$cellValue` | Head + `#` | `number` | Numeric value at `cells[head]` (`TYPE_ERROR` if color or empty) |
+| `$cellColor` | Head + 🎨 | `color` | Color at `cells[head]` (`TYPE_ERROR` if number or empty) |
+| `$cellEmpty` | Head + `∅` | `boolean` | `1` if `cells[head]` is unset, `0` otherwise |
+| `$headPos` | Head `@#` | `number` | Current 1-based head index (`1..tape.length`) of the calling worker |
+| `$tapeLength` | Rail `⇥#` | `number` | Capacity `tape.length` (enables bounds-safe `While ($headPos < $tapeLength)`) |
+
+### 1.3 Animation Models: LOGO Flipbook Mode vs. Beat Explicit Hardware Loops (`anim`)
+
+- **🐢 Turtle LOGO — Explicit Flipbook & Live Modes ([`envs/turtle_logo.md`](./envs/turtle_logo.md#2-explicit-flipbook-animation-mode-anim--live-interactive-mode-inter)):**
+  - Rather than manual `SET_INSTANT` + `CLEAR_CANVAS` loops inside LOGO code, enabling **Flipbook Mode** runs `MAIN` once per frame (`$frame = 1..N`, `$time`), automatically resetting turtle pose to `(0, 0, 0°)` and clearing paths between frames (unless `🧹 Clear Between Frames` is toggled `OFF`), while **preserving variables (`a`–`z`) and Sparse Tape** across frames.
+  - First pass draws each frame visibly with a short pause (plus **`⏩ Render All Frames`** fast-forward), caching vector frames for smooth **Timeline Scrubber** playback (`Instant` speed skips straight to playback).
+- **🎵 Beat & Light — Explicit Hardware Display-Buffer Loops ([`envs/beat_light.md`](./envs/beat_light.md#3-explicit-hardware-frame-loops-anim-vs-concurrency-bands-conc)):**
+  - Retains explicit loop-based frame batching (`SET_BEAT_DELAY [0]` → `Loop` → `CLEAR_LEDS` **at the start of the loop, never at the end** → draw LEDs → `WAIT_BEAT`) so learners also understand how real-time hardware frame buffers operate and static thumbnails retain their final frame.
+
+### 1.4 Interactive Sensors & Single-Threaded Queued Events (`inter`)
+
+- **Live Pointer & Virtual Controls:** Exposes `$pointerX`, `$pointerY`, `$pointerDown` (quantized to `1..W, 1..H` LED cells in Beat and canvas `(x, y)` in LOGO) plus cross-device touch/keyboard D-Pad and `A`/`B` buttons.
+- **Race-Free Queued Event Dispatch (`On Key` / `On Tap → F1`):** Event triggers run via **single-threaded queued dispatch**—executing to completion when idle, or running cleanly at **frame boundaries** before the next `MAIN` frame in Live Mode—so learners build playable synths and mini-games in `inter` with zero unintended concurrency races.
+
+### 1.5 Concurrency, Synchronization & Message-Passing Extensions (`conc`)
+
+- **Multiple `Main` Tabs (`Main 1`, `Main 2`, …):** Execute in deterministic round-robin lockstep (1 active tick per worker = `1` wall-clock beat `⏱️`).
+- **Global Barrier (`🚧 SYNC_BARRIER`):** Pauses an arriving worker (`⏳🚧`) until *all* currently active workers reach a barrier.
+- **Value-Copy Message Channels (`📨 SEND [Chan, val]` & Blocking `📬 $recv [Chan]`):** Color-coded channels (`🔴`, `🔵`, `🟢`) transfer a **copy** of a `TypedValue`; `$recv` blocks the reader (`⏳📬`) until a message arrives, providing race-free communication and synchronization.
+- **Dynamic Spawning (`🔀 Fork F1(●, ▲, ■)`) & Child Barrier (`🚧 Join`):** Spawns concurrent helper fibers with isolated socket arguments (cloning parent turtle pose in LOGO); `Join` waits until the caller's forked children finish.
+- **Mutex Locks (`🔒 Lock [🔴/🔵]` & `🔓 Unlock [🔴/🔵]`):** Mutual-exclusion tokens for protecting shared globals (`a = a + 1`), Depot stations, and overlapping Tape cells; waiting workers display a pulsing `⏳🔒` badge (and freeze visibly on circular-wait deadlocks).
 
 ---
 
-## 2. Lesson Pedagogical Mechanics & Teaching Tools
+## 2. Lesson Pedagogical Mechanics, Reading Policy & Teaching Tools
 
-### `?` Placeholder Blocks (Partial Scaffolds)
-- Used inside **Partial Solutions** and starter scaffolds to show program structure (e.g., `Loop` or `If/Else` brackets) while leaving specific actions or conditions for the learner to fill in.
-- **Interaction:** Dropping or tapping a palette block onto `?` replaces it in place.
-- **Safe Execution:** Running a workspace that still contains a `?` block never errors out; when execution reaches `?`, the interpreter **pauses cleanly on `?`**, pulses the block amber, and highlights the relevant palette group.
+### Two-Layer Reading Policy & Future Multi-Representation Evolution
+- **Code Workspace:** Always **100% zero-reading** across every module.
+- **Lesson Explanations:** Early Core modules (`seq`–`while`) require zero reading anywhere. Intermediate/advanced modules (`var`+, `anim`, `inter`, `conc`, `fp`) may include concise **Guided / Co-Pilot Explanation Cards** for older readers or adult co-pilots during `📖 Explanation` demos.
+- **Future Evolution:** Alternative readable/textual programming views will layer onto the exact same engines, lessons, and sandboxes for learners transitioning beyond visual blocks (see [`sandbox_ideas.md`](./sandbox_ideas.md)).
 
-### Canvas Ghost-Step Preview
-- Used as the non-spoiling **Partial Hint** on short (1–3 block) early lessons where a block skeleton would give away the entire answer.
-- Renders a translucent "ghost" agent on the simulation canvas that animates only the first 1–2 moves/turns (or the first cycle of a repeating motif) without altering the learner's workspace blocks.
+### `?` Placeholder Blocks, Pre-Scaffolded Starters & Fix-It Bug Hunts
+- **`?` Placeholders:** Show structural skeletons (`Loop`, `If/Else`) in Partial Solutions; execution pauses cleanly on `?` with an amber pulse rather than erroring.
+- **Pre-Scaffolded Starters & Fix-It Puzzles:** Lessons pre-populate boilerplate helpers/setup so learner edits stay focused (`≤ 6–8` blocks delta), and regularly feature **Bug-Hunt / Fix-It starters** (off-by-one loops, sequential-`If` state-mutation bugs, fencepost bounds collisions, race conditions, and deadlocks).
 
-### Partial & Full Visual Solution System (with Undo Safety)
-- Every constrained puzzle (**🤖 Robot**, **🏗️ Depot**, & **🚂 Switchyard**) supports two progressive help tiers:
-  1. **Partial Help:** Displays the Ghost-Step Preview or lets the learner view/load the `?` Partial Block Scaffold (or single helper tab).
-  2. **Full Working Solution:** Displays the complete verified block program visually and offers a 1-tap **Load into Workspace** action.
-- **Non-Destructive Load:** Loading a partial scaffold, full solution, or creative variation pushes the learner's prior blocks onto the **Undo** stack so a single tap on Undo restores their own work.
+### Canvas Ghost-Step Preview & Progressive Visual Solutions (Undo-Protected)
+- Short early puzzles use translucent **Ghost-Step Previews** for non-spoiling hints; all constrained puzzles (**🤖 Robot**, **🏗️ Depot**, **🚂 Switchyard**) provide **Partial Help** + **1-tap Full Working Solutions** backed by 1-tap **Undo**.
 
 ### Illustrated & Playable Creative Variations (🐢 LOGO & 🎵 Beat & Light)
-- Sandbox lessons pre-load a **working starter example** and present **3–4 Variation Cards** (2–4 across creative modules):
-  - **LOGO Cards:** Auto-rendered visual thumbnail generated from the variation's actual block program (animated variations place `CLEAR_CANVAS` at the **start** of the frame loop so the final frame remains visible in static thumbnails; see [`env_animation_lessons.md`](./env_animation_lessons.md)).
-  - **Beat & Light Cards:** Animated mini 8×8 preview with an **in-card Play/Listen (`▶`)** button so learners can hear and watch the target pattern without overwriting their workspace.
-  - **Copy / Load Code:** Every card includes a 1-tap button to load its blocks into the workspace for study or remixing (Undo-protected).
+- Pre-load a compact **working starter** (`≤ 14 blocks/tab`) alongside **2–4 Variation Cards** (LOGO auto-thumbnails; Beat mini animated previews + in-card `▶` Play/Listen; 1-tap Undo-safe Copy/Load), with progressive showcase block allowances on Variation 2 and Variation 3+.
 
-### `📖 Explanation` Lesson (Interactive Demo) Mode
-- Dedicated non-exercise lesson mode used to introduce new environments, interactive items, sensors, operators, or control blocks before learners must solve puzzles with them.
-- **No Pass/Fail Validation:** Features 1–3 visual example tabs (`[1] [2] [3]`) pre-loaded with short runnable demos.
-- **Visual Spotlights:** Supports synchronized visual callouts during playback/stepping (e.g., highlighting sensor scan beams, branch jumps over `Else`, Watch Box increments, or Call Stack frames stacking and unwinding) and completes via a clear **Continue (`→`)** button once explored.
-
-### Simultaneous Multi-Map / Multi-Stream Validation (Module 5+)
-- Adaptive lessons display **3–4 variant layouts/streams simultaneously** from the start (via live status pips `[1 ✓] [2 ·] [3 ·]` or a 2×2 split preview).
-- A program succeeds only when a single Run passes **all** variants cleanly.
+### `📖 Explanation` Lesson Mode & Simultaneous Multi-Map / Multi-Stream Validation
+- `📖 Explanation` lessons provide 1–3 runnable demo tabs (`[1] [2] [3]`) with synchronized visual spotlights and 1-tap **Continue (`→`)**.
+- Adaptive (`branch`+) and concurrent (`conc`) puzzles validate simultaneously against **3–4 visible variant maps/streams** (`[1 ✓] [2 ·] [3 ·]`).
 
 ---
 
-## 3. Curriculum Runner, Profiles, Saves & Rewards Infrastructure
+## 3. Curriculum Runner, Slug IDs, Profiles, Saves & Rewards Infrastructure
 
-### Kid-Friendly Multi-Profile System
-- Supports multiple local user profiles on shared home or classroom devices.
-- **Avatar-First Selection:** Each profile is identified by a **small kid-friendly visual avatar** (animal, robot, or character icon + accent color, with an optional name label) so pre-readers can recognize and switch to their profile without reading.
-- Each profile maintains strictly isolated lesson progress, badges, active workspaces, and saved slots.
+- **Slug-Based Module & Activity IDs (`<mod>.<item>`):** Tracks progress across Core Spine modules (`seq`..`rec`), Parallel Side Modules (`anim`, `inter`, `conc`, `fp`), and Optional Mastery Sets (`var.M1`..`conc.M3`) via compact UTF-8 IDs in [`binary_format.md` §2.3.2](./binary_format.md#232-compact-lesson-identifier-compactlessonid), with transparent aliasing for legacy numeric IDs.
+- **Kid-Friendly Multi-Profile System & Progressive Sandbox Unlocks:** Avatar-first local profiles with isolated progress, badges, per-lesson autosaves, manual save slots, read-only curriculum map locking, historical `version` retention (`LessonVersionMismatchModal`), whole-profile Base64URL/QR export & import, **Unlock All / Pro Sandbox** toggle, and celebratory **Module Badges & Challenge Medals**.
 
-### Read-Only Curriculum Levels
-- Whenever a user plays a curriculum lesson, capstone, explanation demo, or mastery challenge, the **environment/map is strictly Read-Only**—all grid-editing tools (barriers, flag placement, start-position moving) are hidden and disabled so learners cannot accidentally break or bypass the puzzle.
-- Free-play Sandbox mode keeps full environment editing (and an optional *"Open Copy in Sandbox"* action can clone a creative workspace into free-play).
+---
 
-### Per-User, Per-Lesson Saves (Auto-Save / Auto-Restore + Multiple Slots)
-- **Automatic Save & Restore When Switching Lessons:**
-  - Every workspace edit in a lesson automatically saves to the active profile's working state for `(profileId, lessonId)` (and free-play Sandbox keeps its own separate auto-saved workspace).
-  - Switching from Lesson A to Lesson B—and later returning to Lesson A—**automatically restores** the learner's exact blocks on Lesson A (or loads Lesson B's default starter blocks on first visit).
-  - Includes an explicit **Reset to Starter** button so a learner can always return a lesson workspace to its clean initial state (Undo-protected).
-- **Multiple Manual Save Slots per Lesson:** Learners can also save **multiple distinct versions** on the same lesson, capstone, or mastery challenge (represented visually with slot numbers/thumbnails) and switch between them freely.
+## 4. Phased Delivery Roadmap
 
-### Lesson Save Format & Versioning Rules
-- **Code-Only Lesson Save Payload (with Sparse Tape Exception for Creative Sandboxes):**
-  - Saving a constrained curriculum puzzle attempt serializes **only the user's block code** in the code payload, while the **environment section stores only `(lessonId, version)`** rather than duplicating the read-only map geometry.
-  - Free-play Sandboxes (and creative Tape Sandboxes where learners hand-paint initial tape cells) serialize only non-empty sparse `(index, TypedValue)` tape entries (`0 bytes` overhead for untouched default cells; see [`env_depot_and_tape.md` §1 & §5](./env_depot_and_tape.md)).
-  - Keeps saves tiny (ideal for storage and QR sharing) and guarantees puzzle map integrity.
-- **Retaining All Historical Lesson Versions in Code:**
-  - Every curriculum activity definition carries an explicit `version` integer.
-  - If a lesson's map, starter, or budget is revised in a future update, **all older `version` definitions remain in the codebase** alongside the newest version rather than being overwritten.
-- **Version-Mismatch Prompt on Load:**
-  - When loading a lesson save whose stored `version` differs from the latest version of `lessonId`, the UI **asks the user what to do** (with clear visual icons):
-    1. **Load into Latest Lesson Version** — Places their saved code into the updated version of the lesson so they can test/adapt it for current completion.
-    2. **Open in Original Lesson Version** — Runs their saved code against the preserved historical `version` definition so their prior solution continues to work exactly as originally built.
-
-### Progression Tracking & Full Profile Export / Import
-- **Completion & Unlocks:** Tracks per-lesson completion state per profile, unlocking modules sequentially while unlocking **Optional `🔥 Mastery Challenges`** across **5 Tiers** in a dedicated bonus drawer as Modules 6, 8, 9, 10, and 11 finish.
-- **Whole-Profile Export & Import:**
-  - Allows exporting and importing **all content belonging to a user profile** in one operation—profile avatar, all lesson/capstone/challenge completion records, earned badges, all per-lesson save slots, and free-play saves (via portable backup file and/or multi-QR transfer for offline tablets).
-  - Importing prompts safely to add as a new profile or merge/replace an existing profile.
-
-### Celebrations, Sound Effects & Collectible Badges
-- **Standard Lesson Completion:**
-  - Plays an upbeat victory jingle + lively canvas celebration effect (e.g., robot celebration animation / star burst) with a prominent one-tap **Next (`→`)** button.
-- **Capstone (`🏆`/`🎨`) & Mastery Challenge (`🔥`) Grand Celebration:**
-  - Triggers a **larger celebratory showcase**—richer fanfare audio, full-screen confetti/fireworks graphics, and a **Badge Unlock ceremony**.
-- **Collectible Module Badges & Challenge Medals:**
-  - Completing all Capstones in each of the **11 Modules** awards that module's unique **Module Mastery Badge**.
-  - Completing each **Optional `🔥 Mastery Challenge`** awards a distinct **Challenge Medal**.
-  - Earned badges and medals appear on the child's profile card and inside a visual **Badge / Trophy Collection** screen.
+| Phase | What Ships | Standalone Value |
+| :--- | :--- | :--- |
+| **Phase 1** | Slug ID migration (`seq`..`rec`), Two-Axis Guardrails, `🎛️ $input` selector widget, `🎲` random presets (`$rand` / `$randomColor`), unified 10-color `TypedValue` + Watch Tray bounce | ✅ Flexible module DAG, interactive `branch` sandboxes & generative art/music |
+| **Phase 2** | Retrievable 1-cell-ahead Grid Planks, 🏗️ Depot (stackable rings/blocks, Stacks + FIFO Queue), `branch`/`while` split + `cmp` before `tape` alignment | ✅ Tactile LIFO/FIFO contrast & clean variable → comparison → tape ramp |
+| **Phase 3** | Sparse `10,000`-cell `TapeState`, windowed `shrink-0` `TapeDock`, Beat `STAMP_FROM_TAPE` (`📼→🟦` customizable sprite blit), `tape` + `sort` + `⏱️` Wall-Clock Tick Speedometer + `args`/`rec` Hanoi | ✅ Data-driven custom sprites, linear/binary search, sorting speedups & recursive Hanoi |
+| **Phase 4** | Side Module `anim` (LOGO Flipbook Mode `$frame`/`$time` + Scrubber + Beat hardware frame loops) & Side Module `inter` (`$pointerX/Y`, D-Pad, queued events, `16×16`/`32×32` Beat grids, LOGO Live Mode) | ✅ Dedicated Flipbook studio, playable synths & interactive mini-games |
+| **Phase 5** | Side Module `conc` (`Main 1..N`, `🚧 Barrier`, `📨 Send`/`📬 $recv`, `🔀 Fork`/`Join`, `🔒 Lock`/`Unlock`, Multi-Bot Grid, Dual-Claw Depot, per-worker Tape heads `▲1`/`▲2` & **Parallel Sort**) | ✅ Full visual concurrency & measurable parallel sorting speedups |
+| **Phase 6** | Side Module `fp` (Higher-Order Function sockets `F1([Fn])`, `Map`/`Filter`/`Fold`) & Future Alternative Code Representations | ✅ Functional programming ceiling & text-transition bridge |
