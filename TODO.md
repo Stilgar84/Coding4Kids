@@ -1,6 +1,19 @@
+
+
+lesson got really bad
+
+split curriculum and review bit by bit
+
+
+
+
 # bugs
 
+so many exercice just don't work
 
+new env are bad
+
+...
 
 
 profile save is too large
@@ -22,6 +35,14 @@ chrome says app cannot be installed, also it should check for updated and propos
 --
 
 time traveling debugger
+
+# text coder
+
+assisted, convertible
+
+# concurency
+
+
 
 # 
 
