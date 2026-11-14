@@ -62,7 +62,7 @@ To eliminate repetitive "grunt work" without artificially crippling rich starter
 
 | Activity Tier | Learner Edit Delta *(Blocks Added / Changed)* | Comprehension / Physical Slot Ceiling | Authoring Guideline |
 | :--- | :---: | :---: | :--- |
-| **Early Puzzles (`seq`, `param`)** | **`≤ 6–8 blocks`** | **`≤ 8 blocks`** (`3×3`–`4×4` maps) | Keep maps compact before repeat badges exist so learners never chain 8+ duplicate moves. |
+| **Early Puzzles (`seq`, `param`)** | **`≤ 6–8 blocks`** | **`≤ 8 blocks`** *(up to `10–12` in Early Capstones; `3×3`–`4×4` pre-repeat, `5×5`–`6×6` once `×N` unlocks)* | Keep maps compact before repeat badges exist so learners never chain 8+ duplicate moves. |
 | **Core & Side Puzzles (`loop`+)** | **`≤ 6–8 blocks`** *(up to `10–12` in Capstones)* | **`≤ 14 blocks/tab`** (`≤ 24–30` total across tabs; tighter `[■]` trays when preventing brute force) | **Pre-fill setup/boilerplate in the Starter Workspace** whenever a puzzle needs supporting scaffolding, keeping learner effort focused strictly on the target concept. |
 | **Mastery Challenges (`🔥`)** | Open | **`≤ 20 blocks/tab`**, **`≤ 50 blocks total`** *(typically `12–24` total, `≤ 10/tab`)* | Multi-tab depth (`Main` + `F1`–`F3` / concurrent workers) allowed for optional algorithmic challenges. |
 | **Creative Sandboxes (`🐢` / `🎵`)** | Open exploration | **Starter & Var 1:** `≤ 14/tab` (`≤ 24` total)<br>**Var 2:** up to `~20/tab` (`~40` total)<br>**Var 3+ (Showcase):** up to `~30/tab` (`~60–80` total) | **Allowance, not a target:** Starter and Variation 1 stay compact and immediately readable on one screen; Variation 2+ may use higher block counts *only when earned* to demonstrate inspiring art, music, or animations without degraded visual quality. |
@@ -126,11 +126,11 @@ flowchart TD
 
 #### [`seq` — First Steps: Sequences, Orientation & Visual Debugging](./seq/overview.md)
 *Environments: 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  
-Must teach top-to-bottom execution order, egocentric rotation vs. movement, tick-by-tick visual debugging, staged sub-goals across padlock-gated waypoints, and parameterless creative sequencing.
+Must teach top-to-bottom execution order, egocentric rotation vs. movement, tick-by-tick visual debugging, staged sub-goals across ordered sequence waypoints (`1 ⋯▶ 2`), and parameterless creative sequencing.
 
 #### [`param` — Action Parameters & World Interaction](./param/overview.md)
 *Environments: 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  
-Must teach customizing single actions via visual parameter badges (repeat counts, distances, pie-wedge angles, colors, pen widths, arc radii, pitches, beat delays) and interacting statefully with distinct world objects (`PICK_UP` & `USE_DROP` across consumed color-matched Keys, **retrievable 1-cell-ahead Planks**, and floor-switch Crates).
+Must teach customizing single actions via visual parameter badges (repeat counts, distances, trajectory turn angles, colors, pen widths, arc radii, pitches, beat delays) and interacting statefully with distinct world objects (`PICK_UP` & `USE_DROP` across consumed color-matched Keys, **retrievable 1-cell-ahead Planks**, and floor-switch Crates).
 
 #### [`loop` — Loops: Repeating Sequences & LIFO Stacks](./loop/overview.md)
 *Environments: 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Depot*  
@@ -138,7 +138,7 @@ Must teach spotting multi-block repeating motifs, enclosing them in `Loop Start`
 
 #### [`func` — Functions: Abstraction, Naming & Decomposition](./func/overview.md)
 *Environments: 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Depot*  
-Must teach packaging reusable sub-tasks into `F1`, `F2`, `F3`, maintaining "state hygiene" (restoring heading/pen state), combining functions with loops, composing multi-layer helpers (`Main → F1 → F2`), and double stack reversal (`Stack 1 → Stack 2 → Output`).
+Must teach packaging reusable sub-tasks into `F1`, `F2`, `F3`, maintaining "state hygiene" (restoring heading/pen state), combining functions with loops, composing multi-layer helpers (`Main → F1 → F2`), and double stack reversal (`Stack 1 → Stack 2 → Stack 3`).
 
 #### [`branch` — Sensors & Branching: Making Decisions](./branch/overview.md)
 *Environments: 🚂 Switchyard, 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  

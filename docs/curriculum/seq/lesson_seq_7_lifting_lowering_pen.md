@@ -1,9 +1,118 @@
 # Lesson `seq.7` — Lifting & Lowering the Pen (`Pen Up` / `Pen Down`)
 
-> [← Module `seq` Overview](./overview.md) · **Format:** 🐢 Sandbox · **Environment:** [🐢 Turtle LOGO](../../envs/turtle_logo.md)
+> [← Module `seq` Overview](./overview.md) · **Format:** 🐢 Sandbox · **Environment:** [🐢 Turtle LOGO](../../envs/turtle_logo.md) · **ID:** `seq.7` (Legacy Alias: `1.7`)
 
-- **Starter Example:** Draws two separate parallel bars `=`.
-- **Illustrated Copyable Variations:**
-  - `[Img 1]` 3-dash line
-  - `[Img 2]` Detached window next to a door
-  - `[Img 3]` Initials `H I`
+**One-Concept Goal:** Control pen state with `Pen Up` (travel invisibly without drawing) and `Pen Down` (resume ink strokes) to create multi-part disconnected drawings.
+
+<details>
+<summary>📖 Parent / Teacher Tip (Adult Context — Collapsed by Default)</summary>
+
+While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (`scale(1.12)`, soft shadow, hollow nib) and leaves a brief fading dotted air-trail in animated playback—so 5–7yo kids can see *where* the turtle hops across empty paper before `Pen Down` (`PEN_DOWN`) sets the ink nib back onto the canvas. All cards stay inside a compact viewport (`≤ 150px` radius) and avoid text/letter themes.
+
+</details>
+
+---
+
+## Palette, Scopes, Caps & Environment Setup
+
+- **Allowed Blocks (`allowedSimBlocks`):** `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "PEN_UP", "PEN_DOWN"]`
+- **Allowed Control Blocks (`allowedControlBlocks`):** `[]`
+- **Block Parameter Lock (`allowedBlockParams`):** Fixed `50px` steps, `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }`, `allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`
+- **Allowed Scope Tabs:** `["MAIN"]` (`allowRecursion: false`)
+- **Slot Cap (`slotCap`):** `null`
+- **Environment Setup:** Start pose `(0, 0, 0° NORTH)`, `penDown: true`, `penColor: "#0f172a"`, `penWidth: 6`; dual-state turtle avatar (`Pen Up` vs `Pen Down`); `#e2e8f0` card borders.
+
+---
+
+## Starter Workspace (`starterWorkspace`)
+
+### ⏸️ Parallel Bars `=` (`8` flat blocks ≤ 14)
+
+![Parallel Bars =](./svg/seq_7_starter.svg)
+
+- **MAIN (`8` blocks):**
+  1. `TURN_RIGHT`
+  2. `FORWARD`
+  3. `PEN_UP`
+  4. `TURN_LEFT`
+  5. `FORWARD`
+  6. `PEN_DOWN`
+  7. `TURN_LEFT`
+  8. `FORWARD`
+- **Rendered Verification (`render_logo_svg.mjs`):** Two horizontal `50px` bars at `(0, 0)–(50, 0)` and `(50, -50)–(0, -50)` separated by a `50px` invisible hop; `finalPose: (0, -50, 270°)`; `penDown: true`; `pathCount: 2`.
+
+---
+
+## Illustrated Copyable Variations (`variations[]`)
+
+### Variation 1 (`seq.7-dashed-corner`): 〰️ Dashed Corner Trail (`11` flat blocks ≤ 14)
+
+![Dashed Corner Trail](./svg/seq_7_var1.svg)
+
+- **MAIN (`11` blocks):**
+  1. `FORWARD`
+  2. `PEN_UP`
+  3. `TURN_RIGHT`
+  4. `FORWARD`
+  5. `PEN_DOWN`
+  6. `FORWARD`
+  7. `PEN_UP`
+  8. `TURN_RIGHT`
+  9. `FORWARD`
+  10. `PEN_DOWN`
+  11. `FORWARD`
+- **Rendered Verification (`render_logo_svg.mjs`):** Three separate `50px` dashes wrapping clockwise around a corner (`(0,0)–(0,-50)`, `(50,-50)–(100,-50)`, `(100,0)–(100,50)`) safely centered within `[-180..+180]`; `finalPose: (100, 50, 180°)`; `penDown: true`; `pathCount: 3`.
+
+---
+
+### Variation 2 (`seq.7-gift-boxes`): 🎁 Twin Floating Gift Boxes (`19` flat blocks ≤ 20)
+
+![Twin Floating Gift Boxes](./svg/seq_7_var2.svg)
+
+- **MAIN (`19` blocks):**
+  1. `FORWARD`
+  2. `TURN_RIGHT`
+  3. `FORWARD`
+  4. `TURN_RIGHT`
+  5. `FORWARD`
+  6. `TURN_RIGHT`
+  7. `FORWARD`
+  8. `PEN_UP`
+  9. `BACKWARD`
+  10. `BACKWARD`
+  11. `TURN_RIGHT`
+  12. `PEN_DOWN`
+  13. `FORWARD`
+  14. `TURN_RIGHT`
+  15. `FORWARD`
+  16. `TURN_RIGHT`
+  17. `FORWARD`
+  18. `TURN_RIGHT`
+  19. `FORWARD`
+- **Rendered Verification (`render_logo_svg.mjs`):** Left square `[0..50] × [-50..0]` + `50px` air-gap using `BACKWARD × 2` while facing West + right square `[100..150] × [-50..0]`; `finalPose: (100, 0, 270°)`; `penDown: true`; `pathCount: 8`.
+
+---
+
+### Variation 3 (`seq.7-smiling-face`): 😊 Smiling Block Face (`17` flat blocks ≤ 30)
+
+![Smiling Block Face](./svg/seq_7_var3.svg)
+
+- **MAIN (`17` blocks):**
+  1. `FORWARD`
+  2. `PEN_UP`
+  3. `TURN_RIGHT`
+  4. `FORWARD`
+  5. `FORWARD`
+  6. `TURN_RIGHT`
+  7. `PEN_DOWN`
+  8. `FORWARD`
+  9. `PEN_UP`
+  10. `FORWARD`
+  11. `PEN_DOWN`
+  12. `FORWARD`
+  13. `TURN_RIGHT`
+  14. `FORWARD`
+  15. `FORWARD`
+  16. `TURN_RIGHT`
+  17. `FORWARD`
+- **Rendered Verification (`render_logo_svg.mjs`):** Two detached vertical eyes at `(0, -50)–(0, 0)` and `(100, -50)–(100, 0)` above a wide U-shaped smile `(100, 50)–(100, 100)–(0, 100)–(0, 50)`; `finalPose: (0, 50, 0°)`; `penDown: true`; `pathCount: 6`.

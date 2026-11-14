@@ -10,9 +10,10 @@ These language and workspace capabilities apply universally across **[🤖 Robot
 
 - **Explicit Conditional & Loop Blocks (`branch` & `while`+):**
   - `IF [condition] ... END_IF` — Executes inner blocks once if true; otherwise jumps past `END_IF`.
-  - `IF [condition] ... ELSE ... END_IF` (and `ELSE IF`) — Runs the matching branch and skips remaining branches (visually spotlighted during step-by-step playback).
-  - `WHILE [condition] ... END_WHILE` — Repeats enclosed blocks while `[condition]` remains true (guarded against infinite loops by the interpreter step cap).
-  - **Boolean Combinators:** Visual `NOT`, `AND`, and `OR` wrappers for sensor and comparison badges.
+  - `IF [condition] ... ELSE ... END_IF` (and `ELSE IF`) — Runs the matching branch and skips remaining branches (visually spotlighted during step-by-step playback, editable via staged `<ConditionSubpalette>`).
+  - `WHILE [condition] ... END_WHILE` — Repeats enclosed blocks while `[condition]` remains true (guarded against infinite loops by the interpreter step cap -> `STEP_LIMIT` `⏳🔁`).
+  - **Atomic Pair Insertion & Nesting Guardrails:** Inserting `LOOP_START`, `IF`, or `WHILE` from the palette inserts both opener and matching closer atomically whenever `remainingForScope >= 2` (or rejects cleanly via slot-tray shake when `< 2` slots remain). Function calls inside loops remain unrestricted once functions are unlocked, while direct/indirect self-recursion is gated per activity (`palette.allowRecursion`, enabled in `rec`+ / Sandbox).
+  - **Boolean Combinators:** Visual `NOT`, `AND`, and `OR` (short-circuit evaluation) wrappers for sensor and comparison badges (`0x30 CMP`, strict 3-address `OP_VAR_OP`).
 - **Scene Input Selector (`🎛️ $input` — `branch`+) & Random Sensors (`🎲` — `var`+ / Sandboxes):**
   - **`🎛️ $input` Dock Widget:** Compact integer (`1..8`) or color-swatch selector pill in creative/interactive lessons that exposes `$input` and **triggers an immediate auto-rerun/redraw on change**—enabling conditional art and jukeboxes before variables or memory exist.
   - **`🎲 $rand` & `🎨🎲 $randomColor`:** Fresh random roll on every evaluation! Visual preset badges include **🪙 Coin (`0..1`)**, **🔺 D4 (`1..4`)**, **🎲 D6 (`1..6`)**, **🔷 D8 (`1..8` — matches Beat notes/grid)**, **🔮 D20 (`1..20`)**, and **🌊 `[0, 1)` continuous float** (composable with float-preserving `*` to generate arbitrary ranges without custom range dialogs), alongside **`$randomColor`** (vibrant palette swatches excluding canvas-erasing `white`/`black`). Seeded or disabled in deterministic puzzles.
@@ -31,7 +32,7 @@ These language and workspace capabilities apply universally across **[🤖 Robot
 
 ### 1.1 Typed Variable System (`number` vs `color`)
 
-Single-letter variables (`a`–`z`), message channels, and non-empty tape cells hold either a `number` or a `PaletteColor` from a unified 10-swatch palette. **Crucially, indices `0..7` preserve the exact existing `TURTLE_COLOR_PALETTE` byte order in `src/engine/serialization/types.ts`**, appending only `orange = 8` and `white = 9` at the end so zero existing saved programs break (for Beat serializer compatibility, see [`envs/beat_light.md`](./envs/beat_light.md#1-visual--audio-simulation-model)):
+Single-letter variables (`a`–`z`), message channels, and non-empty tape cells hold either a `number` or a `PaletteColor` from a unified 10-swatch palette. **Crucially, indices `0..7` preserve the exact existing `TURTLE_COLOR_PALETTE` byte order in `src/engine/serialization/types.ts`**, appending only `orange = 8` and `white = 9` at the end (`'yellow'` and `'amber'` alias cleanly at index `4`) so zero existing saved programs break. *(Beat's direct `SET_LED_COLOR` `0x18` retains its `0=Cyan..8=Black, 9=White` hardware index order on the wire via `beatColorToByte` while translating canonical `PaletteColor` swatches identically at runtime; see [`envs/beat_light.md`](./envs/beat_light.md#1-visual--audio-simulation-model)).*
 
 ```typescript
 // Canonical PaletteColor index order (0..7 match TURTLE_COLOR_PALETTE byte-for-byte!)
@@ -111,12 +112,14 @@ export function resolveOperand(
 }
 ```
 
-#### Zero-Reading Type Error & Watch Tray Visualization
+#### Zero-Reading Type Error, Math/Runtime Terminators & Watch Tray Visualization
 
-When `TYPE_ERROR` occurs:
-1. Execution **halts** on the offending block (`status: 'TYPE_ERROR'`, treated as a non-passing terminal error like `'COLLISION'`).
-2. The offending block **shakes** with an amber/red outline.
-3. In the Watch Tray (`toolbar-variables`), a round color swatch visibly bounces off a square `#` number slot (or vice versa) while pulsing the offending variable and block — communicating *"a color doesn't fit in a distance slot"* with zero reading.
+Every failure mode surfaces a distinct, zero-reading Top-Center status pill (`SimulationStatus`) synchronized across single-run and multi-run pips (`MultiRunPipsBar`):
+- **`TYPE_ERROR` (`🎨≠#`):** Execution halts on the offending block, the block shakes with an amber/red outline, and in the Watch Tray (`toolbar-variables`) a round color swatch visibly bounces off a square `#` number slot (or vice versa) while pulsing the offending variable.
+- **`MATH_ERROR` (`🧮÷0`):** Dividing or modulo-reducing by zero (`/ 0`, `% 0`) halts cleanly instead of returning `0`.
+- **`STACK_OVERFLOW` (`📚💥`):** Exceeding `MAX_CALL_STACK_DEPTH = 64` (e.g., runaway recursion in `rec`) halts with stack-overflow feedback.
+- **`STEP_LIMIT` (`⏳🔁`):** Exceeding `MAX_TOTAL_STEPS = 10_000` (e.g., an infinite `WHILE` loop) halts cleanly distinct from wall `'COLLISION'` (`💥`).
+- **`DEADLOCK` (`🔒💥`):** Circular mutex wait cycles across concurrent `Main` / `Fork` workers (`conc`) freeze and report deadlock immediately.
 
 | Variable State | Watch Box Display (`toolbar-variables`) |
 | :--- | :--- |
@@ -229,18 +232,17 @@ The UI renders a **7-to-9 cell sliding window** centered around the active head 
 
 ## 3. Curriculum Runner, Slug IDs, Profiles, Saves & Rewards Infrastructure
 
-- **Slug-Based Module & Activity IDs (`<mod>.<item>`):** Tracks progress across Core Spine modules (`seq`..`rec`), Parallel Side Modules (`anim`, `inter`, `conc`, `fp`), and Optional Mastery Sets (`var.M1`..`conc.M3`) via compact UTF-8 IDs in [`binary_format.md` §2.3.2](./binary_format.md#232-compact-lesson-identifier-compactlessonid), with transparent aliasing for legacy numeric IDs.
+- **Slug-Based Module & Activity IDs (`<mod>.<item>`) + Side-Track DAG:** Tracks progress across Core Spine modules (`seq`→`param`→`loop`→`func`→`branch`→`while`→`var`→`cmp`→`tape`→`sort`→`args`→`rec`), Side-Track DAG unlocks (`cmp ==> inter`, `tape ==> anim`, `args ==> conc`, `rec ==> fp`), and Optional Mastery Sets (`var.M1`..`conc.M3`) via compact UTF-8 IDs in [`binary_format.md` §2.3.2](./binary_format.md#232-compact-lesson-identifier-compactlessonid), with transparent legacy numeric aliasing (`"1.0"` → `"seq.0"`, `"8.1"` → `"cmp.M1"`, `"C6.1"` → `"var.M1"`).
 - **Kid-Friendly Multi-Profile System & Progressive Sandbox Unlocks:** Avatar-first local profiles with isolated progress, badges, per-lesson autosaves, manual save slots, read-only curriculum map locking, historical `version` retention (`LessonVersionMismatchModal`), whole-profile Base64URL/QR export & import, **Unlock All / Pro Sandbox** toggle, and celebratory **Module Badges & Challenge Medals**.
 
 ---
 
-## 4. Phased Delivery Roadmap
+## 4. Phased Delivery Roadmap (Synchronized 5-Phase Progressive Ladder)
 
-| Phase | What Ships | Standalone Value |
-| :--- | :--- | :--- |
-| **Phase 1** | Slug ID migration (`seq`..`rec`), Two-Axis Guardrails, `🎛️ $input` selector widget, `🎲` random presets (`$rand` / `$randomColor`), unified 10-color `TypedValue` + Watch Tray bounce | ✅ Flexible module DAG, interactive `branch` sandboxes & generative art/music |
-| **Phase 2** | Retrievable 1-cell-ahead Grid Planks, 🏗️ Depot (stackable rings/blocks, Stacks + FIFO Queue), `branch`/`while` split + `cmp` before `tape` alignment | ✅ Tactile LIFO/FIFO contrast & clean variable → comparison → tape ramp |
-| **Phase 3** | Sparse `10,000`-cell `TapeState`, windowed `shrink-0` `TapeDock`, Beat `STAMP_FROM_TAPE` (`📼→🟦` customizable sprite blit), `tape` + `sort` + `⏱️` Wall-Clock Tick Speedometer + `args`/`rec` Hanoi | ✅ Data-driven custom sprites, linear/binary search, sorting speedups & recursive Hanoi |
-| **Phase 4** | Side Module `anim` (LOGO Flipbook Mode `$frame`/`$time` + Scrubber + Beat hardware frame loops) & Side Module `inter` (`$pointerX/Y`, D-Pad, queued events, `16×16`/`32×32` Beat grids, LOGO Live Mode) | ✅ Dedicated Flipbook studio, playable synths & interactive mini-games |
-| **Phase 5** | Side Module `conc` (`Main 1..N`, `🚧 Barrier`, `📨 Send`/`📬 $recv`, `🔀 Fork`/`Join`, `🔒 Lock`/`Unlock`, Multi-Bot Grid, Dual-Claw Depot, per-worker Tape heads `▲1`/`▲2` & **Parallel Sort**) | ✅ Full visual concurrency & measurable parallel sorting speedups |
-| **Phase 6** | Side Module `fp` (Higher-Order Function sockets `F1([Fn])`, `Map`/`Filter`/`Fold`) & Future Alternative Code Representations | ✅ Functional programming ceiling & text-transition bridge |
+| Phase | Core Modules & Side Tracks | Platform & Environment Pillars | Standalone Value |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | Core `seq` → `param` → `loop` → `func` | Unified `App.tsx` `[Top Dock / Viewport / Bottom Dock]` shell, `BackpackHud` (`🎒`) retired globally onto Robot/Depot claws, `1 ⋯▶ 2` & shuttered `🏁` flags, Grid physics/thumbnail fixes (`order===0`), conditional Beat reticle, LOGO `🐢👁️` & `🏠` teleport, Switchyard runner registration, `SET_BEAT_DELAY` multiplier alignment, DAG & atomic-pair prep | ✅ Rock-solid M1–M3/4 UX baseline across all 5 environments with zero HUD collisions |
+| **Phase 2** | Core `branch` → `while` | Clean **Switchyard v2** & **Depot v4** (`SCRAP` & `itemDamaged` `0x1A` retired) replacements, `<ConditionSubpalette>` editor (`IF` / `ELSE_IF` / `WHILE`, `NOT`/`AND`/`OR`), atomic pair insertion, shared `🎛️ $input` Top Dock, `[1 ✓][2 ✗]` pip & `switchyardState` variant focus, Turtle `insideCanvas` (`0x28`) & Beat `cursorAtEdge` (`0x2A`) | ✅ Adaptive multi-map/multi-stream puzzles & reactive `$input` art/music sandboxes |
+| **Phase 3** | Core `var` → `cmp` & Side `inter` | `0x30 CMP`, strict 3-address math, distinct `SimulationStatus` (`TYPE_ERROR`, `MATH_ERROR`, `STACK_OVERFLOW`, `STEP_LIMIT`, `DEADLOCK`), `TypedValue` (`number` vs `color` + Watch Tray bounce), `🎲` random presets & `$randomColor`, dynamic sensor subpalette, interactive `$pointer*` / D-Pad / queued events (`0x40..0x46`), Slug IDs + Side-Track DAG (`cmp ==> inter`) | ✅ Generative math art/audio, typed safety & playable interactive games |
+| **Phase 4** | Core `tape` → `sort` & Side `anim` | Sparse `10,000`-cell `TapeState`, windowed Top-Dock `TapeDock` (`0x0C..0x0E`), Beat `OP_EXT 0x0F` (`STAMP_FROM_TAPE`) + `16×16`/`32×32` + `ENV_VERSION_BEAT_V2 = 2`, LOGO Flipbook Mode (`ENV_VERSION_TURTLE_V2 = 2`), animated variation cards, `⏱️` Wall-Clock Tick Speedometer | ✅ Custom sprites, binary search/sorting speedups & frame-cached Flipbook studio |
+| **Phase 5** | Core `args` → `rec` & Sides `conc`, `fp` | Frame-local shape sockets (`●/▲/■`), `MAX_CALL_STACK_DEPTH = 64` + recursive Hanoi, `OP_EXT 0x0F` concurrency (`Main 1..4` `0x00..0x03`, `SYNC_BARRIER`, `SEND`/`$recv`, `FORK`/`JOIN`, `LOCK`/`UNLOCK`, cycle `DEADLOCK`, per-worker Tape `▲1 ▲2`), `ENV_VERSION_GRID_V4 = 4` team bots, dual-claw Depot, `fp` `[Fn]` sockets (`RETURN`, `CALL_PARAM_FN`) | ✅ Full abstraction ladder: recursion, parallel sorting & higher-order functional code |

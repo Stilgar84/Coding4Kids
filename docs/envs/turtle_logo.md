@@ -2,34 +2,40 @@
 
 **Turtle LOGO** is an **open-ended creative drawing, animation, and generative-art sandbox** environment used across Core Modules `seq`–`rec` (except `sort`) and Side Modules `anim`, `inter`, `conc`, and `fp` of [the curriculum](../curriculum/overview.md). Learners guide one or more pen-carrying turtles to draw geometric shapes, data-driven skylines, flipbook animations, interactive sketches, and recursive/concurrent fractals.
 
-*(For cross-environment features—including the unified 10-swatch `PALETTE_COLORS` / `TypedValue` system, shared Sparse Memory Tape, `$input` & `🎲` random sensors, concurrency primitives, and variation card mechanics—see [Shared Language, Lesson Mechanics & Platform Requirements](../platform_requirements.md); for core drawing opcodes `FORWARD`, `BACKWARD`, `TURN_LEFT`, `TURN_RIGHT`, `ARC_LEFT`, `ARC_RIGHT`, `PEN_UP`, `PEN_DOWN`, `SET_PEN_COLOR`, `SET_PEN_WIDTH`, and `TELEPORT`, see [Binary Format §7.3](../binary_format.md#73-turtle-world-opcodes-envid--0x02-envversion--1); for HUD slots and layout rules, see [UI Guidelines](../ui_guidelines.md).)*
+*(For cross-environment features—including the unified 10-swatch `PALETTE_COLORS` / `TypedValue` system, shared Sparse Memory Tape, `$input` & `🎲` random sensors, concurrency primitives, and variation card mechanics—see [Shared Language, Lesson Mechanics & Platform Requirements](../platform_requirements.md); for core drawing opcodes `FORWARD`, `BACKWARD`, `TURN_LEFT`, `TURN_RIGHT`, `ARC_LEFT`, `ARC_RIGHT`, `PEN_UP`, `PEN_DOWN`, `SET_PEN_COLOR`, `SET_PEN_WIDTH`, and `TELEPORT`, plus `ENV_VERSION_TURTLE_V2 = 2` animation/tape flags and shared `OP_EXT = 0x0F`, see [Binary Format §7.3](../binary_format.md#73-turtle-world-opcodes-envid--0x02-envversion--1); for HUD slots, `[Top Dock → Viewport → Bottom Dock]` layout, and tap-target sizing rules, see [UI Guidelines](../ui_guidelines.md).)*
 
 ---
 
-## 1. Visual Simulation & Color Model
+## 1. Visual Simulation, Coordinates & Color Model
 
-- **White Drawing Canvas (`#ffffff`) & Persistent Style State:** `PEN_COLOR` and `PEN_WIDTH` remain active until explicitly changed; angle parameter pickers pair numeric degrees with visual pie/turn wedges.
-- **Selective Color Erasing (`White`):** Drawing over an earlier path with `SET_PEN_COLOR [White]` (index `9` in `PALETTE_COLORS`) acts as a precision eraser on the white `#ffffff` canvas.
-- **Hide Turtle (`👁️`):** Hides the turtle SVG avatar(s) so animations and mandalas can be admired cleanly (Top-Right `pane-simulation` badge slot).
-- **No Pass/Fail Grading:** LOGO lessons pre-load a working starter example and provide illustrated **Variation Cards** (with tiered showcase block allowances for Var 2 and Var 3+) featuring auto-rendered thumbnails and 1-tap **Copy / Load Code** (Undo-protected).
+- **Coordinate & Heading System:** Origin `(0, 0)` sits at canvas center; `0°` points **North (visually up)**, `90°` **East (right)**, `180°` **South (down)**, and `270°` **West (left)**. Because the SVG canvas uses screen-space vertical coordinates (`dx = distance * Math.sin(rad)`, `dy = -distance * Math.cos(rad)`), moving forward at `0°` steps visually up and produces negative SVG `Y` values (e.g. `(0, 0, 0°)` forward `50px` → `(0, -50)`). `TELEPORT` presets include a 1-tap `🏠 (0, 0, 0°)` home chip.
+- **White Drawing Canvas (`#ffffff`) & Persistent Style State:** `PEN_COLOR` (`0..9`) and `PEN_WIDTH` remain active until explicitly changed. All existing refined trajectory and curvature SVG badges in `VisualParamBadges.tsx` (`RotationVisual`, `ArcAngleVisual`, `RadiusVisual`, `PenWidthVisual`, `LengthVisual`) and existing `BlockItem.tsx` icons remain unchanged by default (no circular pie-wedge or combined arc popover helpers); `TURN_LEFT` / `TURN_RIGHT` add quick-tap geometry presets `72°` and `144°` alongside `[15°, 30°, 45°, 60°, 90°, 120°, 135°, 180°]`, and `ARC_LEFT` / `ARC_RIGHT` pair radius (`25, 50, 75`) and sweep (`90°, 180°, 270°, 360°`) selectors. *(Per user review in [v2 Implementation Plan](../../specs/v2/env_logo_plan.md), Turtle's `White (9)` swatch adds a subtle eraser-tip corner cue and `TELEPORT` pairs Lucide `Crosshair` with a miniature turtle silhouette accent.)*
+- **PEN_UP Lift, Air-Trail & TELEPORT Warp Cues:** While `penDown === false`, the turtle avatar displays a subtle lifted/translucent pen state (`scale(1.12)`, lifted drop shadow, hollow nib) and emits a brief (`~1s`) fading dashed air-trail during animated playback (excluded from static canvas/thumbnails), while `TELEPORT` triggers a brief origin departure flash and crosshair arrival ring—so positioning jumps never look like frozen execution or dropped strokes.
+- **Selective Color Erasing (`White` index `9`):** Drawing over an earlier stroke with `SET_PEN_COLOR [White]` (`#ffffff`, index `9` in `PALETTE_COLORS`; displayed with a subtle diagonal eraser-tip corner micro-cue on Turtle's white swatch pill, and selectable dynamically via color variables `a`–`z` or `$randomColor`) uses crisp ink-layer compositing over the white paper canvas without silent VM stroke-width inflation (explicit `SET_PEN_WIDTH [w + 2]` is authored only where wider erasing is desired), allowing clean intersections, stripes, and negative-space knockouts. Canvas thumbnails and Variation Cards sit inside a subtle cool `#e2e8f0` container frame so white eraser edges remain legible.
+- **Nominal Boundary Frame (`insideCanvas`):** A subtle dashed nominal paper boundary frame (`[-180..+180] × [-140..+140]` or authored workspace bounds, tested with inclusive `1e-6` epsilon) indicates the `insideCanvas` check area visually for `while` boundary-driven loops while keeping canvas pan/zoom unbounded for oversized art.
+- **Hide Turtle (`🐢👁️`):** Hides the turtle SVG avatar(s) so animations and mandalas can be admired cleanly (Top-Right `pane-simulation` badge slot & Mobile Drawer, respecting `>=36px` mobile / `>=44px` desktop touch targets).
+- **No Pass/Fail Grading & Variation Cards:** LOGO lessons pre-load a working starter example and provide illustrated **Variation Cards** (with tiered showcase block allowances for Var 2 and Var 3+) featuring `#e2e8f0`-framed thumbnails (`renderTurtleMapSvg`, static `previewFrame`, optional `5–10 fps` animated SVG loop preview on Flipbook cards, `previewInput`, and seeded `🎲` previews) plus 1-tap **Copy / Load Code** (Undo-protected).
 
 ---
 
 ## 2. Explicit Flipbook Animation Mode (`anim`) & Live Interactive Mode (`inter`)
 
-Rather than cluttering LOGO workspaces with boilerplate `SET_INSTANT` + `CLEAR_CANVAS` + `WAIT` frame loops (which remain taught at the hardware pixel level in [🎵 Beat & Light](./beat_light.md)), LOGO provides first-class **Environment Animation Modes**:
+Rather than cluttering LOGO workspaces with boilerplate `SET_INSTANT` + `CLEAR_CANVAS` + `WAIT` frame loops (which remain taught at the hardware pixel level in [🎵 Beat & Light](./beat_light.md)), LOGO provides first-class **Environment Animation Modes** hosted inside the shared `[Top Dock (shrink-0)] → [Viewport (relative flex-1, ≥48px top HUD clearance)] → [Bottom Dock (shrink-0)]` pane (zero extra `<header>` buttons):
 
 ### 2.1 Flipbook Animation Mode (`anim` & Free-Play Sandbox)
-When Flipbook Mode is enabled on a lesson or toggled in Sandbox:
-1. **1 Run of `MAIN` = 1 Frame:** The engine invokes `MAIN` once per frame from `$frame = 1` up to `totalFrames` (`N`), with `MAX_TOTAL_STEPS = 10,000` enforced **per frame** rather than across the entire animation.
-2. **Automatic Pose Reset + Persistent Memory:** Before each frame `> 1`, the turtle resets to `(0, 0, 0°)` and the canvas clears—*(unless the **`🧹 Clear Between Frames [ON / OFF]`** toggle is set to `OFF` for progressive/accumulating trail animations)*—while **variables (`a`–`z`) and Sparse Memory Tape state persist** across frames!
+When Flipbook Mode is enabled on a lesson (`ENV_VERSION_TURTLE_V2` when used in Sandbox):
+1. **1 Run of `MAIN` = 1 Frame:** The engine invokes `MAIN` once per frame from `$frame = 1` up to `totalFrames` (`N`), with `MAX_TOTAL_STEPS = 10,000` enforced **per frame** rather than across the entire animation, and deterministic `$time = ($frame - 1) / fps`.
+2. **Automatic Pose Reset + Persistent Memory:** Before each frame `> 1`, the turtle resets to `(0, 0, 0°)` (`penDown = true`, starter style) and the canvas clears—*(unless the **`🧹 Clear Between Frames [ON / OFF]`** toggle is set to `OFF` for progressive/accumulating trail animations)*—while **variables (`a`–`z`) and Sparse Memory Tape state persist** across frames!
 3. **Two-Phase Inspectable Render → Cached Scrubber Playback:**
-   - **First Pass (Draw & Bake):** Draws each frame visibly at the chosen speed, pausing briefly between frames so learners can watch and debug how Frame 1, Frame 2, … are constructed (with a **`⏩ Render All Frames`** button to bake remaining frames immediately; `Instant` speed skips straight to playback).
-   - **Playback Mode:** Plays the saved vector frames smoothly with a **Timeline Scrubber (`1 .. N`)**, playback speed multiplier (slow-motion / fast), and Loop mode (`1×` / `∞`).
-   - **Rewind (`⏮`):** Resets `$frame = 1`, clears cached frames, and restores variables and Tape to their initial pre-run state.
+   - **First Pass (Draw & Bake):** Draws each frame visibly at the chosen speed with a brief `Pre-Clear Hold` before advancing frames so learners can watch and debug how Frame 1, Frame 2, … are constructed (with **`⏩ Render All Frames`** to bake remaining frames immediately; `Instant` speed skips straight to baked playback).
+   - **Bottom-Dock Scrubber & Playback Mode:** Plays saved vector frames smoothly via a Bottom-Dock pill containing Play/Pause, **`Timeline Scrubber (1 .. N)`**, playback speed multiplier (`0.5× / 1× / 2×`), **`🎞️ N` totalFrames stepper (`2..60`)**, **`🧹 Clear Between Frames`**, and **Loop (`1×` / `∞`)** *(collapsing cleanly with `VariationCardsPanel` into an expandable `🎨 (N)` pill on narrow `<640px` viewports alongside Top-Dock `TapeDock` so the canvas keeps `>= 200px` height)*.
+   - **HUD Time Readout (`🕒 Xs`):** Bottom-left `turtle-info-pill` shows `X, Y, ∠ °`, color swatch, and **`🕒 Xs`** elapsed animation time (strictly disambiguated from `⏱️` used for concurrency wait/wall-clock ticks).
+   - **Rewind (`⏮`):** Resets `$frame = 1`, clears cached frames, and restores variables and Tape to their initial pre-run snapshot.
 
 ### 2.2 Live Interactive Mode (`♾️` — `inter` & Free-Play Sandbox)
-- Runs `MAIN` continuously (~15–30 fps) without a fixed frame limit, preserving variables and Tape across ticks while reading live `$pointerX`, `$pointerY`, `$pointerDown`, virtual D-Pad/buttons, `$input`, and `🎲` random rolls, and dispatching queued event handlers (`On Key` / `On Tap → F1`) cleanly between frames.
+- **Continuous Interactive Pacing (`~15–30 fps`):** Runs `MAIN` continuously without a fixed frame limit (guarded per tick by a bounded step cap to prevent `While` freezes). When `🧹 Clear Between Frames` is `ON`, each tick atomically resets turtle pose to `(0, 0, 0°)` + canvas while preserving variables (`a`–`z`) and Tape; when `OFF`, strokes **and** turtle `(x, y, heading, penDown, penColor, penWidth)` persist across ticks (e.g., interactive paintbrushes & D-Pad steerers) while advancing frame/time.
+- **Pointer vs. Pan/Zoom Arbitration:** While running in Live Interactive Mode, single-finger canvas tap/drag updates `$pointerX`, `$pointerY`, and `$pointerDown` with a subtle hover crosshair reticle and conditional `👆 X, Y` readout in `turtle-info-pill`; two-finger pinch/drag always zooms/pans cleanly, and pausing restores standard single-finger pan.
+- **Queued Event Handlers:** `On Tap` (`0x40`) and `On Key` (`0x41..0x46` via compact Bottom-Dock `[◀▲▼▶]` / `[🅰️🅱️]` controls, collapsing `VariationCardsPanel` behind `🎨 (N)` on `<640px`) emit a subtle tap-ripple visual cue and dispatch deterministically between ticks alongside live `$input` (`🎛️` `SceneInputBar`) and `🎲` random rolls.
 
 ---
 
@@ -37,17 +43,19 @@ When Flipbook Mode is enabled on a lesson or toggled in Sandbox:
 
 | Block / Sensor | Icon | Introduced | Behavior |
 | :--- | :---: | :---: | :--- |
-| `TELEPORT` | 🎯 Crosshair | `param` / `func` | Jumps directly to `(x, y, heading)` without drawing a line. |
-| `insideCanvas` | 🖼️ Frame check | `while` | `true` while the turtle sits inside the nominal visible canvas bounds (powers boundary-driven `While (insideCanvas)` spirals/starbursts before variables exist). |
-| `$x`, `$y`, `$heading` | `📍X`, `📍Y`, `🧭∠` | `var` | Read-only numeric pose sensors (`Math.round` coordinates and degrees). |
-| `$frame`, `$time` | `🎞️#`, `⏱️t` | `anim` | Current 1-based frame index (`1..N`) and elapsed animation time in seconds when Flipbook or Live Mode is active. |
-| `$input`, `🎲`, `$pointerX/Y` | `🎛️`, `🎲`, `👆` | `branch` / `var` / `inter` | Shared scene selector (`branch`+), dice/float/color random rolls (`var`+/Sandbox), and live canvas pointer coordinates (`inter`+). |
+| `TELEPORT` | 🎯 Crosshair + 🐢 | `var` (`var.5a`) | Jumps directly to `(x, y, heading)` without drawing a line; pairs Lucide `Crosshair` with a miniature turtle silhouette accent, `🏠 (0, 0, 0°)` preset, and arrival ring cue. |
+| `insideCanvas` | 🖼️ Frame check | `while` | `0x28` boolean `ConditionExpr` sensor; `true` while the turtle sits inside the dashed nominal canvas bounds (powers boundary-driven `While (insideCanvas)` loops before variables exist). |
+| `$x`, `$y`, `$heading` | `📍X`, `📍Y`, `🧭∠` | `var` | Read-only numeric pose sensors (`Math.round` coordinates and degrees `0..359`). |
+| `$frame`, `$time` | `🎞️#`, `🕒t` | `anim` | Current 1-based frame index (`1..N`) and elapsed animation time in seconds when Flipbook or Live Mode is active (`🕒` distinct from `⏱️` concurrency counter). |
+| `$input`, `🎲`, `$pointer*` | `🎛️`, `🎲`, `👆` | `branch` / `var` / `inter` | Shared Top-Dock scene selector (`branch`+), dice/float/`$randomColor` rolls (`var`+/Sandbox), and live canvas `$pointerX`/`$pointerY`/`$pointerDown` + `keyHeld` (`inter`+). |
 
 ---
 
-## 4. Multi-Turtle Concurrency (`conc`) & Sparse Tape Integration
+## 4. Multi-Turtle Concurrency (`conc`), Callbacks (`fp`) & Sparse Tape Integration
 
 LOGO supports concurrent drawing in `conc` and Sandbox using the two **shared** concurrency mechanisms—requiring **zero** LOGO-specific clone blocks:
-- **Multiple `Main` Tabs (`Main 1`, `Main 2`, … → Separate Scene Elements):** Each `Main` tab owns an independent color-accented turtle starting fresh at `(0, 0, 0°)` with isolated pen up/down, color, and width—ideal for drawing separate scene elements simultaneously.
-- **`🔀 Fork F1(●, ▲, ■)` (→ Branching Pose Clone):** Spawning a helper via `Fork` creates a child turtle that **inherits the parent turtle's exact `(x, y, heading, penColor, penWidth, penDown)`** at the moment of the fork—enabling simultaneous branching trees, lightning, and fireworks without backward state-restoration boilerplate.
-- **Sparse Memory Tape:** `10,000` sparse cells rendered in the `shrink-0` Tape Dock above the SVG canvas (with per-worker heads in `conc`), editable and saved sparsely in creative workspaces (see [Platform Requirements](../platform_requirements.md)).
+- **Multiple `Main` Tabs (`Main 1`..`Main 4` `0x00..0x03` → Separate Scene Elements):** Each `Main` tab owns an independent color-accented turtle (`🔴1`, `🔵2`, …) starting at `(0, 0, 0°)` with a subtle concentric origin offset badge so overlapping starting turtles stay readable, plus isolated `penDown`, `penColor`, and `penWidth`.
+- **`🔀 Fork F1(●, ▲, ■)` (`OP_EXT 0x03` → Branching Pose Clone):** Spawning a helper via `Fork` creates a child fiber/turtle that **inherits the parent turtle's exact `(x, y, heading, penDown, penColor, penWidth)`** at the moment of the fork with a brief mitosis split-pop and `~200ms` fadeout on completion (strokes remain on canvas)—enabling simultaneous branching trees, lightning, and fireworks without backward state-restoration boilerplate.
+- **Wait & Critical-Section Visuals:** Waiting workers render compact floating status pills above their avatar (`⏳🚧` barrier, `⏳📬` `$recv`, `⏳🔒` mutex, `🛡️` Crystal Shield protected section), paired with the Top-Right `⏱️` wall-clock tick indicator.
+- **Higher-Order Callbacks (`fp`):** Supports shared `[Fn]` function-socket calls (`OP_EXT 0x08`) for symmetric reflectors and pattern stamps with zero LOGO-specific FP blocks.
+- **Sparse Memory Tape:** `10,000` sparse cells rendered in Top-Dock `TapeDock` (`shrink-0`, with per-worker cursor heads `▲1 ▲2` in `conc`), editable and persisted sparsely in sandbox programs via `ENV_VERSION_TURTLE_V2 = 2` (see [Platform Requirements](../platform_requirements.md)).

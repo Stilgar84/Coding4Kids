@@ -30,31 +30,33 @@ This document defines the mandatory UI, layout, iconography, and accessibility r
 
 ## 3. Non-Overlapping `pane-simulation` HUD Architecture
 
-Every overlay or toolbar inside `pane-simulation` has a dedicated, non-colliding slot:
+All 5 environments share the unified flex shell `[Top Dock shrink-0] -> [Viewport relative flex-1 min-h-0] -> [Bottom Dock shrink-0]` in `src/App.tsx`, guaranteeing a **`>= 48px` top HUD clearance band** inside the canvas viewport (or dedicated `shrink-0` header bar in Beat) without per-environment offset hacks (`top-12`). Every overlay or toolbar inside `pane-simulation` has a dedicated, non-colliding slot:
 
 | Slot | Location inside `pane-simulation` | Assigned Controls |
 | :--- | :--- | :--- |
-| **Top Dock (`shrink-0`)** | Flex row(s) above canvas | `GridToolbarTools` in Sandbox Grid (`Robot`, `Wall`, `Flag`, `Goal`, `World Items` popover, `Erase`, `Clear Map`; collapsible behind `✏️ Edit Map` on `<640px`), the `🎛️ $input` Scene Selector (`branch`+), and/or the windowed 7–9 cell `TapeDock` (`shrink-0`, `tape`+). Never floats over canvas cells or resize handles. |
-| **Top-Left Stack** | `absolute top-3 left-3 flex flex-col items-start gap-1.5` | Shared vertical HUD stack for `BackpackHud` (`🎒` / Depot claw cargo), `toolbar-variables` (`VARS` live numeric & color-swatch memory watch boxes), `rec` `CallStack` frames, and `conc` lock/channel wait badges—guaranteeing zero overlap. |
-| **Top-Center Pill** | `absolute top-3 left-1/2 -translate-x-1/2` | `status-success` (`🏁`), `status-collision` (`💥`), and `branch`+ multi-map / multi-stream status pips (`[1 ✓] [2 ✗] [3 ·]`). |
-| **Top-Right Badge** | `absolute top-3 right-3` | Compact `🔒` read-only map indicator (`grid-readonly-badge` with `sr-only` text) + board size badge (`grid-size-indicator`) + `⏱️` Wall-Clock Tick Speedometer (`sort` / `conc`+) in Grid/Depot/Switchyard, or `Hide Turtle` (`🐢`) + `Loop` / `Flipbook` / `♾️ Live` mode pills in Turtle LOGO ([`envs/turtle_logo.md`](./envs/turtle_logo.md)). |
+| **Top Dock (`shrink-0`)** | Flex row(s) above canvas | `GridToolbarTools` in Sandbox Grid (`Robot`, `Wall`, `Flag`, `Goal`, `World Items` popover, `Erase`, `Clear Map`; collapsible behind `✏️ Edit Map` on `<640px`), the `🎛️ $input` Scene Selector (`branch`+), and/or the windowed 7–9 cell `TapeDock` (`shrink-0`, `tape`+ with `Jump #` & per-worker heads `▲1`/`▲2` in `conc`). Never floats over canvas cells or resize handles. |
+| **Top-Left Stack** | `absolute top-3 left-3 flex flex-col items-start gap-1.5` | Shared vertical HUD stack for `toolbar-variables` (`VARS` live numeric & color-swatch memory watch boxes, incl. `TYPE_ERROR` bounce), `rec` `CallStack` depth/socket pills (`[Main] -> [F1 ●:3]`), and `conc` lock/channel wait badges (`⏳🔒`, `⏳📬`)—guaranteeing zero overlap. *(Legacy `BackpackHud` `🎒` is retired globally; Robot & Depot render carried items directly on their shoulder/claw grippers.)* |
+| **Top-Center Pill** | `absolute top-3 left-1/2 -translate-x-1/2` | `status-success` (`🏁`), distinct terminal error pills (`💥` Collision, `🎨≠#` Type Error, `🧮÷0` Math Error, `📚💥` Stack Overflow, `⏳🔁` Step Limit, `🔒💥` Deadlock), and `branch`+ multi-map / multi-stream / multi-depot status pips (`[1 ✓] [2 ✗] [3 ·]`). |
+| **Top-Right Badge** | `absolute top-3 right-3` | Compact read-only map indicator (`grid-readonly-badge` with `sr-only` text) + board size badge (`grid-size-indicator`) + `⏱️` Wall-Clock Tick Speedometer (`sort` / `conc`+) in Grid/Depot/Switchyard, or `Hide Turtle` (`🐢👁️`) + `Loop` / `Flipbook` (`🕒 Xs`) / `♾️ Live` mode pills in Turtle LOGO ([`envs/turtle_logo.md`](./envs/turtle_logo.md)). |
 | **Bottom-Left Pill** | `absolute bottom-3 left-3` | Compact `turtle-info-pill` (`X:` / `Y:` + heading, plus `$frame` in Flipbook mode) in Turtle LOGO. |
 | **Bottom-Right Controls** | `absolute bottom-3 right-3` | Grid `Trace` + `Fit` buttons (`GridCanvas`), or compact `TurtleToolbarTools` (`+`, `-`, `Fit`, `Center`) in Turtle LOGO. |
-| **Canvas Header Row** | `BeatCanvas` `shrink-0` top bar | Beat step counter + `tool-beat-active-color` swatch + `Loop Mode` (`∞`) toggle + `tool-beat-mute` (`🔊`/`🔇`). |
-| **Bottom Dock (`shrink-0`)** | Flex dock(s) below canvas | LOGO Flipbook Timeline Scrubber + `⏩ Render All` / `🧹 Clear Between Frames` bar (`anim`), `inter` Virtual D-Pad + `🅰️`/`🅱️` action bar, `VariationCardsPanel`, and `CurriculumNextLessonBar` (`⭐ Next →` bar on solved puzzle exercises). |
+| **Canvas Header Row** | `BeatCanvas` `shrink-0` top bar | Beat `🎵 #N` step counter + gated `tool-beat-active-color` swatch (shown only when `SET_LED_COLOR` is in lesson palette; `Black` `8` renders as recessed LED-off + `⊘` erase cue outside core `ColorVisual`) + `Loop Mode` (`∞`) toggle + `tool-beat-mute` (`🔊`/`🔇`), cleanly above canvas and clear of `SimulationTopLeftHud`. Beat's directional `(1,1)` cursor reticle (`beat-cursor-reticle`) renders only when `cursor.visible === true`. |
+| **Bottom Dock (`shrink-0`)** | Flex dock(s) below canvas | LOGO Flipbook Timeline Scrubber + `⏩ Render All` / `🧹 Clear Between Frames` bar (`anim`), `inter` Virtual D-Pad + `🅰️`/`🅱️` action bar, `VariationCardsPanel` (compact white ring `variation-beat-cursor`), and `CurriculumNextLessonBar` (`⭐ Next →` bar on solved puzzle exercises). |
 
 ---
 
-## 4. One Icon = One Meaning (Strict Icon Disambiguation)
+## 4. One Icon = One Meaning (Strict Icon Disambiguation & Icon Preservation)
 
-Never reuse the same arrow or trash glyph for unrelated concepts:
+Never reuse the same arrow, padlock, or trash glyph for unrelated concepts, and preserve existing refined SVG icons across `VisualParamBadges.tsx`, `BlockItem.tsx`, and `*Environment.tsx` by default:
 
 - **`Undo2` (`↶`):** Workspace Undo **only** (`btn-undo`).
 - **`Redo2` (`↪`):** Workspace Redo **only** (`drawer-btn-redo` inside `☰ Menu`).
 - **`SkipBack` (`⏮`):** Simulation Rewind / Reset to Start **only** (`btn-reset`).
 - **`RotateCcw` / `RotateCw`:** Spatial robot/turtle Left & Right turns **only** (`TURN_LEFT` / `TURN_RIGHT`).
-- **`CornerDownLeft` / Closing Brackets:** Structural block closers (`LOOP_END`, and matching bracket glyphs for future `END_IF` / `END_WHILE`)—never `Undo2`.
+- **`CornerDownLeft` / Closing Brackets:** Structural block closers (`LOOP_END`, `END_IF`, `END_WHILE`)—never `Undo2` or `SCRAP_ITEM`.
 - **`Trash2` (`🗑️`):** Single smart workspace Trash control (`btn-trash`)—never twin side-by-side trash buttons.
+- **On-Agent Carry vs. Retiring `🎒`:** Carried items render directly on Robot's upper-right shoulder gripper and Depot's claw jaws (with `carryingItem` sensor showing a mini robotic claw holding an item instead of `🎒`).
+- **Ordered Waypoints & Goals (`1 ⋯▶ 2`, Shuttered `🏁`):** Grid ordered flags use numbered dashed sequence chains `1 ⋯▶ 2` (omitted when `order === 0`), and locked goals use a shuttered `🏁 k/N` barrier instead of `🔒`, reserving padlocks (`🔒`/`🔓`) strictly for `conc` Mutex blocks and wait rings.
 
 ---
 
