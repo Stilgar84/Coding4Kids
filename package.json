@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test": "npm run test:unit && npm run test:e2e"
+    "test": "npm run test:unit && npm run test:e2e",
+    "curriculum:logo": "node scripts/curriculum/render_logo_svg.mjs",
+    "curriculum:verify": "node scripts/curriculum/verify_puzzle_trace.mjs",
+    "curriculum:audit": "node scripts/curriculum/audit_curriculum_docs.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

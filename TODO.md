@@ -1,10 +1,10 @@
 
 
-lesson got really bad
+lock solution with adult code
 
-split curriculum and review bit by bit
+Add script to draw logo for course doc, as well as format used for the course doc (including pseudo code format) to project folder
 
-
+Filed logo shape? How to do that? Separate small module. Mostly for sandbox
 
 
 # bugs

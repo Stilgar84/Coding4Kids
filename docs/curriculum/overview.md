@@ -2,7 +2,7 @@
 
 This curriculum defines the learning roadmap for **Robot Emulator (`robotemu`)**, structured as a **12-module Core Spine** plus **4 Parallel Side Modules (`anim`, `inter`, `conc`, `fp`)** and **6 Optional Mastery Challenge sets**. It takes complete newcomers—starting with **zero prior programming knowledge** and **zero reading required**—from sequential actions to data structures (LIFO stacks, FIFO queues, sparse memory tape), typed variables, sorting/searching algorithms, parameterized functions, recursion/backtracking, interactive event-driven experiences, and multi-worker concurrency with parallel sorting.
 
-For cross-environment language features, pedagogical mechanics, and platform infrastructure, see [Shared Language, Lesson Mechanics & Platform Requirements](../platform_requirements.md). For UI layout rules, see [Kid-Friendly UI Principles & Guidelines](../ui_guidelines.md). For future non-curriculum sandbox concepts, see [Sandbox & Future Evolution Ideas](../sandbox_ideas.md). For simulation-specific specs, see:
+For cross-environment language features, pedagogical mechanics, and platform infrastructure, see [Shared Language, Lesson Mechanics & Platform Requirements](../platform_requirements.md). For UI layout rules, see [Kid-Friendly UI Principles & Guidelines](../ui_guidelines.md). For course-doc structure, canonical pseudocode syntax, and curriculum validation/rendering CLIs, see [Curriculum Authoring, Pseudocode & Tooling Guide](./authoring_guide.md). For future non-curriculum sandbox concepts, see [Sandbox & Future Evolution Ideas](../sandbox_ideas.md). For simulation-specific specs, see:
 - [🤖 Robot Grid](../envs/robot_grid.md)
 - [🐢 Turtle LOGO](../envs/turtle_logo.md)
 - [🎵 Beat & Light Matrix](../envs/beat_light.md)
