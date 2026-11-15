@@ -199,11 +199,18 @@ export interface SwitchyardFailureDetail {
 
 export interface SwitchyardAnimEvent {
   stepId: number;
+  seq?: number;
   type: 'SEND_NEXT' | 'SCRAP_ITEM' | 'SWITCH_LEFT' | 'SWITCH_RIGHT' | 'COLLISION';
   item?: SwitchyardItem;
+  dispatchedItem?: SwitchyardItem;
   targetDock?: DockId;
+  toDock?: DockId;
+  targetSlotIndex?: number;
   junction?: 'A' | 'B';
   direction?: SwitchDirection;
+  switchADir?: SwitchDirection;
+  switchBDir?: SwitchDirection;
+  switchCount?: number;
   switchesTraversed?: Array<'A' | 'B'>;
 }
 
