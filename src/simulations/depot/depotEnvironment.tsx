@@ -12,6 +12,7 @@ import {
   createInitialDepotState,
   evaluateDepotCompletion,
   evaluateDepotSensor,
+  normalizeCrateColor,
   resetDepotState,
 } from './depotPhysics';
 import { DepotCanvas } from './components/DepotCanvas';
@@ -73,7 +74,7 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'depot-grab',
     actionType: 'DEPOT_GRAB',
-    name: 'Grab Top Crate',
+    name: 'Grab Top',
     category: 'action',
     icon: ({ isActive }) => (
       <svg
@@ -96,7 +97,7 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'depot-place',
     actionType: 'DEPOT_PLACE',
-    name: 'Place Crate on Stack',
+    name: 'Place on Stack',
     category: 'action',
     icon: ({ isActive }) => (
       <svg
@@ -119,7 +120,7 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
   {
     id: 'depot-send-out',
     actionType: 'DEPOT_SEND_OUT',
-    name: 'Send Crate Out [OUT]',
+    name: 'Send Out [OUT]',
     category: 'action',
     icon: ({ isActive }) => (
       <svg
@@ -185,7 +186,7 @@ export const DEPOT_SENSORS: SimSensorDef[] = [
 
 export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
   id: 'depot',
-  name: 'Crate Depot',
+  name: 'Depot',
   icon: <span className="text-xl">🏗️</span>,
 
   paletteItems: DEPOT_PALETTE_ITEMS,
@@ -263,7 +264,7 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
           const cIdx =
             typeof params === 'number'
               ? params
-              : DEPOT_CRATE_COLORS[params.toUpperCase() as keyof typeof DEPOT_CRATE_COLORS]?.code ?? 0;
+              : DEPOT_CRATE_COLORS[normalizeCrateColor(params)].code;
           resolvedParams = { colorIdx: cIdx };
         }
       } else if (cleanSensor === 'topColor') {
@@ -272,7 +273,7 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
           const cIdx =
             typeof params === 'number'
               ? params
-              : DEPOT_CRATE_COLORS[params.toUpperCase() as keyof typeof DEPOT_CRATE_COLORS]?.code ?? 0;
+              : DEPOT_CRATE_COLORS[normalizeCrateColor(params)].code;
           resolvedParams = { colorIdx: cIdx };
         }
       } else {

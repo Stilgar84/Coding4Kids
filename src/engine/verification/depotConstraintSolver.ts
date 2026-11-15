@@ -22,7 +22,10 @@ import {
 } from '../placeholderHelpers';
 import { ALL_SCOPES, computeSlotBudget } from '../../utils/curriculumStagePolicy';
 import { depotSimulationEnvironment } from '../../simulations/depot/depotEnvironment';
-import { createInitialDepotState } from '../../simulations/depot/depotPhysics';
+import {
+  createInitialDepotState,
+  getActiveDepotStations,
+} from '../../simulations/depot/depotPhysics';
 import { DEPOT_STATIONS, DepotState, DepotStationId } from '../../simulations/depot/types';
 import type {
   ActivityConstraintReport,
@@ -69,7 +72,10 @@ function countWorkspaceBlocks(ws: WorkspaceState): number {
 }
 
 function canonicalDepotKey(s: DepotState): string {
-  return `${s.workerStation}|${s.heldCrate ?? '_'}|${s.stacks[0].join(',')}|${s.stacks[1].join(',')}|${s.stacks[2].join(',')}|${s.output.join(',')}`;
+  const base = `${s.workerStation}|${s.heldCrate ?? '_'}|${s.stacks[0].join(',')}|${s.stacks[1].join(',')}|${s.stacks[2].join(',')}|${s.output.join(',')}`;
+  if (s.queue.length === 0 && s.scrapCount === 0 && !s.heldDamaged) return base;
+  const qStr = s.queue.map((q) => (q.damaged ? `${q.color}!` : q.color)).join(',');
+  return `${base}|Q:${qStr}|S:${s.scrapCount}|D:${s.heldDamaged ? 1 : 0}`;
 }
 
 function cloneDepotState(s: DepotState): DepotState {
@@ -86,6 +92,9 @@ function cloneDepotState(s: DepotState): DepotState {
       ? [[...s.targetStacks[0]], [...s.targetStacks[1]], [...s.targetStacks[2]]]
       : undefined,
     targetOutput: s.targetOutput ? [...s.targetOutput] : undefined,
+    queue: s.queue.map((item) => ({ ...item })),
+    initialQueue: s.initialQueue.map((item) => ({ ...item })),
+    activeStationsMask: s.activeStationsMask,
   };
 }
 
@@ -282,7 +291,8 @@ function executeDepotWorkspace(
 
 function buildDepotCandidateActions(
   palette: PaletteConfig,
-  rule?: AntiBypassRule
+  rule?: AntiBypassRule,
+  activeStations: readonly DepotStationId[] = DEPOT_STATIONS
 ): {
   actions: DepotCandidateActionSpec[];
   loopsAllowed: boolean;
@@ -302,10 +312,11 @@ function buildDepotCandidateActions(
     hasLoopBlocks && (rule?.maxLoopNestingDepth === undefined || rule.maxLoopNestingDepth > 0);
   const loopCounts = palette.allowRepeatBadges === true ? [2, 3, 4, 5, 6] : [2];
 
+  const candidateStations = activeStations.length > 0 ? activeStations : DEPOT_STATIONS;
   const actions: DepotCandidateActionSpec[] = [];
   for (const actionType of allowedSimTypes) {
     if (actionType === 'DEPOT_MOVE_TO') {
-      for (const station of DEPOT_STATIONS) {
+      for (const station of candidateStations) {
         actions.push({
           idx: actions.length,
           actionType,
@@ -725,6 +736,9 @@ export function checkDepotScaffoldWorkspace(
     });
   }
 
+  const initialDepot = createInitialDepotState(activity.depot);
+  const scaffoldActiveStations = getActiveDepotStations(initialDepot);
+
   const allowedSimBlocks =
     activity.palette.allowedSimBlocks ??
     depotSimulationEnvironment.paletteItems.map((p) => p.actionType);
@@ -738,7 +752,7 @@ export function checkDepotScaffoldWorkspace(
         );
         if (!doesBlockMatchHintCategory(actionType, item?.category, hintCat)) continue;
         if (actionType === 'DEPOT_MOVE_TO') {
-          for (const station of DEPOT_STATIONS) {
+          for (const station of scaffoldActiveStations) {
             list.push({ type: actionType, params: { station } });
           }
         } else {
@@ -758,7 +772,6 @@ export function checkDepotScaffoldWorkspace(
     };
   }
 
-  const initialDepot = createInitialDepotState(activity.depot);
   const cloneWs = (): WorkspaceState => ({
     MAIN: scaffold.MAIN.map((b) => ({ ...b })),
     F1: scaffold.F1.map((b) => ({ ...b })),
@@ -906,10 +919,20 @@ export function verifyDepotActivityRule(
     };
   }
 
-  const initialDepot = createInitialDepotState(variants[0]);
+  const initialVariants = variants.map(createInitialDepotState);
+  const initialDepot = initialVariants[0];
+  const activeStationSet = new Set<DepotStationId>();
+  for (const variantState of initialVariants) {
+    for (const st of getActiveDepotStations(variantState)) {
+      activeStationSet.add(st);
+    }
+  }
+  const activeStations = DEPOT_STATIONS.filter((st) => activeStationSet.has(st));
+
   const { actions, loopsAllowed: baseLoopsAllowed, loopCounts } = buildDepotCandidateActions(
     activity.palette,
-    rule
+    rule,
+    activeStations
   );
 
   const loopsAllowed =

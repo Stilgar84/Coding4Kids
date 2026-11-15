@@ -28,6 +28,20 @@ export type DepotSendGate = 'OUT' | 'SCRAP' | 'ACCEPT' | 'REJECT';
 export const DEPOT_STATIONS: readonly DepotStationId[] = ['STACK_1', 'STACK_2', 'STACK_3', 'QUEUE'];
 export const DEPOT_STACK_STATIONS: readonly DepotStationId[] = ['STACK_1', 'STACK_2', 'STACK_3'];
 
+/** Bitmask constants matching docs/binary_format.md §4.5 + OUT dock visibility bit (0x40). */
+export const DEPOT_STATION_BITS = {
+  STACK_1: 0x01,
+  STACK_2: 0x02,
+  STACK_3: 0x04,
+  QUEUE: 0x08,
+  INPUT: 0x10,
+  PHYSICAL_TAPE: 0x20,
+  OUT: 0x40,
+} as const;
+
+export const DEPOT_DEFAULT_STACK_MASK =
+  DEPOT_STATION_BITS.STACK_1 | DEPOT_STATION_BITS.STACK_2 | DEPOT_STATION_BITS.STACK_3;
+
 export const DEPOT_MAX_STACK_HEIGHT = 6;
 export const DEPOT_MAX_QUEUE_LENGTH = 8;
 
@@ -118,4 +132,6 @@ export interface DepotState {
   initialQueue: DepotQueueItem[];
   /** Cratecount in SCRAP dock (damaged crates sent via DEPOT_SEND_GATE SCRAP). */
   scrapCount: number;
+  /** Bitmask of active/visible stations (DEPOT_STATION_BITS). Inferred when omitted. */
+  activeStationsMask?: number;
 }
