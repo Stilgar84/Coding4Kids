@@ -187,6 +187,15 @@ export function presetIdToName(id: number): BeatPresetName {
 }
 
 /**
+ * Returns true when a hex color represents Beat LED-Off / Erase (`#0f172a` or `#000000`, case-insensitive).
+ */
+export function isBeatLedOffHex(color?: string | null): boolean {
+  if (typeof color !== 'string') return false;
+  const normalized = color.trim().toLowerCase();
+  return normalized === '#0f172a' || normalized === '#000000';
+}
+
+/**
  * Renders an 8x8 pixel icon preset onto a fresh 8x8 LED grid.
  * Uses `colorOverride` when provided (e.g. after SET_LED_COLOR), otherwise the preset's signature color.
  */
@@ -195,7 +204,12 @@ export function createPresetLedGrid(
   colorOverride?: string | null
 ): (string | null)[][] {
   const def = getPresetDef(preset);
-  const fill = colorOverride !== undefined ? colorOverride : def.defaultColor;
+  const fill =
+    colorOverride !== undefined
+      ? !colorOverride || isBeatLedOffHex(colorOverride)
+        ? null
+        : colorOverride
+      : def.defaultColor;
   return Array.from({ length: BEAT_GRID_SIZE }, (_, r) => {
     const rowStr = def.pattern[r] || '........';
     return Array.from({ length: BEAT_GRID_SIZE }, (__, c) =>
@@ -208,7 +222,8 @@ export function countLitLeds(leds: (string | null)[][]): number {
   let count = 0;
   for (let r = 0; r < BEAT_GRID_SIZE; r++) {
     for (let c = 0; c < BEAT_GRID_SIZE; c++) {
-      if (leds?.[r]?.[c]) count++;
+      const cell = leds?.[r]?.[c];
+      if (cell && !isBeatLedOffHex(cell)) count++;
     }
   }
   return count;

@@ -2,12 +2,18 @@ import React, { useSyncExternalStore } from 'react';
 import { Bell, Eraser, Gauge, Grid, Hourglass, Infinity as InfinityIcon, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { Direction, SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
+import { SimulationTopLeftHud } from '../../../components/SimulationTopLeftHud';
+import { resolveActiveCurriculumActivity } from '../../../utils/curriculumStagePolicy';
 import { BEAT_GRID_SIZE, BEAT_LED_PALETTE, BeatCueKind, BeatState } from '../types';
+import { isBeatLedOffHex } from '../presets';
 import { beatSynth } from '../beatSynth';
 
-interface BeatCanvasProps {
+export interface BeatCanvasProps {
   state: BeatState;
   runtimeStatus?: SimulationStatus;
+  runtimeVariables?: Record<string, any> | null;
+  activeBlockId?: string | null;
+  activeScope?: string | null;
 }
 
 interface CueVisualStyle {
@@ -158,14 +164,14 @@ interface BeatLedCellProps {
 
 const BeatLedCell = React.memo<BeatLedCellProps>(
   ({ col, row, ledColor, isCursorHere, cursorDir, isLowQuality }) => {
-    const isLit = Boolean(ledColor);
+    const isLit = Boolean(ledColor) && !isBeatLedOffHex(ledColor);
 
     return (
       <div
         data-testid={`beat-led-${col}-${row}`}
         data-coord={`${col + 1},${row + 1}`}
         data-lit={isLit ? 'true' : 'false'}
-        data-color={ledColor || ''}
+        data-color={isLit && ledColor ? ledColor : ''}
         style={
           isLit && ledColor
             ? isLowQuality
@@ -235,7 +241,10 @@ const BeatLedCell = React.memo<BeatLedCellProps>(
   }
 );
 
-export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
+export const BeatCanvas: React.FC<BeatCanvasProps> = ({
+  state: propState,
+  runtimeVariables: propRuntimeVariables,
+}) => {
   const {
     storeBeatState,
     setBeatMuted,
@@ -244,6 +253,10 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
     isLowQuality,
     isLoopPlayback,
     toggleLoopPlayback,
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    storeRuntimeVariables,
   } = useAppStoreSelector((s) => ({
     storeBeatState: s.beatState,
     setBeatMuted: s.setBeatMuted,
@@ -252,14 +265,29 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
     isLowQuality: isLowQualityActive(s),
     isLoopPlayback: s.isLoopPlayback,
     toggleLoopPlayback: s.toggleLoopPlayback,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    storeRuntimeVariables: s.runtime?.variables,
   }));
 
   const state = propState || storeBeatState;
   const isMuted = Boolean(state.isMuted);
   const activeColor = state.activeColor || '#06b6d4';
+  const isActiveColorOff = isBeatLedOffHex(activeColor);
   const swatchMeta = BEAT_LED_PALETTE.find(
     (s) => s.hex.toLowerCase() === activeColor.toLowerCase()
   );
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const showActiveColorTool =
+    appMode === 'sandbox' ||
+    Boolean(activeActivity?.palette?.allowedSimBlocks?.includes('SET_LED_COLOR'));
+  const resolvedVariables =
+    propRuntimeVariables !== undefined ? propRuntimeVariables : storeRuntimeVariables;
 
   const synthNeedsUnlock = useSyncExternalStore(
     beatSynth.subscribe,
@@ -290,7 +318,10 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
       className="relative flex flex-col w-full h-full bg-slate-950 select-none overflow-hidden"
     >
       {/* Top Status & Accessibility Bar: Beat-Ring Cue Indicator + Active LED Color + Mute / Tap-for-Sound */}
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1 z-10 flex-shrink-0">
+      <div
+        data-testid="beat-canvas-header"
+        className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1 z-10 flex-shrink-0"
+      >
         {/* Visual Percussion & 4-Beat Rhythm Indicator (Color-Blind & Deaf Inclusive) */}
         <div
           data-testid="beat-cue-indicator"
@@ -323,26 +354,55 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
           </div>
 
           <span data-testid="beat-step-counter" className="font-mono text-[11px] opacity-90">
-            #{state.beatIndex}
+            {`🎵 #${state.beatIndex}`}
           </span>
         </div>
 
         {/* Right Controls: Active LED Color Swatch + Autoplay Unlock Pill + Mute Toggle */}
         <div className="flex items-center gap-1.5">
-          <div
-            data-testid="tool-beat-active-color"
-            title={`Active LED Color: ${swatchMeta?.label || activeColor}`}
-            aria-label={`Active LED Color: ${swatchMeta?.label || activeColor}`}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 border border-slate-700"
-          >
-            <span
-              style={{
-                backgroundColor: activeColor,
-                ...(isLowQuality ? {} : { boxShadow: `0 0 8px ${activeColor}99` }),
-              }}
-              className="block w-5 h-5 rounded-md border border-white/60"
-            />
-          </div>
+          {showActiveColorTool && (
+            <div
+              data-testid="tool-beat-active-color"
+              data-led-off={isActiveColorOff ? 'true' : 'false'}
+              title={`Active LED Color: ${swatchMeta?.label || activeColor}${
+                isActiveColorOff ? ' (Off / Erase)' : ''
+              }`}
+              aria-label={`Active LED Color: ${swatchMeta?.label || activeColor}${
+                isActiveColorOff ? ' (Off / Erase)' : ''
+              }`}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 border border-slate-700"
+            >
+              {isActiveColorOff ? (
+                <span
+                  className={`relative flex items-center justify-center w-5 h-5 rounded-md bg-slate-800/85 border border-slate-600/80 ${
+                    isLowQuality ? '' : 'shadow-inner'
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    data-testid="beat-active-color-erase-cue"
+                    className="w-3.5 h-3.5 text-slate-300"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                  >
+                    <circle cx="8" cy="8" r="5.5" />
+                    <line x1="4.1" y1="11.9" x2="11.9" y2="4.1" />
+                  </svg>
+                </span>
+              ) : (
+                <span
+                  style={{
+                    backgroundColor: activeColor,
+                    ...(isLowQuality ? {} : { boxShadow: `0 0 8px ${activeColor}99` }),
+                  }}
+                  className="block w-5 h-5 rounded-md border border-white/60"
+                />
+              )}
+            </div>
+          )}
 
           {synthNeedsUnlock && !isMuted && (
             <button
@@ -392,7 +452,14 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({ state: propState }) => {
       </div>
 
       {/* Main Centered 8x8 RGB LED Matrix Chassis + Synchronized Beat-Ring Pulse */}
-      <div className="flex-1 min-h-0 w-full flex items-center justify-center p-2.5 sm:p-5">
+      <div
+        data-testid="beat-matrix-stage"
+        className="relative flex-1 min-h-0 w-full flex items-center justify-center p-2.5 sm:p-5"
+      >
+        <SimulationTopLeftHud
+          variables={resolvedVariables ?? {}}
+          positionClassName="top-3 left-3"
+        />
         <div
           data-testid="beat-ring"
           data-beat-index={state.beatIndex}
