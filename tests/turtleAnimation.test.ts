@@ -18,7 +18,13 @@ import {
 } from '../src/simulations/turtle/physics';
 import { useAppStore } from '../src/store/useAppStore';
 import { TurtlePose } from '../src/simulations/turtle/types';
-import { TurtleCanvas } from '../src/simulations/turtle/components/TurtleCanvas';
+import {
+  TurtleCanvas,
+  CompletedAirTrail,
+  PenUpMoveSnapshot,
+  getPenUpMoveKey,
+  reconcilePenUpAirTrailState,
+} from '../src/simulations/turtle/components/TurtleCanvas';
 import { TurtleToolbarTools } from '../src/simulations/turtle/components/TurtleToolbarTools';
 
 describe('Constant-Speed Turtle Drawing Animation', () => {
@@ -463,6 +469,110 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
         expect(btnMatch).not.toBeNull();
         expect(btnMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
       }
+    });
+
+    it('emits exactly 1 completed fading air-trail across cloned RAF activeAnimation objects and clears cleanly on reset/rewind', () => {
+      const store = useAppStore.getState();
+      store.addBlock('MAIN', 'PEN_UP');
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { distance: 100 });
+      store.addBlock('MAIN', 'ARC_RIGHT', undefined, undefined, { radius: 60, angle: 90 });
+
+      store.play();
+
+      let snapshot: PenUpMoveSnapshot | null = null;
+      let prevPathsLen = 0;
+      const emittedTrails: CompletedAirTrail[] = [];
+
+      const stepTracker = () => {
+        const current = useAppStore.getState().turtleState;
+        const transition = reconcilePenUpAirTrailState(
+          snapshot,
+          current.activeAnimation ?? null,
+          current,
+          prevPathsLen
+        );
+        snapshot = transition.nextSnapshot;
+        prevPathsLen = current.paths.length;
+        if (transition.emittedTrail) {
+          emittedTrails.push(transition.emittedTrail);
+        }
+        return transition;
+      };
+
+      // Frame 0: FORWARD start
+      stepTracker();
+      const anim0 = useAppStore.getState().turtleState.activeAnimation!;
+      expect(emittedTrails).toHaveLength(0);
+
+      // RAF ticks allocate cloned activeAnimation objects for the same logical move
+      const t0 = anim0.startTime;
+      rafCallbacks.pop()!(t0 + 100); // 20%
+      const anim1 = useAppStore.getState().turtleState.activeAnimation!;
+      expect(anim1).not.toBe(anim0);
+      expect(getPenUpMoveKey(anim1)).toBe(getPenUpMoveKey(anim0));
+      stepTracker();
+      expect(emittedTrails).toHaveLength(0);
+
+      rafCallbacks.pop()!(t0 + 250); // 50%
+      const anim2 = useAppStore.getState().turtleState.activeAnimation!;
+      expect(anim2).not.toBe(anim1);
+      expect(getPenUpMoveKey(anim2)).toBe(getPenUpMoveKey(anim0));
+      stepTracker();
+      expect(emittedTrails).toHaveLength(0);
+
+      // Pause and resume mid-move mutates startTime on a fresh object clone, still same logical move
+      store.pause();
+      store.play();
+      const resumed = useAppStore.getState().turtleState.activeAnimation!;
+      expect(resumed).not.toBe(anim2);
+      rafCallbacks.pop()!(resumed.startTime + 400); // 80%
+      stepTracker();
+      expect(emittedTrails).toHaveLength(0);
+
+      // Move 1 completes and Move 2 (ARC_RIGHT) begins -> emits exactly 1 trail with FULL toPose (0, -100)
+      rafCallbacks.pop()!(resumed.startTime + 500);
+      stepTracker();
+      expect(emittedTrails).toHaveLength(1);
+      expect(emittedTrails[0]).toMatchObject({
+        type: 'LINE',
+        fromX: 0,
+        fromY: 0,
+        toX: 0,
+        toY: -100,
+      });
+
+      // Multi-frame ticks on PEN_UP ARC emit 0 extra trails until ARC completes
+      const arcStartAnim = useAppStore.getState().turtleState.activeAnimation!;
+      expect(arcStartAnim.type).toBe('ARC');
+      rafCallbacks.pop()!(arcStartAnim.startTime + arcStartAnim.duration * 0.4);
+      stepTracker();
+      expect(emittedTrails).toHaveLength(1);
+
+      rafCallbacks.pop()!(arcStartAnim.startTime + arcStartAnim.duration);
+      stepTracker();
+      expect(emittedTrails).toHaveLength(2);
+      expect(emittedTrails[1].type).toBe('ARC');
+      expect(emittedTrails[1].sweepAngle).toBe(90);
+      expect(emittedTrails[1].toX).toBeCloseTo(60);
+      expect(emittedTrails[1].toY).toBeCloseTo(-160);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(0);
+
+      // Reset / rewind on PEN_UP-only run (paths.length === 0) mid-flight clears snapshot & emits 0 trails
+      store.clearWorkspace();
+      store.addBlock('MAIN', 'PEN_UP');
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { distance: 100 });
+      store.play();
+      const midAnim = useAppStore.getState().turtleState.activeAnimation!;
+      rafCallbacks.pop()!(midAnim.startTime + 150); // mid-flight 30%
+      stepTracker();
+      expect(snapshot).not.toBeNull();
+
+      store.reset();
+      const resetTransition = stepTracker();
+      expect(resetTransition.clearExistingTrails).toBe(true);
+      expect(resetTransition.emittedTrail).toBeNull();
+      expect(resetTransition.nextSnapshot).toBeNull();
+      expect(emittedTrails).toHaveLength(2);
     });
   });
 });

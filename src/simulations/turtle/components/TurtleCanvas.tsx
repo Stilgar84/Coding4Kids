@@ -40,8 +40,7 @@ interface FadingAirTrail {
   sweepAngle?: number;
 }
 
-interface PenUpAnimSnapshot {
-  anim: TurtleActiveAnimation;
+export interface CompletedAirTrail {
   type: 'LINE' | 'ARC';
   fromX: number;
   fromY: number;
@@ -50,6 +49,141 @@ interface PenUpAnimSnapshot {
   radius?: number;
   startHeading?: number;
   sweepAngle?: number;
+}
+
+export interface PenUpMoveSnapshot {
+  moveKey: string;
+  type: 'LINE' | 'ARC';
+  penDown: boolean;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  radius?: number;
+  startHeading?: number;
+  sweepAngle?: number;
+  lastProgress: number;
+}
+
+export interface PenUpAirTrailTransition {
+  nextSnapshot: PenUpMoveSnapshot | null;
+  emittedTrail: CompletedAirTrail | null;
+  clearExistingTrails: boolean;
+}
+
+/**
+ * Stable identity key for a logical PEN_UP motion segment so cloned
+ * per-frame `activeAnimation` objects do not emit duplicate trails.
+ */
+export function getPenUpMoveKey(anim: TurtleActiveAnimation): string {
+  return [
+    anim.type,
+    anim.penDown ? '1' : '0',
+    anim.fromPose.x,
+    anim.fromPose.y,
+    anim.fromPose.heading,
+    anim.toPose.x,
+    anim.toPose.y,
+    anim.radius ?? '',
+    anim.sweepAngle ?? '',
+  ].join('|');
+}
+
+function snapshotToCompletedAirTrail(snapshot: PenUpMoveSnapshot): CompletedAirTrail | null {
+  const dist = Math.hypot(snapshot.toX - snapshot.fromX, snapshot.toY - snapshot.fromY);
+  if (dist <= 0.5 && Math.abs(snapshot.sweepAngle ?? 0) <= 0.5) {
+    return null;
+  }
+  return {
+    type: snapshot.type,
+    fromX: snapshot.fromX,
+    fromY: snapshot.fromY,
+    toX: snapshot.toX,
+    toY: snapshot.toY,
+    radius: snapshot.radius,
+    startHeading: snapshot.startHeading,
+    sweepAngle: snapshot.sweepAngle,
+  };
+}
+
+/**
+ * Reconciles `PEN_UP` air-trail tracking across RAF frames, move completion,
+ * and reset/rewind transitions.
+ */
+export function reconcilePenUpAirTrailState(
+  prevSnapshot: PenUpMoveSnapshot | null,
+  activeAnim: TurtleActiveAnimation | null,
+  state: Pick<TurtleState, 'status' | 'paths' | 'penDown' | 'robot'>,
+  prevPathsLen: number
+): PenUpAirTrailTransition {
+  const wasCleared = prevPathsLen > 0 && state.paths.length === 0;
+  const isResetToOrigin =
+    state.status === 'IDLE' &&
+    !activeAnim &&
+    state.paths.length === 0 &&
+    state.penDown === true &&
+    state.robot.x === 0 &&
+    state.robot.y === 0 &&
+    state.robot.heading === 0 &&
+    (prevSnapshot === null ||
+      prevSnapshot.toX !== 0 ||
+      prevSnapshot.toY !== 0 ||
+      prevSnapshot.lastProgress < 0.99);
+
+  if (wasCleared || isResetToOrigin) {
+    return {
+      nextSnapshot: null,
+      emittedTrail: null,
+      clearExistingTrails: true,
+    };
+  }
+
+  const isCurrentPenUpMove =
+    !!activeAnim &&
+    !activeAnim.penDown &&
+    (activeAnim.type === 'LINE' || activeAnim.type === 'ARC');
+
+  if (isCurrentPenUpMove && activeAnim) {
+    const moveKey = getPenUpMoveKey(activeAnim);
+    if (
+      prevSnapshot &&
+      prevSnapshot.moveKey === moveKey &&
+      activeAnim.progress >= prevSnapshot.lastProgress
+    ) {
+      return {
+        nextSnapshot: {
+          ...prevSnapshot,
+          lastProgress: activeAnim.progress,
+        },
+        emittedTrail: null,
+        clearExistingTrails: false,
+      };
+    }
+
+    return {
+      nextSnapshot: {
+        moveKey,
+        type: activeAnim.type as 'LINE' | 'ARC',
+        penDown: activeAnim.penDown,
+        fromX: activeAnim.fromPose.x,
+        fromY: activeAnim.fromPose.y,
+        toX: activeAnim.toPose.x,
+        toY: activeAnim.toPose.y,
+        radius: activeAnim.radius,
+        startHeading: activeAnim.fromPose.heading,
+        sweepAngle: activeAnim.sweepAngle,
+        lastProgress: activeAnim.progress,
+      },
+      emittedTrail: prevSnapshot ? snapshotToCompletedAirTrail(prevSnapshot) : null,
+      clearExistingTrails: false,
+    };
+  }
+
+  return {
+    nextSnapshot: null,
+    emittedTrail: prevSnapshot ? snapshotToCompletedAirTrail(prevSnapshot) : null,
+    clearExistingTrails: false,
+  };
 }
 
 function isWhiteInkColor(color: string): boolean {
@@ -289,7 +423,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
 
   const [fadingAirTrails, setFadingAirTrails] = useState<FadingAirTrail[]>([]);
   const airTrailIdRef = useRef(0);
-  const prevPenUpAnimRef = useRef<PenUpAnimSnapshot | null>(null);
+  const prevPenUpAnimRef = useRef<PenUpMoveSnapshot | null>(null);
   const prevPathsLenRef = useRef(state.paths.length);
   const airTrailTimersRef = useRef<number[]>([]);
 
@@ -302,65 +436,40 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   }, []);
 
   useEffect(() => {
-    const wasCleared = prevPathsLenRef.current > 0 && state.paths.length === 0;
+    const prevPathsLen = prevPathsLenRef.current;
     prevPathsLenRef.current = state.paths.length;
 
-    if (wasCleared) {
-      airTrailTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
-      airTrailTimersRef.current = [];
-      prevPenUpAnimRef.current = null;
-      setFadingAirTrails([]);
+    const transition = reconcilePenUpAirTrailState(
+      prevPenUpAnimRef.current,
+      activeAnim ?? null,
+      state,
+      prevPathsLen
+    );
+    prevPenUpAnimRef.current = transition.nextSnapshot;
+
+    if (transition.clearExistingTrails) {
+      if (airTrailTimersRef.current.length > 0) {
+        airTrailTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+        airTrailTimersRef.current = [];
+      }
+      setFadingAirTrails((prev) => (prev.length > 0 ? [] : prev));
       return;
     }
 
-    const prevSnapshot = prevPenUpAnimRef.current;
-    const isCurrentPenUpMove =
-      !!activeAnim &&
-      !activeAnim.penDown &&
-      (activeAnim.type === 'LINE' || activeAnim.type === 'ARC');
-
-    if (prevSnapshot && (!isCurrentPenUpMove || activeAnim !== prevSnapshot.anim)) {
-      const dist = Math.hypot(
-        prevSnapshot.toX - prevSnapshot.fromX,
-        prevSnapshot.toY - prevSnapshot.fromY
-      );
-      if (dist > 0.5 || Math.abs(prevSnapshot.sweepAngle ?? 0) > 0.5) {
-        const trailId = ++airTrailIdRef.current;
-        const completedTrail: FadingAirTrail = {
-          id: trailId,
-          type: prevSnapshot.type,
-          fromX: prevSnapshot.fromX,
-          fromY: prevSnapshot.fromY,
-          toX: prevSnapshot.toX,
-          toY: prevSnapshot.toY,
-          radius: prevSnapshot.radius,
-          startHeading: prevSnapshot.startHeading,
-          sweepAngle: prevSnapshot.sweepAngle,
-        };
-        setFadingAirTrails((prev) => [...prev, completedTrail]);
-        const timerId = window.setTimeout(() => {
-          setFadingAirTrails((prev) => prev.filter((item) => item.id !== trailId));
-          airTrailTimersRef.current = airTrailTimersRef.current.filter((id) => id !== timerId);
-        }, AIR_TRAIL_FADE_MS);
-        airTrailTimersRef.current.push(timerId);
-      }
-      prevPenUpAnimRef.current = null;
-    }
-
-    if (isCurrentPenUpMove && activeAnim) {
-      prevPenUpAnimRef.current = {
-        anim: activeAnim,
-        type: activeAnim.type as 'LINE' | 'ARC',
-        fromX: activeAnim.fromPose.x,
-        fromY: activeAnim.fromPose.y,
-        toX: activeAnim.currentPose.x,
-        toY: activeAnim.currentPose.y,
-        radius: activeAnim.radius,
-        startHeading: activeAnim.fromPose.heading,
-        sweepAngle: activeAnim.currentSweep,
+    if (transition.emittedTrail) {
+      const trailId = ++airTrailIdRef.current;
+      const completedTrail: FadingAirTrail = {
+        id: trailId,
+        ...transition.emittedTrail,
       };
+      setFadingAirTrails((prev) => [...prev, completedTrail]);
+      const timerId = window.setTimeout(() => {
+        setFadingAirTrails((prev) => prev.filter((item) => item.id !== trailId));
+        airTrailTimersRef.current = airTrailTimersRef.current.filter((id) => id !== timerId);
+      }, AIR_TRAIL_FADE_MS);
+      airTrailTimersRef.current.push(timerId);
     }
-  }, [activeAnim, state.paths.length]);
+  }, [activeAnim, state.paths.length, state.status, state.penDown, state.robot.x, state.robot.y, state.robot.heading]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 600 });
