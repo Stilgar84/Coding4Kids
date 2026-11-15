@@ -11,75 +11,397 @@ import {
   SimulationStatus,
   VariableName,
   BinaryOp,
+  TypedValue,
+  VariableRuntimeValue,
+  isTypedValue,
+  PALETTE_COLORS,
+  PaletteColor,
 } from '../types';
 import { SimulationEnvironment } from './simulation/types';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { ConditionExpr } from '../data/curriculum/types';
 import { evaluateConditionExpr } from './serialization/conditionSerializer';
-import { colorLiteralNameToIdx, isColorLiteralString } from './serialization/types';
+import {
+  TURTLE_COLOR_PALETTE,
+  colorLiteralNameToIdx,
+  isColorLiteralString,
+  isSensorRefString,
+  parseSensorRef,
+} from './serialization/types';
 
 export const MAX_CALL_STACK_DEPTH = 32;
 export const MAX_TOTAL_STEPS = 10000;
 
 export function isSensorToken(val: unknown): val is string {
-  return typeof val === 'string' && /^\$[a-zA-Z][a-zA-Z0-9_]*$/.test(val.trim());
+  return typeof val === 'string' && /^\$[a-zA-Z][a-zA-Z0-9_]*(\[[^\]]+\])?$/.test(val.trim());
+}
+
+export function nextMulberry32(seed: number): { nextVal: number; nextSeed: number } {
+  const s = (Math.trunc(seed) + 0x6d2b79f5) | 0;
+  let t = Math.imul(s ^ (s >>> 15), 1 | s);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  const nextVal = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  return { nextVal, nextSeed: s };
+}
+
+export function mulberry32(seed: number): () => number {
+  let s = Math.trunc(seed);
+  return () => {
+    const res = nextMulberry32(s);
+    s = res.nextSeed;
+    return res.nextVal;
+  };
+}
+
+export interface EvaluateValueContext<TState = any> {
+  simEnv?: SimulationEnvironment<TState>;
+  simState?: TState;
+  sceneInput?: number | string | TypedValue;
+  seed?: number;
+  pointer?: { x: number; y: number; isDown: boolean };
+  onRuntimeError?: (status: SimulationStatus) => void;
+}
+
+export function resolveSimulationSensor<TState>(
+  sensorName: string,
+  simState?: TState,
+  simEnv?: SimulationEnvironment<TState>
+): number | TypedValue | undefined {
+  if (simEnv?.readTypedSensor && simState !== undefined) {
+    try {
+      const typedSensed = simEnv.readTypedSensor(sensorName, simState);
+      if (typedSensed !== undefined) {
+        return typedSensed;
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  if (!simState || typeof simState !== 'object') {
+    return undefined;
+  }
+
+  const st = simState as any;
+  const parsed = parseSensorRef(sensorName);
+  const base = parsed?.base ?? sensorName;
+  const param = parsed?.param;
+
+  const resolveDepotContainer = (stationParam?: string | number): any[] | undefined => {
+    const raw = String(
+      stationParam !== undefined && stationParam !== 'CURRENT' && stationParam !== '0' && stationParam !== 0
+        ? stationParam
+        : typeof st.workerStation === 'string'
+        ? st.workerStation
+        : 'STACK_1'
+    )
+      .trim()
+      .toUpperCase();
+    if (raw === 'QUEUE' || raw === '4') return st.queue;
+    if (raw === 'INPUT' || raw === 'IN' || raw === '5') return st.input;
+    if (raw === 'STACK_2' || raw === '2' || raw === 'STACK 2') return st.stacks?.[1];
+    if (raw === 'STACK_3' || raw === '3' || raw === 'STACK 3') return st.stacks?.[2];
+    return st.stacks?.[0];
+  };
+
+  // Depot typed & indexed sensor reads
+  if (base === '$heldValue') {
+    if (!st.heldItem || st.heldItem.value === undefined) return undefined;
+    return st.heldItem.value;
+  }
+  if (base === '$heldColor') {
+    if (!st.heldItem || !st.heldItem.color) return undefined;
+    return { type: 'color', value: String(st.heldItem.color).toLowerCase() as PaletteColor };
+  }
+  if (base === '$topValue') {
+    const container = resolveDepotContainer(param);
+    if (!container || container.length === 0) return undefined;
+    const rawStation = String(param ?? st.workerStation ?? 'STACK_1').toUpperCase();
+    const isFifo = rawStation === 'QUEUE' || rawStation === '4' || rawStation === 'INPUT' || rawStation === 'IN' || rawStation === '5';
+    const top = isFifo ? container[0] : container[container.length - 1];
+    if (typeof top === 'number') return top;
+    if (top && typeof top === 'object' && top.value !== undefined) return top.value;
+    return undefined;
+  }
+  if (base === '$topColor') {
+    const container = resolveDepotContainer(param);
+    if (!container || container.length === 0) return undefined;
+    const rawStation = String(param ?? st.workerStation ?? 'STACK_1').toUpperCase();
+    const isFifo = rawStation === 'QUEUE' || rawStation === '4' || rawStation === 'INPUT' || rawStation === 'IN' || rawStation === '5';
+    const top = isFifo ? container[0] : container[container.length - 1];
+    if (typeof top === 'string') return { type: 'color', value: top.toLowerCase() as PaletteColor };
+    if (top && typeof top === 'object' && top.color) {
+      return { type: 'color', value: String(top.color).toLowerCase() as PaletteColor };
+    }
+    return undefined;
+  }
+  if (base === '$stationLen') {
+    const container = resolveDepotContainer(param);
+    return (container || []).length;
+  }
+
+  // Switchyard typed & indexed sensor reads
+  if (base === '$itemWeight') {
+    const car = st.queue?.[0];
+    if (!car) return undefined;
+    return car.weight ?? 1;
+  }
+  if (base === '$itemColor') {
+    const car = st.queue?.[0];
+    if (!car || !car.color) return undefined;
+    return { type: 'color', value: String(car.color).toLowerCase() as PaletteColor };
+  }
+  if (base === '$dockCount') {
+    const rawIdx = (param ?? '0').toUpperCase();
+    const idx = rawIdx === 'A' ? 0 : rawIdx === 'B' ? 1 : rawIdx === 'C' ? 2 : Number(rawIdx) || 0;
+    const dock = st.docks?.[idx] ?? st.docks?.find?.((d: any) => d.id === `DOCK_${rawIdx}`);
+    return (dock?.items ?? dock?.received ?? []).length;
+  }
+  if (base === '$dockQuota') {
+    const rawIdx = (param ?? '0').toUpperCase();
+    const idx = rawIdx === 'A' ? 0 : rawIdx === 'B' ? 1 : rawIdx === 'C' ? 2 : Number(rawIdx) || 0;
+    const dock = st.docks?.[idx] ?? st.docks?.find?.((d: any) => d.id === `DOCK_${rawIdx}`);
+    return dock?.quota ?? dock?.spec?.quota ?? st.dockQuotas?.[idx] ?? 0;
+  }
+
+  // Beat sensor reads
+  if (base === '$cursorX') return st.cursor?.x ?? 1;
+  if (base === '$cursorY') return st.cursor?.y ?? 1;
+  if (base === '$beatIndex') return st.beatIndex ?? 0;
+
+  if (simEnv?.readSensor && simState !== undefined) {
+    try {
+      const sensed = simEnv.readSensor(sensorName, simState);
+      if (sensed !== undefined && (typeof sensed !== 'number' || !Number.isNaN(sensed))) {
+        return sensed;
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  // Turtle & Grid fallback sensor reads
+  if (base === '$x') return st.x ?? st.robot?.x ?? 0;
+  if (base === '$y') return st.y ?? st.robot?.y ?? 0;
+  if (base === '$heading') return st.heading ?? 0;
+  if (base === '$tileDial') {
+    const rx = st.robot?.x;
+    const ry = st.robot?.y;
+    if (rx !== undefined && ry !== undefined && Array.isArray(st.dialTiles)) {
+      const dial = st.dialTiles.find((d: any) => d.x === rx && d.y === ry);
+      if (dial) return dial.value ?? dial.val ?? 1;
+    }
+    return 1;
+  }
+
+  return undefined;
+}
+
+export function evaluateTypedValue<TState = any>(
+  val: number | string | undefined | TypedValue,
+  variables: Record<string, VariableRuntimeValue>,
+  defaultValue: number = 0,
+  context?: EvaluateValueContext<TState>
+): { value: VariableRuntimeValue; nextSeed?: number } {
+  if (val === undefined || val === null) return { value: defaultValue };
+  if (isTypedValue(val)) return { value: val };
+  if (typeof val === 'number') return { value: isNaN(val) ? defaultValue : val };
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^[a-z]$/.test(trimmed) || (/^\$[a-z]$/.test(trimmed) && !isSensorRefString(trimmed))) {
+      const varKey = trimmed.startsWith('$') ? trimmed.slice(1) : trimmed;
+      return { value: variables[varKey] ?? 0 };
+    }
+    if (trimmed === '$input') {
+      if (context?.sceneInput !== undefined) {
+        const inp = context.sceneInput;
+        if (isTypedValue(inp)) return { value: inp };
+        if (typeof inp === 'string' && isColorLiteralString(inp)) {
+          const idx = colorLiteralNameToIdx(inp);
+          return { value: { type: 'color', value: PALETTE_COLORS[idx] ?? 'red' } };
+        }
+        const n = typeof inp === 'number' ? inp : Number(inp);
+        return { value: Number.isFinite(n) ? n : defaultValue };
+      }
+      return { value: defaultValue };
+    }
+
+    // Deterministic Mulberry32 PRNG seeded sensors
+    if (
+      trimmed === '$randCoin' ||
+      trimmed === '$randD4' ||
+      trimmed === '$randD6' ||
+      trimmed === '$randD8' ||
+      trimmed === '$randD20' ||
+      trimmed === '$rand01' ||
+      trimmed === '$randomColor'
+    ) {
+      const curSeed = context?.seed ?? 12345;
+      const { nextVal, nextSeed } = nextMulberry32(curSeed);
+      if (trimmed === '$randCoin') return { value: nextVal < 0.5 ? 0 : 1, nextSeed };
+      if (trimmed === '$randD4') return { value: Math.floor(nextVal * 4) + 1, nextSeed };
+      if (trimmed === '$randD6') return { value: Math.floor(nextVal * 6) + 1, nextSeed };
+      if (trimmed === '$randD8') return { value: Math.floor(nextVal * 8) + 1, nextSeed };
+      if (trimmed === '$randD20') return { value: Math.floor(nextVal * 20) + 1, nextSeed };
+      if (trimmed === '$rand01') return { value: nextVal, nextSeed };
+      if (trimmed === '$randomColor') {
+        const colorIdx = Math.floor(nextVal * 10);
+        return { value: { type: 'color', value: PALETTE_COLORS[colorIdx] ?? 'red' }, nextSeed };
+      }
+    }
+
+    if (trimmed === '$pointerX') return { value: context?.pointer?.x ?? 0 };
+    if (trimmed === '$pointerY') return { value: context?.pointer?.y ?? 0 };
+    if (trimmed === '$pointerDown') return { value: context?.pointer?.isDown ? 1 : 0 };
+
+    if (isSensorRefString(trimmed) || isSensorToken(trimmed)) {
+      const sensed = resolveSimulationSensor(trimmed, context?.simState, context?.simEnv);
+      if (sensed === undefined) {
+        context?.onRuntimeError?.('TYPE_ERROR');
+        return { value: defaultValue };
+      }
+      return { value: sensed };
+    }
+
+    if (isColorLiteralString(trimmed)) {
+      const idx = colorLiteralNameToIdx(trimmed);
+      return { value: { type: 'color', value: PALETTE_COLORS[idx] ?? 'red' } };
+    }
+
+    const num = Number(trimmed);
+    return { value: isNaN(num) ? defaultValue : num };
+  }
+  return { value: defaultValue };
 }
 
 export function evaluateValue<TState = any>(
-  val: number | string | undefined,
-  variables: Record<string, number>,
+  val: number | string | undefined | TypedValue,
+  variables: Record<string, VariableRuntimeValue>,
   defaultValue: number = 0,
   simEnv?: SimulationEnvironment<TState>,
   simState?: TState,
-  sceneInput?: number | string
+  sceneInput?: number | string | TypedValue,
+  onRuntimeError?: (status: SimulationStatus) => void,
+  context?: Partial<EvaluateValueContext<TState>>
 ): number {
-  if (val === undefined || val === null) return defaultValue;
-  if (typeof val === 'number') return isNaN(val) ? defaultValue : val;
-  if (typeof val === 'string') {
-    const trimmed = val.trim();
-    if (/^[a-z]$/.test(trimmed)) {
-      return variables[trimmed] ?? 0;
+  const res = evaluateTypedValue(val, variables, defaultValue, {
+    simEnv,
+    simState,
+    sceneInput,
+    onRuntimeError,
+    ...context,
+  });
+  if (isTypedValue(res.value)) {
+    if (res.value.type === 'color') {
+      onRuntimeError?.('TYPE_ERROR');
+      return defaultValue;
     }
-    if (trimmed === '$input' && sceneInput !== undefined) {
-      if (typeof sceneInput === 'string' && isColorLiteralString(sceneInput)) {
-        return colorLiteralNameToIdx(sceneInput);
-      }
-      const n = typeof sceneInput === 'number' ? sceneInput : Number(sceneInput);
-      return Number.isFinite(n) ? n : defaultValue;
-    }
-    if (isSensorToken(trimmed) && simEnv?.readSensor && simState !== undefined) {
-      const sensed = simEnv.readSensor(trimmed, simState);
-      return Number.isFinite(sensed) ? sensed : defaultValue;
-    }
-    if (isColorLiteralString(trimmed)) {
-      return colorLiteralNameToIdx(trimmed);
-    }
-    const num = Number(trimmed);
-    return isNaN(num) ? defaultValue : num;
+    return res.value.value;
   }
-  return defaultValue;
+  return typeof res.value === 'number' ? res.value : defaultValue;
 }
 
-export function evaluateBinaryOp(b: number, op: BinaryOp | string, c: number): number {
+export function evaluateBinaryOp(
+  b: number | TypedValue,
+  op: BinaryOp | string,
+  c: number | TypedValue,
+  onRuntimeError?: (status: SimulationStatus) => void
+): number | TypedValue {
+  const isBColor = isTypedValue(b) && b.type === 'color';
+  const isCColor = isTypedValue(c) && c.type === 'color';
+
+  if (isBColor || isCColor) {
+    if (op === '==' || op === '=') {
+      if (isBColor && isCColor) {
+        return colorLiteralNameToIdx(String((b as TypedValue).value)) ===
+          colorLiteralNameToIdx(String((c as TypedValue).value))
+          ? 1
+          : 0;
+      }
+      onRuntimeError?.('TYPE_ERROR');
+      return 0;
+    }
+    if (op === '!=') {
+      if (isBColor && isCColor) {
+        return colorLiteralNameToIdx(String((b as TypedValue).value)) !==
+          colorLiteralNameToIdx(String((c as TypedValue).value))
+          ? 1
+          : 0;
+      }
+      onRuntimeError?.('TYPE_ERROR');
+      return 1;
+    }
+    onRuntimeError?.('TYPE_ERROR');
+    return 0;
+  }
+
+  const numB: number = isTypedValue(b)
+    ? (typeof b.value === 'number' ? b.value : Number(b.value))
+    : typeof b === 'number'
+    ? b
+    : Number(b);
+  const numC: number = isTypedValue(c)
+    ? (typeof c.value === 'number' ? c.value : Number(c.value))
+    : typeof c === 'number'
+    ? c
+    : Number(c);
+
   switch (op) {
-    case '+': return b + c;
-    case '-': return b - c;
-    case '*': return b * c;
-    case '/': return c === 0 ? 0 : b / c; // Safe divide by zero
-    case '%': return c === 0 ? 0 : b % c;
-    case '==': return b === c ? 1 : 0;
-    case '!=': return b !== c ? 1 : 0;
-    case '<': return b < c ? 1 : 0;
-    case '<=': return b <= c ? 1 : 0;
-    case '>': return b > c ? 1 : 0;
-    case '>=': return b >= c ? 1 : 0;
-    case '&&': return (b !== 0 && c !== 0) ? 1 : 0;
-    case '||': return (b !== 0 || c !== 0) ? 1 : 0;
+    case '+': return numB + numC;
+    case '-': return numB - numC;
+    case '*': return numB * numC;
+    case '/': {
+      if (numC === 0) {
+        onRuntimeError?.('MATH_ERROR');
+        return 0;
+      }
+      return numB / numC;
+    }
+    case '%': {
+      if (numC === 0) {
+        onRuntimeError?.('MATH_ERROR');
+        return 0;
+      }
+      return Math.trunc(numB) % Math.trunc(numC);
+    }
+    case '=':
+    case '==': return numB === numC ? 1 : 0;
+    case '!=': return numB !== numC ? 1 : 0;
+    case '<': return numB < numC ? 1 : 0;
+    case '<=': return numB <= numC ? 1 : 0;
+    case '>': return numB > numC ? 1 : 0;
+    case '>=': return numB >= numC ? 1 : 0;
+    case '&&': return (numB !== 0 && numC !== 0) ? 1 : 0;
+    case '||': return (numB !== 0 || numC !== 0) ? 1 : 0;
     default: return 0;
   }
 }
 
-export function createInitialInterpreterState(): InterpreterRuntimeState {
+export function normalizeInitialVariables(
+  initialVars?: Record<string, number | TypedValue | { type: string; value: any }>
+): Record<VariableName, VariableRuntimeValue> {
+  const vars: Record<string, VariableRuntimeValue> = {};
+  if (!initialVars) return vars as Record<VariableName, VariableRuntimeValue>;
+  for (const [k, raw] of Object.entries(initialVars)) {
+    if (typeof raw === 'number') {
+      vars[k] = raw;
+    } else if (raw && typeof raw === 'object') {
+      if (raw.type === 'color' && typeof raw.value === 'string') {
+        vars[k] = { type: 'color', value: raw.value as PaletteColor };
+      } else if (raw.type === 'number') {
+        vars[k] = typeof raw.value === 'number' ? raw.value : Number(raw.value) || 0;
+      } else {
+        vars[k] = raw as VariableRuntimeValue;
+      }
+    }
+  }
+  return vars as Record<VariableName, VariableRuntimeValue>;
+}
+
+export function createInitialInterpreterState(
+  randomSeed?: number,
+  initialVars?: Record<string, number | TypedValue | { type: string; value: any }>
+): InterpreterRuntimeState {
   return {
     callStack: [{ scope: 'MAIN', pc: 0, subTickLeft: 0 }],
     loopStack: [],
@@ -90,8 +412,19 @@ export function createInitialInterpreterState(): InterpreterRuntimeState {
     status: 'RUNNING',
     stepCount: 0,
     activeRepeatProgress: null,
-    variables: {} as Record<VariableName, number>,
+    variables: normalizeInitialVariables(initialVars),
+    randomSeed,
+    eventQueue: [],
   };
+}
+
+export function enqueueInterpreterEvent(
+  runtime: InterpreterRuntimeState,
+  eventScope: ScopeType
+): InterpreterRuntimeState {
+  const q = runtime.eventQueue ? [...runtime.eventQueue] : [];
+  q.push(eventScope);
+  return { ...runtime, eventQueue: q };
 }
 
 export interface TickResult<TState = any> {
@@ -104,7 +437,17 @@ export interface InterpreterTickOptions {
   /** Whether direct or indirect recursive calls (`F1->F1` or `F1->F2->F1`) are permitted at runtime. Defaults to true. */
   allowRecursion?: boolean;
   /** Active `$input` scene-selector value (`1..N` int or color string `'red'` / `'color:red'`). */
-  sceneInput?: number | string;
+  sceneInput?: number | string | TypedValue;
+  /** Seed for Mulberry32 deterministic PRNG. */
+  seed?: number;
+  /** Optional initial variable bindings. */
+  initialVars?: Record<string, number | TypedValue | { type: string; value: any }>;
+  /** Virtual pointer state for $pointerX, $pointerY, $pointerDown. */
+  pointer?: { x: number; y: number; isDown: boolean };
+  /** Held keys for 0x2E keyHeld sensor. */
+  heldKeys?: ReadonlySet<string | number> | readonly (string | number)[];
+  /** Key held predicate. */
+  isKeyHeld?: (key: string | number) => boolean;
 }
 
 const CALL_TYPE_TO_SCOPE: Record<string, ScopeType> = {
@@ -346,8 +689,12 @@ export function findIfStructure(blocks: CodeBlock[], ifIdx: number): IfStructure
 }
 
 export interface BlockConditionContext {
-  variables?: Record<string, number>;
-  sceneInput?: number | string;
+  variables?: Record<string, VariableRuntimeValue>;
+  sceneInput?: number | string | TypedValue;
+  heldKeys?: ReadonlySet<string | number> | readonly (string | number)[];
+  isKeyHeld?: (key: string | number) => boolean;
+  onRuntimeError?: (status: SimulationStatus) => void;
+  readValueSensor?: (sensor: string, state: any) => number | string | TypedValue | undefined;
 }
 
 /**
@@ -375,9 +722,9 @@ export function evaluateBlockCondition<TState = any>(
     return false;
   };
 
-  const readValueSensor = simEnv?.readSensor
-    ? (sensor: string, state: TState) => simEnv.readSensor!(sensor, state)
-    : undefined;
+  const readValueSensor = context?.readValueSensor
+    ? context.readValueSensor
+    : (sensor: string, state: TState) => resolveSimulationSensor(sensor, state, simEnv);
 
   const cond = block.params?.condition as ConditionExpr | undefined;
   if (cond && typeof cond === 'object') {
@@ -385,6 +732,9 @@ export function evaluateBlockCondition<TState = any>(
       variables: context?.variables,
       sceneInput: context?.sceneInput,
       readValueSensor,
+      heldKeys: context?.heldKeys,
+      isKeyHeld: context?.isKeyHeld,
+      onRuntimeError: context?.onRuntimeError,
     });
   }
 
@@ -406,17 +756,26 @@ export function tickInterpreter<TState = GridState>(
   options?: InterpreterTickOptions
 ): TickResult<TState> {
   // If already stopped, do nothing
-  if (runtime.status === 'SUCCESS' || runtime.status === 'COLLISION' || runtime.status === 'STEP_LIMIT') {
+  if (
+    runtime.status === 'SUCCESS' ||
+    runtime.status === 'COLLISION' ||
+    runtime.status === 'STEP_LIMIT' ||
+    runtime.status === 'TYPE_ERROR' ||
+    runtime.status === 'MATH_ERROR' ||
+    runtime.status === 'STACK_OVERFLOW' ||
+    runtime.status === 'DEADLOCK'
+  ) {
     return { nextRuntime: runtime, nextGrid: simState, done: true };
   }
 
   // Safety guard against infinite loops
   if (runtime.stepCount >= MAX_TOTAL_STEPS) {
-    const nextSimState = (simState && typeof simState === 'object')
-      ? { ...simState, status: 'COLLISION' }
-      : simState;
+    const nextSimState =
+      simState && typeof simState === 'object'
+        ? { ...simState, status: 'STEP_LIMIT' as SimulationStatus }
+        : simState;
     return {
-      nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId: null },
+      nextRuntime: { ...runtime, status: 'STEP_LIMIT', activeBlockId: null },
       nextGrid: nextSimState,
       done: true,
     };
@@ -437,15 +796,40 @@ export function tickInterpreter<TState = GridState>(
     callStack.pop();
   }
 
-  // If call stack is empty, program has completed
+  // If call stack is empty, check event queue before finishing
+  let activeEventQueue = runtime.eventQueue;
   if (callStack.length === 0) {
+    if (activeEventQueue && activeEventQueue.length > 0) {
+      const nextQueue = [...activeEventQueue];
+      while (nextQueue.length > 0) {
+        const nextEventScope = nextQueue.shift()!;
+        const eventBlocks = workspace[nextEventScope] || [];
+        if (eventBlocks.length > 0) {
+          callStack.push({ scope: nextEventScope, pc: 0, subTickLeft: 0 });
+          return {
+            nextRuntime: {
+              ...runtime,
+              callStack,
+              eventQueue: nextQueue,
+              activeScope: nextEventScope,
+              status: 'RUNNING',
+            },
+            nextGrid: simState,
+            done: false,
+          };
+        }
+      }
+      activeEventQueue = nextQueue;
+    }
+
     const finalStatus = simEnv.evaluateCompletion
       ? simEnv.evaluateCompletion(simState)
       : 'IDLE';
 
-    const nextSimState = (simState && typeof simState === 'object')
-      ? { ...simState, status: finalStatus }
-      : simState;
+    const nextSimState =
+      simState && typeof simState === 'object'
+        ? { ...simState, status: finalStatus }
+        : simState;
 
     return {
       nextRuntime: {
@@ -456,6 +840,7 @@ export function tickInterpreter<TState = GridState>(
         condStack: [],
         activeBlockId: null,
         status: finalStatus,
+        eventQueue: activeEventQueue,
       },
       nextGrid: nextSimState,
       done: true,
@@ -468,7 +853,13 @@ export function tickInterpreter<TState = GridState>(
 
   if (!currentBlock) {
     callStack.pop();
-    return tickInterpreter({ ...runtime, callStack, loopStack, whileStack, condStack }, workspace, simState, simEnv, options);
+    return tickInterpreter(
+      { ...runtime, callStack, loopStack, whileStack, condStack },
+      workspace,
+      simState,
+      simEnv,
+      options
+    );
   }
 
   const blockType = currentBlock.type;
@@ -536,11 +927,18 @@ export function tickInterpreter<TState = GridState>(
 
     // Check stack overflow
     if (callStack.length >= MAX_CALL_STACK_DEPTH) {
-      const nextSimState = (simState && typeof simState === 'object')
-        ? { ...simState, status: 'COLLISION' }
-        : simState;
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: 'STACK_OVERFLOW' as SimulationStatus }
+          : simState;
       return {
-        nextRuntime: { ...runtime, status: 'COLLISION', activeBlockId, whileStack, condStack },
+        nextRuntime: {
+          ...runtime,
+          status: 'STACK_OVERFLOW',
+          activeBlockId,
+          whileStack,
+          condStack,
+        },
         nextGrid: nextSimState,
         done: true,
       };
@@ -567,22 +965,46 @@ export function tickInterpreter<TState = GridState>(
     };
   }
 
-  const activeSceneInput = options?.sceneInput !== undefined ? options.sceneInput : runtime.sceneInput;
+  const activeSceneInput =
+    options?.sceneInput !== undefined ? options.sceneInput : runtime.sceneInput;
+
+  let runtimeErrorStatus: SimulationStatus | null = null;
+  const onRuntimeError = (status: SimulationStatus) => {
+    runtimeErrorStatus = status;
+  };
+
+  const evalContext: EvaluateValueContext<TState> = {
+    simEnv,
+    simState,
+    sceneInput: activeSceneInput,
+    seed: runtime.randomSeed !== undefined ? runtime.randomSeed : (options?.seed ?? 12345),
+    pointer: options?.pointer ?? runtime.pointer,
+    onRuntimeError,
+  };
 
   // Handle Variable Assignment: a = b
   if (blockType === 'VAR_ASSIGN') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
-    const bVal = evaluateValue(
+    const bRes = evaluateTypedValue(
       currentBlock.params?.b,
       runtime.variables,
       0,
-      simEnv,
-      simState,
-      activeSceneInput
+      evalContext
     );
-    const nextVariables: Record<VariableName, number> = {
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+    const nextVariables: Record<VariableName, VariableRuntimeValue> = {
       ...runtime.variables,
-      [a]: bVal,
+      [a]: bRes.value,
     };
     currentFrame.pc++;
     callStack[callStack.length - 1] = currentFrame;
@@ -600,6 +1022,7 @@ export function tickInterpreter<TState = GridState>(
         variables: nextVariables,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: bRes.nextSeed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -610,24 +1033,43 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'VAR_OP') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
     const op = (currentBlock.params?.op || '+') as BinaryOp;
-    const bVal = evaluateValue(
+    const bRes = evaluateTypedValue(
       currentBlock.params?.b,
       runtime.variables,
       0,
-      simEnv,
-      simState,
-      activeSceneInput
+      evalContext
     );
-    const cVal = evaluateValue(
+    if (bRes.nextSeed !== undefined) evalContext.seed = bRes.nextSeed;
+    const cRes = evaluateTypedValue(
       currentBlock.params?.c,
       runtime.variables,
       0,
-      simEnv,
-      simState,
-      activeSceneInput
+      evalContext
     );
-    const result = evaluateBinaryOp(bVal, op, cVal);
-    const nextVariables: Record<VariableName, number> = {
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+    const result = evaluateBinaryOp(bRes.value, op, cRes.value, onRuntimeError);
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+    const nextVariables: Record<VariableName, VariableRuntimeValue> = {
       ...runtime.variables,
       [a]: result,
     };
@@ -647,6 +1089,7 @@ export function tickInterpreter<TState = GridState>(
         variables: nextVariables,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: cRes.nextSeed ?? bRes.nextSeed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -680,7 +1123,29 @@ export function tickInterpreter<TState = GridState>(
     const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
       variables: runtime.variables,
       sceneInput: activeSceneInput,
+      heldKeys: options?.heldKeys,
+      isKeyHeld: options?.isKeyHeld,
+      onRuntimeError,
+      readValueSensor: (sensorName, _st) => {
+        const r = evaluateTypedValue(sensorName, runtime.variables, 0, evalContext);
+        if (r.nextSeed !== undefined) evalContext.seed = r.nextSeed;
+        if (runtimeErrorStatus) return undefined;
+        return r.value;
+      },
     });
+
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+
     if (condTrue) {
       condStack.push({
         scope: currentFrame.scope,
@@ -696,9 +1161,10 @@ export function tickInterpreter<TState = GridState>(
         endIfPc: ifStruct.endIfPc,
         branchTaken: false,
       });
-      const nextTarget = ifStruct.elseIfPcs.length > 0
-        ? ifStruct.elseIfPcs[0]
-        : (ifStruct.elsePc ?? ifStruct.endIfPc);
+      const nextTarget =
+        ifStruct.elseIfPcs.length > 0
+          ? ifStruct.elseIfPcs[0]
+          : ifStruct.elsePc ?? ifStruct.endIfPc;
       currentFrame.pc = nextTarget;
     }
 
@@ -715,6 +1181,7 @@ export function tickInterpreter<TState = GridState>(
         activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: evalContext.seed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -733,16 +1200,39 @@ export function tickInterpreter<TState = GridState>(
         const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
           variables: runtime.variables,
           sceneInput: activeSceneInput,
+          heldKeys: options?.heldKeys,
+          isKeyHeld: options?.isKeyHeld,
+          onRuntimeError,
+          readValueSensor: (sensorName, _st) => {
+            const r = evaluateTypedValue(sensorName, runtime.variables, 0, evalContext);
+            if (r.nextSeed !== undefined) evalContext.seed = r.nextSeed;
+            if (runtimeErrorStatus) return undefined;
+            return r.value;
+          },
         });
+
+        if (runtimeErrorStatus) {
+          const nextSimState =
+            simState && typeof simState === 'object'
+              ? { ...simState, status: runtimeErrorStatus }
+              : simState;
+          return {
+            nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+            nextGrid: nextSimState,
+            done: true,
+          };
+        }
+
         if (condTrue) {
           topCond.branchTaken = true;
           currentFrame.pc++;
         } else {
           const ifStruct = findIfStructure(scopeBlocks, topCond.ifPc);
           const k = ifStruct.elseIfPcs.indexOf(currentFrame.pc);
-          const nextTarget = (k >= 0 && k + 1 < ifStruct.elseIfPcs.length)
-            ? ifStruct.elseIfPcs[k + 1]
-            : (ifStruct.elsePc ?? ifStruct.endIfPc);
+          const nextTarget =
+            k >= 0 && k + 1 < ifStruct.elseIfPcs.length
+              ? ifStruct.elseIfPcs[k + 1]
+              : ifStruct.elsePc ?? ifStruct.endIfPc;
           currentFrame.pc = nextTarget;
         }
       }
@@ -763,6 +1253,7 @@ export function tickInterpreter<TState = GridState>(
         activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: evalContext.seed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -858,14 +1349,42 @@ export function tickInterpreter<TState = GridState>(
     const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
       variables: runtime.variables,
       sceneInput: activeSceneInput,
+      heldKeys: options?.heldKeys,
+      isKeyHeld: options?.isKeyHeld,
+      onRuntimeError,
+      readValueSensor: (sensorName, _st) => {
+        const r = evaluateTypedValue(sensorName, runtime.variables, 0, evalContext);
+        if (r.nextSeed !== undefined) evalContext.seed = r.nextSeed;
+        if (runtimeErrorStatus) return undefined;
+        return r.value;
+      },
     });
+
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+
     if (!condTrue) {
-      if (whileStack.length > 0 && whileStack[whileStack.length - 1].whileStartPc === currentFrame.pc) {
+      if (
+        whileStack.length > 0 &&
+        whileStack[whileStack.length - 1].whileStartPc === currentFrame.pc
+      ) {
         whileStack.pop();
       }
       currentFrame.pc = matchingEnd + 1;
     } else {
-      if (whileStack.length === 0 || whileStack[whileStack.length - 1].whileStartPc !== currentFrame.pc) {
+      if (
+        whileStack.length === 0 ||
+        whileStack[whileStack.length - 1].whileStartPc !== currentFrame.pc
+      ) {
         whileStack.push({
           scope: currentFrame.scope,
           whileStartPc: currentFrame.pc,
@@ -888,6 +1407,7 @@ export function tickInterpreter<TState = GridState>(
         activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: evalContext.seed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -925,17 +1445,42 @@ export function tickInterpreter<TState = GridState>(
   // Handle LOOP_START
   if (blockType === 'LOOP_START') {
     const matchingEnd = findMatchingLoopEnd(scopeBlocks, currentFrame.pc);
-    const rawCount = currentBlock.repeatCount !== undefined
-      ? evaluateValue(
+    const countValRes = currentBlock.repeatCount !== undefined
+      ? evaluateTypedValue(
           currentBlock.repeatCount,
           runtime.variables,
           2,
-          simEnv,
-          simState,
-          activeSceneInput
+          evalContext
         )
-      : 2;
-    const loopCount = Math.round(rawCount);
+      : { value: 2 };
+    if (countValRes.nextSeed !== undefined) evalContext.seed = countValRes.nextSeed;
+
+    if (runtimeErrorStatus) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: runtimeErrorStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+
+    if (isTypedValue(countValRes.value) && countValRes.value.type === 'color') {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: 'TYPE_ERROR' as SimulationStatus }
+          : simState;
+      return {
+        nextRuntime: { ...runtime, status: 'TYPE_ERROR', activeBlockId },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
+
+    const rawCount = isTypedValue(countValRes.value) ? countValRes.value.value : countValRes.value;
+    const loopCount = Math.round(typeof rawCount === 'number' ? rawCount : Number(rawCount));
 
     if (loopCount <= 0) {
       // Conditional skip: Jump directly past the matching LOOP_END block!
@@ -957,6 +1502,7 @@ export function tickInterpreter<TState = GridState>(
           activeScope,
           stepCount: runtime.stepCount + 1,
           activeRepeatProgress: null,
+          randomSeed: evalContext.seed ?? runtime.randomSeed,
         },
         nextGrid: simState,
         done: false,
@@ -991,6 +1537,7 @@ export function tickInterpreter<TState = GridState>(
         activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: evalContext.seed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -1034,17 +1581,42 @@ export function tickInterpreter<TState = GridState>(
   }
 
   // Handle Domain Action blocks (e.g. MOVE_FWD, TURN_LEFT, SET_PEN_COLOR, etc.)
-  const rawRepeats = currentBlock.repeatCount !== undefined
-    ? evaluateValue(
+  const repValRes = currentBlock.repeatCount !== undefined
+    ? evaluateTypedValue(
         currentBlock.repeatCount,
         runtime.variables,
         1,
-        simEnv,
-        simState,
-        activeSceneInput
+        evalContext
       )
-    : 1;
-  const totalRepeats = Math.round(rawRepeats);
+    : { value: 1 };
+  if (repValRes.nextSeed !== undefined) evalContext.seed = repValRes.nextSeed;
+
+  if (runtimeErrorStatus) {
+    const nextSimState =
+      simState && typeof simState === 'object'
+        ? { ...simState, status: runtimeErrorStatus }
+        : simState;
+    return {
+      nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+      nextGrid: nextSimState,
+      done: true,
+    };
+  }
+
+  if (isTypedValue(repValRes.value) && repValRes.value.type === 'color') {
+    const nextSimState =
+      simState && typeof simState === 'object'
+        ? { ...simState, status: 'TYPE_ERROR' as SimulationStatus }
+        : simState;
+    return {
+      nextRuntime: { ...runtime, status: 'TYPE_ERROR', activeBlockId },
+      nextGrid: nextSimState,
+      done: true,
+    };
+  }
+
+  const rawRepeats = isTypedValue(repValRes.value) ? repValRes.value.value : repValRes.value;
+  const totalRepeats = Math.round(typeof rawRepeats === 'number' ? rawRepeats : Number(rawRepeats));
 
   if (totalRepeats <= 0) {
     // 0-repeat skip: Do not execute simulation action, advance directly to next block
@@ -1063,6 +1635,7 @@ export function tickInterpreter<TState = GridState>(
         activeScope,
         stepCount: runtime.stepCount + 1,
         activeRepeatProgress: null,
+        randomSeed: evalContext.seed ?? runtime.randomSeed,
       },
       nextGrid: simState,
       done: false,
@@ -1080,8 +1653,33 @@ export function tickInterpreter<TState = GridState>(
   const resolvedParams: Record<string, any> = {};
   if (currentBlock.params) {
     for (const [k, v] of Object.entries(currentBlock.params)) {
-      if (typeof v === 'string' && (/^[a-z]$/.test(v.trim()) || isSensorToken(v))) {
-        resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, simState, activeSceneInput);
+      if (
+        typeof v === 'string' &&
+        (/^[a-z]$/.test(v.trim()) || isSensorRefString(v) || isSensorToken(v) || isColorLiteralString(v))
+      ) {
+        const pRes = evaluateTypedValue(v, runtime.variables, 0, evalContext);
+        if (pRes.nextSeed !== undefined) evalContext.seed = pRes.nextSeed;
+        if (runtimeErrorStatus) {
+          const nextSimState =
+            simState && typeof simState === 'object'
+              ? { ...simState, status: runtimeErrorStatus }
+              : simState;
+          return {
+            nextRuntime: { ...runtime, status: runtimeErrorStatus, activeBlockId },
+            nextGrid: nextSimState,
+            done: true,
+          };
+        }
+        if (isTypedValue(pRes.value)) {
+          if (pRes.value.type === 'color' && k === 'color') {
+            const cIdx = colorLiteralNameToIdx(pRes.value.value);
+            resolvedParams[k] = cIdx >= 0 ? TURTLE_COLOR_PALETTE[cIdx] : pRes.value.value;
+          } else {
+            resolvedParams[k] = pRes.value.value;
+          }
+        } else {
+          resolvedParams[k] = pRes.value;
+        }
       } else {
         resolvedParams[k] = v;
       }
@@ -1169,6 +1767,7 @@ export function tickInterpreter<TState = GridState>(
       status: actionRes.status,
       stepCount: runtime.stepCount + 1,
       activeRepeatProgress,
+      randomSeed: evalContext.seed ?? runtime.randomSeed,
     },
     nextGrid: actionRes.nextState,
     done: isDone,

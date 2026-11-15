@@ -199,8 +199,36 @@ export interface StagedPalettePolicy {
   allowedCombinators?: ('NOT' | 'AND' | 'OR')[];
   allowedValueSensors?: string[];
   allowedVarOps?: BinaryOp[];
+  allowedCmpOps?: import('../data/curriculum/types').ConditionCompareOp[];
+  allowInteractiveEvents?: boolean;
   allowedDepotStations?: ReadonlySet<string>;
   allowedDepotGates?: ReadonlySet<string>;
+}
+
+export const CURRICULUM_SIDE_TRACK_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
+  inter: ['cmp'],
+  anim: ['inter'],
+};
+
+export function getModulePrerequisites(moduleId: string): readonly string[] {
+  return CURRICULUM_SIDE_TRACK_PREREQUISITES[moduleId] ?? [];
+}
+
+export function isModuleDagUnlocked(
+  moduleId: string,
+  completedModules: ReadonlySet<string> | readonly string[],
+  unlockedModules: readonly string[] = [],
+  unlockAllModules?: boolean
+): boolean {
+  if (unlockAllModules) return true;
+  if (unlockedModules.includes(moduleId)) return true;
+  const prereqs = getModulePrerequisites(moduleId);
+  if (prereqs.length === 0) return false;
+  return prereqs.every((req) =>
+    Array.isArray(completedModules)
+      ? completedModules.includes(req)
+      : (completedModules as ReadonlySet<string>).has(req)
+  );
 }
 
 /**
@@ -262,6 +290,8 @@ export function computeStagedPalettePolicy(
       allowedCombinators: undefined,
       allowedValueSensors: undefined,
       allowedVarOps: undefined,
+      allowedCmpOps: undefined,
+      allowInteractiveEvents: true,
       allowedDepotStations: undefined,
       allowedDepotGates: undefined,
     };
@@ -364,6 +394,10 @@ export function computeStagedPalettePolicy(
     allowedCombinators: palette.allowedCombinators,
     allowedValueSensors: palette.allowedValueSensors,
     allowedVarOps: (palette.allowedVarOps as BinaryOp[]) ?? ['+', '-'],
+    allowedCmpOps: palette.allowedCmpOps,
+    allowInteractiveEvents:
+      Boolean(palette.allowInteractiveEvents) ||
+      allowedScopes.some((s) => s.startsWith('ON_')),
     allowedDepotStations,
     allowedDepotGates,
   };

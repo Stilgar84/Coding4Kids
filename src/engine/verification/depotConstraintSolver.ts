@@ -834,11 +834,16 @@ export function checkDepotScaffoldWorkspace(
     for (const cand of candidatesPerSlot[slotIdx]) {
       const nextWs = cloneWs();
       for (let i = 0; i < slotIdx; i++) {
-        nextWs[placeholderSlots[i].scope][placeholderSlots[i].index] = {
-          ...ws[placeholderSlots[i].scope][placeholderSlots[i].index],
-        };
+        const slot = placeholderSlots[i];
+        const origBlock = ws[slot.scope]?.[slot.index];
+        if (nextWs[slot.scope] && origBlock) {
+          nextWs[slot.scope]![slot.index] = {
+            ...origBlock,
+          };
+        }
       }
-      nextWs[scope][index] = {
+      if (!nextWs[scope]) nextWs[scope] = [];
+      nextWs[scope]![index] = {
         ...nextWs[scope][index],
         type: cand.type,
         params: cand.params ? { ...cand.params } : undefined,

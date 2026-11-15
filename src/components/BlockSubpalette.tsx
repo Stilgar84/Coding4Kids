@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
-import { ParamVisual } from './params/VisualParamBadges';
+import { ParamVisual, SensorVisual, TileDialGlyphSvg } from './params/VisualParamBadges';
 import { ConditionSubpalette } from './ConditionSubpalette';
 import type { SceneInputConfig } from '../data/curriculum/types';
 import { BinaryOp, CodeBlock } from '../types';
@@ -76,40 +76,50 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
     const operandVarNames =
       policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
 
-  const availableSensors: Array<{ id: string; label: string; icon: string }> = React.useMemo(() => {
+  const availableSensors: Array<{ id: string; label: string; icon: React.ReactNode }> = React.useMemo(() => {
     if (policy.isCurriculum && !policy.allowVariables) return [];
-    const allKnown = [
-      { id: '$tileDial', label: 'Dial', icon: '🎯 Dial' },
-      { id: '$x', label: 'X', icon: '📍X' },
-      { id: '$y', label: 'Y', icon: '📍Y' },
-      { id: '$heading', label: '∠', icon: '🧭∠' },
+    const dicePresetIds = [
+      '$randCoin',
+      '$randD4',
+      '$randD6',
+      '$randD8',
+      '$randD20',
+      '$rand01',
+      '$randomColor',
     ];
+    const makeEntry = (id: string, label?: string): { id: string; label: string; icon: React.ReactNode } => ({
+      id,
+      label: label || id,
+      icon: id === '$tileDial' ? <TileDialGlyphSvg compact /> : <SensorVisual sensorId={id} compact />,
+    });
+
+    const envSensors = (currentSimEnv?.sensors ?? []).map((s: any) => makeEntry(s.id, s.label));
+
     if (policy.allowedValueSensors && policy.allowedValueSensors.length > 0) {
-      return allKnown.filter((s) => policy.allowedValueSensors!.includes(s.id));
+      return policy.allowedValueSensors.map((id) => {
+        const match = envSensors.find((e) => e.id === id);
+        return match ?? makeEntry(id);
+      });
     }
-    if (currentSimEnv?.sensors && currentSimEnv.sensors.length > 0) {
-      return currentSimEnv.sensors.map((s: any) => ({
-        id: s.id,
-        label: s.label || s.id,
-        icon:
-          s.id === '$tileDial'
-            ? '🎯 Dial'
-            : s.id === '$x'
-            ? '📍X'
-            : s.id === '$y'
-            ? '📍Y'
-            : s.id === '$heading'
-            ? '🧭∠'
-            : s.icon || s.id,
-      }));
+
+    const base: Array<{ id: string; label: string; icon: React.ReactNode }> =
+      envSensors.length > 0
+        ? [...envSensors]
+        : activeSimId === 'grid'
+        ? [makeEntry('$tileDial', 'Dial')]
+        : activeSimId === 'turtle'
+        ? [makeEntry('$x', 'X'), makeEntry('$y', 'Y'), makeEntry('$heading', '∠')]
+        : [];
+
+    if (!policy.isCurriculum) {
+      for (const id of [...dicePresetIds, '$input']) {
+        if (!base.some((s) => s.id === id)) {
+          base.push(makeEntry(id));
+        }
+      }
     }
-    if (activeSimId === 'grid') {
-      return allKnown.filter((s) => s.id === '$tileDial');
-    }
-    if (activeSimId === 'turtle') {
-      return allKnown.filter((s) => s.id === '$x' || s.id === '$y' || s.id === '$heading');
-    }
-    return [];
+
+    return base;
   }, [policy.isCurriculum, policy.allowVariables, policy.allowedValueSensors, currentSimEnv, activeSimId]);
 
   const availableOps: BinaryOp[] = React.useMemo(() => {

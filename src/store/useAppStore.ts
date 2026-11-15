@@ -11,6 +11,7 @@ import {
   WorkspaceState,
   InterpreterRuntimeState,
   ScopeType,
+  EventScopeType,
   WallEdge,
   Direction,
   CodeBlock,
@@ -21,6 +22,7 @@ import {
   FloorSwitch,
   WorldItem,
   SimulationStatus,
+  VariableRuntimeValue,
 } from '../types';
 import {
   DEFAULT_COLOR_FOR_SHAPE,
@@ -65,6 +67,8 @@ if (typeof depotSimulationEnvironment !== 'undefined') registerSimulation(depotS
 if (typeof switchyardSimulationEnvironment !== 'undefined') registerSimulation(switchyardSimulationEnvironment);
 import {
   createInitialInterpreterState,
+  enqueueInterpreterEvent,
+  normalizeInitialVariables,
   tickInterpreter,
   validateLoopStructure,
   evaluateValue,
@@ -100,6 +104,7 @@ import {
   getActivityVariants,
   isValidatedPuzzleActivity,
 } from '../data/curriculum';
+import type { CurriculumTurtleDefinition } from '../data/curriculum/types';
 import {
   GhostPreviewState,
   computeGhostPreviewSteps,
@@ -238,6 +243,73 @@ export const getInitialDepotState = (depotState?: DepotState): DepotState =>
 export const getInitialSwitchyardState = (switchyardState?: SwitchyardState): SwitchyardState =>
   resetSwitchyardState(switchyardState ?? createInitialSwitchyardState());
 
+export const TERMINAL_ERROR_STATUSES: ReadonlySet<SimulationStatus> = new Set([
+  'COLLISION',
+  'TYPE_ERROR',
+  'MATH_ERROR',
+  'STACK_OVERFLOW',
+  'STEP_LIMIT',
+  'DEADLOCK',
+]);
+
+export const isTerminalErrorStatus = (status?: SimulationStatus | string | null): boolean =>
+  Boolean(status && TERMINAL_ERROR_STATUSES.has(status as SimulationStatus));
+
+export const resolveTerminalStatus = (
+  simStatus?: SimulationStatus | string | null,
+  runtimeStatus?: SimulationStatus | string | null
+): SimulationStatus => {
+  if (simStatus === 'SUCCESS' || runtimeStatus === 'SUCCESS') return 'SUCCESS';
+  if (isTerminalErrorStatus(simStatus)) return simStatus as SimulationStatus;
+  if (isTerminalErrorStatus(runtimeStatus)) return runtimeStatus as SimulationStatus;
+  return 'IDLE';
+};
+
+export const EVENT_SCOPE_KEYS: readonly EventScopeType[] = [
+  'ON_TAP',
+  'ON_KEY_UP',
+  'ON_KEY_DOWN',
+  'ON_KEY_LEFT',
+  'ON_KEY_RIGHT',
+  'ON_KEY_A',
+  'ON_KEY_B',
+];
+
+export const ALL_CODE_SCOPES: readonly ScopeType[] = [
+  'MAIN',
+  'F1',
+  'F2',
+  'F3',
+  ...EVENT_SCOPE_KEYS,
+];
+
+export const hasWorkspaceLoopError = (ws: WorkspaceState): boolean => {
+  for (const sc of ALL_CODE_SCOPES) {
+    const blocks = ws[sc];
+    if (blocks && blocks.length > 0 && validateLoopStructure(blocks).hasError) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const hasWorkspaceAnyBlocks = (ws: WorkspaceState): boolean =>
+  ALL_CODE_SCOPES.some((sc) => (ws[sc]?.length ?? 0) > 0);
+
+export const createCurriculumTurtleState = (
+  turtleDef?: CurriculumTurtleDefinition
+): TurtleState => {
+  const base = createInitialTurtleState();
+  if (!turtleDef) return base;
+  return {
+    ...base,
+    ...(turtleDef.canvasBounds ? { canvasBounds: turtleDef.canvasBounds } : {}),
+    ...(turtleDef.showCanvasBounds !== undefined
+      ? { showCanvasBounds: turtleDef.showCanvasBounds }
+      : {}),
+  };
+};
+
 export const createEmptyWorkspace = (): WorkspaceState => ({
   MAIN: [],
   F1: [],
@@ -245,38 +317,47 @@ export const createEmptyWorkspace = (): WorkspaceState => ({
   F3: [],
 });
 
-export const cloneWorkspace = (ws: WorkspaceState): WorkspaceState => ({
-  MAIN: (ws?.MAIN || []).map((b) => ({
+const cloneScopeBlocks = (blocks?: CodeBlock[]): CodeBlock[] =>
+  (blocks || []).map((b) => ({
     ...b,
     ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
-  })),
-  F1: (ws?.F1 || []).map((b) => ({
+  }));
+
+const cloneScopeBlocksFresh = (blocks?: CodeBlock[]): CodeBlock[] =>
+  (blocks || []).map((b) => ({
     ...b,
+    id: `${b.type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
-  })),
-  F2: (ws?.F2 || []).map((b) => ({
-    ...b,
-    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
-  })),
-  F3: (ws?.F3 || []).map((b) => ({
-    ...b,
-    ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
-  })),
-});
+  }));
+
+export const cloneWorkspace = (ws: WorkspaceState): WorkspaceState => {
+  const out: WorkspaceState = {
+    MAIN: cloneScopeBlocks(ws?.MAIN),
+    F1: cloneScopeBlocks(ws?.F1),
+    F2: cloneScopeBlocks(ws?.F2),
+    F3: cloneScopeBlocks(ws?.F3),
+  };
+  for (const sc of EVENT_SCOPE_KEYS) {
+    if (ws?.[sc]) {
+      out[sc] = cloneScopeBlocks(ws[sc]);
+    }
+  }
+  return out;
+};
 
 export const cloneWorkspaceWithFreshIds = (ws: WorkspaceState): WorkspaceState => {
-  const cloneList = (blocks: CodeBlock[] = []) =>
-    blocks.map((b) => ({
-      ...b,
-      id: `${b.type}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      ...(b.params ? { params: JSON.parse(JSON.stringify(b.params)) } : {}),
-    }));
-  return {
-    MAIN: cloneList(ws?.MAIN),
-    F1: cloneList(ws?.F1),
-    F2: cloneList(ws?.F2),
-    F3: cloneList(ws?.F3),
+  const out: WorkspaceState = {
+    MAIN: cloneScopeBlocksFresh(ws?.MAIN),
+    F1: cloneScopeBlocksFresh(ws?.F1),
+    F2: cloneScopeBlocksFresh(ws?.F2),
+    F3: cloneScopeBlocksFresh(ws?.F3),
   };
+  for (const sc of EVENT_SCOPE_KEYS) {
+    if (ws?.[sc]) {
+      out[sc] = cloneScopeBlocksFresh(ws[sc]);
+    }
+  }
+  return out;
 };
 
 export interface SandboxModeSnapshot {
@@ -409,6 +490,7 @@ interface AppState {
   activeScope: ScopeType;
   selectedBlockId: string | null;
   runtime: InterpreterRuntimeState | null;
+  activeVariables?: Record<string, VariableRuntimeValue>;
   isPlaying: boolean;
   speed: SimulationSpeed; // ms per tick: 400 (1x), 100 (4x), 25 (16x), or 'instant'
   editorTool: EditorTool;
@@ -562,6 +644,13 @@ interface AppState {
   setLoopPlayback: (loop: boolean) => void;
   toggleLoopPlayback: () => void;
 
+  // Interactive runtime inputs & event queue
+  heldKeys: string[];
+  pointerState: { x: number; y: number; isDown: boolean };
+  setKeyHeld: (key: string, held: boolean) => void;
+  setPointerState: (updates: Partial<{ x: number; y: number; isDown: boolean }>) => void;
+  enqueueInteractiveEvent: (eventScope: EventScopeType) => void;
+
   // PWA update state persistence actions
   dismissRestoredNotice: () => void;
   prepareStateForUpdate: () => boolean;
@@ -663,20 +752,15 @@ export const useAppStore = create<AppState>((set, get) => {
       const { runtime, workspace, beatState, speed } = get();
       const globalSpeedMs = typeof speed === 'number' && speed > 0 ? speed : 400;
 
-      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-        if (workspace[sc]?.length > 0) {
-          const val = validateLoopStructure(workspace[sc]);
-          if (val.hasError) {
-            set({ isPlaying: false });
-            return;
-          }
-        }
+      if (hasWorkspaceLoopError(workspace)) {
+        set({ isPlaying: false });
+        return;
       }
 
-      const currentRuntime = runtime || createInitialInterpreterState();
+      const currentRuntime = runtime || createStoreInitialRuntime();
       if (
         (beatState.status as string) === 'SUCCESS' ||
-        (beatState.status as string) === 'COLLISION' ||
+        isTerminalErrorStatus(beatState.status) ||
         currentRuntime.callStack.length === 0
       ) {
         set({ isPlaying: false });
@@ -728,7 +812,7 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
 
-      if (isPausedOnPlaceholder || nextBeat.status === 'COLLISION') {
+      if (isPausedOnPlaceholder || isTerminalErrorStatus(nextBeat.status)) {
         set({ isPlaying: false });
         return;
       }
@@ -855,7 +939,8 @@ export const useAppStore = create<AppState>((set, get) => {
           get().isLoopPlayback &&
           completedTurtleState.status !== 'SUCCESS' &&
           commit.finalRuntime.status !== 'PAUSED' &&
-          completedTurtleState.status !== 'COLLISION'
+          !isTerminalErrorStatus(completedTurtleState.status) &&
+          !isTerminalErrorStatus(commit.finalRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
           turtlePassHadDelay = false;
@@ -882,7 +967,8 @@ export const useAppStore = create<AppState>((set, get) => {
           commit.isDone &&
           !commit.isSingleStep &&
           commit.finalRuntime.status !== 'PAUSED' &&
-          completedTurtleState.status !== 'COLLISION'
+          !isTerminalErrorStatus(completedTurtleState.status) &&
+          !isTerminalErrorStatus(commit.finalRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -906,15 +992,15 @@ export const useAppStore = create<AppState>((set, get) => {
     const { speed, workspace } = get();
     if (speed === 'instant' || (speed as any) === 0) return;
 
-    for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-      if (workspace[sc]?.length > 0) {
-        const val = validateLoopStructure(workspace[sc]);
-        if (val.hasError) {
-          set({ isPlaying: false });
-          return;
-        }
-      }
+    if (hasWorkspaceLoopError(workspace)) {
+      set({ isPlaying: false });
+      return;
     }
+
+    const activeAct = getActiveCurriculumActivityObj();
+    const turtleCfg = resolveActiveTabConfig(activeAct, get().activeDemoTabIndex).turtleDef;
+    const isTurtleLiveMode = turtleCfg?.mode === 'live';
+    const maxBatchStepsPerTick = isTurtleLiveMode ? 3000 : 2000;
 
     const currentTurtleState = get().turtleState;
     if (currentTurtleState.activeAnimation && pendingTurtleCommit) {
@@ -939,7 +1025,7 @@ export const useAppStore = create<AppState>((set, get) => {
       return;
     }
 
-    let runtime = get().runtime || createInitialInterpreterState();
+    let runtime = get().runtime || createStoreInitialRuntime();
     let turtleState = get().turtleState;
     const simEnv = getSimEnvironment('turtle');
     if (!simEnv) return;
@@ -947,32 +1033,36 @@ export const useAppStore = create<AppState>((set, get) => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     while (true) {
+      const hasPendingEvents = Boolean(runtime.eventQueue && runtime.eventQueue.length > 0);
       if (
         turtleState.status === 'SUCCESS' ||
-        turtleState.status === 'COLLISION' ||
-        runtime.callStack.length === 0
+        isTerminalErrorStatus(turtleState.status) ||
+        isTerminalErrorStatus(runtime.status) ||
+        (runtime.callStack.length === 0 && !hasPendingEvents)
       ) {
         set({ isPlaying: false });
         return;
       }
 
-      // Fast-path pure-JS execution when Turtle instantMode is ON during play()
-      if (!isSingleStep && turtleState.instantMode) {
+      // Fast-path pure-JS execution when Turtle instantMode or Turtle Live mode is active during play()
+      if (!isSingleStep && (turtleState.instantMode || isTurtleLiveMode)) {
         let stepsInBatch = 0;
         let lastActiveScope = get().activeScope;
 
         while (true) {
+          const pendingEv = Boolean(runtime.eventQueue && runtime.eventQueue.length > 0);
           if (
             (turtleState.status as string) === 'SUCCESS' ||
-            (turtleState.status as string) === 'COLLISION' ||
-            runtime.callStack.length === 0
+            isTerminalErrorStatus(turtleState.status) ||
+            isTerminalErrorStatus(runtime.status) ||
+            (runtime.callStack.length === 0 && !pendingEv)
           ) {
             set({ runtime, turtleState, activeScope: lastActiveScope, isPlaying: false });
             return;
           }
 
-          const cf = runtime.callStack[runtime.callStack.length - 1];
-          const cb = (workspace[cf.scope] || [])[cf.pc];
+          const cf = runtime.callStack.length > 0 ? runtime.callStack[runtime.callStack.length - 1] : undefined;
+          const cb = cf ? (workspace[cf.scope] || [])[cf.pc] : undefined;
           if (cb && cb.type === 'WAIT') {
             // Commit batched instant state before handling timed WAIT animation
             set({ runtime, turtleState, activeScope: lastActiveScope });
@@ -1011,13 +1101,17 @@ export const useAppStore = create<AppState>((set, get) => {
           }
 
           if (res.done) {
-            if (turtleState.status !== 'COLLISION') {
+            const hasTermErr = isTerminalErrorStatus(turtleState.status) || isTerminalErrorStatus(runtime.status);
+            if (!hasTermErr) {
               recordCreativePlayCompletionIfApplicable(true);
             }
-            if (get().isLoopPlayback && turtleState.status !== 'COLLISION') {
+            if ((get().isLoopPlayback || isTurtleLiveMode) && !hasTermErr) {
               const hadDelay = turtlePassHadDelay;
               turtlePassHadDelay = false;
-              const resetTurtle = getInitialTurtleState(turtleState);
+              const resetTurtle =
+                turtleCfg?.clearBetweenFrames === false
+                  ? { ...turtleState, status: 'IDLE' as SimulationStatus }
+                  : getInitialTurtleState(turtleState);
               set({
                 runtime: null,
                 turtleState: resetTurtle,
@@ -1031,7 +1125,7 @@ export const useAppStore = create<AppState>((set, get) => {
                 }, 16);
                 return;
               }
-              runtime = createInitialInterpreterState();
+              runtime = createStoreInitialRuntime();
               turtleState = resetTurtle;
               break;
             }
@@ -1039,23 +1133,23 @@ export const useAppStore = create<AppState>((set, get) => {
             return;
           }
 
-          if (!turtleState.instantMode) {
+          if (!turtleState.instantMode && !isTurtleLiveMode) {
             // Exited instant mode via SET_INSTANT('OFF')
             set({ runtime, turtleState, activeScope: lastActiveScope });
             break;
           }
 
           stepsInBatch += 1;
-          if (stepsInBatch >= 2000) {
+          if (stepsInBatch >= maxBatchStepsPerTick) {
             set({ runtime, turtleState, activeScope: lastActiveScope });
             timerId = setTimeout(() => {
               timerId = null;
               if (get().isPlaying) runTurtleExecutionLoop(false);
-            }, 0);
+            }, isTurtleLiveMode ? 16 : 0);
             return;
           }
         }
-        if (runtime.callStack.length === 0) return;
+        if (runtime.callStack.length === 0 && (!runtime.eventQueue || runtime.eventQueue.length === 0)) return;
       }
 
       const currentFrame = runtime.callStack[runtime.callStack.length - 1];
@@ -1100,7 +1194,8 @@ export const useAppStore = create<AppState>((set, get) => {
           res.done &&
           !isSingleStep &&
           !isPausedOnPlaceholder &&
-          turtleState.status !== 'COLLISION'
+          !isTerminalErrorStatus(turtleState.status) &&
+          !isTerminalErrorStatus(runtime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -1110,7 +1205,8 @@ export const useAppStore = create<AppState>((set, get) => {
             !isSingleStep &&
             get().isLoopPlayback &&
             !isPausedOnPlaceholder &&
-            turtleState.status !== 'COLLISION' &&
+            !isTerminalErrorStatus(turtleState.status) &&
+            !isTerminalErrorStatus(runtime.status) &&
             turtleState.status !== 'SUCCESS'
           ) {
             const hadDelay = turtlePassHadDelay;
@@ -1129,7 +1225,7 @@ export const useAppStore = create<AppState>((set, get) => {
               }, 16);
               return;
             }
-            runtime = createInitialInterpreterState();
+            runtime = createStoreInitialRuntime();
             turtleState = resetTurtle;
             continue;
           }
@@ -1146,7 +1242,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       const turtleTickOpts = getActiveTickOptions();
-      const rawRepeats = currentBlock.repeatCount !== undefined
+      const rawRepeats = currentBlock?.repeatCount !== undefined
         ? evaluateValue(
             currentBlock.repeatCount,
             runtime.variables,
@@ -1191,7 +1287,8 @@ export const useAppStore = create<AppState>((set, get) => {
           res.done &&
           !isSingleStep &&
           !isPausedOnPlaceholder &&
-          turtleState.status !== 'COLLISION'
+          !isTerminalErrorStatus(turtleState.status) &&
+          !isTerminalErrorStatus(runtime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -1201,7 +1298,8 @@ export const useAppStore = create<AppState>((set, get) => {
             !isSingleStep &&
             get().isLoopPlayback &&
             !isPausedOnPlaceholder &&
-            turtleState.status !== 'COLLISION' &&
+            !isTerminalErrorStatus(turtleState.status) &&
+            !isTerminalErrorStatus(runtime.status) &&
             turtleState.status !== 'SUCCESS'
           ) {
             const hadDelay = turtlePassHadDelay;
@@ -1220,7 +1318,7 @@ export const useAppStore = create<AppState>((set, get) => {
               }, 16);
               return;
             }
-            runtime = createInitialInterpreterState();
+            runtime = createStoreInitialRuntime();
             turtleState = resetTurtle;
             continue;
           }
@@ -1248,7 +1346,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, prevScope);
 
       const resolvedParams: Record<string, any> = {};
-      if (currentBlock.params) {
+      if (currentBlock?.params) {
         for (const [k, v] of Object.entries(currentBlock.params)) {
           if (
             typeof v === 'string' &&
@@ -1269,7 +1367,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
 
       const anim = createTurtleAnimation(
-        currentBlock.type,
+        currentBlock!.type,
         fromPose,
         toPose,
         penDown,
@@ -1301,7 +1399,8 @@ export const useAppStore = create<AppState>((set, get) => {
           res.done &&
           !isSingleStep &&
           runtime.status !== 'PAUSED' &&
-          turtleState.status !== 'COLLISION'
+          !isTerminalErrorStatus(turtleState.status) &&
+          !isTerminalErrorStatus(runtime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -1312,7 +1411,8 @@ export const useAppStore = create<AppState>((set, get) => {
             !isSingleStep &&
             get().isLoopPlayback &&
             runtime.status !== 'PAUSED' &&
-            turtleState.status !== 'COLLISION' &&
+            !isTerminalErrorStatus(turtleState.status) &&
+            !isTerminalErrorStatus(runtime.status) &&
             turtleState.status !== 'SUCCESS'
           ) {
             const hadDelay = turtlePassHadDelay;
@@ -1331,7 +1431,7 @@ export const useAppStore = create<AppState>((set, get) => {
               }, 16);
               return;
             }
-            runtime = createInitialInterpreterState();
+            runtime = createStoreInitialRuntime();
             turtleState = resetTurtle;
             continue;
           }
@@ -1488,7 +1588,13 @@ export const useAppStore = create<AppState>((set, get) => {
   const bootCurriculumAutosaves = getProfileLessonWorkspaces(bootActiveProfileId);
   const bootSandboxAutosaves = getProfileSandboxWorkspaces(bootActiveProfileId);
   const bootSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' =
-    bootMode === 'curriculum' ? resolveCurriculumSimId(bootActivity?.simId) : 'grid';
+    bootMode === 'curriculum'
+      ? resolveCurriculumSimId(
+          bootActivity?.format === 'explanation' && bootActivity.demoTabs?.[0]?.simId
+            ? bootActivity.demoTabs[0].simId
+            : bootActivity?.simId
+        )
+      : 'grid';
 
   const buildCompletedMap = (profileId: string): Record<string, boolean> => {
     const prog = getProfileProgress(profileId);
@@ -1623,16 +1729,82 @@ export const useAppStore = create<AppState>((set, get) => {
     return resolveActivityInitialInputConfig(act, s.activeDemoTabIndex);
   };
 
+  const resolveActiveTabConfig = (
+    activity?: CurriculumActivity,
+    tabIndex = get().activeDemoTabIndex
+  ) => {
+    if (!activity) {
+      return {
+        tab: undefined,
+        simId: get().activeSimId,
+        gridDef: undefined,
+        depotDef: undefined,
+        switchyardDef: undefined,
+        turtleDef: undefined,
+        beatRules: undefined,
+        initialVars: undefined,
+      };
+    }
+    const clampedIdx =
+      activity.format === 'explanation' && activity.demoTabs?.length
+        ? Math.min(Math.max(0, tabIndex), activity.demoTabs.length - 1)
+        : 0;
+    const tab = activity.format === 'explanation' ? activity.demoTabs?.[clampedIdx] : undefined;
+    return {
+      tab,
+      simId: resolveCurriculumSimId(tab?.simId ?? activity.simId),
+      gridDef:
+        tab?.grid ??
+        tab?.gridState ??
+        activity.grid ??
+        activity.gridVariants?.[0] ??
+        activity.demoTabs?.[0]?.grid ??
+        activity.demoTabs?.[0]?.gridState,
+      depotDef:
+        tab?.depot ??
+        tab?.depotState ??
+        activity.depot ??
+        activity.depotVariants?.[0] ??
+        activity.demoTabs?.[0]?.depot ??
+        activity.demoTabs?.[0]?.depotState,
+      switchyardDef:
+        tab?.switchyard ??
+        tab?.switchyardState ??
+        activity.switchyard ??
+        activity.switchyardVariants?.[0] ??
+        activity.demoTabs?.[0]?.switchyard ??
+        activity.demoTabs?.[0]?.switchyardState,
+      turtleDef: tab?.turtle ?? activity.turtle,
+      beatRules: tab?.beatRules ?? activity.beatRules,
+      initialVars: tab?.initialVars ?? activity.initialVars,
+    };
+  };
+
   const getActiveTickOptions = (): InterpreterTickOptions => {
     const s = get();
     const act = getActiveCurriculumActivityObj();
+    const tabCfg = resolveActiveTabConfig(act, s.activeDemoTabIndex);
     const effectiveInputConfig = getEffectiveInputConfig(act);
     const effectiveSceneInput =
       s.sceneInput !== undefined ? s.sceneInput : resolveDefaultSceneInput(effectiveInputConfig);
     return {
       allowRecursion: act?.palette.allowRecursion !== false,
       ...(effectiveSceneInput !== undefined ? { sceneInput: effectiveSceneInput } : {}),
+      ...(tabCfg.initialVars ? { initialVars: tabCfg.initialVars } : {}),
+      pointer: s.pointerState,
+      heldKeys: new Set(s.heldKeys),
+      isKeyHeld: (key) => {
+        const norm = String(key).toUpperCase();
+        return s.heldKeys.some((k) => String(k).toUpperCase() === norm);
+      },
     };
+  };
+
+  const createStoreInitialRuntime = (seedOverride?: number): InterpreterRuntimeState => {
+    const s = get();
+    const act = getActiveCurriculumActivityObj();
+    const tabCfg = resolveActiveTabConfig(act, s.activeDemoTabIndex);
+    return createInitialInterpreterState(seedOverride, tabCfg.initialVars);
   };
 
   const isExplanationActivity = (): boolean => {
@@ -1975,7 +2147,12 @@ export const useAppStore = create<AppState>((set, get) => {
     isMapHidden: false,
     isFunctionBarOpen: false,
     isMobileMenuOpen: false,
-    isLoopPlayback: bootMode === 'curriculum' ? Boolean(bootActivity?.defaultLoopPlayback) : false,
+    isLoopPlayback:
+      bootMode === 'curriculum'
+        ? Boolean(bootActivity?.defaultLoopPlayback ?? bootActivity?.beatRules?.isLoopingDefault)
+        : false,
+    heldKeys: [],
+    pointerState: { x: 0, y: 0, isDown: false },
     wasRestoredAfterUpdate: false,
     performanceMode: loadPersistedPerformanceMode(),
     isAutoLowQuality: false,
@@ -2212,23 +2389,21 @@ export const useAppStore = create<AppState>((set, get) => {
           CURRICULUM_ACTIVITIES[0];
         if (!activity) return;
 
-        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
-      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
-        ? activity.demoTabs[0].simId
-        : activity.simId
-    );
-        const resolvedGridDef = activity.grid ?? activity.gridVariants?.[0];
+        const tabCfg = resolveActiveTabConfig(activity, 0);
+        const targetSimId = tabCfg.simId;
+        const resolvedGridDef = tabCfg.gridDef;
         const targetGrid = resolvedGridDef
           ? createCurriculumGridState(resolvedGridDef, prevFitToView)
           : getInitialGridState(state.grid);
-        const resolvedDepotDef = activity.depot ?? activity.depotVariants?.[0];
+        const resolvedDepotDef = tabCfg.depotDef;
         const targetDepot = resolvedDepotDef
           ? createInitialDepotState(resolvedDepotDef)
           : createInitialDepotState();
-        const resolvedSwitchyardDef = activity.switchyard ?? activity.switchyardVariants?.[0];
+        const resolvedSwitchyardDef = tabCfg.switchyardDef;
         const targetSwitchyard = resolvedSwitchyardDef
           ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
           : createInitialSwitchyardState();
+        const targetTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
         const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
         const targetWs = nextCurriculumWorkspaces[activity.id]
@@ -2260,11 +2435,13 @@ export const useAppStore = create<AppState>((set, get) => {
           activeSimId: targetSimId,
           ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
           grid: targetGrid,
-          turtleState: createInitialTurtleState(),
+          turtleState: targetTurtle,
           beatState: resetBeatState(state.beatState),
           depotState: targetDepot,
-      switchyardState: targetSwitchyard,
-          isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
+          switchyardState: targetSwitchyard,
+          isLoopPlayback: Boolean(
+            activity.defaultLoopPlayback ?? tabCfg.beatRules?.isLoopingDefault
+          ),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...nextCurriculumWorkspaces,
@@ -2511,29 +2688,22 @@ export const useAppStore = create<AppState>((set, get) => {
         : createEmptyWorkspace();
 
       const prevFitToView = state.grid.fitToView ?? false;
-      const nextGrid =
-        activeTab?.gridState
-          ? createCurriculumGridState(activeTab.gridState, prevFitToView)
-          : activity.grid
-          ? createCurriculumGridState(activity.grid, prevFitToView)
-          : undefined;
-      const resolvedDepot = activeTab?.depotState ?? activity.depot ?? activity.demoTabs?.[0]?.depotState;
-      const nextDepot = resolvedDepot
-        ? createInitialDepotState(resolvedDepot)
+      const tabCfg = resolveActiveTabConfig(activity, state.activeDemoTabIndex);
+      const nextGrid = tabCfg.gridDef
+        ? createCurriculumGridState(tabCfg.gridDef, prevFitToView)
+        : undefined;
+      const nextDepot = tabCfg.depotDef
+        ? createInitialDepotState(tabCfg.depotDef)
         : resetDepotState(state.depotState);
-      const resolvedSwitchyard =
-        activeTab?.switchyardState ??
-        activity.switchyard ??
-        activity.switchyardVariants?.[0] ??
-        activity.demoTabs?.[0]?.switchyardState;
-      const nextSwitchyard = resolvedSwitchyard
-        ? createInitialSwitchyardState(resolvedSwitchyard as any)
+      const nextSwitchyard = tabCfg.switchyardDef
+        ? createInitialSwitchyardState(tabCfg.switchyardDef as any)
         : resetSwitchyardState(state.switchyardState);
+      const nextTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
 
       set({
         workspace: starterWs,
         ...(nextGrid ? { grid: nextGrid } : {}),
-        turtleState: createInitialTurtleState(),
+        turtleState: nextTurtle,
         beatState: resetBeatState(state.beatState),
         depotState: nextDepot,
         switchyardState: nextSwitchyard,
@@ -2587,35 +2757,24 @@ export const useAppStore = create<AppState>((set, get) => {
                 activity.demoTabs.length - 1
               )
             : 0;
-        const activeTab =
-          savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
+        const tabCfg = resolveActiveTabConfig(activity, savedTabIdx);
+        const activeTab = savedTabIdx > 0 ? tabCfg.tab : undefined;
 
-        const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
-      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
-        ? activity.demoTabs[0].simId
-        : activity.simId
-    );
+        const targetSimId = tabCfg.simId;
         const prevFitToView = state.grid.fitToView ?? false;
-        const resolvedGridDef =
-          activeTab?.gridState ??
-          activity.grid ??
-          activity.gridVariants?.[0] ??
-          activity.demoTabs?.[0]?.gridState;
+        const resolvedGridDef = tabCfg.gridDef;
         const targetGrid = resolvedGridDef
           ? createCurriculumGridState(resolvedGridDef, prevFitToView)
           : state.grid;
-        const resolvedDepotDef =
-          activeTab?.depotState ??
-          activity.depot ??
-          activity.depotVariants?.[0] ??
-          activity.demoTabs?.[0]?.depotState;
+        const resolvedDepotDef = tabCfg.depotDef;
         const targetDepot = resolvedDepotDef
           ? createInitialDepotState(resolvedDepotDef)
           : createInitialDepotState();
-        const resolvedSwitchyardDef = activity.switchyard ?? activity.switchyardVariants?.[0];
+        const resolvedSwitchyardDef = tabCfg.switchyardDef;
         const targetSwitchyard = resolvedSwitchyardDef
           ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
           : createInitialSwitchyardState();
+        const targetTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
         const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
         const targetWs = state.curriculumWorkspaces[activity.id]
@@ -2646,11 +2805,13 @@ export const useAppStore = create<AppState>((set, get) => {
           activeSimId: targetSimId,
           ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
           grid: targetGrid,
-          turtleState: createInitialTurtleState(),
+          turtleState: targetTurtle,
           beatState: resetBeatState(state.beatState),
           depotState: targetDepot,
-      switchyardState: targetSwitchyard,
-          isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
+          switchyardState: targetSwitchyard,
+          isLoopPlayback: Boolean(
+            activity.defaultLoopPlayback ?? tabCfg.beatRules?.isLoopingDefault
+          ),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...state.curriculumWorkspaces,
@@ -2787,39 +2948,21 @@ export const useAppStore = create<AppState>((set, get) => {
               activity.demoTabs.length - 1
             )
           : 0;
-      const activeTab =
-        savedTabIdx > 0 ? activity.demoTabs?.[savedTabIdx] : undefined;
+      const tabCfg = resolveActiveTabConfig(activity, savedTabIdx);
+      const activeTab = savedTabIdx > 0 ? tabCfg.tab : undefined;
 
-      const targetSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' = resolveCurriculumSimId(
-      activity.format === 'explanation' && activity.demoTabs?.[0]?.simId
-        ? activity.demoTabs[0].simId
-        : activity.simId
-    );
+      const targetSimId = tabCfg.simId;
       const prevFitToView = state.grid.fitToView ?? false;
-      const resolvedGridDef =
-        activeTab?.gridState ??
-        activity.grid ??
-        activity.gridVariants?.[0] ??
-        activity.demoTabs?.[0]?.gridState;
-      const targetGrid = resolvedGridDef
-        ? createCurriculumGridState(resolvedGridDef, prevFitToView)
+      const targetGrid = tabCfg.gridDef
+        ? createCurriculumGridState(tabCfg.gridDef, prevFitToView)
         : state.grid;
-      const resolvedDepotDef =
-        activeTab?.depotState ??
-        activity.depot ??
-        activity.depotVariants?.[0] ??
-        activity.demoTabs?.[0]?.depotState;
-      const targetDepot = resolvedDepotDef
-        ? createInitialDepotState(resolvedDepotDef)
+      const targetDepot = tabCfg.depotDef
+        ? createInitialDepotState(tabCfg.depotDef)
         : createInitialDepotState();
-      const resolvedSwitchyardDef =
-        activeTab?.switchyardState ??
-        activity.switchyard ??
-        activity.switchyardVariants?.[0] ??
-        activity.demoTabs?.[0]?.switchyardState;
-      const targetSwitchyard = resolvedSwitchyardDef
-        ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
+      const targetSwitchyard = tabCfg.switchyardDef
+        ? createInitialSwitchyardState(tabCfg.switchyardDef as any)
         : createInitialSwitchyardState();
+      const targetTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
       const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
       const targetWs = nextCurriculumWorkspaces[activity.id]
@@ -2850,12 +2993,15 @@ export const useAppStore = create<AppState>((set, get) => {
         viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, savedTabIdx),
         activeSimId: targetSimId,
         ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
+        activeVariables: tabCfg.initialVars ? normalizeInitialVariables(tabCfg.initialVars) : {},
         grid: targetGrid,
-        turtleState: createInitialTurtleState(),
+        turtleState: targetTurtle,
         beatState: resetBeatState(state.beatState),
         depotState: targetDepot,
-      switchyardState: targetSwitchyard,
-        isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
+        switchyardState: targetSwitchyard,
+        isLoopPlayback: Boolean(
+          activity.defaultLoopPlayback ?? tabCfg.beatRules?.isLoopingDefault
+        ),
         workspace: targetWs,
         curriculumWorkspaces: nextCurriculumWorkspaces,
         sandboxSnapshot: nextSandboxSnapshot,
@@ -2907,14 +3053,8 @@ export const useAppStore = create<AppState>((set, get) => {
         runtime: null,
         statusAnnouncement: `Scene input set to ${normalizedValue}`,
       });
-      const hasRunnableBlocks = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
-        (sc) => (prevWorkspace[sc]?.length ?? 0) > 0
-      );
-      if (!hasRunnableBlocks) return;
-      const hasControlError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
-        (sc) => prevWorkspace[sc]?.length > 0 && validateLoopStructure(prevWorkspace[sc]).hasError
-      );
-      if (hasControlError) return;
+      if (!hasWorkspaceAnyBlocks(prevWorkspace)) return;
+      if (hasWorkspaceLoopError(prevWorkspace)) return;
       if (prevSpeed === 'instant' || (prevSpeed as any) === 0) {
         get().runInstantIfActive({ allowVictoryModal: true });
       } else {
@@ -2944,22 +3084,19 @@ export const useAppStore = create<AppState>((set, get) => {
       get().clearHistory();
 
       const prevFitToView = state.grid.fitToView ?? false;
-      const resolvedGridDef = tab.gridState ?? activity.grid;
-      const nextGrid = resolvedGridDef
-        ? createCurriculumGridState(resolvedGridDef, prevFitToView)
+      const tabCfg = resolveActiveTabConfig(activity, clampedIndex);
+      const nextGrid = tabCfg.gridDef
+        ? createCurriculumGridState(tabCfg.gridDef, prevFitToView)
         : state.grid;
-      const resolvedDepotDef = tab.depotState ?? activity.depot;
-      const nextDepot = resolvedDepotDef
-        ? createInitialDepotState(resolvedDepotDef)
+      const nextDepot = tabCfg.depotDef
+        ? createInitialDepotState(tabCfg.depotDef)
         : resetDepotState(state.depotState);
-      const resolvedSwitchyardDef = tab.switchyardState ?? activity.switchyard;
-      const nextSwitchyard = resolvedSwitchyardDef
-        ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
+      const nextSwitchyard = tabCfg.switchyardDef
+        ? createInitialSwitchyardState(tabCfg.switchyardDef as any)
         : resetSwitchyardState(state.switchyardState);
+      const nextTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
       const nextWs = cloneWorkspaceWithFreshIds(tab.workspace);
-      const nextSimId = tab.simId
-        ? resolveCurriculumSimId(tab.simId)
-        : resolveCurriculumSimId(activity.simId);
+      const nextSimId = tabCfg.simId;
 
       set({
         activeDemoTabIndex: clampedIndex,
@@ -2969,11 +3106,15 @@ export const useAppStore = create<AppState>((set, get) => {
         },
         viewedDemoTabs: recordDemoTabViewedMap(state.viewedDemoTabs, activity, clampedIndex),
         activeSimId: nextSimId,
+        activeVariables: tabCfg.initialVars ? normalizeInitialVariables(tabCfg.initialVars) : {},
         grid: nextGrid,
-        turtleState: createInitialTurtleState(),
+        turtleState: nextTurtle,
         beatState: resetBeatState(state.beatState),
         depotState: nextDepot,
         switchyardState: nextSwitchyard,
+        isLoopPlayback: Boolean(
+          activity.defaultLoopPlayback ?? tabCfg.beatRules?.isLoopingDefault
+        ),
         workspace: nextWs,
         curriculumWorkspaces: {
           ...state.curriculumWorkspaces,
@@ -3854,7 +3995,7 @@ export const useAppStore = create<AppState>((set, get) => {
       let firstPlaceholderId: string | null = null;
       let targetScope: ScopeType = 'MAIN';
       for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-        const found = newWorkspace[sc].find((b) => b.type === 'PLACEHOLDER');
+        const found = (newWorkspace[sc] ?? []).find((b) => b.type === 'PLACEHOLDER');
         if (found) {
           firstPlaceholderId = found.id;
           targetScope = sc;
@@ -4210,8 +4351,7 @@ export const useAppStore = create<AppState>((set, get) => {
         const focusedStatus = evaluatedRuns[safeIdx]?.status;
         const nextFocusIdx =
           !allSucceeded &&
-          focusedStatus !== 'COLLISION' &&
-          focusedStatus !== 'STEP_LIMIT' &&
+          !isTerminalErrorStatus(focusedStatus) &&
           firstFailIdx >= 0
             ? firstFailIdx
             : safeIdx;
@@ -4451,7 +4591,7 @@ export const useAppStore = create<AppState>((set, get) => {
         : null;
 
       set((state) => {
-        const currentBlocks = [...state.workspace[scope]];
+        const currentBlocks = [...(state.workspace[scope] ?? [])];
         const blocksToInsert = closerBlock ? [newBlock, closerBlock] : [newBlock];
         if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
           currentBlocks.splice(insertAtIndex, 0, ...blocksToInsert);
@@ -4506,7 +4646,7 @@ export const useAppStore = create<AppState>((set, get) => {
       set((state) => {
         const nextWorkspace: WorkspaceState = {
           ...state.workspace,
-          [scope]: state.workspace[scope].map((b) =>
+          [scope]: (state.workspace[scope] ?? []).map((b) =>
             b.id === blockId ? { ...b, params: { ...(b.params || {}), ...newParams } } : b
           ),
         };
@@ -4539,7 +4679,7 @@ export const useAppStore = create<AppState>((set, get) => {
       set((state) => {
         const nextWorkspace: WorkspaceState = {
           ...state.workspace,
-          [scope]: state.workspace[scope].filter((b) => b.id !== blockId),
+          [scope]: (state.workspace[scope] ?? []).filter((b) => b.id !== blockId),
         };
         return {
           workspace: nextWorkspace,
@@ -4572,7 +4712,7 @@ export const useAppStore = create<AppState>((set, get) => {
       set((state) => {
         const nextWorkspace: WorkspaceState = {
           ...state.workspace,
-          [scope]: state.workspace[scope].map((b) =>
+          [scope]: (state.workspace[scope] ?? []).map((b) =>
             b.id === blockId ? { ...b, repeatCount } : b
           ),
         };
@@ -4602,7 +4742,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const wasSuccess = isCurrentSimSuccess();
       recordMutation('Reorder blocks');
       set((state) => {
-        const blocks = [...state.workspace[scope]];
+        const blocks = [...(state.workspace[scope] ?? [])];
         const [moved] = blocks.splice(fromIndex, 1);
         blocks.splice(toIndex, 0, moved);
         const nextWorkspace: WorkspaceState = {
@@ -4634,7 +4774,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const ws = get().workspace;
       const hasBlocks = scope
         ? (ws[scope]?.length ?? 0) > 0
-        : (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some((s) => (ws[s]?.length ?? 0) > 0);
+        : hasWorkspaceAnyBlocks(ws);
       if (!hasBlocks) return;
       recordMutation(scope ? 'Clear scope' : 'Clear workspace');
       if (scope) {
@@ -5455,13 +5595,8 @@ export const useAppStore = create<AppState>((set, get) => {
           isPlaying,
           activeScope: prevScope,
         } = get();
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
         const simEnv = getSimEnvironment(activeSimId);
         if (!simEnv) return;
@@ -5475,23 +5610,19 @@ export const useAppStore = create<AppState>((set, get) => {
           if (
             !vState ||
             v.status === 'SUCCESS' ||
-            v.status === 'COLLISION' ||
-            v.status === 'STEP_LIMIT'
+            isTerminalErrorStatus(v.status)
           ) {
             return v;
           }
-          const vRuntime = v.runtime || createInitialInterpreterState();
+          const vRuntime = v.runtime || createStoreInitialRuntime();
           const res = tickInterpreter(vRuntime, workspace, vState, simEnv, getActiveTickOptions());
           const nextState = res.nextGrid as GridState & DepotState & SwitchyardState;
           const paused = res.nextRuntime.status === 'PAUSED';
           if (paused) anyPaused = true;
+          const resolvedStatus = resolveTerminalStatus(nextState.status, res.nextRuntime.status);
           const vStatus: SimulationStatus =
-            nextState.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS'
-              ? 'SUCCESS'
-              : nextState.status === 'STEP_LIMIT' || res.nextRuntime.status === 'STEP_LIMIT'
-              ? 'STEP_LIMIT'
-              : nextState.status === 'COLLISION' || res.nextRuntime.status === 'COLLISION'
-              ? 'COLLISION'
+            resolvedStatus !== 'IDLE'
+              ? resolvedStatus
               : paused
               ? 'PAUSED'
               : res.done
@@ -5500,8 +5631,7 @@ export const useAppStore = create<AppState>((set, get) => {
           const vDone =
             res.done ||
             vStatus === 'SUCCESS' ||
-            vStatus === 'COLLISION' ||
-            vStatus === 'STEP_LIMIT';
+            isTerminalErrorStatus(vStatus);
           if (!vDone) allDone = false;
           return {
             ...v,
@@ -5523,13 +5653,12 @@ export const useAppStore = create<AppState>((set, get) => {
           allDone &&
           !allSucceeded &&
           !anyPaused &&
-          safeStatus !== 'COLLISION' &&
-          safeStatus !== 'STEP_LIMIT' &&
+          !isTerminalErrorStatus(safeStatus) &&
           firstFailIdx >= 0
             ? firstFailIdx
             : safeIdx;
         const focused = nextVariants[nextFocusIdx] ?? nextVariants[0];
-        const focusedRuntime = focused?.runtime ?? prevRuntime ?? createInitialInterpreterState();
+        const focusedRuntime = focused?.runtime ?? prevRuntime ?? createStoreInitialRuntime();
         const activeScope = resolveActiveScopeFromRuntime(focusedRuntime, prevScope);
 
         set({
@@ -5565,7 +5694,7 @@ export const useAppStore = create<AppState>((set, get) => {
           isPlaying &&
           allDone &&
           !anyPaused &&
-          nextVariants.every((v) => v.status !== 'COLLISION')
+          nextVariants.every((v) => !isTerminalErrorStatus(v.status))
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5583,16 +5712,11 @@ export const useAppStore = create<AppState>((set, get) => {
         const { runtime, workspace, grid } = get();
 
         // Guard: do not execute if loops are unclosed in any used workspace scope
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
 
-        const currentRuntime = runtime || createInitialInterpreterState();
+        const currentRuntime = runtime || createStoreInitialRuntime();
         const simEnv = getSimEnvironment('grid');
         if (!simEnv) return;
 
@@ -5645,8 +5769,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextGridState.status !== 'COLLISION' &&
-          nextGridState.status !== 'STEP_LIMIT'
+          !isTerminalErrorStatus(nextGridState.status) &&
+          !isTerminalErrorStatus(res.nextRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5664,16 +5788,11 @@ export const useAppStore = create<AppState>((set, get) => {
         }
         const { runtime, workspace, beatState } = get();
 
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
 
-        const currentRuntime = runtime || createInitialInterpreterState();
+        const currentRuntime = runtime || createStoreInitialRuntime();
         const simEnv = getSimEnvironment('beat');
         if (!simEnv) return;
 
@@ -5717,8 +5836,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextBeat.status !== 'COLLISION' &&
-          nextBeat.status !== 'STEP_LIMIT'
+          !isTerminalErrorStatus(nextBeat.status) &&
+          !isTerminalErrorStatus(res.nextRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5732,16 +5851,11 @@ export const useAppStore = create<AppState>((set, get) => {
       } else if (activeSimId === 'depot') {
         const { runtime, workspace, depotState } = get();
 
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
 
-        const currentRuntime = runtime || createInitialInterpreterState();
+        const currentRuntime = runtime || createStoreInitialRuntime();
         const simEnv = getSimEnvironment('depot');
         if (!simEnv) return;
 
@@ -5767,7 +5881,7 @@ export const useAppStore = create<AppState>((set, get) => {
                 selectedBlockId: res.nextRuntime.activeBlockId,
                 statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
               }
-            : nextDepotState.lastFailureReason && nextDepotState.status === 'COLLISION'
+            : nextDepotState.lastFailureReason && isTerminalErrorStatus(nextDepotState.status)
             ? {
                 statusAnnouncement: nextDepotState.lastFailureReason,
               }
@@ -5783,8 +5897,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextDepotState.status !== 'COLLISION' &&
-          nextDepotState.status !== 'STEP_LIMIT'
+          !isTerminalErrorStatus(nextDepotState.status) &&
+          !isTerminalErrorStatus(res.nextRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5798,16 +5912,11 @@ export const useAppStore = create<AppState>((set, get) => {
       } else if (activeSimId === 'switchyard') {
         const { runtime, workspace, switchyardState } = get();
 
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
 
-        const currentRuntime = runtime || createInitialInterpreterState();
+        const currentRuntime = runtime || createStoreInitialRuntime();
         const simEnv = getSimEnvironment('switchyard');
         if (!simEnv) return;
 
@@ -5833,7 +5942,7 @@ export const useAppStore = create<AppState>((set, get) => {
                 selectedBlockId: res.nextRuntime.activeBlockId,
                 statusAnnouncement: getPlaceholderPauseAnnouncement(workspace, res.nextRuntime),
               }
-            : nextSwitchyardState.lastFailureReason && nextSwitchyardState.status === 'COLLISION'
+            : nextSwitchyardState.lastFailureReason && isTerminalErrorStatus(nextSwitchyardState.status)
             ? {
                 statusAnnouncement: nextSwitchyardState.lastFailureReason,
               }
@@ -5849,8 +5958,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextSwitchyardState.status !== 'COLLISION' &&
-          nextSwitchyardState.status !== 'STEP_LIMIT'
+          !isTerminalErrorStatus(nextSwitchyardState.status) &&
+          !isTerminalErrorStatus(res.nextRuntime.status)
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5918,13 +6027,8 @@ export const useAppStore = create<AppState>((set, get) => {
           turtleRafId = null;
         }
         beatSynth.stopAll();
-        for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-          if (workspace[sc]?.length > 0) {
-            const val = validateLoopStructure(workspace[sc]);
-            if (val.hasError) {
-              return;
-            }
-          }
+        if (hasWorkspaceLoopError(workspace)) {
+          return;
         }
         const wasSuccess = isCurrentSimSuccess();
         set({ isVictoryModalOpen: false, victoryEarnedBadges: [] });
@@ -5933,14 +6037,14 @@ export const useAppStore = create<AppState>((set, get) => {
           !isCurrentSimSuccess() &&
           get().runtime?.status !== 'PAUSED' &&
           (activeSimId === 'grid'
-            ? get().grid.status !== 'COLLISION'
+            ? !isTerminalErrorStatus(get().grid.status)
             : activeSimId === 'beat'
-            ? get().beatState.status !== 'COLLISION'
+            ? !isTerminalErrorStatus(get().beatState.status)
             : activeSimId === 'depot'
-            ? get().depotState.status !== 'COLLISION'
+            ? !isTerminalErrorStatus(get().depotState.status)
             : activeSimId === 'switchyard'
-            ? get().switchyardState.status !== 'COLLISION'
-            : get().turtleState.status !== 'COLLISION')
+            ? !isTerminalErrorStatus(get().switchyardState.status)
+            : !isTerminalErrorStatus(get().turtleState.status))
         ) {
           recordCreativePlayCompletionIfApplicable(false);
         }
@@ -5967,28 +6071,24 @@ export const useAppStore = create<AppState>((set, get) => {
           : activeSimId === 'switchyard'
           ? switchyardState
           : turtleState;
+      const hasQueuedEvents = Boolean(runtime?.eventQueue && runtime.eventQueue.length > 0);
       const hasEndedOrFail =
-        currentSimState.status === 'SUCCESS' ||
-        currentSimState.status === 'COLLISION' ||
-        currentSimState.status === 'STEP_LIMIT' ||
-        (runtime !== null && runtime.callStack.length === 0) ||
-        (get().variantRuns.length > 1 &&
-          get().variantRuns.every(
-            (v) => v.status === 'SUCCESS' || v.status === 'COLLISION' || v.status === 'STEP_LIMIT'
-          ));
+        !hasQueuedEvents &&
+        (currentSimState.status === 'SUCCESS' ||
+          isTerminalErrorStatus(currentSimState.status) ||
+          (runtime !== null && runtime.callStack.length === 0) ||
+          (get().variantRuns.length > 1 &&
+            get().variantRuns.every(
+              (v) => v.status === 'SUCCESS' || isTerminalErrorStatus(v.status)
+            )));
 
       if (hasEndedOrFail) {
         get().reset();
       }
 
       // Guard: do not execute if loops are unclosed in any used workspace scope
-      for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-        if (workspace[sc]?.length > 0) {
-          const val = validateLoopStructure(workspace[sc]);
-          if (val.hasError) {
-            return;
-          }
-        }
+      if (hasWorkspaceLoopError(workspace)) {
+        return;
       }
 
       if (activeSimId === 'grid' || activeSimId === 'depot' || activeSimId === 'switchyard') {
@@ -6136,6 +6236,52 @@ export const useAppStore = create<AppState>((set, get) => {
     setLoopPlayback: (loop) => set({ isLoopPlayback: loop }),
 
     toggleLoopPlayback: () => set((state) => ({ isLoopPlayback: !state.isLoopPlayback })),
+
+    setKeyHeld: (key, held) =>
+      set((state) => {
+        const norm = String(key).toUpperCase();
+        const exists = state.heldKeys.includes(norm);
+        if (held && !exists) {
+          return { heldKeys: [...state.heldKeys, norm] };
+        }
+        if (!held && exists) {
+          return { heldKeys: state.heldKeys.filter((k) => k !== norm) };
+        }
+        return state;
+      }),
+
+    setPointerState: (updates) =>
+      set((state) => ({
+        pointerState: { ...state.pointerState, ...updates },
+      })),
+
+    enqueueInteractiveEvent: (eventScope) => {
+      const state = get();
+      const handlerBlocks = state.workspace[eventScope];
+      if (!handlerBlocks || handlerBlocks.length === 0) return;
+
+      const curRuntime = state.runtime;
+      if (curRuntime && isTerminalErrorStatus(curRuntime.status)) {
+        return;
+      }
+
+      const baseRuntime = curRuntime ?? createStoreInitialRuntime();
+      const queuedRuntime = enqueueInterpreterEvent(
+        curRuntime
+          ? baseRuntime
+          : { ...baseRuntime, callStack: [], status: 'IDLE' },
+        eventScope
+      );
+      const awakenedRuntime: InterpreterRuntimeState =
+        queuedRuntime.callStack.length === 0
+          ? { ...queuedRuntime, status: 'RUNNING' }
+          : queuedRuntime;
+
+      set({ runtime: awakenedRuntime });
+      if (!get().isPlaying) {
+        get().play();
+      }
+    },
 
     toggleTurtleVisible: () =>
       set((state) => {

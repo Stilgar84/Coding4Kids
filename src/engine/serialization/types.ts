@@ -35,6 +35,13 @@ export type EnvIdName = InnerLessonEnvIdName | 'lesson';
 
 // Scope IDs
 export const SCOPE_ID_MAIN = 0x00;
+export const SCOPE_ID_ON_TAP = 0x40;
+export const SCOPE_ID_ON_KEY_UP = 0x41;
+export const SCOPE_ID_ON_KEY_DOWN = 0x42;
+export const SCOPE_ID_ON_KEY_LEFT = 0x43;
+export const SCOPE_ID_ON_KEY_RIGHT = 0x44;
+export const SCOPE_ID_ON_KEY_A = 0x45;
+export const SCOPE_ID_ON_KEY_B = 0x46;
 export const SCOPE_ID_SUBFUNCTION_BASE = 0x80;
 export const SCOPE_ID_F1 = 0x81;
 export const SCOPE_ID_F2 = 0x82;
@@ -171,26 +178,145 @@ export const COLOR_LITERAL_PALETTE = [
   'white',   // 9 (0x49)
 ] as const;
 
-export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading', '$tileDial', '$input'] as const;
+export const SERIALIZED_SENSOR_IDS = [
+  '$x',
+  '$y',
+  '$heading',
+  '$tileDial',
+  '$input',
+  '$randCoin',
+  '$randD4',
+  '$randD6',
+  '$randD8',
+  '$randD20',
+  '$rand01',
+  '$randomColor',
+  '$cellValue',
+  '$cellColor',
+  '$cellEmpty',
+  '$headPos',
+  '$tapeLength',
+  '$frame',
+  '$time',
+  '$pointerX',
+  '$pointerY',
+  '$pointerDown',
+  '$recv',
+  '$heldValue',
+  '$topValue',
+  '$heldColor',
+  '$topColor',
+  '$stationLen',
+  '$itemWeight',
+  '$itemColor',
+  '$dockQuota',
+  '$dockCount',
+  '$cursorX',
+  '$cursorY',
+  '$beatIndex',
+] as const;
+
 export const SERIALIZED_SENSOR_BYTE_MAP: Record<string, number> = {
   $x: 0x80,
   $y: 0x81,
   $heading: 0x82,
   $tileDial: 0x83,
   $input: 0x84,
+  $randCoin: 0x85,
+  $randD4: 0x86,
+  $randD6: 0x87,
+  $randD8: 0x88,
+  $randD20: 0x89,
+  $rand01: 0x8a,
+  $randomColor: 0x8b,
+  $cellValue: 0x8c,
+  $cellColor: 0x8d,
+  $cellEmpty: 0x8e,
+  $headPos: 0x8f,
+  $tapeLength: 0x90,
+  $frame: 0x91,
+  $time: 0x92,
+  $pointerX: 0x93,
+  $pointerY: 0x94,
+  $pointerDown: 0x95,
+  $recv: 0x96,
+  $heldValue: 0xa0,
+  $topValue: 0xa1,
+  $heldColor: 0xa2,
+  $topColor: 0xa3,
+  $stationLen: 0xa4,
+  $itemWeight: 0xa8,
+  $itemColor: 0xa9,
+  $dockQuota: 0xaa,
+  $dockCount: 0xab,
+  $cursorX: 0xb0,
+  $cursorY: 0xb1,
+  $beatIndex: 0xb2,
 };
 
+export const SENSOR_BYTE_TO_ID: Record<number, string> = {
+  0x80: '$x',
+  0x81: '$y',
+  0x82: '$heading',
+  0x83: '$tileDial',
+  0x84: '$input',
+  0x85: '$randCoin',
+  0x86: '$randD4',
+  0x87: '$randD6',
+  0x88: '$randD8',
+  0x89: '$randD20',
+  0x8a: '$rand01',
+  0x8b: '$randomColor',
+  0x8c: '$cellValue',
+  0x8d: '$cellColor',
+  0x8e: '$cellEmpty',
+  0x8f: '$headPos',
+  0x90: '$tapeLength',
+  0x91: '$frame',
+  0x92: '$time',
+  0x93: '$pointerX',
+  0x94: '$pointerY',
+  0x95: '$pointerDown',
+  0x96: '$recv',
+  0xa0: '$heldValue',
+  0xa1: '$topValue',
+  0xa2: '$heldColor',
+  0xa3: '$topColor',
+  0xa4: '$stationLen',
+  0xa8: '$itemWeight',
+  0xa9: '$itemColor',
+  0xaa: '$dockQuota',
+  0xab: '$dockCount',
+  0xb0: '$cursorX',
+  0xb1: '$cursorY',
+  0xb2: '$beatIndex',
+};
+
+export const ID_TO_SENSOR_BYTE = SERIALIZED_SENSOR_BYTE_MAP;
+
+export function parseSensorRef(val: unknown): { base: string; param?: string } | null {
+  if (typeof val !== 'string') return null;
+  const trimmed = val.trim();
+  const match = /^(\$[a-zA-Z0-9_]+)(?:\s*\[([^\]]+)\]|:([a-zA-Z0-9_]+))?$/.exec(trimmed);
+  if (!match) return null;
+  const base = match[1];
+  if (!(SERIALIZED_SENSOR_IDS as readonly string[]).includes(base)) return null;
+  const param = (match[2] ?? match[3])?.trim();
+  return param ? { base, param } : { base };
+}
+
 export function sensorNameToByte(name: string): number {
-  const idx = SERIALIZED_SENSOR_IDS.indexOf(name as (typeof SERIALIZED_SENSOR_IDS)[number]);
-  return idx >= 0 ? idx : 0;
+  const parsed = parseSensorRef(name);
+  const base = parsed ? parsed.base : name;
+  return SERIALIZED_SENSOR_BYTE_MAP[base] ?? 0x80;
 }
 
 export function byteToSensorName(byte: number): string {
-  return SERIALIZED_SENSOR_IDS[byte] ?? '$x';
+  return SENSOR_BYTE_TO_ID[byte] ?? SENSOR_BYTE_TO_ID[byte | 0x80] ?? '$x';
 }
 
-export function isSensorRefString(val: unknown): val is string {
-  return typeof val === 'string' && val.startsWith('$') && SERIALIZED_SENSOR_IDS.includes(val as any);
+export function isSensorRefString(val: unknown): val is `$${string}` {
+  return parseSensorRef(val) !== null;
 }
 
 /**
@@ -211,19 +337,21 @@ export function isColorLiteralString(val: unknown): boolean {
 }
 
 export function encodeVarOrSensorIndex(name: string): number {
-  if (isSensorRefString(name)) {
-    return SENSOR_REF_FLAG | sensorNameToByte(name);
+  const parsed = parseSensorRef(name);
+  if (parsed) {
+    return SERIALIZED_SENSOR_BYTE_MAP[parsed.base] ?? 0x80;
   }
   const colorIdx = colorLiteralNameToIdx(name);
   if (colorIdx >= 0) {
     return COLOR_LITERAL_FLAG | colorIdx;
   }
-  return varNameToIndex(name);
+  const normalizedVar = name.length === 2 && name.startsWith('$') ? name.slice(1) : name;
+  return varNameToIndex(normalizedVar);
 }
 
 export function decodeVarOrSensorIndex(byte: number): string {
   if ((byte & SENSOR_REF_FLAG) !== 0) {
-    return byteToSensorName(byte & 0x7f);
+    return byteToSensorName(byte);
   }
   if ((byte & COLOR_LITERAL_FLAG) !== 0) {
     const idx = byte & 0x3f;

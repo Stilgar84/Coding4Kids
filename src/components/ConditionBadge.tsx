@@ -1,7 +1,9 @@
 import React from 'react';
-import type { ConditionExpr } from '../data/curriculum/types';
+import type { ConditionExpr, ConditionOperand } from '../data/curriculum/types';
+import { isTypedValue } from '../types';
 import { isColorLiteralString, TURTLE_COLOR_PALETTE } from '../engine/serialization/types';
 import { PALETTE_COLOR_NAMES } from '../engine/serialization/conditionSerializer';
+import { SensorVisual, TileDialGlyphSvg } from './params/VisualParamBadges';
 
 function normalizeBadgeColorName(raw?: string): string {
   const s = String(raw ?? 'red').trim().toLowerCase();
@@ -86,31 +88,98 @@ export const ConditionBadge: React.FC<ConditionBadgeProps> = ({
           </span>
         );
 
-      case 'cmp': {
-        const isInputLeft = expr.left === '$input';
-        const opGlyph = expr.op === '=' ? '=' : expr.op === '!=' ? '≠' : expr.op;
-        const rightStr = String(expr.right);
-        const isColorRight = isColorLiteralString(expr.right);
-        const swatchHex = isColorRight ? resolveBadgeColorHex(rightStr) : null;
+      case 'keyHeld': {
+        const keyGlyphMap: Record<string, string> = {
+          UP: '▲',
+          DOWN: '▼',
+          LEFT: '◀',
+          RIGHT: '▶',
+          A: '🅰️',
+          B: '🅱️',
+        };
+        const glyph = keyGlyphMap[String(expr.key).toUpperCase()] ?? String(expr.key);
         return (
           <span
-            data-sensor={isInputLeft ? '$input' : 'cmp'}
-            title={`${expr.left} ${expr.op} ${expr.right}`}
-            className="inline-flex items-center gap-1 font-mono text-[9px] font-bold text-cyan-200"
+            data-sensor="keyHeld"
+            title={`Key Held: ${expr.key}`}
+            className="inline-flex items-center gap-0.5 font-mono text-[9px] font-black text-amber-200"
           >
-            <span>{isInputLeft ? '🎛️' : String(expr.left)}</span>
-            <span className="text-amber-300 font-black">{opGlyph}</span>
-            {swatchHex ? (
+            <span aria-hidden="true">⌨️</span>
+            <span>{glyph}</span>
+          </span>
+        );
+      }
+
+      case 'cmp': {
+        const isInputLeft = expr.left === '$input';
+        const opGlyph =
+          expr.op === '='
+            ? '='
+            : expr.op === '!='
+            ? '≠'
+            : expr.op === '<='
+            ? '≤'
+            : expr.op === '>='
+            ? '≥'
+            : expr.op;
+
+        const renderCmpOperand = (operand: ConditionOperand): React.ReactNode => {
+          if (isTypedValue(operand)) {
+            if (operand.type === 'color') {
+              const cName = String(operand.value);
+              return (
+                <span
+                  aria-label={normalizeBadgeColorName(cName)}
+                  className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shadow-sm"
+                  style={{ backgroundColor: resolveBadgeColorHex(cName) }}
+                />
+              );
+            }
+            return (
+              <span className="px-1 rounded bg-slate-800/90 border border-slate-600/80 text-white">
+                {String(operand.value)}
+              </span>
+            );
+          }
+          if (isColorLiteralString(operand)) {
+            const rightStr = String(operand);
+            return (
               <span
                 aria-label={normalizeBadgeColorName(rightStr)}
                 className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shadow-sm"
-                style={{ backgroundColor: swatchHex }}
+                style={{ backgroundColor: resolveBadgeColorHex(rightStr) }}
               />
-            ) : (
-              <span className="px-1 rounded bg-slate-800/90 border border-slate-600/80 text-white">
-                {rightStr}
+            );
+          }
+          if (operand === '$tileDial') {
+            return <TileDialGlyphSvg compact />;
+          }
+          if (typeof operand === 'string' && operand.startsWith('$')) {
+            return <SensorVisual sensorId={operand} compact />;
+          }
+          if (typeof operand === 'string' && /^[a-z]$/.test(operand.trim())) {
+            return (
+              <span className="italic font-black text-amber-300 px-0.5">
+                {operand.trim()}
               </span>
-            )}
+            );
+          }
+          return (
+            <span className="px-1 rounded bg-slate-800/90 border border-slate-600/80 text-white">
+              {String(operand)}
+            </span>
+          );
+        };
+
+        return (
+          <span
+            data-sensor={isInputLeft ? '$input' : 'cmp'}
+            title={`${String(expr.left)} ${expr.op} ${String(expr.right)}`}
+            className="inline-flex items-center gap-0.5 font-mono text-[9px] font-bold text-cyan-200"
+          >
+            {renderCmpOperand(expr.left)}
+            <span className="text-amber-300 font-black">{opGlyph}</span>
+            {renderCmpOperand(expr.right)}
           </span>
         );
       }

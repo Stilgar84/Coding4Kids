@@ -107,7 +107,7 @@ export const Toolbar: React.FC = React.memo(() => {
   const hasLoopError = useMemo(
     () =>
       (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
-        (sc) => (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError
+        (sc) => (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc] ?? []).hasError
       ),
     [workspace]
   );

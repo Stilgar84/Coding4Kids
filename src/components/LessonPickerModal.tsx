@@ -7,7 +7,9 @@ import {
   MASTERY_CHALLENGE_TIERS,
   CurriculumActivity,
   getActivitiesForModule,
+  resolveModuleIdAlias,
 } from '../data/curriculum';
+import { isModuleDagUnlocked } from '../utils/curriculumStagePolicy';
 import { LESSONS } from '../data/lessons';
 import {
   ProfileCurriculumProgress,
@@ -54,6 +56,38 @@ export function isCurriculumModuleUnlocked(
   if (modVariants.some((id) => progress.unlockedModules.includes(id))) return true;
   if (Boolean(progress.unlockAllModules)) return true;
   if (isDevQueryEnabled(searchOverride)) return true;
+  const canonicalId = resolveModuleIdAlias(moduleId);
+  const completedModules: string[] = [];
+  for (const mod of CURRICULUM_MODULES) {
+    const allCapstonesDone =
+      mod.capstoneIds.length > 0 &&
+      mod.capstoneIds.every((capId) =>
+        getActivityIdVariants(capId).some((id) => Boolean(progress.completedLessons[id]))
+      );
+    const modActivities = getActivitiesForModule(mod.id);
+    const allActivitiesDone =
+      modActivities.length > 0 &&
+      modActivities.every((act) =>
+        getActivityIdVariants(act.id).some((id) => Boolean(progress.completedLessons[id]))
+      );
+    const hasBadge = getBadgeIdVariants(mod.badgeId).some((b) =>
+      progress.earnedBadges.includes(b)
+    );
+    if (allCapstonesDone || allActivitiesDone || hasBadge) {
+      completedModules.push(mod.id);
+    }
+  }
+  const unlockedCanonical = (progress.unlockedModules ?? []).map((id) => resolveModuleIdAlias(id));
+  if (
+    isModuleDagUnlocked(
+      canonicalId,
+      completedModules,
+      unlockedCanonical,
+      progress.unlockAllModules
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 

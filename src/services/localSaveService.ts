@@ -95,7 +95,14 @@ export function migrateSavedEntry(raw: any): SavedProgramEntry | null {
       ? raw.screenshot.trim()
       : DEFAULT_FALLBACK_THUMBNAIL;
   const status: SimulationStatus =
-    raw.status === 'SUCCESS' || raw.status === 'COLLISION' || raw.status === 'PAUSED'
+    raw.status === 'SUCCESS' ||
+    raw.status === 'COLLISION' ||
+    raw.status === 'STEP_LIMIT' ||
+    raw.status === 'TYPE_ERROR' ||
+    raw.status === 'MATH_ERROR' ||
+    raw.status === 'STACK_OVERFLOW' ||
+    raw.status === 'DEADLOCK' ||
+    raw.status === 'PAUSED'
       ? raw.status
       : 'IDLE';
   const stepCount = typeof raw.stepCount === 'number' ? raw.stepCount : 0;

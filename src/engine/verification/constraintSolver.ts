@@ -615,8 +615,9 @@ function executeWorkspaceOnEnv(
   const actionExecutions: Record<string, number> = {};
 
   for (const sc of ALL_SCOPES) {
-    if ((workspace[sc]?.length ?? 0) > 0) {
-      const loopVal = validateLoopStructure(workspace[sc]);
+    const scopeBlocks = workspace[sc];
+    if (scopeBlocks && scopeBlocks.length > 0) {
+      const loopVal = validateLoopStructure(scopeBlocks);
       if (loopVal.hasError) {
         return {
           finalState: { ...initialGrid, status: 'IDLE' },
@@ -657,12 +658,24 @@ function executeWorkspaceOnEnv(
             blk.type !== 'PLACEHOLDER' &&
             !CORE_CONTROL_BLOCK_TYPES.has(blk.type)
           ) {
+            const repVarVal =
+              typeof blk.repeatCount === 'string'
+                ? (runtime.variables as Record<string, import('../../types').VariableRuntimeValue | undefined>)[
+                    blk.repeatCount
+                  ]
+                : undefined;
             const rawRep =
               typeof blk.repeatCount === 'number'
                 ? Math.round(blk.repeatCount)
                 : blk.repeatCount === undefined
                 ? 1
-                : Math.round(runtime.variables[blk.repeatCount] ?? 1);
+                : Math.round(
+                    typeof repVarVal === 'number'
+                      ? repVarVal
+                      : repVarVal && typeof repVarVal === 'object' && repVarVal.type === 'number'
+                      ? Number(repVarVal.value)
+                      : 1
+                  );
             if (rawRep > 0) {
               executedDomainAction = blk.type;
             }
@@ -889,7 +902,7 @@ function validateWorkspaceAgainstPalette(
             );
           } else if (
             palette.allowedVariableNames &&
-            !palette.allowedVariableNames.includes(block.repeatCount)
+            !(palette.allowedVariableNames as readonly string[]).includes(block.repeatCount)
           ) {
             violations.push(
               `Variable '${block.repeatCount}' on '${block.type}' is not in allowedVariableNames`
@@ -1436,14 +1449,16 @@ export function checkScaffoldWorkspace(
     }
 
     const target = placeholderSlots[idx];
-    const prev = working[target.scope][target.index];
+    const scopeArr = working[target.scope];
+    if (!scopeArr) return false;
+    const prev = scopeArr[target.index];
     for (const candidate of candidateBlocksPerSlot[idx]) {
-      working[target.scope][target.index] = candidate;
+      scopeArr[target.index] = candidate;
       if (dfsFill(idx + 1)) {
         return true;
       }
     }
-    working[target.scope][target.index] = prev;
+    scopeArr[target.index] = prev;
     return false;
   };
 

@@ -800,20 +800,95 @@ interface ParamVisualProps {
   actionType?: string;
 }
 
+/**
+ * Canonical #301 unified circular rotary dial gauge icon for `$tileDial`.
+ */
+export const TileDialGlyphSvg: React.FC<{ compact?: boolean; className?: string }> = ({
+  compact = true,
+  className = '',
+}) => (
+  <svg
+    data-testid="tile-dial-glyph"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} shrink-0 text-cyan-200 ${className}`.trim()}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="9" className="fill-cyan-950/80" />
+    <path d="M7.5 16.5 A 6 6 0 1 1 16.5 16.5" strokeWidth="1.6" opacity="0.65" />
+    <line x1="12" y1="12" x2="16.5" y2="7.5" stroke="#fbbf24" strokeWidth="2.4" />
+    <circle cx="12" cy="12" r="1.8" fill="#fbbf24" stroke="none" />
+  </svg>
+);
+
+const DOCK_CHIP_LABELS = ['A', 'B', 'C'] as const;
+
+function parseIndexedSensorBadge(sensorId: string): React.ReactNode {
+  if (sensorId === '$tileDial') {
+    return <TileDialGlyphSvg compact />;
+  }
+  const simpleMap: Record<string, string> = {
+    '$x': '📍X',
+    '$y': '📍Y',
+    '$heading': '🧭∠',
+    '$input': '🎛️',
+    '$randCoin': '🎲🪙',
+    '$randD4': '🎲4',
+    '$randD6': '🎲6',
+    '$randD8': '🎲8',
+    '$randD20': '🎲20',
+    '$rand01': '🎲0..1',
+    '$randomColor': '🎲🎨',
+    '$pointerX': '👆X',
+    '$pointerY': '👆Y',
+    '$pointerDown': '👆⬇',
+    '$heldValue': '📦#',
+    '$heldColor': '📦🎨',
+    '$topValue': '🏔️#',
+    '$topColor': '🏔️🎨',
+    '$stationLen': '📏',
+    '$itemWeight': '⚖️',
+    '$itemColor': '🚂🎨',
+    '$dockQuota': '🎯[A]',
+    '$dockCount': '📊[A]',
+    '$cursorX': '🎵X',
+    '$cursorY': '🎵Y',
+    '$beatIndex': '🎵#',
+  };
+  if (simpleMap[sensorId]) {
+    return simpleMap[sensorId];
+  }
+  const dockMatch = /^\$(dockQuota|dockCount)\[(\d+)\]$/.exec(sensorId);
+  if (dockMatch) {
+    const idx = Number(dockMatch[2]);
+    const letter = DOCK_CHIP_LABELS[idx] ?? String(idx);
+    return `${dockMatch[1] === 'dockQuota' ? '🎯' : '📊'}[${letter}]`;
+  }
+  const depotMatch = /^\$(topValue|topColor|stationLen)\[([^\]]+)\]$/.exec(sensorId);
+  if (depotMatch) {
+    const prefix =
+      depotMatch[1] === 'topValue' ? '🏔️#' : depotMatch[1] === 'topColor' ? '🏔️🎨' : '📏';
+    return `${prefix}[${depotMatch[2]}]`;
+  }
+  return sensorId;
+}
+
 export const SensorVisual: React.FC<{ sensorId: string; compact?: boolean }> = ({
   sensorId,
   compact = true,
 }) => {
-  const label =
-    sensorId === '$x' ? '📍X' : sensorId === '$y' ? '📍Y' : sensorId === '$heading' ? '🧭∠' : sensorId;
   return (
     <span
       data-testid={`sensor-badge-${sensorId}`}
-      className={`font-mono font-black text-cyan-200 bg-cyan-950/90 rounded border border-cyan-400/70 shadow-sm flex items-center justify-center leading-none ${
+      className={`font-mono font-black text-cyan-200 bg-cyan-950/90 rounded border border-cyan-400/70 shadow-sm inline-flex items-center justify-center gap-0.5 leading-none ${
         compact ? 'px-1.5 py-0.5 text-[11px] min-w-[24px] h-[22px]' : 'px-2 py-1 text-xs min-w-[32px] h-[28px]'
       }`}
     >
-      {label}
+      {parseIndexedSensorBadge(sensorId)}
     </span>
   );
 };
@@ -979,9 +1054,12 @@ export const SwitchyardJunctionVisual: React.FC<{
   junction: string | unknown;
   compact?: boolean;
 }> = ({ junction, compact = true }) => {
-  const norm = String(junction ?? 'A').trim().toUpperCase() === 'B' ? 'B' : 'A';
+  const raw = String(junction ?? 'A').trim().toUpperCase();
+  const norm = raw === 'B' || raw === 'DOCK_B' ? 'B' : raw === 'C' || raw === 'DOCK_C' ? 'C' : 'A';
   const styleClass =
-    norm === 'B'
+    norm === 'C'
+      ? 'bg-emerald-500 text-slate-950 border-emerald-200'
+      : norm === 'B'
       ? 'bg-amber-500 text-slate-950 border-amber-200'
       : 'bg-sky-500 text-slate-950 border-sky-200';
   return (

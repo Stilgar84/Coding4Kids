@@ -148,16 +148,37 @@ export const ExplanationDemoBar: React.FC = () => {
     getActivityAtVersion(activeActivityId, activeActivityVersion) ??
     getActivityLatest(activeActivityId);
 
-  if (
-    !activity ||
-    activity.format !== 'explanation' ||
-    !activity.demoTabs ||
-    activity.demoTabs.length === 0
-  ) {
+  if (!activity) {
     return null;
   }
 
-  const demoTabs = activity.demoTabs;
+  const hasDemoTabs =
+    activity.format === 'explanation' &&
+    Boolean(activity.demoTabs && activity.demoTabs.length > 0);
+  const challengeCoPilotText = !hasDemoTabs ? activity.coPilotCard?.trim() : undefined;
+
+  if (!hasDemoTabs && !challengeCoPilotText) {
+    return null;
+  }
+
+  if (!hasDemoTabs && challengeCoPilotText) {
+    return (
+      <div
+        data-testid="copilot-card-banner"
+        data-activity-id={activity.id}
+        className="flex items-center gap-2 px-3 md:px-4 py-1.5 bg-slate-900/95 border-b border-slate-800 shrink-0 select-none z-20"
+      >
+        <span aria-hidden="true" className="text-sm shrink-0">
+          🤖
+        </span>
+        <span className="text-xs font-medium text-sky-200 leading-snug">
+          {challengeCoPilotText}
+        </span>
+      </div>
+    );
+  }
+
+  const demoTabs = activity.demoTabs!;
   const clampedActiveIdx = Math.min(
     Math.max(0, activeDemoTabIndex),
     demoTabs.length - 1
@@ -322,6 +343,21 @@ export const ExplanationDemoBar: React.FC = () => {
         ['dial-read', 'pose-bookmark', 'variable-watch'].includes(s)
       ) && (
         <VariableAndDialSpotlight spotlights={activeTab.spotlights} />
+      )}
+
+      {/* Optional <= 2 sentence Co-Pilot concept card */}
+      {(activeTab?.coPilotCard ?? activity.coPilotCard)?.trim() && (
+        <div
+          data-testid="copilot-card-banner"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-950/60 border border-sky-700/60 text-[11px] font-medium text-sky-200 max-w-md"
+        >
+          <span aria-hidden="true" className="shrink-0">
+            🤖
+          </span>
+          <span className="line-clamp-2 leading-tight">
+            {(activeTab?.coPilotCard ?? activity.coPilotCard)?.trim()}
+          </span>
+        </div>
       )}
 
       {/* Right: Prominent 1-Tap Next Step / Next Lesson (→) Button */}

@@ -11,6 +11,7 @@ import {
   WallEdge,
   WorldItem,
   WorkspaceState,
+  TypedValue,
 } from '../../types';
 import {
   cloneLockedGates,
@@ -98,9 +99,17 @@ export interface PaletteConfig {
    */
   allowedValueSensors?: string[];
   /**
-   * Allowed variable operation symbols (e.g., ['+', '-']) (Module 6+).
+   * Allowed variable operation symbols (e.g., ['+', '-', '*', '/', '%']) (Module 6+).
    */
   allowedVarOps?: string[];
+  /**
+   * Allowed comparison operation symbols in CMP blocks (e.g., ['<', '<=', '>', '>=', '==', '!=']).
+   */
+  allowedCmpOps?: ConditionCompareOp[];
+  /**
+   * Whether interactive event scopes (ON_TAP, ON_KEY_*) and keyHeld controls are allowed.
+   */
+  allowInteractiveEvents?: boolean;
   /**
    * Whether recursive function calls (direct self-calls or transitive call-graph cycles)
    * are permitted in function scopes. Defaults to true when omitted.
@@ -187,7 +196,9 @@ export type ConditionSensorType =
   | BeatConditionSensor;
 
 export type ConditionCombinatorOp = 'NOT' | 'AND' | 'OR';
-export type ConditionCompareOp = '=' | '!=' | '<' | '<=' | '>' | '>=';
+export type ConditionCompareOp = '=' | '==' | '!=' | '<' | '<=' | '>' | '>=';
+export type ConditionOperand = string | number | TypedValue;
+export type ConditionKeyCode = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'A' | 'B' | number;
 
 export type ConditionExpr =
   | {
@@ -214,8 +225,12 @@ export type ConditionExpr =
       /** Reserved for Module 7-8 typed numeric comparisons */
       kind: 'cmp';
       op: ConditionCompareOp;
-      left: string | number;
-      right: string | number;
+      left: string | number | TypedValue;
+      right: string | number | TypedValue;
+    }
+  | {
+      kind: 'keyHeld';
+      key: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'A' | 'B' | number;
     };
 
 export interface CurriculumBeaconTile {
@@ -262,6 +277,8 @@ export interface SwitchyardItemDef {
   icon: SwitchyardIcon;
   damaged?: boolean;
   weight?: number;
+  seqNum?: number;
+  seqTag?: string;
 }
 
 export interface SwitchyardSwitchDef {
@@ -287,6 +304,7 @@ export interface SwitchyardDockDef {
   quota?: number;
   maxWeight?: number;
   minWeight?: number;
+  paritySlot?: boolean | string;
 }
 
 export interface CurriculumSwitchyardDefinition {
@@ -302,14 +320,16 @@ export interface CurriculumSwitchyardDefinition {
   scrapRules?:
     | string
     | {
-        kind?: string;
+        kind?: 'damaged_or_overweight' | string;
         maxWeight?: number;
         allowDamaged?: boolean;
         forbidIntact?: boolean;
         maxScraps?: number;
+        [key: string]: any;
       };
   mode?: 'sort' | 'priority' | 'balance_scale' | string;
   balanceTolerance?: number;
+  scaleTolerance?: number;
 }
 
 export interface CurriculumVariant {
@@ -386,9 +406,15 @@ export interface CurriculumDepotDefinition extends DepotState {
   allowNonEmptyInput?: boolean;
   exactOutputCount?: number;
   scrapRules?: string | Record<string, any>;
+  input?: any;
+  acceptOutput?: any;
+  rejectOutput?: any;
+  verdictGateMode?: string;
 }
 
 export interface CurriculumTurtleDefinition {
+  mode?: 'static' | 'live' | 'flipbook';
+  clearBetweenFrames?: boolean;
   canvasBounds?: { halfWidth: number; halfHeight: number };
   showCanvasBounds?: boolean;
 }
@@ -396,6 +422,8 @@ export interface CurriculumTurtleDefinition {
 export interface CurriculumBeatRules {
   isLoopingDefault?: boolean;
   cleanResetOnInputChange?: boolean;
+  bpm?: number;
+  patternLength?: number;
 }
 
 export interface ExplanationDemoTab {
@@ -404,9 +432,16 @@ export interface ExplanationDemoTab {
   icon?: string;
   title?: string;
   simId?: CurriculumSimId;
+  grid?: CurriculumGridDefinition;
   gridState?: CurriculumGridDefinition;
+  depot?: CurriculumDepotDefinition;
   depotState?: CurriculumDepotDefinition;
+  switchyard?: CurriculumSwitchyardDefinition;
   switchyardState?: CurriculumSwitchyardDefinition;
+  turtle?: CurriculumTurtleDefinition;
+  beatRules?: CurriculumBeatRules;
+  coPilotCard?: string;
+  initialVars?: Record<string, number | TypedValue | { type: string; value: any }>;
   inputConfig?: SceneInputConfig;
   workspace: WorkspaceState;
   spotlights?: DemoSpotlightType[];
@@ -429,6 +464,10 @@ export interface ActivityVersionPayload {
   turtle?: CurriculumTurtleDefinition;
   /** Optional Beat playback/reset rules for reactive scenes */
   beatRules?: CurriculumBeatRules;
+  /** Optional <= 2 sentence concept explanation or challenge co-pilot card */
+  coPilotCard?: string;
+  /** Initial variable bindings for the activity */
+  initialVars?: Record<string, number | TypedValue | { type: string; value: any }>;
   /** Optional reactive $input scene selector configuration (branch.10a, branch.10, branch.B, branch.C) */
   inputConfig?: SceneInputConfig;
   /** Whether continuous loop playback is enabled automatically on load (e.g., frame animation lessons) */

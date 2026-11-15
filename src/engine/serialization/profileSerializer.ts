@@ -419,6 +419,11 @@ function statusToCode(status: SimulationStatus): number {
     case 'SUCCESS':
       return 1;
     case 'COLLISION':
+    case 'STEP_LIMIT':
+    case 'TYPE_ERROR':
+    case 'MATH_ERROR':
+    case 'STACK_OVERFLOW':
+    case 'DEADLOCK':
       return 2;
     case 'PAUSED':
       return 3;

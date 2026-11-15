@@ -99,8 +99,12 @@ export function writeTurtleParams(
     }
 
     case OP_TURTLE_SET_PEN_COLOR: {
-      const colorByte = colorToByte(params?.color);
-      writer.writeUint8(colorByte);
+      if ((paramVarMask & 0x02) !== 0) {
+        writer.writeUint8(encodeVarOrSensorIndex(String(params?.color ?? 'a')));
+      } else {
+        const colorByte = colorToByte(params?.color);
+        writer.writeUint8(colorByte);
+      }
       break;
     }
 
@@ -204,8 +208,10 @@ export function readTurtleParams(
     }
 
     case OP_TURTLE_SET_PEN_COLOR: {
-      const colorByte = reader.readUint8();
-      return { color: byteToColor(colorByte) };
+      const color = (paramVarMask & 0x02) !== 0
+        ? decodeVarOrSensorIndex(reader.readUint8())
+        : byteToColor(reader.readUint8());
+      return { color };
     }
 
     case OP_TURTLE_SET_PEN_WIDTH: {

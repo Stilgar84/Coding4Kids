@@ -60,6 +60,9 @@ export const LEGACY_MODULE_ID_ALIASES: Record<string, string> = {
   'module-3': 'loop',
   'module-4': 'func',
   'module-5': 'branch',
+  'module-6': 'var',
+  'module-7': 'cmp',
+  'module-8': 'inter',
 };
 
 /**
@@ -149,6 +152,33 @@ export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   '5A': 'branch.A',
   '5B': 'branch.B',
   '5C': 'branch.C',
+  '6.0': 'var.0',
+  '6.1': 'var.1',
+  '6.2': 'var.2',
+  '6.3': 'var.3',
+  '6.4': 'var.4',
+  '6.5': 'var.5',
+  '6.6': 'var.6',
+  '6.7': 'var.7',
+  '6.8': 'var.8',
+  '6A': 'var.A',
+  '6B': 'var.B',
+  '6C': 'var.C',
+  'C6.1': 'var.A',
+  'C6.2': 'var.B',
+  '7.0': 'cmp.0',
+  '7.1': 'cmp.1',
+  '7.2': 'cmp.2',
+  '7.3': 'cmp.3',
+  '7.4': 'cmp.4',
+  '7.5': 'cmp.5',
+  '7.6': 'cmp.6',
+  '7.7': 'cmp.7',
+  '7.8': 'cmp.8',
+  '7.9': 'cmp.9',
+  '7A': 'cmp.A',
+  '7B': 'cmp.B',
+  '7C': 'cmp.C',
 };
 
 export function resolveModuleIdAlias(moduleId: string): string {

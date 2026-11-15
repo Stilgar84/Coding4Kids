@@ -19,6 +19,14 @@ function getStatusLabel(status: VariantRunSnapshot['status']): string {
       return 'passed';
     case 'COLLISION':
       return 'failed';
+    case 'TYPE_ERROR':
+      return 'type mismatch';
+    case 'MATH_ERROR':
+      return 'math error';
+    case 'STACK_OVERFLOW':
+      return 'stack overflow';
+    case 'DEADLOCK':
+      return 'deadlock';
     case 'STEP_LIMIT':
       return 'step limit reached';
     case 'RUNNING':
@@ -69,7 +77,12 @@ export const MultiRunPipsBarView: React.FC<MultiRunPipsBarViewProps> = ({
         const isFocused = idx === focusedIndex;
         const isSuccess = variant.status === 'SUCCESS';
         const isStepLimit = variant.status === 'STEP_LIMIT';
-        const isFail = variant.status === 'COLLISION';
+        const isFail =
+          variant.status === 'COLLISION' ||
+          variant.status === 'TYPE_ERROR' ||
+          variant.status === 'MATH_ERROR' ||
+          variant.status === 'STACK_OVERFLOW' ||
+          variant.status === 'DEADLOCK';
         const isRunning = variant.status === 'RUNNING' || variant.status === 'PAUSED';
         const variantNumber = idx + 1;
         const statusText = getStatusLabel(variant.status);

@@ -1,13 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { GridState } from '../types';
+import { GridState, isTypedValue, VariableRuntimeValue } from '../types';
 import { TurtleState } from '../simulations/turtle/types';
 import { DemoSpotlightType } from '../data/curriculum/types';
 import { isLowQualityActive, useAppStoreSelector } from '../store/useAppStore';
+import { TileDialGlyphSvg } from './params/VisualParamBadges';
+
+function toNumericDisplay(v: VariableRuntimeValue | undefined, fallback: number): number | string {
+  if (v === undefined) return fallback;
+  if (isTypedValue(v)) {
+    return typeof v.value === 'number' ? v.value : String(v.value);
+  }
+  return v;
+}
 
 export interface VariableAndDialSpotlightProps {
   spotlights?: DemoSpotlightType[];
-  variables?: Record<string, number> | null;
+  variables?: Record<string, VariableRuntimeValue> | null;
   turtleState?: TurtleState | null;
   grid?: GridState | null;
 }
@@ -18,7 +27,7 @@ export interface VariableAndDialSpotlightProps {
  * into watch box `[📦 a ●]`.
  */
 export const DialReadSpotlight: React.FC<{
-  variables?: Record<string, number> | null;
+  variables?: Record<string, VariableRuntimeValue> | null;
   grid?: GridState | null;
   isLowQuality?: boolean;
 }> = ({ variables, grid, isLowQuality }) => {
@@ -38,8 +47,8 @@ export const DialReadSpotlight: React.FC<{
     }
   }
 
-  const varVal = variables?.a ?? dialValue;
-  const prevValRef = useRef(varVal);
+  const varVal = toNumericDisplay(variables?.a, dialValue);
+  const prevValRef = useRef<number | string>(varVal);
   const [pulsing, setPulsing] = useState(false);
 
   useEffect(() => {
@@ -64,7 +73,7 @@ export const DialReadSpotlight: React.FC<{
         className="inline-flex items-center gap-1 px-1.5 h-6 rounded-md bg-amber-500/20 border border-amber-400/50 text-amber-200 text-[11px] font-black tracking-tight"
         title="Floor dial value ($tileDial)"
       >
-        <span aria-hidden="true">🎛️</span>
+        <TileDialGlyphSvg compact />
         <span className="font-mono">{dialValue}</span>
       </span>
 
@@ -97,15 +106,15 @@ export const DialReadSpotlight: React.FC<{
  * `[📦 a ●]` and `[📦 b ▲]`.
  */
 export const PoseBookmarkSpotlight: React.FC<{
-  variables?: Record<string, number> | null;
+  variables?: Record<string, VariableRuntimeValue> | null;
   turtleState?: TurtleState | null;
   isLowQuality?: boolean;
 }> = ({ variables, turtleState, isLowQuality }) => {
   const currentX = turtleState ? Math.round(turtleState.robot.x) : -75;
   const currentY = turtleState ? Math.round(turtleState.robot.y) : 0;
 
-  const valA = variables?.a !== undefined ? variables.a : currentX;
-  const valB = variables?.b !== undefined ? variables.b : currentY;
+  const valA = toNumericDisplay(variables?.a, currentX);
+  const valB = toNumericDisplay(variables?.b, currentY);
 
   const prevRef = useRef({ valA, valB });
   const [pulsing, setPulsing] = useState(false);
@@ -181,16 +190,16 @@ export const PoseBookmarkSpotlight: React.FC<{
  * Shows stepped counter progression: `1 → 2 → 3 → 4` on `a = a + 1`.
  */
 export const VariableWatchSpotlight: React.FC<{
-  variables?: Record<string, number> | null;
+  variables?: Record<string, VariableRuntimeValue> | null;
   isLowQuality?: boolean;
 }> = ({ variables, isLowQuality }) => {
   // If 's' is active (e.g. 6.0 Tab 1), show 's'; else show counter 'a'
   const isSActive = variables?.s !== undefined;
   const varName = isSActive ? 's' : 'a';
   const shape = isSActive ? '★' : '●';
-  const currentVal = isSActive ? (variables?.s ?? 60) : (variables?.a ?? 1);
+  const currentVal = isSActive ? toNumericDisplay(variables?.s, 60) : toNumericDisplay(variables?.a, 1);
 
-  const prevValRef = useRef(currentVal);
+  const prevValRef = useRef<number | string>(currentVal);
   const [pulsing, setPulsing] = useState(false);
 
   useEffect(() => {
@@ -232,8 +241,9 @@ export const VariableWatchSpotlight: React.FC<{
       {!isSActive && (
         <div className="flex items-center gap-1 text-[10px] font-black">
           {steps.map((st, i) => {
-            const isMatch = Math.round(currentVal) === st;
-            const isPast = Math.round(currentVal) > st;
+            const numCurrentVal = Number(currentVal) || 0;
+            const isMatch = Math.round(numCurrentVal) === st;
+            const isPast = Math.round(numCurrentVal) > st;
             return (
               <React.Fragment key={st}>
                 {i > 0 && (

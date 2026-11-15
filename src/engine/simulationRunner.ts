@@ -70,7 +70,7 @@ export function runHeadlessSimulation<TState = any>(
     options?.sceneInput !== undefined ? options.sceneInput : options?.previewInput;
   const simEnv = getSimEnvironment(simId) as SimulationEnvironment<TState> | undefined;
   const initialRuntime: InterpreterRuntimeState = {
-    ...createInitialInterpreterState(),
+    ...createInitialInterpreterState(options?.seed, options?.initialVars),
     ...(resolvedSceneInput !== undefined ? { sceneInput: resolvedSceneInput } : {}),
   };
 
@@ -86,9 +86,23 @@ export function runHeadlessSimulation<TState = any>(
   }
 
   // Guard: validate loop structure in all non-empty workspace scopes
-  for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
-    if (workspace[sc]?.length > 0) {
-      const val = validateLoopStructure(workspace[sc]);
+  const allScopes: ScopeType[] = [
+    'MAIN',
+    'F1',
+    'F2',
+    'F3',
+    'ON_TAP',
+    'ON_KEY_UP',
+    'ON_KEY_DOWN',
+    'ON_KEY_LEFT',
+    'ON_KEY_RIGHT',
+    'ON_KEY_A',
+    'ON_KEY_B',
+  ];
+  for (const sc of allScopes) {
+    const scopeBlocks = workspace[sc];
+    if (scopeBlocks && scopeBlocks.length > 0) {
+      const val = validateLoopStructure(scopeBlocks);
       if (val.hasError) {
         const finalState =
           simState && typeof simState === 'object' ? { ...simState, status: 'IDLE' } : simState;
@@ -103,7 +117,7 @@ export function runHeadlessSimulation<TState = any>(
   }
 
   // Guard: empty workspace
-  const totalBlocks = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).reduce(
+  const totalBlocks = allScopes.reduce(
     (acc, sc) => acc + (workspace[sc]?.length || 0),
     0
   );
@@ -144,6 +158,10 @@ export function runHeadlessSimulation<TState = any>(
     rawStatus === 'SUCCESS' ||
     rawStatus === 'COLLISION' ||
     rawStatus === 'STEP_LIMIT' ||
+    rawStatus === 'TYPE_ERROR' ||
+    rawStatus === 'MATH_ERROR' ||
+    rawStatus === 'STACK_OVERFLOW' ||
+    rawStatus === 'DEADLOCK' ||
     rawStatus === 'PAUSED'
       ? rawStatus
       : 'IDLE';
