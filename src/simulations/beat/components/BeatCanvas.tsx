@@ -1,6 +1,6 @@
 import React, { useSyncExternalStore } from 'react';
 import { Bell, Eraser, Gauge, Grid, Hourglass, Infinity as InfinityIcon, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
-import { Direction, SimulationStatus } from '../../../types';
+import { Direction, ScopeType, SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { SimulationTopLeftHud } from '../../../components/SimulationTopLeftHud';
 import { resolveActiveCurriculumActivity } from '../../../utils/curriculumStagePolicy';
@@ -13,7 +13,7 @@ export interface BeatCanvasProps {
   runtimeStatus?: SimulationStatus;
   runtimeVariables?: Record<string, any> | null;
   activeBlockId?: string | null;
-  activeScope?: string | null;
+  activeScope?: ScopeType | null;
 }
 
 interface CueVisualStyle {
