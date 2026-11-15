@@ -13,6 +13,8 @@ import {
   getActivityAtVersion,
   getActivityVariants,
   isValidatedPuzzleActivity,
+  resolveActivityIdAlias,
+  resolveModuleIdAlias,
 } from '../src/data/curriculum';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
 import { exportToString } from '../src/engine/serialization/codeSerializer';
@@ -38,54 +40,49 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
     useAppStore.setState({
       curriculumWorkspaces: {},
       sandboxSnapshot: null,
-      activeActivityId: '1.1',
+      activeActivityId: 'seq.1',
       activeActivityVersion: 1,
     });
     useAppStore.getState().clearHistory();
   });
 
   describe('Curriculum Module & Activity Schema', () => {
-    it('declares static badgeId and capstoneIds for Modules 1–6', () => {
+    it('declares static badgeId and capstoneIds for Phase 1 modules (seq, param, loop, func) and resolves V1 aliases', () => {
       const modules = getCurriculumModules();
-      expect(modules).toHaveLength(6);
-      expect(modules.map((m) => m.id)).toEqual([
-        'module-1',
-        'module-2',
-        'module-3',
-        'module-4',
-        'module-5',
-        'module-6',
-      ]);
+      expect(modules).toHaveLength(4);
+      expect(modules.map((m) => m.id)).toEqual(['seq', 'param', 'loop', 'func']);
 
-      const m1 = getCurriculumModule('module-1')!;
-      expect(m1.badgeId).toBe('badge-module-1');
-      expect(m1.capstoneIds).toEqual(['1A', '1B', '1C']);
+      const seq = getCurriculumModule('seq')!;
+      expect(seq.badgeId).toBe('badge-seq');
+      expect(seq.capstoneIds).toEqual(['seq.A', 'seq.B', 'seq.C']);
 
-      const m2 = getCurriculumModule('module-2')!;
-      expect(m2.badgeId).toBe('badge-module-2');
-      expect(m2.capstoneIds).toEqual(['2A', '2B']);
+      const param = getCurriculumModule('param')!;
+      expect(param.badgeId).toBe('badge-param');
+      expect(param.capstoneIds).toEqual(['param.C', 'param.A', 'param.B']);
 
-      const m3 = getCurriculumModule('module-3')!;
-      expect(m3.badgeId).toBe('badge-module-3');
-      expect(m3.capstoneIds).toEqual(['3A', '3B', '3C']);
+      const loop = getCurriculumModule('loop')!;
+      expect(loop.badgeId).toBe('badge-loop');
+      expect(loop.capstoneIds).toEqual(['loop.A', 'loop.B', 'loop.C']);
 
-      const m4 = getCurriculumModule('module-4')!;
-      expect(m4.badgeId).toBe('badge-module-4');
-      expect(m4.capstoneIds).toEqual(['4A', '4B', '4C']);
+      const func = getCurriculumModule('func')!;
+      expect(func.badgeId).toBe('badge-func');
+      expect(func.capstoneIds).toEqual(['func.A', 'func.B', 'func.C']);
 
-      const m5 = getCurriculumModule('module-5')!;
-      expect(m5.badgeId).toBe('badge-module-5');
-      expect(m5.capstoneIds).toEqual(['5A', '5B']);
-
-      const m6 = getCurriculumModule('module-6')!;
-      expect(m6.badgeId).toBe('badge-module-6');
-      expect(m6.capstoneIds).toEqual(['6A', '6B']);
+      // Backward-compatibility alias lookup
+      expect(resolveModuleIdAlias('module-1')).toBe('seq');
+      expect(resolveModuleIdAlias('module-4')).toBe('func');
+      expect(resolveActivityIdAlias('1.0')).toBe('seq.0');
+      expect(resolveActivityIdAlias('2.5a')).toBe('param.6');
+      expect(resolveActivityIdAlias('3.8')).toBe('loop.8');
+      expect(resolveActivityIdAlias('4C')).toBe('func.C');
+      expect(getCurriculumModule('module-2')?.id).toBe('param');
+      expect(getActivityLatest('2.5a')?.id).toBe('param.6');
     });
 
     it('seeds validated puzzles whose referenceSolutions solve their maps/variants within slotCap', () => {
-      const m1RobotPuzzles = getActivitiesForModule('module-1').filter(isValidatedPuzzleActivity);
-      expect(m1RobotPuzzles.map((a) => a.id)).toEqual(
-        expect.arrayContaining(['1.1', '1.2', '1.3'])
+      const seqRobotPuzzles = getActivitiesForModule('seq').filter(isValidatedPuzzleActivity);
+      expect(seqRobotPuzzles.map((a) => a.id)).toEqual(
+        expect.arrayContaining(['seq.1', 'seq.2', 'seq.2a', 'seq.3'])
       );
 
       for (const activity of CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity)) {
@@ -127,17 +124,17 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
     });
 
     it('resolves latest and historical activity versions via getActivityLatest & getActivityAtVersion', () => {
-      const latest11 = getActivityLatest('1.1');
-      expect(latest11).toBeDefined();
-      expect(latest11?.version).toBe(1);
-      expect(getActivityAtVersion('1.1', 1)).toEqual(latest11);
-      expect(getActivityAtVersion('1.1', 99)).toBeUndefined();
+      const latestSeq1 = getActivityLatest('seq.1');
+      expect(latestSeq1).toBeDefined();
+      expect(latestSeq1?.version).toBe(1);
+      expect(getActivityAtVersion('seq.1', 1)).toEqual(latestSeq1);
+      expect(getActivityAtVersion('seq.1', 99)).toBeUndefined();
       expect(getActivityAtVersion('non-existent', 1)).toBeUndefined();
 
       const syntheticCatalog: CurriculumActivity[] = [
         {
-          id: '2.1',
-          moduleId: 'module-2',
+          id: 'param.1',
+          moduleId: 'param',
           version: 2,
           format: 'puzzle',
           simId: 'grid',
@@ -190,12 +187,12 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
         },
       ];
 
-      const v2 = getActivityAtVersion('2.1', 2, syntheticCatalog);
+      const v2 = getActivityAtVersion('param.1', 2, syntheticCatalog);
       expect(v2?.version).toBe(2);
       expect(v2?.grid?.width).toBe(5);
       expect(v2?.slotCap?.maxTotal).toBe(2);
 
-      const v1 = getActivityAtVersion('2.1', 1, syntheticCatalog);
+      const v1 = getActivityAtVersion('param.1', 1, syntheticCatalog);
       expect(v1?.version).toBe(1);
       expect(v1?.grid?.width).toBe(4);
       expect(v1?.slotCap?.maxTotal).toBe(1);
@@ -204,7 +201,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
   });
 
   describe('Mode Switching, Read-Only Enforcement & Open Copy in Sandbox', () => {
-    it('preserves Sandbox map/workspace across Sandbox ↔ Learn mode switches and per-activity workspaces across 1.1–1.3', () => {
+    it('preserves Sandbox map/workspace across Sandbox ↔ Learn mode switches and per-activity workspaces across seq.1–seq.3', () => {
       const store = useAppStore.getState();
 
       // Customize Sandbox state first
@@ -215,32 +212,32 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       const sandboxWidthBefore = useAppStore.getState().grid.width;
       const sandboxBarriersBefore = useAppStore.getState().grid.barriers.length;
 
-      // Switch to Curriculum (Learn) mode -> loads 1.1 (4x3)
+      // Switch to Curriculum (Learn) mode -> loads seq.1 (4x4)
       store.setAppMode('curriculum');
       expect(useAppStore.getState().appMode).toBe('curriculum');
-      expect(useAppStore.getState().activeActivityId).toBe('1.1');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.1');
       expect(useAppStore.getState().grid.width).toBe(4);
-      expect(useAppStore.getState().grid.height).toBe(3);
+      expect(useAppStore.getState().grid.height).toBe(4);
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(0);
 
-      // Place blocks in 1.1
+      // Place blocks in seq.1
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'MOVE_FWD');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(2);
 
-      // Switch to 1.2 -> loads 4x4 South-facing map with empty workspace
-      store.setCurriculumActivity('1.2');
-      expect(useAppStore.getState().activeActivityId).toBe('1.2');
-      expect(useAppStore.getState().grid.width).toBe(4);
-      expect(useAppStore.getState().grid.height).toBe(4);
+      // Switch to seq.2a -> loads 3x3 South-facing map with empty workspace
+      store.setCurriculumActivity('seq.2a');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.2a');
+      expect(useAppStore.getState().grid.width).toBe(3);
+      expect(useAppStore.getState().grid.height).toBe(3);
       expect(useAppStore.getState().grid.robot.dir).toBe('SOUTH');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(0);
 
       store.addBlock('MAIN', 'TURN_LEFT');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(1);
 
-      // Switch back to 1.1 -> preserves 1.1's 2 blocks
-      store.setCurriculumActivity('1.1');
+      // Switch back to seq.1 -> preserves seq.1's 2 blocks
+      store.setCurriculumActivity('seq.1');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(2);
 
       // Switch back to Sandbox -> restores custom Sandbox level 3 map & workspace
@@ -252,14 +249,14 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(1);
       expect(useAppStore.getState().workspace.MAIN[0].repeatCount).toBe(2);
 
-      // Re-enter Learn mode -> 1.1 still has its 2 blocks
+      // Re-enter Learn mode -> seq.1 still has its 2 blocks
       store.setAppMode('curriculum');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(2);
     });
 
     it('strictly blocks all Grid map mutations and editor tools when appMode === "curriculum"', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.3');
+      store.setCurriculumActivity('seq.3');
 
       const initialGridSnapshot = JSON.stringify(useAppStore.getState().grid);
       expect(useAppStore.getState().canUndo).toBe(false);
@@ -293,7 +290,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
 
     it('clones active map and blocks into editable Sandbox mode via openCopyInSandbox()', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2a');
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'TURN_LEFT');
 
@@ -304,8 +301,8 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
 
       const afterCopy = useAppStore.getState();
       expect(afterCopy.appMode).toBe('sandbox');
-      expect(afterCopy.grid.width).toBe(4);
-      expect(afterCopy.grid.height).toBe(4);
+      expect(afterCopy.grid.width).toBe(3);
+      expect(afterCopy.grid.height).toBe(3);
       expect(afterCopy.grid.robot.dir).toBe('SOUTH');
       expect(afterCopy.grid.barriers.length).toBe(curriculumBarrierCount);
       expect(afterCopy.workspace.MAIN.map((b) => b.type)).toEqual(['MOVE_FWD', 'TURN_LEFT']);
@@ -316,20 +313,20 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       store.resizeBoard('RIGHT', 1);
       store.toggleWall({ orientation: 'H', x: 0, y: 1 });
       store.addBlock('MAIN', 'MOVE_FWD');
-      expect(useAppStore.getState().grid.width).toBe(5);
+      expect(useAppStore.getState().grid.width).toBe(4);
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(3);
 
-      // Returning to Learn mode 1.2 keeps original read-only 4x4 map and 2 curriculum blocks intact
+      // Returning to Learn mode seq.2a keeps original read-only 3x3 map and 2 curriculum blocks intact
       store.setAppMode('curriculum');
-      expect(useAppStore.getState().activeActivityId).toBe('1.2');
-      expect(useAppStore.getState().grid.width).toBe(4);
+      expect(useAppStore.getState().activeActivityId).toBe('seq.2a');
+      expect(useAppStore.getState().grid.width).toBe(3);
       expect(useAppStore.getState().grid.barriers.length).toBe(curriculumBarrierCount);
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(2);
     });
 
     it('loads curriculum referenceSolution in Learn mode and handles code imports safely', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.loadSolution();
       expect(useAppStore.getState().workspace.MAIN.map((b) => b.type)).toEqual([
         'MOVE_FWD',
@@ -377,7 +374,7 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
 
     it('round-trips Curriculum mode state across PWA update snapshot & restore', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.3');
+      store.setCurriculumActivity('seq.3');
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'MOVE_BACK');
 
@@ -393,11 +390,11 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
 
       const restored = useAppStore.getState();
       expect(restored.appMode).toBe('curriculum');
-      expect(restored.activeActivityId).toBe('1.3');
+      expect(restored.activeActivityId).toBe('seq.3');
       expect(restored.activeActivityVersion).toBe(1);
       expect(restored.editorTool).toBe('NONE');
       expect(restored.workspace.MAIN.map((b) => b.type)).toEqual(['MOVE_FWD', 'MOVE_BACK']);
-      expect(restored.curriculumWorkspaces['1.3']?.MAIN.map((b) => b.type)).toEqual([
+      expect(restored.curriculumWorkspaces['seq.3']?.MAIN.map((b) => b.type)).toEqual([
         'MOVE_FWD',
         'MOVE_BACK',
       ]);

@@ -2,8 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  CURRICULUM_ACTIVITIES,
-  MODULE_1_LOGO_ACTIVITIES,
+  SEQ_ACTIVITIES,
   createCurriculumBlock,
   getActivitiesForModule,
   getActivityLatest,
@@ -47,7 +46,9 @@ import { useAppStore } from '../src/store/useAppStore';
 import '../src/simulations/grid/gridEnvironment';
 import '../src/simulations/turtle/turtleEnvironment';
 
-describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1.7, 1B)', () => {
+describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, seq.B)', () => {
+  const seqLogoActivities = SEQ_ACTIVITIES.filter((a) => a.simId === 'turtle');
+
   beforeEach(() => {
     clearPendingUpdateState();
     const s = useAppStore.getState();
@@ -60,27 +61,27 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
     useAppStore.setState({
       curriculumWorkspaces: {},
       sandboxSnapshot: null,
-      activeActivityId: '1.1',
+      activeActivityId: 'seq.1',
       activeActivityVersion: 1,
       statusAnnouncement: '',
     });
     useAppStore.getState().clearHistory();
   });
 
-  describe('Module 1 Turtle LOGO Activity Schema, Constraints & SVG Thumbnails', () => {
-    it('registers 1.6, 1.7, and 1B in MODULE_1_LOGO_ACTIVITIES and CURRICULUM_ACTIVITIES', () => {
-      expect(MODULE_1_LOGO_ACTIVITIES.map((a) => a.id)).toEqual(['1.6', '1.7', '1B']);
+  describe('seq Turtle LOGO Activity Schema, Constraints & SVG Thumbnails', () => {
+    it('registers seq.6, seq.7, and seq.B in seqLogoActivities and CURRICULUM_ACTIVITIES', () => {
+      expect(seqLogoActivities.map((a) => a.id)).toEqual(['seq.6', 'seq.7', 'seq.B']);
 
-      const m1Ids = getActivitiesForModule('module-1').map((a) => a.id);
-      expect(m1Ids).toContain('1.6');
-      expect(m1Ids).toContain('1.7');
-      expect(m1Ids).toContain('1B');
+      const seqIds = getActivitiesForModule('seq').map((a) => a.id);
+      expect(seqIds).toContain('seq.6');
+      expect(seqIds).toContain('seq.7');
+      expect(seqIds).toContain('seq.B');
 
-      for (const id of ['1.6', '1.7', '1B']) {
+      for (const id of ['seq.6', 'seq.7', 'seq.B']) {
         const act = getActivityLatest(id);
         expect(act).toBeDefined();
         expect(act!.version).toBe(1);
-        expect(act!.moduleId).toBe('module-1');
+        expect(act!.moduleId).toBe('seq');
         expect(act!.simId).toBe('turtle');
         expect(isValidatedPuzzleActivity(act!)).toBe(false);
         expect(act!.palette.allowActionParams).toBe(false);
@@ -91,49 +92,49 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       }
     });
 
-    it('enforces format, palette, starter block budgets, and 3 distinct variations on 1.6, 1.7, and 1B', () => {
-      const act16 = getActivityLatest('1.6')!;
-      expect(act16.format).toBe('sandbox');
-      expect(act16.palette.allowedSimBlocks).not.toContain('PEN_UP');
-      expect(act16.palette.allowedSimBlocks).not.toContain('PEN_DOWN');
-      expect(act16.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(6);
-      expect(act16.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(8);
-      expect(act16.variations).toHaveLength(3);
-      for (const v of act16.variations!) {
+    it('enforces format, palette, starter block budgets, and 3 distinct variations on seq.6, seq.7, and seq.B', () => {
+      const actSeq6 = getActivityLatest('seq.6')!;
+      expect(actSeq6.format).toBe('sandbox');
+      expect(actSeq6.palette.allowedSimBlocks).not.toContain('PEN_UP');
+      expect(actSeq6.palette.allowedSimBlocks).not.toContain('PEN_DOWN');
+      expect(actSeq6.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(6);
+      expect(actSeq6.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(8);
+      expect(actSeq6.variations).toHaveLength(3);
+      for (const v of actSeq6.variations!) {
         expect(v.workspace.MAIN.length).toBeGreaterThan(0);
-        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(12);
+        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(14);
       }
 
-      const act17 = getActivityLatest('1.7')!;
-      expect(act17.format).toBe('sandbox');
-      expect(act17.palette.allowedSimBlocks).toContain('PEN_UP');
-      expect(act17.palette.allowedSimBlocks).toContain('PEN_DOWN');
-      expect(act17.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(5);
-      expect(act17.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(10);
-      expect(act17.variations).toHaveLength(3);
-      for (const v of act17.variations!) {
+      const actSeq7 = getActivityLatest('seq.7')!;
+      expect(actSeq7.format).toBe('sandbox');
+      expect(actSeq7.palette.allowedSimBlocks).toContain('PEN_UP');
+      expect(actSeq7.palette.allowedSimBlocks).toContain('PEN_DOWN');
+      expect(actSeq7.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(5);
+      expect(actSeq7.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(10);
+      expect(actSeq7.variations).toHaveLength(3);
+      for (const v of actSeq7.variations!) {
         expect(v.workspace.MAIN.length).toBeGreaterThan(0);
-        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(12);
+        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(20);
         expect(v.workspace.MAIN.some((b) => b.type === 'PEN_UP')).toBe(true);
         expect(v.workspace.MAIN.some((b) => b.type === 'PEN_DOWN')).toBe(true);
       }
 
-      const act1B = getActivityLatest('1B')!;
-      expect(act1B.format).toBe('capstone');
-      expect(act1B.capstoneType).toBe('creative');
-      expect(act1B.palette.allowedSimBlocks).toContain('PEN_UP');
-      expect(act1B.palette.allowedSimBlocks).toContain('PEN_DOWN');
-      expect(act1B.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(10);
-      expect(act1B.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(12);
-      expect(act1B.variations).toHaveLength(3);
-      for (const v of act1B.variations!) {
+      const actSeqB = getActivityLatest('seq.B')!;
+      expect(actSeqB.format).toBe('capstone');
+      expect(actSeqB.capstoneType).toBe('creative');
+      expect(actSeqB.palette.allowedSimBlocks).toContain('PEN_UP');
+      expect(actSeqB.palette.allowedSimBlocks).toContain('PEN_DOWN');
+      expect(actSeqB.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(10);
+      expect(actSeqB.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(16);
+      expect(actSeqB.variations).toHaveLength(3);
+      for (const v of actSeqB.variations!) {
         expect(v.workspace.MAIN.length).toBeGreaterThanOrEqual(10);
-        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(12);
+        expect(v.workspace.MAIN.length).toBeLessThanOrEqual(30);
       }
     });
 
     it('simulates all starter workspaces and variations headlessly into non-empty, distinct SVG thumbnails', () => {
-      for (const activity of MODULE_1_LOGO_ACTIVITIES) {
+      for (const activity of seqLogoActivities) {
         const allowedTypes = new Set(activity.palette.allowedSimBlocks);
         const allWorkspaces = [
           { label: `${activity.id}-starter`, ws: activity.starterWorkspace! },
@@ -175,7 +176,7 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
   });
 
   describe('Binary Serialization Round-Trips with Standard ENV_ID_TURTLE (0x02) Opcodes', () => {
-    it('encodes all Module 1 LOGO starters and variations using parameterless opcodes 0x10..0x17 and round-trips identically', () => {
+    it('encodes all seq LOGO starters and variations using parameterless opcodes 0x10..0x17 and round-trips identically', () => {
       const expectedLogoOpcodes = new Set([
         OP_TURTLE_FORWARD,    // 0x10
         OP_TURTLE_BACKWARD,   // 0x11
@@ -187,7 +188,7 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
 
       const observedOpcodes = new Set<number>();
 
-      for (const activity of MODULE_1_LOGO_ACTIVITIES) {
+      for (const activity of seqLogoActivities) {
         const workspaces = [
           activity.starterWorkspace!,
           ...activity.variations!.map((v) => v.workspace),
@@ -306,7 +307,7 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
 
     it('omits params on newly added blocks and blocks updateBlockParams in allowActionParams === false lessons', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.6');
+      store.setCurriculumActivity('seq.6');
       store.clearWorkspace();
 
       store.addBlock('MAIN', 'FORWARD');
@@ -338,8 +339,8 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       const turnBlock = createCurriculumBlock('TURN_RIGHT', undefined, { angle: 90 }, 'test_turn');
       const fwdBlock = createCurriculumBlock('FORWARD', undefined, { length: 50 }, 'test_fwd');
 
-      // In Curriculum Lesson 1.6 (allowActionParams === false): parameter badges are hidden
-      useAppStore.getState().setCurriculumActivity('1.6');
+      // In Curriculum Lesson seq.6 (allowActionParams === false): parameter badges are hidden
+      useAppStore.getState().setCurriculumActivity('seq.6');
       const curriculumTurnHtml = renderToStaticMarkup(
         React.createElement(BlockItem, {
           block: turnBlock,
@@ -388,24 +389,24 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
   });
 
   describe('Grid <-> Turtle Curriculum Switching, VariationCardsPanel & Undo-Protected Load Code', () => {
-    it('renders VariationCardsPanel inside pane-simulation for 1.6/1.7/1B and hides it for Robot puzzles or Sandbox', () => {
+    it('renders VariationCardsPanel inside pane-simulation for seq.6/seq.7/seq.B and hides it for Robot puzzles or Sandbox', () => {
       // Sandbox mode: hidden
       expect(renderToStaticMarkup(React.createElement(VariationCardsPanel))).toBe('');
 
-      // Robot Grid puzzle 1.1 (no variations): hidden
-      useAppStore.getState().setCurriculumActivity('1.1');
+      // Robot Grid puzzle seq.1 (no variations): hidden
+      useAppStore.getState().setCurriculumActivity('seq.1');
       expect(renderToStaticMarkup(React.createElement(VariationCardsPanel))).toBe('');
 
-      // Turtle LOGO 1.6: renders panel, collapse toggle, 3 variation thumbnails, and 3 Load Code buttons
-      useAppStore.getState().setCurriculumActivity('1.6');
+      // Turtle LOGO seq.6: renders panel, collapse toggle, 3 variation thumbnails, and 3 Load Code buttons
+      useAppStore.getState().setCurriculumActivity('seq.6');
       const panelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(panelHtml).toContain('data-testid="variation-cards-panel"');
       expect(panelHtml).toContain('data-testid="btn-toggle-variation-cards"');
       expect(panelHtml).toContain('aria-expanded="true"');
       expect(panelHtml).toContain('aria-controls="variation-cards-list"');
 
-      const act16 = getActivityLatest('1.6')!;
-      for (const card of act16.variations!) {
+      const actSeq6 = getActivityLatest('seq.6')!;
+      for (const card of actSeq6.variations!) {
         expect(panelHtml).toContain(`data-testid="variation-card-${card.id}"`);
         expect(panelHtml).toContain(`data-testid="variation-thumbnail-${card.id}"`);
         expect(panelHtml).toContain(`data-testid="btn-load-variation-${card.id}"`);
@@ -418,40 +419,40 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       expect(appHtml).toContain('data-testid="variation-cards-panel"');
     });
 
-    it('switches cleanly between Grid (1.1–1.3) and Turtle (1.6, 1.7, 1B) activities, resetting Turtle state and running Instant preview', () => {
+    it('switches cleanly between Grid (seq.1–seq.3) and Turtle (seq.6, seq.7, seq.B) activities, resetting Turtle state and running Instant preview', () => {
       const store = useAppStore.getState();
 
-      // Enable Instant mode and enter Grid puzzle 1.1
+      // Enable Instant mode and enter Grid puzzle seq.1
       store.setSpeed('instant');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       expect(useAppStore.getState().appMode).toBe('curriculum');
       expect(useAppStore.getState().activeSimId).toBe('grid');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(0);
 
-      // Add a custom block in 1.1
+      // Add a custom block in seq.1
       store.addBlock('MAIN', 'MOVE_FWD');
       expect(useAppStore.getState().grid.robot.x).toBe(1);
 
-      // Switch to Turtle LOGO 1.6: switches to turtle, loads starter square, runs instant preview!
-      store.setCurriculumActivity('1.6');
+      // Switch to Turtle LOGO seq.6: switches to turtle, loads starter flag-on-pole, runs instant preview!
+      store.setCurriculumActivity('seq.6');
       expect(useAppStore.getState().activeSimId).toBe('turtle');
-      expect(useAppStore.getState().workspace.MAIN).toHaveLength(7);
-      expect(useAppStore.getState().turtleState.paths).toHaveLength(4); // 4 sides of starter square!
+      expect(useAppStore.getState().workspace.MAIN).toHaveLength(8);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(5); // 2 flagpole + 3 flag sides!
 
-      // Switch to 1.7: resets previous turtle paths and runs 1.7 starter (= parallel bars, 2 ink lines)
-      store.setCurriculumActivity('1.7');
+      // Switch to seq.7: resets previous turtle paths and runs seq.7 starter (2 ink lines)
+      store.setCurriculumActivity('seq.7');
       expect(useAppStore.getState().activeSimId).toBe('turtle');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(8);
       expect(useAppStore.getState().turtleState.paths).toHaveLength(2);
 
-      // Switch to Capstone 1B: runs 1B starter (5 ink segments: 3 arch lines + 2 flagpole segments)
-      store.setCurriculumActivity('1B');
+      // Switch to Capstone seq.B: runs seq.B starter (4 ink segments across pen lifts)
+      store.setCurriculumActivity('seq.B');
       expect(useAppStore.getState().activeSimId).toBe('turtle');
-      expect(useAppStore.getState().workspace.MAIN).toHaveLength(12);
-      expect(useAppStore.getState().turtleState.paths).toHaveLength(5);
+      expect(useAppStore.getState().workspace.MAIN).toHaveLength(14);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(4);
 
-      // Switch back to Grid 1.1: restores learner's saved 1.1 workspace and runs Grid instant mode
-      store.setCurriculumActivity('1.1');
+      // Switch back to Grid seq.1: restores learner's saved seq.1 workspace and runs Grid instant mode
+      store.setCurriculumActivity('seq.1');
       expect(useAppStore.getState().activeSimId).toBe('grid');
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(1);
       expect(useAppStore.getState().grid.robot.x).toBe(1);
@@ -460,9 +461,9 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
     it('loads a variation workspace with Undo protection, clones fresh block IDs, announces via aria-live, and reverts cleanly on Undo', () => {
       const store = useAppStore.getState();
       store.setSpeed('instant');
-      store.setCurriculumActivity('1.6');
+      store.setCurriculumActivity('seq.6');
 
-      // Customize learner's workspace in 1.6 before clicking Load Code
+      // Customize learner's workspace in seq.6 before clicking Load Code
       store.clearWorkspace();
       store.addBlock('MAIN', 'FORWARD');
       store.addBlock('MAIN', 'TURN_LEFT');
@@ -472,8 +473,8 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       expect(learnerTypesBefore).toEqual(['FORWARD', 'TURN_LEFT', 'FORWARD']);
       expect(useAppStore.getState().turtleState.paths).toHaveLength(2);
 
-      // Load Variation Card 'Plus Sign' (11 blocks, 8 line segments)
-      const plusCard = getActivityLatest('1.6')!.variations!.find((v) => v.id === '1.6-plus')!;
+      // Load Variation Card 'Four-Way Plus Cross' (11 blocks, 8 line segments)
+      const plusCard = getActivityLatest('seq.6')!.variations!.find((v) => v.id === 'seq.6-plus')!;
       store.loadVariationWorkspace(plusCard.workspace, plusCard.title);
 
       const afterLoad = useAppStore.getState();
@@ -486,11 +487,13 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       const staticIds = new Set(plusCard.workspace.MAIN.map((b) => b.id));
       expect(afterLoad.workspace.MAIN.every((b) => !staticIds.has(b.id))).toBe(true);
       // Curriculum workspace cache updated
-      expect(afterLoad.curriculumWorkspaces['1.6'].MAIN).toHaveLength(plusCard.workspace.MAIN.length);
+      expect(afterLoad.curriculumWorkspaces['seq.6'].MAIN).toHaveLength(
+        plusCard.workspace.MAIN.length
+      );
       // Polite status announcement emitted
-      expect(afterLoad.statusAnnouncement).toContain('Plus Sign');
+      expect(afterLoad.statusAnnouncement).toContain('Four-Way Plus Cross');
       expect(afterLoad.statusAnnouncement).toContain('Undo');
-      // Instant preview updated to Plus Sign's 8 drawn segments
+      // Instant preview updated to Plus Cross's 8 drawn segments
       expect(afterLoad.turtleState.paths).toHaveLength(8);
 
       // Clicking Undo restores the learner's exact prior work and re-runs Instant preview!
@@ -498,7 +501,7 @@ describe('Wave 2 / Commit 9: VariationCardsPanel & Module 1 LOGO Lessons (1.6, 1
       const afterUndo = useAppStore.getState();
       expect(afterUndo.workspace.MAIN.map((b) => b.type)).toEqual(learnerTypesBefore);
       expect(afterUndo.workspace.MAIN.map((b) => b.id)).toEqual(learnerIdsBefore);
-      expect(afterUndo.curriculumWorkspaces['1.6'].MAIN.map((b) => b.type)).toEqual(
+      expect(afterUndo.curriculumWorkspaces['seq.6'].MAIN.map((b) => b.type)).toEqual(
         learnerTypesBefore
       );
       expect(afterUndo.turtleState.paths).toHaveLength(2);

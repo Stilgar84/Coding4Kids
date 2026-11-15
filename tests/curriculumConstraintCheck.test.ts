@@ -283,29 +283,34 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
   describe('1. Live Curriculum Catalog Anti-Bypass & Performance Gate (< 200 ms)', () => {
     const validatedPuzzles = CURRICULUM_ACTIVITIES.filter(isValidatedPuzzleActivity);
 
-    it('finds all validated puzzle activities in CURRICULUM_ACTIVITIES (16 M1–M3 baseline + 5 M4 puzzles)', () => {
+    it('finds all 26 validated puzzle activities in CURRICULUM_ACTIVITIES across seq, param, loop, and func', () => {
       expect(validatedPuzzles.map((a) => a.id)).toEqual([
-        '1.1',
-        '1.2',
-        '1.3',
-        '1.4',
-        '1.5',
-        '1A',
-        '2.1',
-        '2.7',
-        '2A',
-        '3.1',
-        '3.2',
-        '3.5',
-        '3.6',
-        '3.9',
-        '3.10',
-        '3A',
-        '4.1',
-        '4.4',
-        '4.5',
-        '4.6',
-        '4A',
+        'seq.1',
+        'seq.2',
+        'seq.2a',
+        'seq.3',
+        'seq.4',
+        'seq.5',
+        'seq.A',
+        'param.1',
+        'param.8',
+        'param.9',
+        'param.10',
+        'param.A',
+        'loop.1',
+        'loop.2',
+        'loop.5',
+        'loop.6',
+        'loop.9',
+        'loop.10',
+        'loop.11',
+        'loop.A',
+        'func.1',
+        'func.4',
+        'func.5',
+        'func.6',
+        'func.7',
+        'func.A',
       ]);
     });
 
@@ -363,37 +368,35 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       });
     });
 
-    it('reports exact restricted minimum block counts (> slotCap) on 1.2 and 1.3', () => {
-      const act12 = CURRICULUM_ACTIVITIES.find((a) => a.id === '1.2')!;
-      const rep12 = verifyActivityConstraints(act12);
-      expect(rep12.passed).toBe(true);
-      // Without turns: unreachable (null); without TURN_LEFT or TURN_RIGHT: requires 7 blocks (> 6 slots)
-      expect(rep12.ruleResults[0].minWinningBlocks).toBeNull();
-      expect(rep12.ruleResults[1].minWinningBlocks).toBe(7);
-      expect(rep12.ruleResults[2].minWinningBlocks).toBe(7);
+    it('reports exact restricted minimum block counts (> slotCap) on seq.2 and seq.3', () => {
+      const actSeq2 = CURRICULUM_ACTIVITIES.find((a) => a.id === 'seq.2')!;
+      const repSeq2 = verifyActivityConstraints(actSeq2);
+      expect(repSeq2.passed).toBe(true);
+      // Turning right without TURN_RIGHT requires 3x TURN_LEFT (6 blocks > 5-slot tray)
+      expect(repSeq2.ruleResults[0].minWinningBlocks).toBe(6);
 
-      const act13 = CURRICULUM_ACTIVITIES.find((a) => a.id === '1.3')!;
-      const rep13 = verifyActivityConstraints(act13);
-      expect(rep13.passed).toBe(true);
-      // Turning 180° inside the alcove without MOVE_BACK requires 7 blocks (> 5-slot tray)
-      expect(rep13.ruleResults[0].minWinningBlocks).toBe(7);
+      const actSeq3 = CURRICULUM_ACTIVITIES.find((a) => a.id === 'seq.3')!;
+      const repSeq3 = verifyActivityConstraints(actSeq3);
+      expect(repSeq3.passed).toBe(true);
+      // Turning 180° without MOVE_BACK requires 6 blocks (> 4-slot tray)
+      expect(repSeq3.ruleResults[0].minWinningBlocks).toBe(6);
     });
   });
 
   describe('2. Exhaustive Rule Coverage & Counterexample Detection on Synthetic Fixtures', () => {
     it('detects a minimal counterexample when a puzzle IS bypassable under forbidBlocks', () => {
-      // Intentionally leaky slotCap (7 instead of 5) on 1.3 allows turning 180° without MOVE_BACK!
-      const act13 = CURRICULUM_ACTIVITIES.find((a) => a.id === '1.3')!;
+      // Intentionally leaky slotCap (6 instead of 4) on seq.3 allows turning 180° without MOVE_BACK!
+      const actSeq3 = CURRICULUM_ACTIVITIES.find((a) => a.id === 'seq.3')!;
       const leakyPuzzle: CurriculumActivity = {
-        ...act13,
-        id: '1.3-leaky',
-        slotCap: { maxTotal: 7 },
+        ...actSeq3,
+        id: 'seq.3-leaky',
+        slotCap: { maxTotal: 6 },
       };
 
       const report = verifyActivityConstraints(leakyPuzzle);
       expect(report.passed).toBe(false);
       expect(report.ruleResults[0].passed).toBe(false);
-      expect(report.ruleResults[0].minWinningBlocks).toBe(7);
+      expect(report.ruleResults[0].minWinningBlocks).toBe(6);
       expect(report.ruleResults[0].counterexampleWorkspace).toBeDefined();
       expect(report.ruleResults[0].formattedCounterexample).toContain('MOVE_FWD');
       expect(report.ruleResults[0].formattedCounterexample).not.toContain('MOVE_BACK');
@@ -870,7 +873,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       const s = useAppStore.getState();
       s.pause();
       s.setAppMode('curriculum');
-      s.setCurriculumActivity('1.2');
+      s.setCurriculumActivity('seq.2');
       s.setSolutionOpen(true);
     });
 
@@ -908,7 +911,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       expect(normalHtml).not.toContain('data-testid="dev-constraint-proofs-section"');
       expect(normalHtml).not.toContain('Constraint Proofs');
 
-      // 2. Dev mode (?dev=1) on valid puzzle 1.2: renders verified badges, timing in ms, and aria-expanded
+      // 2. Dev mode (?dev=1) on valid puzzle seq.2: renders verified badges, timing in ms, and aria-expanded
       (globalThis as any).window = {
         location: { search: '?dev=1' },
         addEventListener: () => {},
@@ -922,7 +925,7 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       expect(devHtml).toContain('Constraint Proofs');
       expect(devHtml).toContain('Verified');
       expect(devHtml).toContain('ms');
-      expect(devHtml).toContain('data-testid="constraint-rule-1.2-require-turn-left"');
+      expect(devHtml).toContain('data-testid="constraint-rule-seq.2-require-turn-right"');
       expect(devHtml).toContain('data-rule-passed="true"');
 
       // 3. Collapsed disclosure state (`defaultDevProofsExpanded={false}`) sets aria-expanded="false" and hides panel
@@ -934,11 +937,11 @@ describe('Wave 3 / Commit 5: Automated Anti-Bypass Constraint Solver, CI Perf Ga
       expect(collapsedHtml).not.toContain('data-testid="dev-constraint-proofs-panel"');
 
       // 4. Bypassable puzzle renders FAIL badge and formatted counterexample sequence
-      const act13 = CURRICULUM_ACTIVITIES.find((a) => a.id === '1.3')!;
+      const actSeq3 = CURRICULUM_ACTIVITIES.find((a) => a.id === 'seq.3')!;
       const bypassableActivity: CurriculumActivity = {
-        ...act13,
-        id: '1.3-broken',
-        slotCap: { maxTotal: 7 },
+        ...actSeq3,
+        id: 'seq.3-broken',
+        slotCap: { maxTotal: 6 },
       };
       const failHtml = renderToStaticMarkup(
         React.createElement(SolutionModal, { activityOverride: bypassableActivity })

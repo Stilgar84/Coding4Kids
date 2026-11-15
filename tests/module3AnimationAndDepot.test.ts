@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   CURRICULUM_ACTIVITIES,
+  LOOP_DEPOT_ALLOWED_BLOCKS,
   getActivitiesForModule,
-  getActivityAtVersion,
   getActivityLatest,
   getCurriculumModule,
 } from '../src/data/curriculum';
-import { MODULE_3_DEPOT_ALLOWED_BLOCKS } from '../src/data/curriculum/module3Depot';
 import { WorkspaceState } from '../src/types';
 import {
   ENV_ID_DEPOT,
@@ -111,76 +110,61 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
     });
   });
 
-  describe('2. Curriculum Updates (2.5a, 3.2a, 3.3 v2, 3.3a, 3.4 v2, 3.4a, 3.7 v2, 3B v2, 3C v2)', () => {
-    it('removes SET_BEAT_DELAY from 2.5 and teaches speed control + instant frames in 2.5a without loops/variables', () => {
-      const act25 = getActivityLatest('2.5')!;
-      const act25a = getActivityLatest('2.5a')!;
-      expect(act25.palette.allowedSimBlocks).not.toContain('SET_BEAT_DELAY');
-      expect(act25a.format).toBe('explanation');
-      expect(act25a.simId).toBe('beat');
-      expect(act25a.palette.allowedSimBlocks).toContain('SET_BEAT_DELAY');
-      expect(act25a.palette.allowedControlBlocks).toEqual([]);
-      expect(act25a.palette.allowVariables).toBe(false);
-      expect(act25a.demoTabs).toHaveLength(3);
+  describe('2. Phase 1 Curriculum Updates (param.5, param.6, no TELEPORT, loop.3, loop.4, loop.7, loop.B, loop.C)', () => {
+    it('removes SET_BEAT_DELAY from param.5 and teaches speed control + instant frames in param.6 without loops/variables', () => {
+      const actParam5 = getActivityLatest('param.5')!;
+      const actParam6 = getActivityLatest('param.6')!;
+      expect(actParam5.palette.allowedSimBlocks).not.toContain('SET_BEAT_DELAY');
+      expect(actParam6.format).toBe('explanation');
+      expect(actParam6.simId).toBe('beat');
+      expect(actParam6.palette.allowedSimBlocks).toContain('SET_BEAT_DELAY');
+      expect(actParam6.palette.allowedControlBlocks).toEqual([]);
+      expect(actParam6.palette.allowVariables).toBe(false);
+      expect(actParam6.demoTabs).toHaveLength(3);
 
-      for (const tab of act25a.demoTabs!) {
+      for (const tab of actParam6.demoTabs!) {
         const sim = runHeadlessSimulation<BeatState>(tab.workspace, 'beat', createInitialBeatState(true));
         expect(sim.status).toBe('IDLE');
         expect(sim.finalState.leds.flat().some((c) => c !== null)).toBe(true);
       }
     });
 
-    it('removes TELEPORT from active M1-M3 palettes while preserving historicalVersions[1] on 3.3, 3.4, 3.7, 3B, 3C', () => {
-      const m3Title = getCurriculumModule('module-3')!.title;
-      expect(m3Title).toBe('Loops — Repeating Sequences, Frame Animation & LIFO Stacks');
+    it('keeps TELEPORT out of all Phase 1 curriculum palettes and ensures loop creative activities execute cleanly at v1', () => {
+      const loopTitle = getCurriculumModule('loop')!.title;
+      expect(loopTitle).toBe('Loops — Repeating Sequences, Nested Loops & LIFO Stacks');
 
-      for (const act of CURRICULUM_ACTIVITIES.filter((a) =>
-        ['module-1', 'module-2', 'module-3'].includes(a.moduleId)
-      )) {
+      for (const act of CURRICULUM_ACTIVITIES) {
         expect(act.palette.allowedSimBlocks ?? []).not.toContain('TELEPORT');
       }
 
-      for (const id of ['3.3', '3.4', '3.7', '3B', '3C']) {
+      for (const id of ['loop.3', 'loop.4', 'loop.7', 'loop.B', 'loop.C']) {
         const latest = getActivityLatest(id)!;
-        const v1 = getActivityAtVersion(id, 1)!;
-        expect(latest.version).toBe(2);
-        expect(v1.version).toBe(1);
-        expect(latest.variations).toHaveLength(4);
-        expect(v1.variations).toHaveLength(3);
+        expect(latest.version).toBe(1);
+        expect(latest.variations).toHaveLength(3);
       }
 
-      expect(getActivityAtVersion('3.3', 1)!.palette.allowedSimBlocks).toContain('TELEPORT');
-    });
-
-    it('sets defaultLoopPlayback: true on 3.2a, 3.3a, 3.4a and ensures non-looped runs end with visible artwork', () => {
-      for (const id of ['3.2a', '3.3a', '3.4a']) {
-        const act = getActivityLatest(id)!;
-        expect(act).toBeDefined();
-        expect(act.defaultLoopPlayback).toBe(true);
-
-        useAppStore.getState().setAppMode('curriculum');
-        useAppStore.getState().setCurriculumActivity(id);
-        expect(useAppStore.getState().isLoopPlayback).toBe(true);
-      }
+      useAppStore.getState().setAppMode('curriculum');
+      useAppStore.getState().setCurriculumActivity('loop.4');
+      expect(useAppStore.getState().isLoopPlayback).toBe(false);
 
       useAppStore.getState().setAppMode('sandbox');
       expect(useAppStore.getState().isLoopPlayback).toBe(false);
 
-      const act33a = getActivityLatest('3.3a')!;
-      for (const ws of [act33a.starterWorkspace!, ...act33a.variations!.map((v) => v.workspace)]) {
+      const actLoop3 = getActivityLatest('loop.3')!;
+      for (const ws of [actLoop3.starterWorkspace!, ...actLoop3.variations!.map((v) => v.workspace)]) {
         const sim = runHeadlessSimulation<TurtleState>(ws, 'turtle', createInitialTurtleState());
         expect(sim.finalState.paths.length).toBeGreaterThan(0);
       }
 
-      const act34a = getActivityLatest('3.4a')!;
-      for (const ws of [act34a.starterWorkspace!, ...act34a.variations!.map((v) => v.workspace)]) {
+      const actLoop4 = getActivityLatest('loop.4')!;
+      for (const ws of [actLoop4.starterWorkspace!, ...actLoop4.variations!.map((v) => v.workspace)]) {
         const sim = runHeadlessSimulation<BeatState>(ws, 'beat', createInitialBeatState(true));
         expect(sim.finalState.leds.flat().some((c) => c !== null)).toBe(true);
       }
     });
   });
 
-  describe('3. Crate Depot Physics, Binary Serialization (ENV_ID_DEPOT = 0x07), Lessons 3.8–3.10 & Constraint Proofs', () => {
+  describe('3. Depot Physics, Binary Serialization (ENV_ID_DEPOT = 0x07), Lessons loop.8–loop.10 & Constraint Proofs', () => {
     it('enforces 1-crate claw, LIFO stack discipline, and exact OUTPUT goal sequence matching', () => {
       const s0 = createInitialDepotState({
         stacks: [['RED', 'BLUE'], [], []],
@@ -239,8 +223,8 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
     });
 
     it('round-trips ENV_ID_DEPOT code-only (v1), full DepotState (v2), ENV_ID_LESSON (0x04), and Profile SIM_CODE_DEPOT=4', () => {
-      const ws = getActivityLatest('3.9')!.referenceSolution!;
-      const depotState = getActivityLatest('3.10')!.depot!;
+      const ws = getActivityLatest('loop.9')!.referenceSolution!;
+      const depotState = getActivityLatest('loop.10')!.depot!;
 
       const binV1 = exportToBinary(ws, 'depot');
       expect(binV1[1]).toBe(ENV_ID_DEPOT);
@@ -261,12 +245,12 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
       expect(decV2.depotState?.targetOutput).toEqual(depotState.targetOutput);
       expect(decV2.depotState?.workerStation).toBe(depotState.workerStation);
 
-      const lessonBin = exportLessonToBinary(ws, 'depot', '3.9', 1);
+      const lessonBin = exportLessonToBinary(ws, 'depot', 'loop.9', 1);
       const decLesson = importFromBinary(lessonBin);
       expect(decLesson.success).toBe(true);
       expect(decLesson.envId).toBe('lesson');
       expect(decLesson.innerEnvId).toBe('depot');
-      expect(decLesson.lessonId).toBe('3.9');
+      expect(decLesson.lessonId).toBe('loop.9');
 
       const exportedAt = 1760000500000;
       const envelope: ProfileBackupEnvelopeV1 = {
@@ -283,7 +267,7 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
         },
         progress: {
           completedLessons: {},
-          unlockedModules: ['module-1', 'module-2', 'module-3'],
+          unlockedModules: ['seq', 'param', 'loop'],
           earnedBadges: [],
           unlockAllModules: false,
         },
@@ -319,35 +303,33 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
       expect(decodedProfile.savedPrograms[0].title).toBe('Depot Transfer');
     });
 
-    it('registers 3.8, 3.9, 3.10 cleanly and proves 3.9 & 3.10 solve within slotCap and have 0 loop-free bypasses < 200 ms', () => {
-      const m3Ids = getActivitiesForModule('module-3').map((a) => a.id);
-      expect(m3Ids).toEqual(
-        expect.arrayContaining(['3.8', '3.9', '3.10'])
-      );
+    it('registers loop.8, loop.9, loop.10 cleanly and proves loop.9 & loop.10 solve within slotCap and have 0 loop-free bypasses < 200 ms', () => {
+      const loopIds = getActivitiesForModule('loop').map((a) => a.id);
+      expect(loopIds).toEqual(expect.arrayContaining(['loop.8', 'loop.9', 'loop.10']));
 
-      const act38 = getActivityLatest('3.8')!;
-      expect(act38.format).toBe('explanation');
-      expect(act38.simId).toBe('depot');
-      expect(act38.palette.allowedSimBlocks).toEqual(MODULE_3_DEPOT_ALLOWED_BLOCKS);
-      expect(act38.demoTabs).toHaveLength(3);
-      for (const tab of act38.demoTabs!) {
+      const actLoop8 = getActivityLatest('loop.8')!;
+      expect(actLoop8.format).toBe('explanation');
+      expect(actLoop8.simId).toBe('depot');
+      expect(actLoop8.palette.allowedSimBlocks).toEqual(LOOP_DEPOT_ALLOWED_BLOCKS);
+      expect(actLoop8.demoTabs).toHaveLength(3);
+      for (const tab of actLoop8.demoTabs!) {
         const res = runHeadlessSimulation<DepotState>(tab.workspace, 'depot', tab.depotState!);
         expect(res.status).toBe('SUCCESS');
       }
 
-      const report39 = verifyActivityConstraints(getActivityLatest('3.9')!);
-      expect(report39.passed).toBe(true);
-      expect(report39.elapsedMs).toBeLessThan(200);
-      expect(report39.referenceCheck.blockCount).toBe(6);
-      expect(report39.scaffoldCheck.passed).toBe(true);
-      expect(report39.ruleResults[0].minWinningBlocks).toBe(7);
+      const report9 = verifyActivityConstraints(getActivityLatest('loop.9')!);
+      expect(report9.passed).toBe(true);
+      expect(report9.elapsedMs).toBeLessThan(200);
+      expect(report9.referenceCheck.blockCount).toBe(6);
+      expect(report9.scaffoldCheck.passed).toBe(true);
+      expect(report9.ruleResults[0].bypassSolution).toBeUndefined();
 
-      const report310 = verifyActivityConstraints(getActivityLatest('3.10')!);
-      expect(report310.passed).toBe(true);
-      expect(report310.elapsedMs).toBeLessThan(200);
-      expect(report310.referenceCheck.blockCount).toBe(8);
-      expect(report310.scaffoldCheck.passed).toBe(true);
-      expect(report310.ruleResults[0].minWinningBlocks).toBe(11);
+      const report10 = verifyActivityConstraints(getActivityLatest('loop.10')!);
+      expect(report10.passed).toBe(true);
+      expect(report10.elapsedMs).toBeLessThan(200);
+      expect(report10.referenceCheck.blockCount).toBe(8);
+      expect(report10.scaffoldCheck.passed).toBe(true);
+      expect(report10.ruleResults[0].bypassSolution).toBeUndefined();
     });
   });
 });

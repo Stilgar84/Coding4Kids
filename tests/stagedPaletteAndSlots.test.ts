@@ -148,10 +148,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
   });
 
   describe('Curriculum Staged Palette Filtering (PaletteConfig)', () => {
-    it('filters Activity 1.1 down to MOVE_FWD only, hiding turns, loops, repeats, variables, params, and function tabs', () => {
+    it('filters Activity seq.1 down to MOVE_FWD only, hiding turns, loops, repeats, variables, params, and function tabs', () => {
       const store = useAppStore.getState();
       store.setFunctionBarOpen(true);
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.setAppMode('curriculum');
 
       const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
@@ -185,10 +185,10 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       expect(countMatches(canvasHtml, /data-testid="workspace-empty-slot"/g)).toBe(4);
     });
 
-    it('progressively reveals turns in 1.2 and MOVE_BACK in 1.3 while keeping repeat badges locked', () => {
+    it('progressively reveals turns in seq.2 and MOVE_BACK in seq.3 while keeping repeat badges locked', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2');
 
       const palette12 = renderToStaticMarkup(React.createElement(BlockPalette));
       expect(palette12).toContain('data-testid="palette-move-fwd"');
@@ -197,7 +197,7 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       expect(palette12).not.toContain('data-testid="palette-move-back"');
       expect(palette12).not.toContain('data-testid="palette-number-2"');
 
-      store.setCurriculumActivity('1.3');
+      store.setCurriculumActivity('seq.3');
       const palette13 = renderToStaticMarkup(React.createElement(BlockPalette));
       expect(palette13).toContain('data-testid="palette-move-fwd"');
       expect(palette13).toContain('data-testid="palette-move-back"');
@@ -539,9 +539,9 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
   describe('Physical Block-Budget Slot Trays & slotCap Enforcement', () => {
     it('renders physical empty slots [□], updates inline palette visual pip counter, rejects overflow with shake + aria-live announcement, and preserves Undo stack', () => {
       const store = useAppStore.getState();
-      // Activity 1.1 has slotCap: { maxTotal: 4 }
+      // Activity seq.1 has slotCap: { maxTotal: 4 }
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.clearHistory();
 
       // 0 / 4 slots used -> 4 empty slots [□][□][□][□] in WorkspaceCanvas & inline counter in BlockPalette
@@ -711,7 +711,7 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
     it('lifts slotCap restrictions cleanly when cloning activity via Open Copy in Sandbox', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1'); // maxTotal: 4
+      store.setCurriculumActivity('seq.1'); // maxTotal: 4
 
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'MOVE_FWD');
@@ -738,15 +738,15 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
     it('exposes clean keyboard focusability and ARIA labels on placed blocks and empty slots', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.2'); // maxTotal: 6
+      store.setCurriculumActivity('seq.2'); // maxTotal: 5
       store.addBlock('MAIN', 'MOVE_FWD');
 
       const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
       const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
       expect(canvasHtml).toContain('tabindex="0"');
       expect(canvasHtml).toContain('aria-label="Move Forward, slot 1"');
-      expect(canvasHtml).toContain('aria-label="Empty block slot 2 of 6"');
-      expect(paletteHtml).toContain('aria-label="Block slots: 1 of 6 used"');
+      expect(canvasHtml).toContain('aria-label="Empty block slot 2 of 5"');
+      expect(paletteHtml).toContain('aria-label="Block slots: 1 of 5 used"');
     });
 
     it('computes pure helper edge cases accurately in curriculumStagePolicy', () => {

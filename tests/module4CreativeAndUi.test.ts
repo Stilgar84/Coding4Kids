@@ -4,10 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { useAppStore } from '../src/store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
-  MODULE_4_CREATIVE_ACTIVITIES,
+  FUNC_ACTIVITIES,
   createCurriculumBlock,
-  getActivitiesForModule,
   getActivityLatest,
+  isValidatedPuzzleActivity,
 } from '../src/data/curriculum';
 import { BlockPalette } from '../src/components/BlockPalette';
 import { ExplanationDemoBar } from '../src/components/ExplanationDemoBar';
@@ -18,7 +18,8 @@ import {
 } from '../src/engine/placeholderHelpers';
 import { CodeBlock } from '../src/types';
 
-describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
+describe('Functions (func): UI & Creative/Demo Activities', () => {
+  const funcCreativeActivities = FUNC_ACTIVITIES.filter((a) => !isValidatedPuzzleActivity(a));
   beforeEach(() => {
     const store = useAppStore.getState();
     store.pause();
@@ -43,41 +44,41 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
     store.clearHistory();
   });
 
-  describe('Module 4 Catalog Registration & Canonical Ordering', () => {
-    it('registers all 5 Module 4 creative/demo activities (4.0, 4.2, 4.3, 4B, 4C)', () => {
-      expect(MODULE_4_CREATIVE_ACTIVITIES).toHaveLength(5);
-      const ids = MODULE_4_CREATIVE_ACTIVITIES.map((a) => a.id);
-      expect(ids).toEqual(['4.0', '4.2', '4.3', '4B', '4C']);
+  describe('func Catalog Registration & Canonical Ordering', () => {
+    it('registers all 5 func creative/demo activities (func.0, func.2, func.3, func.B, func.C)', () => {
+      expect(funcCreativeActivities).toHaveLength(5);
+      const ids = funcCreativeActivities.map((a) => a.id);
+      expect(ids).toEqual(['func.0', 'func.2', 'func.3', 'func.B', 'func.C']);
 
       for (const id of ids) {
         const activity = getActivityLatest(id);
         expect(activity).toBeDefined();
-        expect(activity!.moduleId).toBe('module-4');
+        expect(activity!.moduleId).toBe('func');
       }
     });
 
-    it('orders Module 4 activities canonically in CURRICULUM_ACTIVITIES', () => {
+    it('orders func creative/demo activities canonically in CURRICULUM_ACTIVITIES', () => {
       const allIds = CURRICULUM_ACTIVITIES.map((a) => a.id);
-      expect(allIds).toContain('4.0');
-      expect(allIds).toContain('4.2');
-      expect(allIds).toContain('4.3');
-      expect(allIds).toContain('4B');
-      expect(allIds).toContain('4C');
+      expect(allIds).toContain('func.0');
+      expect(allIds).toContain('func.2');
+      expect(allIds).toContain('func.3');
+      expect(allIds).toContain('func.B');
+      expect(allIds).toContain('func.C');
 
-      const idx4_0 = allIds.indexOf('4.0');
-      const idx4_2 = allIds.indexOf('4.2');
-      const idx4_3 = allIds.indexOf('4.3');
-      const idx4B = allIds.indexOf('4B');
-      const idx4C = allIds.indexOf('4C');
+      const idxFunc0 = allIds.indexOf('func.0');
+      const idxFunc2 = allIds.indexOf('func.2');
+      const idxFunc3 = allIds.indexOf('func.3');
+      const idxFuncB = allIds.indexOf('func.B');
+      const idxFuncC = allIds.indexOf('func.C');
 
-      expect(idx4_0).toBeLessThan(idx4_2);
-      expect(idx4_2).toBeLessThan(idx4_3);
-      expect(idx4_3).toBeLessThan(idx4B);
-      expect(idx4B).toBeLessThan(idx4C);
+      expect(idxFunc0).toBeLessThan(idxFunc2);
+      expect(idxFunc2).toBeLessThan(idxFunc3);
+      expect(idxFunc3).toBeLessThan(idxFuncB);
+      expect(idxFuncB).toBeLessThan(idxFuncC);
     });
 
-    it('verifies Lesson 4.0 definition and demo tabs', () => {
-      const act = getActivityLatest('4.0')!;
+    it('verifies Lesson func.0 definition and demo tabs', () => {
+      const act = getActivityLatest('func.0')!;
       expect(act.format).toBe('explanation');
       expect(act.simId).toBe('grid');
       expect(act.demoTabs).toHaveLength(2);
@@ -87,24 +88,25 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
       expect(act.palette.allowedControlBlocks).toContain('CALL_F1');
     });
 
-    it('verifies Lesson 4.2 LOGO sandbox and state hygiene variations', () => {
-      const act = getActivityLatest('4.2')!;
+    it('verifies Lesson func.2 LOGO sandbox and state hygiene variations', () => {
+      const act = getActivityLatest('func.2')!;
       expect(act.format).toBe('sandbox');
       expect(act.simId).toBe('turtle');
       expect(act.palette.allowedScopes).toEqual(['MAIN', 'F1']);
       expect(act.palette.allowedControlBlocks).toContain('CALL_F1');
       expect(act.starterWorkspace?.MAIN.length).toBeGreaterThan(0);
       expect(act.starterWorkspace?.F1.length).toBeGreaterThan(0);
-      expect(act.variations).toHaveLength(3);
+      expect(act.variations).toHaveLength(4);
       expect(act.variations!.map((v) => v.id)).toEqual([
-        '4.2-house-windows',
-        '4.2-pine-trees',
-        '4.2-big-dipper',
+        'func.2-var1-forest',
+        'func.2-var2-petal-crown',
+        'func.2-var3a-cottage',
+        'func.2-var3b-dipper',
       ]);
     });
 
-    it('verifies Lesson 4.3 Beat & Light sandbox and composition variations', () => {
-      const act = getActivityLatest('4.3')!;
+    it('verifies Lesson func.3 Beat & Light sandbox and composition variations', () => {
+      const act = getActivityLatest('func.3')!;
       expect(act.format).toBe('sandbox');
       expect(act.simId).toBe('beat');
       expect(act.palette.allowedScopes).toEqual(['MAIN', 'F1', 'F2']);
@@ -115,14 +117,14 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
       expect(act.starterWorkspace?.F2.length).toBeGreaterThan(0);
       expect(act.variations).toHaveLength(3);
       expect(act.variations!.map((v) => v.id)).toEqual([
-        '4.3-dance-track',
-        '4.3-sprite-animation',
-        '4.3-call-response',
+        'func.3-var1-powerup',
+        'func.3-var2-pingpong',
+        'func.3-var3-rocket',
       ]);
     });
 
-    it('verifies Capstone 4B LOGO 4-tab creative architecture', () => {
-      const act = getActivityLatest('4B')!;
+    it('verifies Capstone func.B LOGO 4-tab creative architecture', () => {
+      const act = getActivityLatest('func.B')!;
       expect(act.format).toBe('capstone');
       expect(act.capstoneType).toBe('creative');
       expect(act.simId).toBe('turtle');
@@ -137,8 +139,8 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
       expect(act.variations).toHaveLength(3);
     });
 
-    it('verifies Capstone 4C Beat & Light 4-tab full song choreography', () => {
-      const act = getActivityLatest('4C')!;
+    it('verifies Capstone func.C Beat & Light 4-tab full song choreography', () => {
+      const act = getActivityLatest('func.C')!;
       expect(act.format).toBe('capstone');
       expect(act.capstoneType).toBe('creative');
       expect(act.simId).toBe('beat');
@@ -186,11 +188,9 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
         },
       });
 
-      // Temporary mock activity registration in store context
-      const prevActivity = getActivityLatest('4.0');
-      // Set to 4.0 (which has scopes ['MAIN', 'F1'])
+      // Set to func.0 (which has scopes ['MAIN', 'F1'])
       useAppStore.setState({
-        activeActivityId: '4.0',
+        activeActivityId: 'func.0',
         workspace: {
           MAIN: [
             createCurriculumBlock('MOVE_FWD', undefined, undefined, 't1'),
@@ -213,8 +213,8 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
     it('displays compact used/cap badges when perScope limits are set', () => {
       // Craft curriculum state with perScope caps
       const activityWithCaps = {
-        ...getActivityLatest('4.0')!,
-        id: '4.0',
+        ...getActivityLatest('func.0')!,
+        id: 'func.0',
         slotCap: {
           perScope: { MAIN: 5, F1: 4 },
         },
@@ -223,7 +223,7 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
       // Set store with perScope cap activity
       useAppStore.setState({
         appMode: 'curriculum',
-        activeActivityId: '4.0',
+        activeActivityId: 'func.0',
         activeActivityVersion: 1,
         activeScope: 'MAIN',
         isFunctionBarOpen: true,
@@ -247,10 +247,10 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
   });
 
   describe('Call-Stack-Jump Spotlight Animation in ExplanationDemoBar', () => {
-    it('renders call-stack-jump spotlight badge on Lesson 4.0 explanation demo', () => {
+    it('renders call-stack-jump spotlight badge on Lesson func.0 explanation demo', () => {
       useAppStore.setState({
         appMode: 'curriculum',
-        activeActivityId: '4.0',
+        activeActivityId: 'func.0',
         activeActivityVersion: 1,
         activeDemoTabIndex: 0,
         activeScope: 'MAIN',
@@ -265,7 +265,7 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
     it('highlights F1 in spotlight when execution jumps into F1', () => {
       useAppStore.setState({
         appMode: 'curriculum',
-        activeActivityId: '4.0',
+        activeActivityId: 'func.0',
         activeActivityVersion: 1,
         activeDemoTabIndex: 0,
         activeScope: 'F1',
@@ -281,7 +281,7 @@ describe('Commit 20: Module 4 UI & Creative/Demo Activities', () => {
     it('switches activeScope to F1 when stepping on CALL_F1 block', () => {
       useAppStore.setState({
         appMode: 'curriculum',
-        activeActivityId: '4.0',
+        activeActivityId: 'func.0',
         activeActivityVersion: 1,
         activeScope: 'MAIN',
         workspace: {

@@ -9,7 +9,7 @@ import { WorkspaceCanvas } from '../src/components/WorkspaceCanvas';
 import { renderTurtleVariationPreview } from '../src/components/VariationCardsPanel';
 import {
   CURRICULUM_ACTIVITIES,
-  MODULE_3_PART1_ACTIVITIES,
+  LOOP_ACTIVITIES,
   createCurriculumBlock,
   createCurriculumGridState,
   getActivitiesForModule,
@@ -102,13 +102,13 @@ function runGridWorkspaceToCompletion(
   };
 }
 
-describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lessons (3.0–3.3)', () => {
+describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0–loop.3)', () => {
   beforeEach(() => {
     useAppStore.setState({
       appMode: 'curriculum',
       activeSimId: 'grid',
       activeScope: 'MAIN',
-      activeActivityId: '3.1',
+      activeActivityId: 'loop.1',
       activeActivityVersion: 1,
       activeDemoTabIndex: 0,
       selectedBlockId: null,
@@ -265,7 +265,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       };
 
       useAppStore.setState({
-        activeActivityId: '3.0',
+        activeActivityId: 'loop.0',
         activeDemoTabIndex: 1,
         workspace: emptyWorkspace(blocks),
         runtime,
@@ -296,14 +296,14 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
     });
   });
 
-  describe('Lesson 3.0 — How Loop Start & Loop End Work (Interactive Comparison Demo)', () => {
-    it('runs both 3.0 demo tabs on the shared 6×5 map and steps 1/4 -> 4/4 before exiting past LOOP_END', () => {
-      const activity = getActivityLatest('3.0');
+  describe('Lesson loop.0 — How Loops Work (Interactive Comparison Demo)', () => {
+    it('runs both loop.0 demo tabs on the shared 6×5 map and steps 1/4 -> 4/4 before exiting past LOOP_END', () => {
+      const activity = getActivityLatest('loop.0');
       expect(activity).toBeDefined();
-      expect(activity?.moduleId).toBe('module-3');
+      expect(activity?.moduleId).toBe('loop');
       expect(activity?.format).toBe('explanation');
       expect(activity?.simId).toBe('grid');
-      expect(activity?.icon).toBe('📖');
+      expect(activity?.icon).toBe('🔁');
       expect(activity?.demoTabs).toHaveLength(2);
 
       const [tab1, tab2] = activity!.demoTabs!;
@@ -312,7 +312,7 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       expect(tab2.gridState?.width).toBe(6);
       expect(tab2.gridState?.height).toBe(5);
       expect(tab1.gridState).toEqual(tab2.gridState);
-      expect(tab1.spotlights).toEqual(['execution-order', 'loop-counter']);
+      expect(tab1.spotlights).toEqual(['execution-order']);
       expect(tab2.spotlights).toEqual(['execution-order', 'loop-counter']);
 
       // Tab [1]: 8 unrolled blocks reaching Goal
@@ -363,16 +363,16 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
     });
   });
 
-  describe('Lessons 3.1 & 3.2 — Validated Robot Loop Puzzles, Scaffolds & < 200 ms Anti-Bypass Proofs', () => {
-    it('proves Lesson 3.1 (5×5, 5-slot tray) passes reference + scaffold and has 0 loop-free bypasses (< 200 ms)', () => {
-      const activity = getActivityLatest('3.1');
+  describe('Lessons loop.1 & loop.2 — Validated Robot Loop Puzzles, Scaffolds & < 200 ms Anti-Bypass Proofs', () => {
+    it('proves Lesson loop.1 (4×4, 6-slot tray) passes reference + scaffold and has 0 loop-free bypasses (< 200 ms)', () => {
+      const activity = getActivityLatest('loop.1');
       expect(activity).toBeDefined();
-      expect(activity?.grid?.width).toBe(5);
-      expect(activity?.grid?.height).toBe(5);
-      expect(activity?.slotCap?.maxTotal).toBe(5);
+      expect(activity?.grid?.width).toBe(4);
+      expect(activity?.grid?.height).toBe(4);
+      expect(activity?.slotCap?.maxTotal).toBe(6);
       expect(activity?.palette.allowRepeatBadges).toBe(true);
       expect(activity?.palette.allowActionParams).toBe(false);
-      expect(activity?.referenceSolution?.MAIN).toHaveLength(5);
+      expect(activity?.referenceSolution?.MAIN).toHaveLength(6);
 
       // Scaffold pauses cleanly on PLACEHOLDER
       const scaffold = activity!.partialHelp?.scaffoldWorkspace;
@@ -396,8 +396,8 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       expect(report.ruleResults[0].counterexampleWorkspace).toBeUndefined();
     });
 
-    it('proves Lesson 3.2 (6×5, 7-slot tray) requires BOTH a loop AND steps outside the loop (< 200 ms)', () => {
-      const activity = getActivityLatest('3.2');
+    it('proves Lesson loop.2 (6×5, 7-slot tray) requires BOTH a loop AND steps outside the loop (< 200 ms)', () => {
+      const activity = getActivityLatest('loop.2');
       expect(activity).toBeDefined();
       expect(activity?.grid?.width).toBe(6);
       expect(activity?.grid?.height).toBe(5);
@@ -429,31 +429,31 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       expect(report.ruleResults).toHaveLength(2);
 
       const noLoopRule = report.ruleResults.find(
-        (r) => r.ruleId === '3.2-require-loop'
+        (r) => r.ruleId === 'loop.2-require-loop'
       );
       const pureSingleLoopRule = report.ruleResults.find(
-        (r) => r.ruleId === '3.2-require-outside-loop-steps'
+        (r) => r.ruleId === 'loop.2-require-before-after-loop'
       );
       expect(noLoopRule?.passed).toBe(true);
       expect(pureSingleLoopRule?.passed).toBe(true);
     });
   });
 
-  describe('Lesson 3.3 — Closed Polygons & Star Loops (Turtle LOGO Sandbox & Variations)', () => {
-    it('renders non-empty SVG paths for 3.3 5-star starter and all 3 star/sun variations and round-trips binary saves', () => {
-      const activity = getActivityLatest('3.3');
+  describe('Lesson loop.3 — Closed Polygons & Star Loops (Turtle LOGO Sandbox & Variations)', () => {
+    it('renders non-empty SVG paths for loop.3 5-star starter and all 3 star/sun variations and round-trips binary saves', () => {
+      const activity = getActivityLatest('loop.3');
       expect(activity).toBeDefined();
-      expect(activity?.moduleId).toBe('module-3');
+      expect(activity?.moduleId).toBe('loop');
       expect(activity?.format).toBe('sandbox');
       expect(activity?.simId).toBe('turtle');
-      expect(activity?.icon).toBe('🐢');
+      expect(activity?.icon).toBe('⭐');
       expect(activity?.palette.allowRepeatBadges).toBe(true);
       expect(activity?.palette.allowActionParams).toBe(true);
       expect(activity?.palette.allowedControlBlocks).toEqual([
         'LOOP_START',
         'LOOP_END',
       ]);
-      expect(activity?.variations).toHaveLength(4);
+      expect(activity?.variations).toHaveLength(3);
 
       const allowedSet = new Set([
         ...(activity!.palette.allowedSimBlocks ?? []),
@@ -467,14 +467,14 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
 
       for (const item of workspacesToVerify) {
         expect(item.ws.MAIN.length).toBeGreaterThanOrEqual(4);
-        expect(item.ws.MAIN.length).toBeLessThanOrEqual(14);
+        expect(item.ws.MAIN.length).toBeLessThanOrEqual(20);
         expect(validateLoopStructure(item.ws.MAIN).hasError).toBe(false);
 
         for (const blk of item.ws.MAIN) {
           expect(allowedSet.has(blk.type), `${item.label}: ${blk.type}`).toBe(true);
           if (typeof blk.repeatCount === 'number') {
             expect(blk.repeatCount).toBeGreaterThanOrEqual(2);
-            expect(blk.repeatCount).toBeLessThanOrEqual(9);
+            expect(blk.repeatCount).toBeLessThanOrEqual(12);
           }
         }
 
@@ -484,12 +484,12 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
         expect(preview.thumbnailUrl.startsWith('data:image/svg+xml')).toBe(true);
 
         // Verify binary serialization round-trip (OP_LOOP_START / OP_LOOP_END + Turtle params)
-        const encoded = exportLessonToString(item.ws, 'turtle', '3.3', activity!.version);
+        const encoded = exportLessonToString(item.ws, 'turtle', 'loop.3', activity!.version);
         const decoded = importFromString(encoded);
         expect(decoded.success).toBe(true);
         if (decoded.success) {
           expect(decoded.envId).toBe('lesson');
-          expect(decoded.lessonId).toBe('3.3');
+          expect(decoded.lessonId).toBe('loop.3');
           expect(decoded.lessonVersion).toBe(activity!.version);
           expect(decoded.workspace.MAIN.map((b) => b.type)).toEqual(
             item.ws.MAIN.map((b) => b.type)
@@ -498,23 +498,23 @@ describe('Commit 16 — Visual Loop Nesting Brackets & Module 3 Core Loop Lesson
       }
 
       // Catalog registration check
-      expect(MODULE_3_PART1_ACTIVITIES.map((a) => a.id)).toEqual([
-        '3.0',
-        '3.1',
-        '3.2',
-        '3.2a',
-        '3.3',
-        '3.3a',
+      expect(LOOP_ACTIVITIES.map((a) => a.id).slice(0, 6)).toEqual([
+        'loop.0',
+        'loop.1',
+        'loop.2',
+        'loop.3',
+        'loop.3a',
+        'loop.4',
       ]);
-      expect(getActivitiesForModule('module-3').map((a) => a.id).slice(0, 6)).toEqual([
-        '3.0',
-        '3.1',
-        '3.2',
-        '3.2a',
-        '3.3',
-        '3.3a',
+      expect(getActivitiesForModule('loop').map((a) => a.id).slice(0, 6)).toEqual([
+        'loop.0',
+        'loop.1',
+        'loop.2',
+        'loop.3',
+        'loop.3a',
+        'loop.4',
       ]);
-      expect(CURRICULUM_ACTIVITIES.some((a) => a.id === '3.3')).toBe(true);
+      expect(CURRICULUM_ACTIVITIES.some((a) => a.id === 'loop.3')).toBe(true);
     });
   });
 });

@@ -69,7 +69,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
     store.dismissVersionMismatch();
     store.reloadActiveProfileState();
     store.setAppMode('curriculum');
-    store.setCurriculumActivity('1.1');
+    store.setCurriculumActivity('seq.1');
     store.setSaveModalOpen(false);
     store.setLoadModalOpen(false);
     store.setExportImportOpen(false);
@@ -80,7 +80,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
     it('loads identical curriculum lesson & workspace from both Path A (SavedProgramEntry) and Path B (ENV_ID_LESSON = 0x04)', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2');
       store.clearWorkspace();
       store.addBlock('MAIN', 'MOVE_FWD', 2);
       store.addBlock('MAIN', 'TURN_RIGHT');
@@ -95,14 +95,14 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       expect(importFromString(pathACode).gridState).toBeUndefined();
 
       const slotEntry = saveProgram({
-        title: 'Activity 1.2 — Slot 1',
+        title: 'Activity seq.2 — Slot 1',
         profileId: useAppStore.getState().activeProfileId,
         simId: 'grid',
         code: pathACode,
         screenshot: 'data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E',
         status: 'SUCCESS',
         stepCount: 4,
-        lessonId: '1.2',
+        lessonId: 'seq.2',
         lessonVersion: activeVer,
         slotIndex: 1,
       });
@@ -111,7 +111,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       const pathBShare = useAppStore.getState().exportCode(true);
       const decodedB = importFromString(pathBShare);
       expect(decodedB.envId).toBe('lesson');
-      expect(decodedB.lessonId).toBe('1.2');
+      expect(decodedB.lessonId).toBe('seq.2');
       expect(decodedB.lessonVersion).toBe(activeVer);
 
       // Switch away to Sandbox Turtle and clear blocks
@@ -120,12 +120,12 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       store.clearWorkspace();
       expect(useAppStore.getState().appMode).toBe('sandbox');
 
-      // 1) Load Path A slot -> switches to Curriculum Activity 1.2 with exact blocks
+      // 1) Load Path A slot -> switches to Curriculum Activity seq.2 with exact blocks
       const resA = useAppStore.getState().loadSavedProgram(slotEntry);
       expect(resA.success).toBe(true);
       expect(resA.versionMismatchPending).toBeUndefined();
       expect(useAppStore.getState().appMode).toBe('curriculum');
-      expect(useAppStore.getState().activeActivityId).toBe('1.2');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.2');
       expect(useAppStore.getState().activeActivityVersion).toBe(activeVer);
       expect(stripIds(useAppStore.getState().workspace)).toEqual(expectedWs);
 
@@ -133,12 +133,12 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       store.setAppMode('sandbox');
       store.clearWorkspace();
 
-      // 2) Import Path B share string -> switches to Curriculum Activity 1.2 with exact blocks
+      // 2) Import Path B share string -> switches to Curriculum Activity seq.2 with exact blocks
       const resB = useAppStore.getState().importCode(pathBShare);
       expect(resB.success).toBe(true);
       expect(resB.versionMismatchPending).toBeUndefined();
       expect(useAppStore.getState().appMode).toBe('curriculum');
-      expect(useAppStore.getState().activeActivityId).toBe('1.2');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.2');
       expect(useAppStore.getState().activeActivityVersion).toBe(activeVer);
       expect(stripIds(useAppStore.getState().workspace)).toEqual(expectedWs);
     });
@@ -245,78 +245,78 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         F3: [],
       };
 
-      expect(getNextAvailableLessonSlot('default', '1.1')).toBe(1);
+      expect(getNextAvailableLessonSlot('default', 'seq.1')).toBe(1);
 
       const s1 = saveProgram({
-        title: 'Activity 1.1 — Slot 1',
+        title: 'Activity seq.1 — Slot 1',
         profileId: 'default',
         simId: 'grid',
         code: exportLessonCodeOnly(ws1, 'grid'),
         screenshot: '',
         status: 'IDLE',
         stepCount: 1,
-        lessonId: '1.1',
+        lessonId: 'seq.1',
         lessonVersion: 1,
         slotIndex: 1,
       });
 
-      expect(getNextAvailableLessonSlot('default', '1.1')).toBe(2);
+      expect(getNextAvailableLessonSlot('default', 'seq.1')).toBe(2);
 
       const s2 = saveProgram({
-        title: 'Activity 1.1 — Slot 2',
+        title: 'Activity seq.1 — Slot 2',
         profileId: 'default',
         simId: 'grid',
         code: exportLessonCodeOnly(ws2, 'grid'),
         screenshot: '',
         status: 'SUCCESS',
         stepCount: 2,
-        lessonId: '1.1',
+        lessonId: 'seq.1',
         lessonVersion: 1,
         slotIndex: 2,
       });
 
-      expect(getNextAvailableLessonSlot('default', '1.1')).toBe(3);
+      expect(getNextAvailableLessonSlot('default', 'seq.1')).toBe(3);
 
       // Overwriting Slot 1 without passing `id` upserts Slot 1 in-place
       const s1Updated = saveProgram({
-        title: 'Activity 1.1 — Slot 1 Improved',
+        title: 'Activity seq.1 — Slot 1 Improved',
         profileId: 'default',
         simId: 'grid',
         code: exportLessonCodeOnly(ws2, 'grid'),
         screenshot: '',
         status: 'SUCCESS',
         stepCount: 3,
-        lessonId: '1.1',
+        lessonId: 'seq.1',
         lessonVersion: 1,
         slotIndex: 1,
       });
 
       expect(s1Updated.id).toBe(s1.id);
-      const slots = getLessonSaveSlots('default', '1.1');
+      const slots = getLessonSaveSlots('default', 'seq.1');
       expect(slots).toHaveLength(2);
       expect(slots.map((s) => s.slotIndex)).toEqual([1, 2]);
-      expect(slots[0].title).toBe('Activity 1.1 — Slot 1 Improved');
+      expect(slots[0].title).toBe('Activity seq.1 — Slot 1 Improved');
 
       // Other lessons and profiles start cleanly at Slot 1
-      expect(getNextAvailableLessonSlot('default', '1.2')).toBe(1);
-      expect(getNextAvailableLessonSlot('profile_other', '1.1')).toBe(1);
+      expect(getNextAvailableLessonSlot('default', 'seq.2')).toBe(1);
+      expect(getNextAvailableLessonSlot('profile_other', 'seq.1')).toBe(1);
 
       // Deleting Slot 1 opens Slot 1 as next available
       deleteProgram(s1.id);
-      expect(getNextAvailableLessonSlot('default', '1.1')).toBe(1);
-      expect(getLessonSaveSlots('default', '1.1').map((s) => s.id)).toEqual([s2.id]);
+      expect(getNextAvailableLessonSlot('default', 'seq.1')).toBe(1);
+      expect(getLessonSaveSlots('default', 'seq.1').map((s) => s.id)).toEqual([s2.id]);
     });
   });
 
   describe('4. Synthetic v1 -> v2 Lesson Version Mismatch Flows', () => {
     it('triggers LessonVersionMismatchModal for both Path A slots and Path B share strings and supports Latest vs Original version choices', () => {
-      const targetIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === '1.2');
+      const targetIdx = CURRICULUM_ACTIVITIES.findIndex((a) => a.id === 'seq.2');
       expect(targetIdx).toBeGreaterThanOrEqual(0);
       const targetActivity = CURRICULUM_ACTIVITIES[targetIdx];
       const originalSnapshot = JSON.parse(JSON.stringify(targetActivity));
 
       try {
-        // Synthesize v2 update on Activity 1.2 while retaining v1 in `historicalVersions`
+        // Synthesize v2 update on Activity seq.2 while retaining v1 in `historicalVersions`
         const v1Historical = JSON.parse(JSON.stringify(originalSnapshot));
         v1Historical.version = 1;
         v1Historical.historicalVersions = undefined;
@@ -331,7 +331,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         };
         targetActivity.historicalVersions = { 1: v1Historical };
 
-        expect(getActivityLatest('1.2')?.version).toBe(2);
+        expect(getActivityLatest('seq.2')?.version).toBe(2);
 
         const savedWs: WorkspaceState = {
           MAIN: [
@@ -352,7 +352,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
           screenshot: '',
           status: 'IDLE',
           stepCount: 2,
-          lessonId: '1.2',
+          lessonId: 'seq.2',
           lessonVersion: 1,
           slotIndex: 1,
         });
@@ -364,7 +364,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         const mismatchA = useAppStore.getState().pendingVersionMismatch;
         expect(mismatchA).not.toBeNull();
         expect(mismatchA?.source).toBe('slot');
-        expect(mismatchA?.lessonId).toBe('1.2');
+        expect(mismatchA?.lessonId).toBe('seq.2');
         expect(mismatchA?.savedVersion).toBe(1);
         expect(mismatchA?.latestVersion).toBe(2);
         expect(mismatchA?.hasHistoricalVersion).toBe(true);
@@ -374,13 +374,13 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         expect(resolvedOriginal).toBe(true);
         expect(useAppStore.getState().pendingVersionMismatch).toBeNull();
         expect(useAppStore.getState().appMode).toBe('curriculum');
-        expect(useAppStore.getState().activeActivityId).toBe('1.2');
+        expect(useAppStore.getState().activeActivityId).toBe('seq.2');
         expect(useAppStore.getState().activeActivityVersion).toBe(1);
         expect(useAppStore.getState().grid.width).toBe(v1Width);
         expect(stripIds(useAppStore.getState().workspace)).toEqual(stripIds(savedWs));
 
         // --- Flow B: Standalone Share String (`ENV_ID_LESSON = 0x04`) encoded at v1 ---
-        const v1ShareString = exportLessonToString(savedWs, 'grid', '1.2', 1);
+        const v1ShareString = exportLessonToString(savedWs, 'grid', 'seq.2', 1);
         useAppStore.getState().setExportImportOpen(true);
         const importShareRes = useAppStore.getState().importCode(v1ShareString);
         expect(importShareRes.success).toBe(true);
@@ -392,7 +392,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         const resolvedLatest = useAppStore.getState().resolveVersionMismatch('latest');
         expect(resolvedLatest).toBe(true);
         expect(useAppStore.getState().pendingVersionMismatch).toBeNull();
-        expect(useAppStore.getState().activeActivityId).toBe('1.2');
+        expect(useAppStore.getState().activeActivityId).toBe('seq.2');
         expect(useAppStore.getState().activeActivityVersion).toBe(2);
         expect(useAppStore.getState().grid.width).toBe(v2Width);
         expect(stripIds(useAppStore.getState().workspace)).toEqual(stripIds(savedWs));
@@ -403,7 +403,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
 
         const importPrunedRes = useAppStore
           .getState()
-          .importBinary(exportLessonToBinary(savedWs, 'grid', '1.2', 1));
+          .importBinary(exportLessonToBinary(savedWs, 'grid', 'seq.2', 1));
         expect(importPrunedRes.success).toBe(true);
         expect(importPrunedRes.versionMismatchPending).toBe(true);
         expect(useAppStore.getState().pendingVersionMismatch?.hasHistoricalVersion).toBe(false);
@@ -430,8 +430,8 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         name: 'Leo',
       });
 
-      markLessonCompleted(leo.id, '1.1', 1, 1700000100000);
-      markLessonCompleted(leo.id, '1.2', 1, 1700000200000);
+      markLessonCompleted(leo.id, 'seq.1', 1, 1700000100000);
+      markLessonCompleted(leo.id, 'seq.2', 1, 1700000200000);
       awardBadgeForProfile(leo.id, 'badge-explorer');
 
       const lessonWs: WorkspaceState = {
@@ -446,7 +446,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         F2: [],
         F3: [],
       };
-      saveLessonAutosave(leo.id, '1.2', lessonWs, 1, 1700000300000);
+      saveLessonAutosave(leo.id, 'seq.2', lessonWs, 1, 1700000300000);
       saveSandboxAutosave(leo.id, 'turtle', sandboxWs, 1700000400000);
 
       const leoSlot = saveProgram({
@@ -457,7 +457,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         screenshot: 'data:image/svg+xml;charset=utf-8,%3Csvg%20id%3D%22custom%22%3E%3C%2Fsvg%3E',
         status: 'SUCCESS',
         stepCount: 3,
-        lessonId: '1.2',
+        lessonId: 'seq.2',
         lessonVersion: 1,
         slotIndex: 1,
       });
@@ -473,8 +473,8 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       expect(isProfileBackupPayload(backupBinary)).toBe(true);
       expect(isProfileBackupPayload(backupString)).toBe(true);
       expect(isProfileBackupPayload(backupQrBytes)).toBe(true);
-      expect(isProfileBackupPayload(exportLessonToString(lessonWs, 'grid', '1.2', 1))).toBe(false);
-      expect(isProfileBackupPayload(exportLessonToBinary(lessonWs, 'grid', '1.2', 1))).toBe(false);
+      expect(isProfileBackupPayload(exportLessonToString(lessonWs, 'grid', 'seq.2', 1))).toBe(false);
+      expect(isProfileBackupPayload(exportLessonToBinary(lessonWs, 'grid', 'seq.2', 1))).toBe(false);
 
       const parsedJson = parseProfileBackup(backupJson);
       expect(parsedJson.success).toBe(true);
@@ -492,9 +492,9 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
       expect(useAppStore.getState().activeProfileId).toBe(clonedProfile.id);
 
       const clonedProg = getProfileProgress(clonedProfile.id);
-      expect(Object.keys(clonedProg.completedLessons)).toEqual(['1.1', '1.2']);
+      expect(Object.keys(clonedProg.completedLessons)).toEqual(['seq.1', 'seq.2']);
       expect(clonedProg.earnedBadges).toContain('badge-explorer');
-      expect(stripIds(getLessonAutosave(clonedProfile.id, '1.2')?.workspace)).toEqual(
+      expect(stripIds(getLessonAutosave(clonedProfile.id, 'seq.2')?.workspace)).toEqual(
         stripIds(lessonWs)
       );
       expect(stripIds(getSandboxAutosave(clonedProfile.id, 'turtle')?.workspace)).toEqual(
@@ -557,16 +557,16 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
           F3: [],
         };
 
-        // Populate Slot 1 on Activity 1.1 with synthetic v0 mismatch badge for Load modal preview
+        // Populate Slot 1 on Activity seq.1 with synthetic v0 mismatch badge for Load modal preview
         const slot1 = saveProgram({
-          title: 'Activity 1.1 — Slot 1',
+          title: 'Activity seq.1 — Slot 1',
           profileId: DEFAULT_PROFILE_ID,
           simId: 'grid',
           code: exportLessonCodeOnly(ws, 'grid'),
           screenshot: 'data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E',
           status: 'SUCCESS',
           stepCount: 1,
-          lessonId: '1.1',
+          lessonId: 'seq.1',
           lessonVersion: 1,
           slotIndex: 1,
         });
@@ -575,12 +575,12 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         useAppStore.setState({
           pendingVersionMismatch: {
             source: 'slot',
-            lessonId: '1.1',
+            lessonId: 'seq.1',
             savedVersion: 1,
             latestVersion: 2,
             workspace: ws,
             hasHistoricalVersion: true,
-            title: 'Activity 1.1 — Slot 1',
+            title: 'Activity seq.1 — Slot 1',
             slotIndex: 1,
           },
         });
@@ -599,7 +599,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         useAppStore.setState({
           pendingVersionMismatch: {
             source: 'share',
-            lessonId: '1.1',
+            lessonId: 'seq.1',
             savedVersion: 1,
             latestVersion: 3,
             workspace: ws,
@@ -619,7 +619,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         // 2) SaveProgramModal in Curriculum mode renders visual numbered Lesson Save Slots
         useAppStore.setState({
           appMode: 'curriculum',
-          activeActivityId: '1.1',
+          activeActivityId: 'seq.1',
           activeActivityVersion: 1,
           isSaveModalOpen: true,
         });
@@ -689,7 +689,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         useAppStore.setState({
           pendingVersionMismatch: {
             source: 'slot',
-            lessonId: '1.1',
+            lessonId: 'seq.1',
             savedVersion: 1,
             latestVersion: 2,
             workspace: ws,
@@ -720,7 +720,7 @@ describe('Commit 4: Versioned Lesson Saves, Slots, Mismatch Modal & Whole-Profil
         // Verify SaveProgramModal slot buttons appear in numeric keyboard order (Slot 1 -> Slot 2 -> Slot 3 -> Save)
         useAppStore.setState({
           appMode: 'curriculum',
-          activeActivityId: '1.1',
+          activeActivityId: 'seq.1',
           activeActivityVersion: 1,
           isSaveModalOpen: true,
         });

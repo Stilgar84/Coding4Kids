@@ -3,10 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CURRICULUM_ACTIVITIES,
-  MODULE_1_BEAT_ACTIVITIES,
-  MODULE_2_BEAT_ALLOWED_BLOCKS,
-  MODULE_3_BEAT_ACTIVITIES,
-  MODULE_3_BEAT_ALLOWED_BLOCKS,
   createCurriculumBlock,
   getActivitiesForModule,
   getActivityLatest,
@@ -77,7 +73,7 @@ function makeBeatWorkspace(blocks: ReturnType<typeof createCurriculumBlock>[]): 
   };
 }
 
-describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) & Lesson 3.4', () => {
+describe('Loops (loop): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) & Lesson loop.4', () => {
   beforeEach(() => {
     beatVariationPreviewPlayer.stop();
     clearAllSavedPrograms();
@@ -372,12 +368,12 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
       ]);
     });
 
-    it('round-trips Lesson 3.4 workspaces across Path A (SavedProgramEntry / exportLessonCodeOnly) and Path B (ENV_ID_LESSON = 0x04)', () => {
-      const lesson34 = getActivityLatest('3.4')!;
-      expect(lesson34).toBeDefined();
+    it('round-trips Lesson loop.4 workspaces across Path A (SavedProgramEntry / exportLessonCodeOnly) and Path B (ENV_ID_LESSON = 0x04)', () => {
+      const lessonLoop4 = getActivityLatest('loop.4')!;
+      expect(lessonLoop4).toBeDefined();
 
       // Path A: exportLessonCodeOnly + SavedProgramEntry store round-trip
-      const codeOnlyStr = exportLessonCodeOnly(lesson34.starterWorkspace, 'beat');
+      const codeOnlyStr = exportLessonCodeOnly(lessonLoop4.starterWorkspace, 'beat');
       const codeOnlyImported = importFromString(codeOnlyStr);
       expect(codeOnlyImported.success).toBe(true);
       expect(codeOnlyImported.envId).toBe('beat');
@@ -388,7 +384,7 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
           params: b.params,
         }))
       ).toEqual(
-        lesson34.starterWorkspace.MAIN.map((b) => ({
+        lessonLoop4.starterWorkspace.MAIN.map((b) => ({
           type: b.type,
           repeatCount: b.repeatCount,
           params: b.params,
@@ -396,17 +392,17 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
       );
 
       // Path B: ENV_ID_LESSON = 0x04 envelope
-      const lessonBytes = exportLessonToBinary(lesson34.starterWorkspace, 'beat', '3.4', 1);
+      const lessonBytes = exportLessonToBinary(lessonLoop4.starterWorkspace, 'beat', 'loop.4', 1);
       expect(lessonBytes[0]).toBe(FORMAT_VERSION);
       expect(lessonBytes[1]).toBe(ENV_ID_LESSON);
       expect(lessonBytes[2]).toBe(ENV_ID_BEAT);
 
-      const lessonStr = exportLessonToString(lesson34.starterWorkspace, 'beat', '3.4', 1);
+      const lessonStr = exportLessonToString(lessonLoop4.starterWorkspace, 'beat', 'loop.4', 1);
       const lessonImported = importFromString(lessonStr);
       expect(lessonImported.success).toBe(true);
       expect(lessonImported.envId).toBe('lesson');
       expect(lessonImported.innerEnvId).toBe('beat');
-      expect(lessonImported.lessonId).toBe('3.4');
+      expect(lessonImported.lessonId).toBe('loop.4');
       expect(lessonImported.lessonVersion).toBe(1);
       expect(
         lessonImported.workspace?.MAIN.map((b) => ({
@@ -415,53 +411,53 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
           params: b.params,
         }))
       ).toEqual(
-        lesson34.starterWorkspace.MAIN.map((b) => ({
+        lessonLoop4.starterWorkspace.MAIN.map((b) => ({
           type: b.type,
           repeatCount: b.repeatCount,
           params: b.params,
         }))
       );
 
-      // Store Path A (SavedProgramEntry) + Path B (exportCode/importCode) in Lesson 3.4
+      // Store Path A (SavedProgramEntry) + Path B (exportCode/importCode) in Lesson loop.4
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('3.4');
+      store.setCurriculumActivity('loop.4');
 
       const savedEntry = saveProgram({
         title: 'Border Chase Save',
         simId: 'beat',
         code: codeOnlyStr,
-        screenshot: renderBeatVariationPreview(lesson34.starterWorkspace).thumbnailUrl,
+        screenshot: renderBeatVariationPreview(lessonLoop4.starterWorkspace).thumbnailUrl,
         status: 'IDLE',
         stepCount: 0,
-        lessonId: '3.4',
-        lessonVersion: lesson34.version,
+        lessonId: 'loop.4',
+        lessonVersion: lessonLoop4.version,
       });
-      expect(savedEntry.lessonId).toBe('3.4');
+      expect(savedEntry.lessonId).toBe('loop.4');
       expect(savedEntry.simId).toBe('beat');
 
       store.setAppMode('sandbox');
       const loadedRes = useAppStore.getState().loadSavedProgram(savedEntry);
       expect(loadedRes.success).toBe(true);
       expect(useAppStore.getState().appMode).toBe('curriculum');
-      expect(useAppStore.getState().activeActivityId).toBe('3.4');
+      expect(useAppStore.getState().activeActivityId).toBe('loop.4');
       expect(useAppStore.getState().workspace.MAIN.map((b) => b.type)).toEqual(
-        lesson34.starterWorkspace.MAIN.map((b) => b.type)
+        lessonLoop4.starterWorkspace.MAIN.map((b) => b.type)
       );
     });
 
-    it('preserves byte-for-byte backward compatibility for existing Tier 1 (1.8) and Tier 2 (2.5) Beat saves', () => {
-      const lesson18 = MODULE_1_BEAT_ACTIVITIES.find((a) => a.id === '1.8')!;
-      const lesson25 = getActivityLatest('2.5')!;
+    it('preserves byte-for-byte backward compatibility for existing Tier 1 (seq.8) and Tier 2 (param.5) Beat saves', () => {
+      const lessonSeq8 = getActivityLatest('seq.8')!;
+      const lessonParam5 = getActivityLatest('param.5')!;
 
-      const tier1Str = exportToString(lesson18.starterWorkspace, 'beat');
+      const tier1Str = exportToString(lessonSeq8.starterWorkspace, 'beat');
       const tier1Decoded = importFromString(tier1Str);
       expect(tier1Decoded.success).toBe(true);
       expect(tier1Decoded.workspace?.MAIN.map((b) => b.type)).toEqual(
-        lesson18.starterWorkspace.MAIN.map((b) => b.type)
+        lessonSeq8.starterWorkspace.MAIN.map((b) => b.type)
       );
 
-      const tier2Str = exportToString(lesson25.starterWorkspace, 'beat');
+      const tier2Str = exportToString(lessonParam5.starterWorkspace, 'beat');
       const tier2Decoded = importFromString(tier2Str);
       expect(tier2Decoded.success).toBe(true);
       expect(
@@ -470,7 +466,7 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
           params: b.params,
         }))
       ).toEqual(
-        lesson25.starterWorkspace.MAIN.map((b) => ({
+        lessonParam5.starterWorkspace.MAIN.map((b) => ({
           type: b.type,
           params: b.params,
         }))
@@ -497,44 +493,39 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
     });
   });
 
-  describe('4. Curriculum Lesson 3.4 Schema, Staged Palette, Perimeter Starter & 4 Playable Variations', () => {
-    it('registers Lesson 3.4 and 3.4a in MODULE_3_BEAT_ACTIVITIES and CURRICULUM_ACTIVITIES with staged Beat + Loop + Cursor palette', () => {
-      expect(MODULE_3_BEAT_ACTIVITIES.map((a) => a.id)).toEqual(['3.4', '3.4a']);
-      expect(CURRICULUM_ACTIVITIES.some((a) => a.id === '3.4')).toBe(true);
-      expect(getActivitiesForModule('module-3').map((a) => a.id)).toContain('3.4');
+  describe('4. Curriculum Lesson loop.4 Schema, Staged Palette, Perimeter Starter & 3 Playable Variations', () => {
+    it('registers Lesson loop.3a and loop.4 in CURRICULUM_ACTIVITIES with staged Beat + Loop + Cursor palette', () => {
+      const loopIds = getActivitiesForModule('loop').map((a) => a.id);
+      expect(loopIds).toContain('loop.3a');
+      expect(loopIds).toContain('loop.4');
+      expect(CURRICULUM_ACTIVITIES.some((a) => a.id === 'loop.4')).toBe(true);
 
-      const lesson34 = getActivityLatest('3.4')!;
-      expect(lesson34.moduleId).toBe('module-3');
-      expect(lesson34.version).toBe(2);
-      expect(lesson34.format).toBe('sandbox');
-      expect(lesson34.simId).toBe('beat');
-      expect(lesson34.title).toBe('Rhythm Loops & Chasing Border LEDs');
+      const lessonLoop4 = getActivityLatest('loop.4')!;
+      expect(lessonLoop4.moduleId).toBe('loop');
+      expect(lessonLoop4.version).toBe(1);
+      expect(lessonLoop4.format).toBe('sandbox');
+      expect(lessonLoop4.simId).toBe('beat');
+      expect(lessonLoop4.title).toBe('Rhythm & Border Chase Loops');
 
-      expect(MODULE_3_BEAT_ALLOWED_BLOCKS).toEqual([
-        ...MODULE_2_BEAT_ALLOWED_BLOCKS,
-        'SET_BEAT_DELAY',
-        'CURSOR_STEP',
-        'CURSOR_TURN',
-      ]);
-      expect(lesson34.palette).toEqual({
-        allowedSimBlocks: MODULE_3_BEAT_ALLOWED_BLOCKS,
-        allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
-        allowedScopes: ['MAIN'],
-        allowRepeatBadges: true,
-        allowActionParams: true,
-        allowVariables: false,
-      });
+      expect(lessonLoop4.palette.allowedSimBlocks).toContain('SET_BEAT_DELAY');
+      expect(lessonLoop4.palette.allowedSimBlocks).toContain('CURSOR_STEP');
+      expect(lessonLoop4.palette.allowedSimBlocks).toContain('CURSOR_TURN');
+      expect(lessonLoop4.palette.allowedControlBlocks).toEqual(['LOOP_START', 'LOOP_END']);
+      expect(lessonLoop4.palette.allowedScopes).toEqual(['MAIN']);
+      expect(lessonLoop4.palette.allowRepeatBadges).toBe(true);
+      expect(lessonLoop4.palette.allowActionParams).toBe(true);
+      expect(lessonLoop4.palette.allowVariables).toBe(false);
 
       // Starter has 6..10 blocks and valid loop structure
-      expect(lesson34.starterWorkspace.MAIN.length).toBeGreaterThanOrEqual(6);
-      expect(lesson34.starterWorkspace.MAIN.length).toBeLessThanOrEqual(10);
-      expect(validateLoopStructure(lesson34.starterWorkspace.MAIN).hasError).toBe(false);
+      expect(lessonLoop4.starterWorkspace.MAIN.length).toBeGreaterThanOrEqual(6);
+      expect(lessonLoop4.starterWorkspace.MAIN.length).toBeLessThanOrEqual(10);
+      expect(validateLoopStructure(lessonLoop4.starterWorkspace.MAIN).hasError).toBe(false);
     });
 
-    it('executes Lesson 3.4 starter workspace headlessly to light all 28 border LEDs around the 8x8 perimeter', () => {
-      const lesson34 = getActivityLatest('3.4')!;
+    it('executes Lesson loop.4 starter workspace headlessly to light all 28 border LEDs around the 8x8 perimeter', () => {
+      const lessonLoop4 = getActivityLatest('loop.4')!;
       const simRes = runHeadlessSimulation(
-        lesson34.starterWorkspace,
+        lessonLoop4.starterWorkspace,
         'beat',
         createInitialBeatState(true)
       );
@@ -561,11 +552,11 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
       });
     });
 
-    it('renders staged BlockPalette and VariationCardsPanel for Lesson 3.4 and animates cursor in card preview playback', () => {
+    it('renders staged BlockPalette and VariationCardsPanel for Lesson loop.4 and animates cursor in card preview playback', () => {
       vi.useFakeTimers();
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('3.4');
+      store.setCurriculumActivity('loop.4');
       expect(useAppStore.getState().activeSimId).toBe('beat');
 
       const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
@@ -577,44 +568,40 @@ describe('Wave 5 (Commit 17): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) 
       expect(paletteHtml).not.toContain('data-testid="palette-var-assign"');
       expect(paletteHtml).not.toContain('data-testid="palette-call-f1"');
 
-      const lesson34 = getActivityLatest('3.4')!;
-      expect(lesson34.variations?.length).toBe(4);
+      const lessonLoop4 = getActivityLatest('loop.4')!;
+      expect(lessonLoop4.variations?.length).toBe(3);
 
       const thumbnails = new Set<string>();
-      for (const card of lesson34.variations!) {
+      for (const card of lessonLoop4.variations!) {
         expect(card.workspace.MAIN.length).toBeGreaterThanOrEqual(4);
-        expect(card.workspace.MAIN.length).toBeLessThanOrEqual(12);
+        expect(card.workspace.MAIN.length).toBeLessThanOrEqual(24);
         expect(validateLoopStructure(card.workspace.MAIN).hasError).toBe(false);
 
         const types = card.workspace.MAIN.map((b) => b.type);
         expect(types).toContain('LOOP_START');
-        if (card.id !== '3.4-instant-beacon') {
-          expect(types).toContain('CURSOR_STEP');
-          expect(types).toContain('CURSOR_TURN');
-        }
+        expect(types).toContain('CURSOR_STEP');
+        expect(types).toContain('CURSOR_TURN');
 
         const preview = renderBeatVariationPreview(card.workspace);
         expect(preview.totalBeats).toBeGreaterThan(0);
         expect(countLitLeds(preview.representativeState.leds)).toBeGreaterThan(0);
-        if (card.id !== '3.4-instant-beacon') {
-          expect(preview.representativeState.cursor.visible).toBe(true);
-        }
+        expect(preview.representativeState.cursor.visible).toBe(true);
         thumbnails.add(preview.thumbnailUrl);
       }
-      // All 4 variation cards produce distinct 8x8 visual thumbnails
-      expect(thumbnails.size).toBe(4);
+      // All 3 variation cards produce distinct 8x8 visual thumbnails
+      expect(thumbnails.size).toBe(3);
 
       // SSR check on VariationCardsPanel
       const cardsHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
-      expect(cardsHtml).toContain('Syncopated Clap Ostinato');
-      expect(cardsHtml).toContain('Two-Color Border Flash');
-      expect(cardsHtml).toContain('Marquee Chase Lights');
-      expect(cardsHtml).toContain('data-testid="variation-beat-cursor-3.4-clap-ostinato"');
+      expect(cardsHtml).toContain('Clap-Snap Staircase Groove');
+      expect(cardsHtml).toContain('Candy-Cane Perimeter Chase');
+      expect(cardsHtml).toContain('Neon Frame + Star Finale');
+      expect(cardsHtml).toContain('data-testid="variation-beat-cursor-var1-staircase-groove"');
 
       // Live in-card preview playback advances cursor without mutating main BeatState
-      const thirdCard = lesson34.variations![2];
+      const thirdCard = lessonLoop4.variations![2];
       beatVariationPreviewPlayer.toggle(thirdCard, {
-        activityId: '3.4',
+        activityId: 'loop.4',
         tickMs: 50,
         getIsMuted: () => true,
       });

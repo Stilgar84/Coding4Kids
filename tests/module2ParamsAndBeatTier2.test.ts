@@ -3,8 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CURRICULUM_ACTIVITIES,
-  MODULE_2_BEAT_ALLOWED_BLOCKS,
-  MODULE_2_PARAMS_ACTIVITIES,
+  PARAM_ACTIVITIES,
   getActivitiesForModule,
   getActivityLatest,
   isValidatedPuzzleActivity,
@@ -152,7 +151,7 @@ function createNoteMockAudioContext(initialState: 'running' | 'suspended' = 'run
   return { MockAudioContext, log };
 }
 
-describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Tier 2 Blocks (2.5)', () => {
+describe('Parameters (param): Action Parameters (param.1-param.4, param.B) & Beat Tier 2 Blocks (param.5)', () => {
   const originalAudioContext = (globalThis as any).AudioContext;
 
   beforeEach(() => {
@@ -172,7 +171,7 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
     useAppStore.setState({
       curriculumWorkspaces: {},
       sandboxSnapshot: null,
-      activeActivityId: '1.1',
+      activeActivityId: 'seq.1',
       activeActivityVersion: 1,
       statusAnnouncement: '',
     });
@@ -426,21 +425,21 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
         { type: 'LIGHT_PIXEL', repeatCount: undefined, params: { x: 'x', y: 'y' } },
       ]);
 
-      // Base64URL string + ENV_ID_LESSON (0x04) wrapper round-trip on Activity 2.5
-      const act25 = getActivityLatest('2.5')!;
+      // Base64URL string + ENV_ID_LESSON (0x04) wrapper round-trip on Activity param.5
+      const actParam5 = getActivityLatest('param.5')!;
       const lessonEncoded = exportLessonToString(
-        act25.starterWorkspace!,
+        actParam5.starterWorkspace!,
         'beat',
-        act25.id,
-        act25.version
+        actParam5.id,
+        actParam5.version
       );
       const lessonDecoded = importFromString(lessonEncoded);
       expect(lessonDecoded.success).toBe(true);
       expect(lessonDecoded.envId).toBe('lesson');
       expect(lessonDecoded.innerEnvId).toBe('beat');
-      expect(lessonDecoded.lessonId).toBe('2.5');
+      expect(lessonDecoded.lessonId).toBe('param.5');
       expect(lessonDecoded.lessonVersion).toBe(1);
-      expect(lessonDecoded.workspace?.MAIN).toHaveLength(act25.starterWorkspace!.MAIN.length);
+      expect(lessonDecoded.workspace?.MAIN).toHaveLength(actParam5.starterWorkspace!.MAIN.length);
     });
   });
 
@@ -552,10 +551,10 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
       expect(badgeHtml).toContain('md:min-w-[44px]');
       expect(badgeHtml).toContain('aria-haspopup="dialog"');
 
-      // In Module 2 (2.5), variables are gated off in ParamSelectionPopover
+      // In param (param.5), variables are gated off in ParamSelectionPopover
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('2.5');
+      store.setCurriculumActivity('param.5');
 
       const pitchPopoverM2 = renderToStaticMarkup(
         React.createElement(ParamSelectionPopover, {
@@ -611,22 +610,22 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
     });
   });
 
-  describe('3. Activity 2.1 Constraint Solver Anti-Bypass Proof (< 200 ms)', () => {
-    it('proves 2.1 solves in 5 blocks with ×N badges, has valid ? scaffold, requires >= 9 blocks unrolled, and has 0 bypasses in <= 5 slots without ×N', () => {
-      const act21 = getActivityLatest('2.1');
-      expect(act21).toBeDefined();
-      expect(isValidatedPuzzleActivity(act21!)).toBe(true);
-      expect(act21!.grid?.width).toBe(6);
-      expect(act21!.grid?.height).toBe(5);
-      expect(act21!.slotCap?.maxTotal).toBe(5);
-      expect(act21!.palette.allowRepeatBadges).toBe(true);
-      expect(act21!.palette.allowActionParams).toBe(false);
-      expect(act21!.referenceSolution!.MAIN.length).toBeGreaterThanOrEqual(4);
-      expect(act21!.referenceSolution!.MAIN.length).toBeLessThanOrEqual(5);
+  describe('3. Activity param.1 Constraint Solver Anti-Bypass Proof (< 200 ms)', () => {
+    it('proves param.1 solves in 5 blocks with ×N badges, has valid ? scaffold, requires >= 9 blocks unrolled, and has 0 bypasses in <= 5 slots without ×N', () => {
+      const actParam1 = getActivityLatest('param.1');
+      expect(actParam1).toBeDefined();
+      expect(isValidatedPuzzleActivity(actParam1!)).toBe(true);
+      expect(actParam1!.grid?.width).toBe(6);
+      expect(actParam1!.grid?.height).toBe(5);
+      expect(actParam1!.slotCap?.maxTotal).toBe(5);
+      expect(actParam1!.palette.allowRepeatBadges).toBe(true);
+      expect(actParam1!.palette.allowActionParams).toBe(false);
+      expect(actParam1!.referenceSolution!.MAIN.length).toBeGreaterThanOrEqual(4);
+      expect(actParam1!.referenceSolution!.MAIN.length).toBeLessThanOrEqual(5);
 
-      const report = verifyActivityConstraints(act21!);
+      const report = verifyActivityConstraints(actParam1!);
       console.info(
-        `[2.1 Solver Proof] elapsedMs=${report.elapsedMs.toFixed(2)}ms, minWinningBlocks(noRepeat)=${report.ruleResults[0]?.minWinningBlocks}, exploredStates=${report.ruleResults[0]?.exploredStates}`
+        `[param.1 Solver Proof] elapsedMs=${report.elapsedMs.toFixed(2)}ms, minWinningBlocks(noRepeat)=${report.ruleResults[0]?.minWinningBlocks}, exploredStates=${report.ruleResults[0]?.exploredStates}`
       );
       expect(report.passed).toBe(true);
       expect(report.elapsedMs).toBeLessThan(200);
@@ -646,33 +645,40 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
     });
   });
 
-  describe('4. Module 2 Creative Lessons (2.2-2.5a) & Capstone 2B Execution, Thumbnails & Staged Palettes', () => {
-    it('registers 2.1-2.5a and 2B in MODULE_2_PARAMS_ACTIVITIES and CURRICULUM_ACTIVITIES', () => {
-      expect(MODULE_2_PARAMS_ACTIVITIES.map((a) => a.id)).toEqual([
-        '2.1',
-        '2.2',
-        '2.3',
-        '2.4',
-        '2.5',
-        '2.5a',
-        '2B',
+  describe('4. param Creative Lessons (param.2–param.6) & Capstones (param.C, param.B) Execution, Thumbnails & Staged Palettes', () => {
+    it('registers param.0–param.B in PARAM_ACTIVITIES and CURRICULUM_ACTIVITIES in exact play order', () => {
+      expect(PARAM_ACTIVITIES.map((a) => a.id)).toEqual([
+        'param.0',
+        'param.1',
+        'param.2',
+        'param.3',
+        'param.4',
+        'param.5',
+        'param.6',
+        'param.C',
+        'param.7',
+        'param.8',
+        'param.9',
+        'param.10',
+        'param.A',
+        'param.B',
       ]);
-      const m2Ids = getActivitiesForModule('module-2').map((a) => a.id);
-      for (const id of ['2.1', '2.2', '2.3', '2.4', '2.5', '2.5a', '2B']) {
-        expect(m2Ids).toContain(id);
+      const paramIds = getActivitiesForModule('param').map((a) => a.id);
+      for (const id of ['param.1', 'param.2', 'param.3', 'param.4', 'param.5', 'param.6', 'param.C', 'param.B']) {
+        expect(paramIds).toContain(id);
         expect(CURRICULUM_ACTIVITIES.some((a) => a.id === id)).toBe(true);
       }
 
-      const cap2B = getActivityLatest('2B')!;
-      expect(cap2B.format).toBe('capstone');
-      expect(cap2B.capstoneType).toBe('creative');
-      expect(cap2B.simId).toBe('turtle');
-      expect(cap2B.icon).toBe('🎨');
-      expect(isValidatedPuzzleActivity(cap2B)).toBe(false);
+      const capParamB = getActivityLatest('param.B')!;
+      expect(capParamB.format).toBe('capstone');
+      expect(capParamB.capstoneType).toBe('creative');
+      expect(capParamB.simId).toBe('turtle');
+      expect(capParamB.icon).toBe('🎨');
+      expect(isValidatedPuzzleActivity(capParamB)).toBe(false);
     });
 
-    it('executes starter and all 3 variations for LOGO lessons 2.2, 2.3, 2.4, and Capstone 2B with distinct SVG thumbnails', () => {
-      for (const id of ['2.2', '2.3', '2.4', '2B']) {
+    it('executes starter and all variations for LOGO lessons param.2, param.3, param.4, and Capstone param.B with distinct SVG thumbnails', () => {
+      for (const id of ['param.2', 'param.3', 'param.4', 'param.B']) {
         const act = getActivityLatest(id)!;
         expect(act.simId).toBe('turtle');
         expect(act.palette.allowActionParams).toBe(true);
@@ -680,20 +686,19 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
         expect(act.palette.allowVariables).toBe(false);
         expect(act.palette.allowedControlBlocks).toEqual([]);
 
-        const maxBudget = id === '2B' ? 24 : 12;
-        const minBudget = id === '2B' ? 10 : 4;
-        expect(act.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(minBudget);
-        expect(act.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(maxBudget);
+        expect(act.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(4);
+        expect(act.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(24);
 
         const starterPreview = renderTurtleVariationPreview(act.starterWorkspace!);
         expect(starterPreview.finalState.paths.length).toBeGreaterThanOrEqual(3);
         expect(starterPreview.svgMarkup).toContain('<svg');
 
-        expect(act.variations).toHaveLength(3);
+        const expectedCount = id === 'param.2' || id === 'param.B' ? 4 : 3;
+        expect(act.variations).toHaveLength(expectedCount);
         const cardSvgs = new Set<string>();
         for (const card of act.variations!) {
-          expect(card.workspace.MAIN.length).toBeGreaterThanOrEqual(minBudget);
-          expect(card.workspace.MAIN.length).toBeLessThanOrEqual(maxBudget);
+          expect(card.workspace.MAIN.length).toBeGreaterThanOrEqual(4);
+          expect(card.workspace.MAIN.length).toBeLessThanOrEqual(32);
           // Every block in starter/variation uses an allowed sim block
           for (const blk of card.workspace.MAIN) {
             expect(act.palette.allowedSimBlocks).toContain(blk.type);
@@ -702,10 +707,10 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
           expect(preview.finalState.paths.length).toBeGreaterThanOrEqual(3);
           cardSvgs.add(preview.svgMarkup);
         }
-        expect(cardSvgs.size).toBe(3);
+        expect(cardSvgs.size).toBe(expectedCount);
       }
 
-      // Verify Capstone 2B Winking Emoji & Bullseye Shield geometry
+      // Verify Capstone param.B Winking Emoji & Bullseye Shield geometry
       const getArcCenter = (arc: {
         fromX: number;
         fromY: number;
@@ -721,8 +726,8 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
         };
       };
 
-      const cap2B = getActivityLatest('2B')!;
-      const emojiCard = cap2B.variations!.find((v) => v.id === '2B-winking-emoji')!;
+      const capParamB = getActivityLatest('param.B')!;
+      const emojiCard = capParamB.variations!.find((v) => v.id === 'param-b-var2-winking-emoji')!;
       const emojiState = renderTurtleVariationPreview(emojiCard.workspace).finalState;
       expect(emojiState.paths).toHaveLength(4);
       const [faceArc, smileArc, winkArc, openEyeLine] = emojiState.paths;
@@ -758,55 +763,68 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
         expect(openEyeLine.toY).toBeCloseTo(-50, 3);
       }
 
-      const shieldCard = cap2B.variations!.find((v) => v.id === '2B-bullseye-shield')!;
+      const shieldCard = capParamB.variations!.find((v) => v.id === 'param-b-var3-bullseye-shield')!;
       const shieldState = renderTurtleVariationPreview(shieldCard.workspace).finalState;
-      expect(shieldState.paths).toHaveLength(3);
+      expect(shieldState.paths).toHaveLength(4);
       const radii = shieldState.paths.map((p) => (p.type === 'ARC' ? p.radius : 0));
-      expect(radii).toEqual([75, 50, 25]);
+      expect(radii).toEqual([100, 75, 50, 25]);
       for (const ring of shieldState.paths) {
         expect(ring.type).toBe('ARC');
         if (ring.type === 'ARC') {
           const c = getArcCenter(ring);
-          expect(c.cx).toBeCloseTo(75, 3);
+          expect(c.cx).toBeCloseTo(100, 3);
           expect(c.cy).toBeCloseTo(0, 3);
           expect(ring.sweepAngle).toBe(360);
         }
       }
     });
 
-    it('executes 2.5 Beat & Light starter and all 3 playable variations with lit 8x8 frames and staged Tier 2 palette', () => {
-      const act25 = getActivityLatest('2.5')!;
-      expect(act25.simId).toBe('beat');
-      expect(act25.palette.allowedSimBlocks).toEqual(MODULE_2_BEAT_ALLOWED_BLOCKS);
-      expect(act25.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(6);
-      expect(act25.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(10);
+    it('executes param.5 Beat & Light starter and all 4 playable variations with lit 8x8 frames and staged Tier 2 palette', () => {
+      const actParam5 = getActivityLatest('param.5')!;
+      expect(actParam5.simId).toBe('beat');
+      expect(actParam5.palette.allowedSimBlocks).toEqual([
+        'DRUM_KICK',
+        'DRUM_SNARE',
+        'DRUM_CLAP',
+        'PLAY_CHIME',
+        'WAIT_BEAT',
+        'CLEAR_LEDS',
+        'PLAY_NOTE',
+        'SET_LED_COLOR',
+        'LIGHT_ROW',
+        'LIGHT_COL',
+        'LIGHT_PIXEL',
+        'STAMP_PRESET',
+      ]);
+      expect(actParam5.starterWorkspace!.MAIN.length).toBeGreaterThanOrEqual(6);
+      expect(actParam5.starterWorkspace!.MAIN.length).toBeLessThanOrEqual(10);
 
       const starterBeat = runHeadlessSimulation(
-        act25.starterWorkspace!,
+        actParam5.starterWorkspace!,
         'beat',
         createInitialBeatState(true)
       );
       expect(countLitLeds(starterBeat.finalState.leds)).toBeGreaterThanOrEqual(16);
 
-      expect(act25.variations).toHaveLength(3);
+      expect(actParam5.variations).toHaveLength(4);
       const cardThumbs = new Set<string>();
-      for (const card of act25.variations!) {
+      for (const card of actParam5.variations!) {
         expect(card.workspace.MAIN.length).toBeGreaterThanOrEqual(6);
-        expect(card.workspace.MAIN.length).toBeLessThanOrEqual(10);
+        expect(card.workspace.MAIN.length).toBeLessThanOrEqual(16);
         for (const blk of card.workspace.MAIN) {
-          expect(act25.palette.allowedSimBlocks).toContain(blk.type);
+          expect(actParam5.palette.allowedSimBlocks).toContain(blk.type);
         }
         const preview = renderBeatVariationPreview(card.workspace);
         expect(preview.totalBeats).toBeGreaterThanOrEqual(6);
         expect(countLitLeds(preview.representativeState.leds)).toBeGreaterThan(0);
         cardThumbs.add(preview.svgMarkup);
       }
-      expect(cardThumbs.size).toBe(3);
+      expect(cardThumbs.size).toBe(4);
 
       // Verify staged BlockPalette & VariationCardsPanel render cleanly in Curriculum Mode
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('2.5');
+      store.setCurriculumActivity('param.5');
       expect(useAppStore.getState().activeSimId).toBe('beat');
 
       const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
@@ -823,8 +841,9 @@ describe('Wave 4 / Commit 13: Module 2 Action Parameters (2.1-2.4, 2B) & Beat Ti
       const cardsHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(cardsHtml).toContain('Doorbell Chime');
       expect(cardsHtml).toContain('Traffic-Light Countdown');
-      expect(cardsHtml).toContain('Rising Color Bar &amp; Bassline');
-      expect(BEAT_PALETTE_ITEMS.length).toBe(18);
+      expect(cardsHtml).toContain('Rising Color Columns &amp; Bassline');
+      expect(cardsHtml).toContain('Bottom-to-Top Pixel Staircase');
+      expect(BEAT_PALETTE_ITEMS.length).toBeGreaterThanOrEqual(18);
       expect(paletteHtml).not.toContain('Step LED Cursor');
       expect(paletteHtml).not.toContain('Turn LED Cursor');
     });

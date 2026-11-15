@@ -53,7 +53,7 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
     it('opens VictoryCelebrationModal synchronously on step() puzzle SUCCESS and dismisses without clearing SUCCESS status', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
 
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
 
@@ -89,18 +89,18 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
 
       // 1) loadSolution() in instant mode NEVER triggers VictoryCelebrationModal
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.setSpeed('instant');
       store.loadSolution();
       expect(useAppStore.getState().grid.status).toBe('SUCCESS');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
 
       // 2) Switching activity resets isVictoryModalOpen and does not trigger on load
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
 
       // 3) Direct user block mutations in instant mode transitioning IDLE -> SUCCESS DO trigger!
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.resetActivityToStarter();
       expect(useAppStore.getState().grid.status).toBe('IDLE');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
@@ -142,10 +142,10 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
       expect(useAppStore.getState().grid.status).toBe('SUCCESS');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
 
-      // 7) Lesson 1.0 (explanation) NEVER triggers VictoryCelebrationModal
+      // 7) Lesson seq.0 (explanation) NEVER triggers VictoryCelebrationModal
       store.setSpeed(400);
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.0');
+      store.setCurriculumActivity('seq.0');
       for (let i = 0; i < 6; i++) {
         useAppStore.getState().step();
       }
@@ -156,26 +156,26 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
 
-      // Mark all Module 1 activities except 1C completed first
-      const m1Acts = CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'module-1');
-      for (const act of m1Acts) {
-        if (act.id !== '1C') {
+      // Mark all seq activities except seq.C completed first
+      const seqActs = CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'seq');
+      for (const act of seqActs) {
+        if (act.id !== 'seq.C') {
           markLessonCompleted('default', act.id, act.version);
         }
       }
       store.reloadActiveProfileState();
 
-      // Switch to Creative Capstone 1C (Beat Maker) and verify VariationCardsPanel Done button
-      store.setCurriculumActivity('1C');
+      // Switch to Creative Capstone seq.C (Beat Maker) and verify VariationCardsPanel Done button
+      store.setCurriculumActivity('seq.C');
       const varPanelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(varPanelHtml).toContain('data-testid="btn-complete-creative-activity"');
       expect(varPanelHtml).not.toContain('data-testid="btn-variation-undo"');
 
       store.completeCreativeActivity(false);
-      expect(isLessonCompleted('default', '1C')).toBe(true);
-      expect(getProfileProgress('default').earnedBadges).toContain('badge-module-1');
+      expect(isLessonCompleted('default', 'seq.C')).toBe(true);
+      expect(getProfileProgress('default').earnedBadges).toContain('badge-seq');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(true);
-      expect(useAppStore.getState().victoryEarnedBadges).toEqual(['badge-module-1']);
+      expect(useAppStore.getState().victoryEarnedBadges).toEqual(['badge-seq']);
 
       const ceremonyHtml = renderToStaticMarkup(React.createElement(VictoryCelebrationModal));
       expect(ceremonyHtml).toContain('data-ceremony="badge"');
@@ -183,53 +183,53 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
     });
   });
 
-  describe('Creative Sandbox Completion (1.6, 1.7, 1.8, 1B, 1C)', () => {
+  describe('Creative Sandbox Completion (seq.6, seq.7, seq.8, seq.B, seq.C)', () => {
     it('marks Beat and Turtle creative sandbox activities completed when a Play run finishes cleanly', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
 
-      // 1) Beat creative sandbox 1.8 finishing a normal-speed Play run
-      store.setCurriculumActivity('1.8');
-      expect(isLessonCompleted('default', '1.8')).toBe(false);
+      // 1) Beat creative sandbox seq.8 finishing a normal-speed Play run
+      store.setCurriculumActivity('seq.8');
+      expect(isLessonCompleted('default', 'seq.8')).toBe(false);
       useAppStore.setState({ isPlaying: true });
-      for (let i = 0; i < 40 && useAppStore.getState().isPlaying; i++) {
+      for (let i = 0; i < 100 && useAppStore.getState().isPlaying; i++) {
         useAppStore.getState().step();
       }
-      expect(isLessonCompleted('default', '1.8')).toBe(true);
-      expect(useAppStore.getState().completedActivities['1.8']).toBe(true);
+      expect(isLessonCompleted('default', 'seq.8')).toBe(true);
+      expect(useAppStore.getState().completedActivities['seq.8']).toBe(true);
       // Regular creative sandbox (not capstone, no new module badge yet) records ★ quietly without modal spam
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
 
-      // 2) Turtle creative sandbox 1.6 via Play in instant mode
-      store.setCurriculumActivity('1.6');
-      expect(isLessonCompleted('default', '1.6')).toBe(false);
+      // 2) Turtle creative sandbox seq.6 via Play in instant mode
+      store.setCurriculumActivity('seq.6');
+      expect(isLessonCompleted('default', 'seq.6')).toBe(false);
       store.setSpeed('instant');
       store.play();
-      expect(isLessonCompleted('default', '1.6')).toBe(true);
-      expect(useAppStore.getState().completedActivities['1.6']).toBe(true);
+      expect(isLessonCompleted('default', 'seq.6')).toBe(true);
+      expect(useAppStore.getState().completedActivities['seq.6']).toBe(true);
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
     });
   });
 
   describe('Unified Single-Row Toolbar, LessonPickerModal, MobileDrawerMenu & Smart Trash', () => {
-    it('renders LessonPickerModal with Module 1 progress counter, earned badge pill, and world/level switchers', () => {
+    it('renders LessonPickerModal with seq progress counter, earned badge pill, and world/level switchers', () => {
       const store = useAppStore.getState();
-      markLessonCompleted('default', '1.0', 1);
-      markLessonCompleted('default', '1.1', 1);
+      markLessonCompleted('default', 'seq.0', 1);
+      markLessonCompleted('default', 'seq.1', 1);
       store.reloadActiveProfileState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2');
       store.setLessonPickerOpen(true);
 
       const pickerHtml = renderToStaticMarkup(React.createElement(LessonPickerModal));
       expect(pickerHtml).toContain('data-testid="lesson-picker-modal"');
       expect(pickerHtml).toContain('data-testid="picker-mode-curriculum"');
       expect(pickerHtml).toContain('data-testid="picker-mode-sandbox"');
-      expect(pickerHtml).toContain('data-testid="module-progress-module-1"');
+      expect(pickerHtml).toContain('data-testid="module-progress-seq"');
       expect(pickerHtml).toContain(
-        `2/${CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'module-1').length}`
+        `2/${CURRICULUM_ACTIVITIES.filter((a) => a.moduleId === 'seq').length}`
       );
-      expect(pickerHtml).toContain('data-testid="btn-activity-1.2"');
+      expect(pickerHtml).toContain('data-testid="btn-activity-seq.2"');
 
       // Switch LessonPickerModal to Sandbox view -> renders Grid/Turtle/Beat tabs and Preset Levels 1-3
       store.setAppMode('sandbox');
@@ -279,29 +279,29 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
   });
 
   describe('Clear Next Lesson Progression for Open Lessons & Solved Exercises', () => {
-    it('renders prominent Next CTA on open LOGO lesson 1.6 and advances on second click after creative capstone dismissal', () => {
+    it('renders prominent Next CTA on open LOGO lesson seq.6 and advances on second click after creative capstone dismissal', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.6');
+      store.setCurriculumActivity('seq.6');
 
       const panelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(panelHtml).toContain('data-testid="btn-complete-creative-activity"');
       expect(panelHtml).toContain('>Next<');
 
       const advancedFromLogo = store.completeCreativeActivity(true);
-      expect(advancedFromLogo).toBe('1.7');
-      expect(useAppStore.getState().activeActivityId).toBe('1.7');
+      expect(advancedFromLogo).toBe('seq.7');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.7');
 
-      // Creative capstone 1B: first completion opens VictoryCelebrationModal; second click after dismissal advances directly to 1C
-      useAppStore.getState().setCurriculumActivity('1B');
+      // Creative capstone seq.B: first completion opens VictoryCelebrationModal; second click after dismissal advances directly to seq.C
+      useAppStore.getState().setCurriculumActivity('seq.B');
       useAppStore.getState().completeCreativeActivity(true);
       expect(useAppStore.getState().isVictoryModalOpen).toBe(true);
-      expect(useAppStore.getState().activeActivityId).toBe('1B');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.B');
 
       useAppStore.getState().dismissVictoryModal();
       const nextAfterDismiss = useAppStore.getState().completeCreativeActivity(true);
-      expect(nextAfterDismiss).toBe('1C');
-      expect(useAppStore.getState().activeActivityId).toBe('1C');
+      expect(nextAfterDismiss).toBe('seq.C');
+      expect(useAppStore.getState().activeActivityId).toBe('seq.C');
       expect(useAppStore.getState().isVictoryModalOpen).toBe(false);
     });
 
@@ -311,10 +311,10 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
       expect(renderToStaticMarkup(React.createElement(CurriculumNextLessonBar))).toBe('');
 
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       expect(renderToStaticMarkup(React.createElement(CurriculumNextLessonBar))).toBe('');
 
-      // Solving via loadSolution (or dismissing VictoryCelebrationModal) surfaces Next button -> 1.2
+      // Solving via loadSolution (or dismissing VictoryCelebrationModal) surfaces Next button -> seq.2
       useAppStore.getState().setSpeed('instant');
       useAppStore.getState().loadSolution();
       expect(useAppStore.getState().grid.status).toBe('SUCCESS');
@@ -327,7 +327,7 @@ describe('Kid-Friendly UI Simplification, VictoryCelebrationModal & Creative Com
     it('keeps creative Next CTA reachable when map pane is hidden', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.6');
+      store.setCurriculumActivity('seq.6');
       const hiddenMapHtml = renderToStaticMarkup(
         React.createElement(CurriculumNextLessonBar, { forHiddenMapPane: true })
       );

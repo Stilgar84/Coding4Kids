@@ -1,48 +1,58 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CURRICULUM_ACTIVITIES,
-  MODULE_4_PUZZLE_ACTIVITIES,
+  FUNC_ACTIVITIES,
   getActivitiesForModule,
   getActivityLatest,
+  isValidatedPuzzleActivity,
 } from '../src/data/curriculum';
 import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
+import { runHeadlessSimulation } from '../src/engine/simulationRunner';
+import { createInitialDepotState } from '../src/simulations/depot/depotPhysics';
+import '../src/simulations/depot/depotEnvironment';
 
-describe('Commit 29: Module 4 Validated Robot & Depot Function Puzzles', () => {
+describe('Functions (func): Validated Robot & Depot Function Puzzles', () => {
+  const funcPuzzles = FUNC_ACTIVITIES.filter(isValidatedPuzzleActivity);
+
   describe('1. Activity Registration & Ordering', () => {
-    it('registers all 5 Module 4 puzzles (4.1, 4.4, 4.5, 4.6, 4A)', () => {
-      expect(MODULE_4_PUZZLE_ACTIVITIES).toHaveLength(5);
-      const puzzleIds = MODULE_4_PUZZLE_ACTIVITIES.map((a) => a.id);
-      expect(puzzleIds).toEqual(['4.1', '4.4', '4.5', '4.6', '4A']);
+    it('registers all 6 func puzzles (func.1, func.4, func.5, func.6, func.7, func.A)', () => {
+      expect(funcPuzzles).toHaveLength(6);
+      const puzzleIds = funcPuzzles.map((a) => a.id);
+      expect(puzzleIds).toEqual(['func.1', 'func.4', 'func.5', 'func.6', 'func.7', 'func.A']);
 
       for (const id of puzzleIds) {
         const act = getActivityLatest(id);
         expect(act).toBeDefined();
-        expect(act?.moduleId).toBe('module-4');
+        expect(act?.moduleId).toBe('func');
       }
     });
 
-    it('orders Module 4 activities canonically in CURRICULUM_ACTIVITIES', () => {
-      const m4Activities = getActivitiesForModule('module-4');
-      const m4Ids = m4Activities.map((a) => a.id);
+    it('orders func activities canonically and disables recursion across all 11 palettes', () => {
+      const funcActivities = getActivitiesForModule('func');
+      const funcIds = funcActivities.map((a) => a.id);
 
-      // Total Module 4 activities: 10 activities (4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4A, 4B, 4C)
-      expect(m4Ids).toEqual([
-        '4.0',
-        '4.1',
-        '4.2',
-        '4.3',
-        '4.4',
-        '4.5',
-        '4.6',
-        '4A',
-        '4B',
-        '4C',
+      // Total func activities: 11 (func.0..func.7, func.A, func.B, func.C)
+      expect(funcIds).toEqual([
+        'func.0',
+        'func.1',
+        'func.2',
+        'func.3',
+        'func.4',
+        'func.5',
+        'func.6',
+        'func.7',
+        'func.A',
+        'func.B',
+        'func.C',
       ]);
+
+      for (const act of funcActivities) {
+        expect(act.palette.allowRecursion).toBe(false);
+      }
     });
   });
 
   describe('2. Anti-Bypass & Constraint Verification (< 200 ms per puzzle)', () => {
-    for (const puzzle of MODULE_4_PUZZLE_ACTIVITIES) {
+    for (const puzzle of funcPuzzles) {
       it(`verifies puzzle ${puzzle.id} (${puzzle.title}) passes constraints strictly < 200 ms`, () => {
         const start = performance.now();
         const report = verifyActivityConstraints(puzzle);
@@ -63,5 +73,19 @@ describe('Commit 29: Module 4 Validated Robot & Depot Function Puzzles', () => {
         expect(elapsed).toBeLessThan(200);
       });
     }
+
+    it('verifies func.6 untouched starter fails (leaves rings reversed on STACK_2 with STACK_3 empty)', () => {
+      const func6 = getActivityLatest('func.6')!;
+      expect(func6.starterWorkspace).toBeDefined();
+      expect(func6.depot).toBeDefined();
+
+      const starterRun = runHeadlessSimulation(
+        func6.starterWorkspace!,
+        'depot',
+        createInitialDepotState(func6.depot!),
+        200
+      );
+      expect(starterRun.status).not.toBe('SUCCESS');
+    });
   });
 });

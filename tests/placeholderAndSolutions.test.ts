@@ -66,7 +66,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
     useAppStore.setState({
       curriculumWorkspaces: {},
       sandboxSnapshot: null,
-      activeActivityId: '1.1',
+      activeActivityId: 'seq.1',
       activeActivityVersion: 1,
       statusAnnouncement: '',
       ghostPreview: null,
@@ -245,7 +245,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
 
   describe('2. Interpreter & Headless Runner Pausing on PLACEHOLDER', () => {
     it('pauses cleanly (status: PAUSED, activeBlockId set, PC unadvanced) in tickInterpreter and runHeadlessSimulation', () => {
-      const act11 = getActivityLatest('1.1')!;
+      const act11 = getActivityLatest('seq.1')!;
       const initialGrid = createCurriculumGridState(act11.grid!);
 
       const ws: WorkspaceState = {
@@ -291,7 +291,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
 
     it('pauses store step(), play(), and instant mode cleanly with aria-live statusAnnouncement, and resumes after replacement', () => {
       const store = useAppStore.getState();
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
 
       store.addBlock('MAIN', 'MOVE_FWD');
       store.addBlock('MAIN', 'PLACEHOLDER', undefined, undefined, { hintCategory: 'motion' });
@@ -465,11 +465,11 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
   });
 
   describe('4. Tier 1 Ghost-Step Preview, Tier 1 ? Scaffold & Two-Tier Help Modal', () => {
-    it('computes ghost-step trajectories on 1.1–1.3 and triggers Ghost Preview without modifying workspace blocks or Undo history', () => {
+    it('computes ghost-step trajectories on seq.1–seq.3 and triggers Ghost Preview without modifying workspace blocks or Undo history', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
 
-      for (const actId of ['1.1', '1.2', '1.3']) {
+      for (const actId of ['seq.1', 'seq.2', 'seq.3']) {
         store.setCurriculumActivity(actId);
         store.addBlock('MAIN', 'TURN_LEFT');
         const blocksSnapshotBefore = JSON.stringify(useAppStore.getState().workspace);
@@ -527,7 +527,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
     it('loads Tier 1 ? Starter Scaffold and Tier 2 Full Solution with 1-tap Undo protection', () => {
       const store = useAppStore.getState();
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.2');
+      store.setCurriculumActivity('seq.2');
 
       // Learner places custom blocks first
       store.addBlock('MAIN', 'MOVE_BACK');
@@ -537,7 +537,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
         'TURN_RIGHT',
       ]);
 
-      // Load Tier 1 ? Starter Scaffold (synthesized from 1.2's referenceSolution with PLACEHOLDER blocks)
+      // Load Tier 1 ? Starter Scaffold (synthesized from seq.2's referenceSolution with PLACEHOLDER blocks)
       expect(store.loadPartialScaffold()).toBe(true);
       const afterScaffold = useAppStore.getState();
       expect(afterScaffold.isSolutionOpen).toBe(false);
@@ -555,7 +555,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
 
       // Load Tier 2 Full Solution -> Undo also restores learner's prior blocks in 1 tap!
       store.loadSolution();
-      const expected12Types = getActivityLatest('1.2')!.referenceSolution!.MAIN.map((b) => b.type);
+      const expected12Types = getActivityLatest('seq.2')!.referenceSolution!.MAIN.map((b) => b.type);
       expect(useAppStore.getState().workspace.MAIN.map((b) => b.type)).toEqual(expected12Types);
       store.undo();
       expect(useAppStore.getState().workspace.MAIN.map((b) => b.type)).toEqual([
@@ -593,7 +593,7 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
 
       // Curriculum mode on 1.1: Tier 1 Ghost card visible, Tier 2 Full Solution collapsed behind disclosure
       store.setAppMode('curriculum');
-      store.setCurriculumActivity('1.1');
+      store.setCurriculumActivity('seq.1');
       store.setSolutionOpen(true);
 
       const curriculumModalHtml = renderToStaticMarkup(React.createElement(SolutionModal));
