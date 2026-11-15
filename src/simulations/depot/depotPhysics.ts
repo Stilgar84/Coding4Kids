@@ -6,6 +6,7 @@ import {
   DEPOT_MAX_QUEUE_LENGTH,
   DEPOT_MAX_STACK_HEIGHT,
   DEPOT_STATION_BITS,
+  DepotActionTransition,
   DepotFailureReason,
   DepotQueueItem,
   DepotSendGate,
@@ -295,6 +296,7 @@ export function resetDepotState(state?: DepotState): DepotState {
     initialQueue: baseQueue,
     scrapCount: 0,
     activeStationsMask: state.activeStationsMask,
+    lastAction: undefined,
   };
 }
 
@@ -339,14 +341,26 @@ export interface DepotStepOutcome {
 
 function failStep(
   state: DepotState,
-  reason: DepotFailureReason
+  reason: DepotFailureReason,
+  extra?: Partial<
+    Omit<DepotActionTransition, 'stepId' | 'type' | 'fromStation' | 'toStation' | 'failureReason'>
+  >
 ): DepotStepOutcome {
+  const nextStepCount = (state.stepCount || 0) + 1;
   return {
     nextState: {
       ...state,
       lastFailureReason: reason,
       status: 'COLLISION',
-      stepCount: (state.stepCount || 0) + 1,
+      stepCount: nextStepCount,
+      lastAction: {
+        stepId: nextStepCount,
+        type: 'COLLISION',
+        fromStation: state.workerStation,
+        toStation: state.workerStation,
+        failureReason: reason,
+        ...extra,
+      },
     },
     isCollision: true,
     isSuccess: false,
@@ -447,12 +461,19 @@ export function applyDepotAction(
       const targetStation = normalizeDepotStation(
         params?.station ?? 'STACK_1'
       );
+      const lastAction: DepotActionTransition = {
+        stepId: nextStepCount,
+        type: 'MOVE',
+        fromStation: state.workerStation,
+        toStation: targetStation,
+      };
       const candidate: DepotState = {
         ...state,
         workerStation: targetStation,
         lastFailureReason: null,
         stepCount: nextStepCount,
         status: 'RUNNING',
+        lastAction,
       };
       const evalStatus = evaluateDepotCompletion(candidate);
       const isSuccess = evalStatus === 'SUCCESS';
@@ -468,7 +489,10 @@ export function applyDepotAction(
 
     case 'DEPOT_GRAB': {
       if (state.heldCrate !== null) {
-        return failStep(state, 'CLAW_FULL');
+        return failStep(state, 'CLAW_FULL', {
+          color: state.heldCrate,
+          damaged: state.heldDamaged,
+        });
       }
 
       if (state.workerStation === 'QUEUE') {
@@ -478,14 +502,24 @@ export function applyDepotAction(
         }
         const newQueue = [...state.queue];
         const front = newQueue.shift()!;
+        const damaged = front.damaged ?? false;
         const candidate: DepotState = {
           ...state,
           queue: newQueue,
           heldCrate: front.color,
-          heldDamaged: front.damaged ?? false,
+          heldDamaged: damaged,
           lastFailureReason: null,
           stepCount: nextStepCount,
           status: 'RUNNING',
+          lastAction: {
+            stepId: nextStepCount,
+            type: 'GRAB',
+            fromStation: 'QUEUE',
+            toStation: 'QUEUE',
+            color: front.color,
+            damaged,
+            queueIndex: 0,
+          },
         };
         return {
           nextState: candidate,
@@ -498,10 +532,11 @@ export function applyDepotAction(
       const stackIdx = stationToIndex(state.workerStation);
       const stack = state.stacks[stackIdx];
       if (stack.length === 0) {
-        return failStep(state, 'EMPTY_STACK');
+        return failStep(state, 'EMPTY_STACK', { stackIndex: stackIdx });
       }
       const nextStacks = cloneStacks(state.stacks);
       const grabbed = nextStacks[stackIdx].pop()!;
+      const grabbedSlotIdx = nextStacks[stackIdx].length;
       const candidate: DepotState = {
         ...state,
         stacks: nextStacks,
@@ -510,6 +545,16 @@ export function applyDepotAction(
         lastFailureReason: null,
         stepCount: nextStepCount,
         status: 'RUNNING',
+        lastAction: {
+          stepId: nextStepCount,
+          type: 'GRAB',
+          fromStation: state.workerStation,
+          toStation: state.workerStation,
+          color: grabbed,
+          damaged: false,
+          stackIndex: stackIdx,
+          stackSlotIndex: grabbedSlotIdx,
+        },
       };
       return {
         nextState: candidate,
@@ -526,11 +571,16 @@ export function applyDepotAction(
       if (state.workerStation === 'QUEUE') {
         // Enqueue at back
         if (state.queue.length >= DEPOT_MAX_QUEUE_LENGTH) {
-          return failStep(state, 'STACK_FULL');
+          return failStep(state, 'STACK_FULL', {
+            color: state.heldCrate,
+            damaged: state.heldDamaged,
+          });
         }
+        const placedColor = state.heldCrate;
+        const placedDamaged = state.heldDamaged;
         const newQueue: DepotQueueItem[] = [
           ...state.queue,
-          { color: state.heldCrate, damaged: state.heldDamaged || undefined },
+          { color: placedColor, damaged: placedDamaged || undefined },
         ];
         const candidate: DepotState = {
           ...state,
@@ -540,6 +590,15 @@ export function applyDepotAction(
           lastFailureReason: null,
           stepCount: nextStepCount,
           status: 'RUNNING',
+          lastAction: {
+            stepId: nextStepCount,
+            type: 'PLACE',
+            fromStation: 'QUEUE',
+            toStation: 'QUEUE',
+            color: placedColor,
+            damaged: placedDamaged,
+            queueIndex: newQueue.length - 1,
+          },
         };
         const evalStatus = evaluateDepotCompletion(candidate);
         const isSuccess = evalStatus === 'SUCCESS';
@@ -551,16 +610,26 @@ export function applyDepotAction(
       }
 
       // LIFO stack: damaged crate → COLLISION
+      const stackIdx = stationToIndex(state.workerStation);
       if (state.heldDamaged) {
-        return failStep(state, 'DAMAGED_TO_STACK');
+        return failStep(state, 'DAMAGED_TO_STACK', {
+          color: state.heldCrate,
+          damaged: true,
+          stackIndex: stackIdx,
+        });
       }
 
-      const stackIdx = stationToIndex(state.workerStation);
       if (state.stacks[stackIdx].length >= DEPOT_MAX_STACK_HEIGHT) {
-        return failStep(state, 'STACK_FULL');
+        return failStep(state, 'STACK_FULL', {
+          color: state.heldCrate,
+          damaged: false,
+          stackIndex: stackIdx,
+        });
       }
+      const placedColor = state.heldCrate;
       const nextStacks = cloneStacks(state.stacks);
-      nextStacks[stackIdx].push(state.heldCrate);
+      nextStacks[stackIdx].push(placedColor);
+      const placedSlotIdx = nextStacks[stackIdx].length - 1;
       const candidate: DepotState = {
         ...state,
         stacks: nextStacks,
@@ -569,6 +638,16 @@ export function applyDepotAction(
         lastFailureReason: null,
         stepCount: nextStepCount,
         status: 'RUNNING',
+        lastAction: {
+          stepId: nextStepCount,
+          type: 'PLACE',
+          fromStation: state.workerStation,
+          toStation: state.workerStation,
+          color: placedColor,
+          damaged: false,
+          stackIndex: stackIdx,
+          stackSlotIndex: placedSlotIdx,
+        },
       };
       const evalStatus = evaluateDepotCompletion(candidate);
       const isSuccess = evalStatus === 'SUCCESS';
@@ -599,6 +678,7 @@ export function applyDepotAction(
           ...state,
           stepCount: nextStepCount,
           status: 'RUNNING',
+          lastAction: undefined,
         },
         isCollision: false,
         isSuccess: false,
@@ -613,31 +693,20 @@ function applyDepotSendGate(
   nextStepCount: number
 ): DepotStepOutcome {
   if (state.heldCrate === null) {
-    return {
-      nextState: {
-        ...state,
-        lastFailureReason: 'CLAW_EMPTY',
-        status: 'COLLISION',
-        stepCount: nextStepCount,
-      },
-      isCollision: true,
-      isSuccess: false,
-    };
+    return failStep(state, 'CLAW_EMPTY', { gate });
   }
+
+  const sentColor = state.heldCrate;
+  const sentDamaged = state.heldDamaged;
 
   if (gate === 'SCRAP') {
     // Sending intact crate to SCRAP → COLLISION
-    if (!state.heldDamaged) {
-      return {
-        nextState: {
-          ...state,
-          lastFailureReason: 'INTACT_TO_SCRAP',
-          status: 'COLLISION',
-          stepCount: nextStepCount,
-        },
-        isCollision: true,
-        isSuccess: false,
-      };
+    if (!sentDamaged) {
+      return failStep(state, 'INTACT_TO_SCRAP', {
+        gate,
+        color: sentColor,
+        damaged: false,
+      });
     }
     // Send damaged crate to scrap
     const candidate: DepotState = {
@@ -648,6 +717,15 @@ function applyDepotSendGate(
       lastFailureReason: null,
       stepCount: nextStepCount,
       status: 'RUNNING',
+      lastAction: {
+        stepId: nextStepCount,
+        type: 'SEND_OUT',
+        fromStation: state.workerStation,
+        toStation: state.workerStation,
+        gate: 'SCRAP',
+        color: sentColor,
+        damaged: true,
+      },
     };
     const evalStatus = evaluateDepotCompletion(candidate);
     const isSuccess = evalStatus === 'SUCCESS';
@@ -659,23 +737,28 @@ function applyDepotSendGate(
   }
 
   // OUT, ACCEPT, REJECT — send to output bay
-  const nextOutput = [...state.output, state.heldCrate];
+  const nextOutput = [...state.output, sentColor];
+  const outputSlotIndex = nextOutput.length - 1;
   if (state.targetOutput && state.targetOutput.length > 0) {
-    const idx = nextOutput.length - 1;
-    if (idx >= state.targetOutput.length || nextOutput[idx] !== state.targetOutput[idx]) {
-      return {
-        nextState: {
+    if (
+      outputSlotIndex >= state.targetOutput.length ||
+      nextOutput[outputSlotIndex] !== state.targetOutput[outputSlotIndex]
+    ) {
+      return failStep(
+        {
           ...state,
           output: nextOutput,
           heldCrate: null,
           heldDamaged: false,
-          lastFailureReason: 'WRONG_OUTPUT_ORDER',
-          status: 'COLLISION',
-          stepCount: nextStepCount,
         },
-        isCollision: true,
-        isSuccess: false,
-      };
+        'WRONG_OUTPUT_ORDER',
+        {
+          gate,
+          color: sentColor,
+          damaged: sentDamaged,
+          outputSlotIndex,
+        }
+      );
     }
   }
   const candidate: DepotState = {
@@ -686,6 +769,16 @@ function applyDepotSendGate(
     lastFailureReason: null,
     stepCount: nextStepCount,
     status: 'RUNNING',
+    lastAction: {
+      stepId: nextStepCount,
+      type: 'SEND_OUT',
+      fromStation: state.workerStation,
+      toStation: state.workerStation,
+      gate,
+      color: sentColor,
+      damaged: sentDamaged,
+      outputSlotIndex,
+    },
   };
   const evalStatus = evaluateDepotCompletion(candidate);
   const isSuccess = evalStatus === 'SUCCESS';

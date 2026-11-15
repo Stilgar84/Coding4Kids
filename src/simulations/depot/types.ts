@@ -101,6 +101,21 @@ export const DEPOT_CRATE_COLORS: Record<CrateColor, DepotCrateColorMeta> = {
   AMBER: DEPOT_CRATE_PALETTE[3],
 };
 
+export interface DepotActionTransition {
+  stepId: number;
+  type: 'MOVE' | 'GRAB' | 'PLACE' | 'SEND_OUT' | 'COLLISION';
+  fromStation: DepotStationId;
+  toStation: DepotStationId;
+  gate?: DepotSendGate;
+  color?: CrateColor;
+  damaged?: boolean;
+  stackIndex?: number;
+  stackSlotIndex?: number;
+  queueIndex?: number;
+  outputSlotIndex?: number;
+  failureReason?: DepotFailureReason;
+}
+
 export interface DepotState {
   /** Current crates in Stack 1, 2, 3 (index 0 = bottom, last index = top accessible crate) */
   stacks: DepotStacks;
@@ -134,4 +149,6 @@ export interface DepotState {
   scrapCount: number;
   /** Bitmask of active/visible stations (DEPOT_STATION_BITS). Inferred when omitted. */
   activeStationsMask?: number;
+  /** Transient last-step choreography metadata (never serialized to binary URLs). */
+  lastAction?: DepotActionTransition;
 }
