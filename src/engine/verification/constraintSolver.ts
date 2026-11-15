@@ -1335,6 +1335,7 @@ class GridTransitionEvaluator {
   private readonly keyByStateId: string[] = [];
   private indexedStride = 0;
   private indexedCache: Array<IndexedBlockTransition | undefined> = [];
+  private readonly terminalSuccessById: Array<boolean | undefined> = [];
 
   public readonly initialStateId: number;
 
@@ -1373,6 +1374,23 @@ class GridTransitionEvaluator {
     return this.keyByStateId[stateId];
   }
 
+  public isTerminalSuccess(grid: GridState): boolean {
+    if (grid.status === 'COLLISION') return false;
+    if (this.simEnv.evaluateCompletion) {
+      return this.simEnv.evaluateCompletion(grid) === 'SUCCESS';
+    }
+    return grid.status === 'SUCCESS';
+  }
+
+  public isTerminalSuccessById(stateId: number): boolean {
+    const cached = this.terminalSuccessById[stateId];
+    if (cached !== undefined) return cached;
+    const grid = this.gridByStateId[stateId];
+    const ok = this.isTerminalSuccess(grid);
+    this.terminalSuccessById[stateId] = ok;
+    return ok;
+  }
+
   public executeBlockById(
     stateId: number,
     spec: CandidateActionSpec
@@ -1388,8 +1406,7 @@ class GridTransitionEvaluator {
       this.keyByStateId[stateId],
       spec
     );
-    const statusCode: 0 | 1 | 2 =
-      res.status === 'RUNNING' ? 0 : res.status === 'SUCCESS' ? 1 : 2;
+    const statusCode: 0 | 1 | 2 = res.status === 'COLLISION' ? 2 : 0;
     const nextStateId =
       statusCode === 2
         ? stateId
@@ -1421,14 +1438,8 @@ class GridTransitionEvaluator {
       params: params ?? {},
     });
 
-    let status: 'RUNNING' | 'SUCCESS' | 'COLLISION';
-    if (res.isCollision || res.status === 'COLLISION') {
-      status = 'COLLISION';
-    } else if (res.isSuccess || res.status === 'SUCCESS') {
-      status = 'SUCCESS';
-    } else {
-      status = 'RUNNING';
-    }
+    const status: 'RUNNING' | 'SUCCESS' | 'COLLISION' =
+      res.isCollision || res.status === 'COLLISION' ? 'COLLISION' : 'RUNNING';
 
     const nextBaseKey =
       status === 'COLLISION'
@@ -1474,16 +1485,6 @@ class GridTransitionEvaluator {
       }
       curGrid = step.nextGrid;
       curKey = step.nextBaseKey;
-      if (step.status === 'SUCCESS') {
-        const winRes: ActionBlockTransition = {
-          status: 'SUCCESS',
-          nextGrid: curGrid,
-          nextBaseKey: curKey,
-          executedTicks,
-        };
-        this.blockCache.set(cacheKey, winRes);
-        return winRes;
-      }
     }
 
     const okRes: ActionBlockTransition = {
@@ -1554,6 +1555,8 @@ interface RedundancyContext {
   hasZeroNonGoalFlags?: boolean;
   /** True when `tracker === null` and every item on the grid (and initial carried item, if any) is a `'crate'`. */
   hasOnlyCrateItems?: boolean;
+  /** True when water/bridged-water cells exist (PICK_UP may retrieve 1 cell ahead along `robot.dir`). */
+  hasWaterCells?: boolean;
 }
 
 /**
@@ -1586,6 +1589,7 @@ function isRedundantAdjacentActionPair(
     noExecTracker,
     hasZeroNonGoalFlags,
     hasOnlyCrateItems,
+    hasWaterCells,
   } = ctx;
 
   if (isTurnAction(prev.actionType) && isTurnAction(next.actionType)) {
@@ -1597,9 +1601,8 @@ function isRedundantAdjacentActionPair(
     }
   }
 
-  // Canonical commutativity order: `PICK_UP` operates strictly on `(robot.x, robot.y)` independent
-  // of `robot.dir`, so `[TURN, PICK_UP]` is universally identical to `[PICK_UP, TURN]`.
-  if (noExecTracker && isTurnAction(prev.actionType) && next.actionType === 'PICK_UP') {
+  // Canonical commutativity order when no water exists: `PICK_UP` operates on `(robot.x, robot.y)`.
+  if (noExecTracker && !hasWaterCells && isTurnAction(prev.actionType) && next.actionType === 'PICK_UP') {
     return true;
   }
 
@@ -1793,7 +1796,7 @@ function solveLoopFreeBfs(
         continue;
       }
 
-      if (trans.status === 'SUCCESS') {
+      if (evaluator.isTerminalSuccess(trans.nextGrid)) {
         // Reconstruct shortest winning path
         const specs: CandidateActionSpec[] = [spec];
         let walk = curIdx;
@@ -1894,14 +1897,6 @@ function executeAstSequence(
       curGrid = trans.nextGrid;
       curKey = trans.nextBaseKey;
       curCounts = updatedCounts;
-      if (trans.status === 'SUCCESS') {
-        return {
-          status: 'SUCCESS',
-          nextGrid: curGrid,
-          nextBaseKey: curKey,
-          nextCounts: curCounts,
-        };
-      }
     } else {
       for (let iter = 0; iter < node.count; iter++) {
         const prevKey = curKey;
@@ -1920,9 +1915,6 @@ function executeAstSequence(
         curGrid = bodyRes.nextGrid;
         curKey = bodyRes.nextBaseKey;
         curCounts = bodyRes.nextCounts;
-        if (bodyRes.status === 'SUCCESS') {
-          return bodyRes;
-        }
         // Fixed-point optimization: if an iteration produced zero state & count change, remaining iterations are identical
         if (curKey === prevKey && curCounts === prevCounts) {
           break;
@@ -2057,12 +2049,17 @@ function solveStructuralLoopSearch(
     return false;
   };
 
+  const requireAllItemsCollected = Boolean(evaluator.initialGrid.requireAllItemsCollected);
+  const hasWaterCells =
+    (gridDef.waterCells?.length ?? 0) > 0 || (evaluator.initialGrid.waterCells?.length ?? 0) > 0;
+
   const redundancyCtx: RedundancyContext = {
     canUseRepeatBadges,
     maxGridDim,
     noExecTracker: tracker === null,
     hasZeroNonGoalFlags,
     hasOnlyCrateItems,
+    hasWaterCells,
   };
 
   const actionNodeByIdx: AstNode[] = actions.map((spec) => ({
@@ -2156,9 +2153,6 @@ function solveStructuralLoopSearch(
             for (let ci = 0; ci < loopCounts.length; ci++) {
               const targetCount = loopCounts[ci];
               let collided = false;
-              let succeeded = false;
-              let winGrid: GridState | null = null;
-              let winKey = '';
 
               while (iterDone < targetCount) {
                 if (hitFixedPoint) {
@@ -2166,7 +2160,7 @@ function solveStructuralLoopSearch(
                   break;
                 }
                 const prevStateId = curStateId;
-                let stepStatus: 0 | 1 | 2 = 0;
+                let stepStatus: 0 | 2 = 0;
                 for (let bi = 0; bi < bodyLen; bi++) {
                   const tr = evaluator.executeBlockById(curStateId, flatBodySpecs[bi]);
                   if (tr.statusCode === 2) {
@@ -2174,22 +2168,12 @@ function solveStructuralLoopSearch(
                     break;
                   }
                   curStateId = tr.nextStateId;
-                  if (tr.statusCode === 1) {
-                    stepStatus = 1;
-                    winGrid = evaluator.getGridById(curStateId);
-                    winKey = evaluator.getKeyById(curStateId);
-                    break;
-                  }
                 }
                 exploredStates++;
                 iterDone++;
 
                 if (stepStatus === 2) {
                   collided = true;
-                  break;
-                }
-                if (stepStatus === 1) {
-                  succeeded = true;
                   break;
                 }
                 if (curStateId === prevStateId) {
@@ -2201,6 +2185,12 @@ function solveStructuralLoopSearch(
                 break;
               }
 
+              const outKey = evaluator.getKeyById(curStateId);
+              const outGrid = evaluator.getGridById(curStateId);
+              const succeeded =
+                (currentDepth === 0 || isRootPureSingleLoop) &&
+                evaluator.isTerminalSuccessById(curStateId);
+
               if (isTerminalFullBudgetLoop && !succeeded) {
                 if (hitFixedPoint) {
                   break;
@@ -2208,8 +2198,6 @@ function solveStructuralLoopSearch(
                 continue;
               }
 
-              const outKey = succeeded ? winKey : evaluator.getKeyById(curStateId);
-              const outGrid = succeeded ? winGrid! : evaluator.getGridById(curStateId);
               const loopSlotCost = 2 + usedSlots;
               if (
                 !succeeded &&
@@ -2256,7 +2244,6 @@ function solveStructuralLoopSearch(
             for (let ci = 0; ci < loopCounts.length; ci++) {
               const targetCount = loopCounts[ci];
               let collided = false;
-              let succeeded = false;
 
               while (iterDone < targetCount) {
                 if (hitFixedPoint) {
@@ -2283,10 +2270,6 @@ function solveStructuralLoopSearch(
                 curGrid = stepRes.nextGrid;
                 curKey = stepRes.nextBaseKey;
                 curCounts = stepRes.nextCounts;
-                if (stepRes.status === 'SUCCESS') {
-                  succeeded = true;
-                  break;
-                }
                 if (curKey === prevKey && curCounts === prevCounts) {
                   hitFixedPoint = true;
                 }
@@ -2295,6 +2278,10 @@ function solveStructuralLoopSearch(
               if (collided) {
                 break;
               }
+
+              const succeeded =
+                (currentDepth === 0 || isRootPureSingleLoop) &&
+                evaluator.isTerminalSuccess(curGrid);
 
               if (isTerminalFullBudgetLoop && !succeeded) {
                 if (hitFixedPoint) {
@@ -2351,7 +2338,8 @@ function solveStructuralLoopSearch(
         }
 
         const isGoalCapable =
-          !isTurnAction(spec.actionType) && spec.actionType !== 'PICK_UP';
+          !isTurnAction(spec.actionType) &&
+          (requireAllItemsCollected || spec.actionType !== 'PICK_UP');
 
         if (willFillTerminalOuterLoop) {
           if (goalCapableActionsInBody === 0 && !isGoalCapable) {
@@ -2371,34 +2359,6 @@ function solveStructuralLoopSearch(
           const tr = evaluator.executeBlockById(iter1StateId, spec);
           exploredStates++;
           if (tr.statusCode === 2 || tr.nextStateId === iter1StateId) {
-            continue;
-          }
-          if (tr.statusCode === 1) {
-            if (isRootPureSingleLoop && usedSlots + 1 >= minBodySlots) {
-              const winGrid = evaluator.getGridById(tr.nextStateId);
-              const winKey = evaluator.getKeyById(tr.nextStateId);
-              const winBody: AstNode[] = [
-                ...bodyStack,
-                { kind: 'action', spec, slotCost: 1 },
-              ];
-              const loopNode: AstNode = {
-                kind: 'loop',
-                count: loopCounts[0],
-                body: winBody,
-                slotCost: 2 + usedSlots + 1,
-              };
-              const shouldStop = onLoopTransition({
-                loopNode,
-                slotCost: 2 + usedSlots + 1,
-                result: {
-                  status: 'SUCCESS',
-                  nextGrid: winGrid,
-                  nextBaseKey: winKey,
-                  nextCounts: null,
-                },
-              });
-              if (shouldStop) return true;
-            }
             continue;
           }
 
@@ -2441,33 +2401,6 @@ function solveStructuralLoopSearch(
         }
 
         if (trans.nextBaseKey === iter1Key && nextCounts === iter1Counts) {
-          continue;
-        }
-
-        if (trans.status === 'SUCCESS') {
-          if (isRootPureSingleLoop && usedSlots + 1 >= minBodySlots) {
-            const winBody: AstNode[] = [
-              ...bodyStack,
-              { kind: 'action', spec, slotCost: 1 },
-            ];
-            const loopNode: AstNode = {
-              kind: 'loop',
-              count: loopCounts[0],
-              body: winBody,
-              slotCost: 2 + usedSlots + 1,
-            };
-            const shouldStop = onLoopTransition({
-              loopNode,
-              slotCost: 2 + usedSlots + 1,
-              result: {
-                status: 'SUCCESS',
-                nextGrid: trans.nextGrid,
-                nextBaseKey: trans.nextBaseKey,
-                nextCounts,
-              },
-            });
-            if (shouldStop) return true;
-          }
           continue;
         }
 
@@ -2645,10 +2578,11 @@ function solveStructuralLoopSearch(
         ) {
           continue;
         }
-        // Final-slot pruning: a trailing TURN or PICK_UP can never trigger SUCCESS in Grid
+        // Final-slot pruning: a trailing TURN (or PICK_UP unless requireAllItemsCollected) cannot trigger SUCCESS
         if (
           remSlots === 1 &&
-          (isTurnAction(spec.actionType) || spec.actionType === 'PICK_UP')
+          (isTurnAction(spec.actionType) ||
+            (!requireAllItemsCollected && spec.actionType === 'PICK_UP'))
         ) {
           continue;
         }
@@ -2670,7 +2604,7 @@ function solveStructuralLoopSearch(
         }
 
         const nextCost = cost + 1;
-        if (trans.status === 'SUCCESS') {
+        if (evaluator.isTerminalSuccess(trans.nextGrid)) {
           recordWin(nextCost, [
             ...cur.astPrefix,
             { kind: 'action', spec, slotCost: 1 },
@@ -3347,8 +3281,10 @@ export function verifyActivityRule(
   }
 
   // Fast path for multi-scope capstone with world items when functions are forbidden
+  const isFuncA = activity.id === '4A' || activity.id === 'func.A';
+  const isFunc5 = activity.id === '4.5' || activity.id === 'func.5';
   if (
-    (activity.id === '4A' || activity.id === '4.5') &&
+    (isFuncA || isFunc5) &&
     (rule.forbidBlocks?.includes('CALL_F1') || rule.forbidBlocks?.includes('CALL_F2')) &&
     slotLimit !== undefined &&
     slotLimit < 15
@@ -3360,12 +3296,12 @@ export function verifyActivityRule(
       passed: true,
       elapsedMs: nowMs() - startMs,
       exploredStates: 0,
-      minWinningBlocks: activity.id === '4A' ? 22 : 10,
-      diagnostic: `0 programs without helper functions reach SUCCESS within ${slotLimit}-slot cap (requires >= ${activity.id === '4A' ? 22 : 10} blocks)`,
+      minWinningBlocks: isFuncA ? 22 : 10,
+      diagnostic: `0 programs without helper functions reach SUCCESS within ${slotLimit}-slot cap (requires >= ${isFuncA ? 22 : 10} blocks)`,
     };
   }
   if (
-    activity.id === '4A' &&
+    isFuncA &&
     rule.maxLoopNestingDepth === 0
   ) {
     return {
@@ -3435,7 +3371,7 @@ export function verifyActivityRule(
             collision = true;
             break;
           }
-          if (trans.statusCode === 0) {
+          if (!evaluators[j].isTerminalSuccessById(trans.nextStateId)) {
             allSuccess = false;
           }
           nextIds.push(trans.nextStateId);

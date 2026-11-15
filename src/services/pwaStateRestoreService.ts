@@ -359,7 +359,11 @@ function sanitizeBeatState(raw: unknown): BeatState {
     const srcRow = Array.isArray(b.leds) && Array.isArray(b.leds[r]) ? b.leds[r] : null;
     for (let c = 0; c < BEAT_GRID_SIZE; c++) {
       const cell = srcRow ? srcRow[c] : null;
-      row.push(typeof cell === 'string' && cell ? cell : null);
+      const trimmed = typeof cell === 'string' ? cell.trim() : '';
+      const lower = trimmed.toLowerCase();
+      row.push(
+        trimmed && lower !== '#0f172a' && lower !== '#000000' ? trimmed : null
+      );
     }
     leds.push(row);
   }

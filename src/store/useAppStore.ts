@@ -525,6 +525,20 @@ const mergeLiveTurtleViewState = (
 const MAX_HISTORY = 100;
 let activeBatchSnapshot: HistorySnapshot | null = null;
 
+/**
+ * Resolves the active scope after a single interpreter tick, falling back to the
+ * runtime's last executed block scope when the final tick empties `callStack`.
+ */
+function resolveActiveScopeFromRuntime(
+  runtime: InterpreterRuntimeState,
+  fallbackScope: ScopeType
+): ScopeType {
+  if (runtime.callStack.length > 0) {
+    return runtime.callStack[runtime.callStack.length - 1].scope;
+  }
+  return runtime.activeBlockId ? runtime.activeScope : fallbackScope;
+}
+
 const takeSnapshot = (state: AppState, desc?: string): HistorySnapshot => ({
   workspace: cloneWorkspace(state.workspace),
   grid: JSON.parse(JSON.stringify(state.grid)),
@@ -603,17 +617,14 @@ export const useAppStore = create<AppState>((set, get) => {
       const prevScope = get().activeScope;
       const prevBeatIndex = beatState.beatIndex;
 
-      const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv);
+      const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv, getActiveTickOptions());
       const nextBeat = res.nextGrid as BeatState;
 
       if (nextBeat.beatIndex !== prevBeatIndex && !nextBeat.isMuted) {
         beatSynth.playEvent(nextBeat.lastTriggeredEvent, globalSpeedMs);
       }
 
-      const activeScope =
-        res.nextRuntime.callStack.length > 0
-          ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-          : prevScope;
+      const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, prevScope);
 
       const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
 
@@ -889,13 +900,10 @@ export const useAppStore = create<AppState>((set, get) => {
           const wasSuccessInstant =
             (turtleState.status as string) === 'SUCCESS' ||
             (runtime.status as string) === 'SUCCESS';
-          const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+          const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
           runtime = res.nextRuntime;
           turtleState = res.nextGrid as TurtleState;
-          lastActiveScope =
-            runtime.callStack.length > 0
-              ? runtime.callStack[runtime.callStack.length - 1].scope
-              : lastActiveScope;
+          lastActiveScope = resolveActiveScopeFromRuntime(runtime, lastActiveScope);
 
           const isPausedOnPlaceholder = runtime.status === 'PAUSED';
 
@@ -978,14 +986,12 @@ export const useAppStore = create<AppState>((set, get) => {
         (runtime.status as string) === 'SUCCESS';
 
       if (!isAnimated) {
-        const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+        const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
 
         const prevScope = get().activeScope;
-        const activeScope = runtime.callStack.length > 0
-          ? runtime.callStack[runtime.callStack.length - 1].scope
-          : prevScope;
+        const activeScope = resolveActiveScopeFromRuntime(runtime, prevScope);
 
         const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
@@ -1063,14 +1069,12 @@ export const useAppStore = create<AppState>((set, get) => {
       const totalRepeats = Math.round(rawRepeats);
 
       if (totalRepeats <= 0) {
-        const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+        const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
 
         const prevScope = get().activeScope;
-        const activeScope = runtime.callStack.length > 0
-          ? runtime.callStack[runtime.callStack.length - 1].scope
-          : prevScope;
+        const activeScope = resolveActiveScopeFromRuntime(runtime, prevScope);
 
         const isPausedOnPlaceholder = runtime.status === 'PAUSED';
         set({
@@ -1147,13 +1151,11 @@ export const useAppStore = create<AppState>((set, get) => {
       const penColor = turtleState.penColor;
       const penWidth = turtleState.penWidth;
 
-      const res = tickInterpreter(runtime, workspace, turtleState, simEnv);
+      const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
       const toPose = { ...(res.nextGrid as TurtleState).robot };
 
       const prevScope = get().activeScope;
-      const activeScope = res.nextRuntime.callStack.length > 0
-        ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-        : prevScope;
+      const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, prevScope);
 
       const resolvedParams: Record<string, any> = {};
       if (currentBlock.params) {
@@ -1492,6 +1494,10 @@ export const useAppStore = create<AppState>((set, get) => {
       getActivityLatest(s.activeActivityId)
     );
   };
+
+  const getActiveTickOptions = () => ({
+    allowRecursion: getActiveCurriculumActivityObj()?.palette.allowRecursion !== false,
+  });
 
   const isExplanationActivity = (): boolean => {
     const act = getActiveCurriculumActivityObj();
@@ -2730,6 +2736,7 @@ export const useAppStore = create<AppState>((set, get) => {
         focusedVariantIndex: index,
         ...(target.gridState ? { grid: target.gridState } : {}),
         ...(target.depotState ? { depotState: target.depotState } : {}),
+        ...(target.switchyardState ? { switchyardState: target.switchyardState } : {}),
         ...(target.runtime !== undefined ? { runtime: target.runtime } : {}),
       });
     },
@@ -5150,7 +5157,7 @@ export const useAppStore = create<AppState>((set, get) => {
             return v;
           }
           const vRuntime = v.runtime || createInitialInterpreterState();
-          const res = tickInterpreter(vRuntime, workspace, vState, simEnv);
+          const res = tickInterpreter(vRuntime, workspace, vState, simEnv, getActiveTickOptions());
           const nextState = res.nextGrid as GridState & DepotState & SwitchyardState;
           const paused = res.nextRuntime.status === 'PAUSED';
           if (paused) anyPaused = true;
@@ -5191,10 +5198,7 @@ export const useAppStore = create<AppState>((set, get) => {
             : safeIdx;
         const focused = nextVariants[nextFocusIdx] ?? nextVariants[0];
         const focusedRuntime = focused?.runtime ?? prevRuntime ?? createInitialInterpreterState();
-        const activeScope =
-          focusedRuntime.callStack.length > 0
-            ? focusedRuntime.callStack[focusedRuntime.callStack.length - 1].scope
-            : prevScope;
+        const activeScope = resolveActiveScopeFromRuntime(focusedRuntime, prevScope);
 
         set({
           variantRuns: nextVariants,
@@ -5263,12 +5267,10 @@ export const useAppStore = create<AppState>((set, get) => {
         const wasSuccess = grid.status === 'SUCCESS' || currentRuntime.status === 'SUCCESS';
         const wasPlaying = get().isPlaying;
 
-        const res = tickInterpreter(currentRuntime, workspace, grid, simEnv);
+        const res = tickInterpreter(currentRuntime, workspace, grid, simEnv, getActiveTickOptions());
 
         // Auto switch active tab to current running scope if function called
-        const activeScope = res.nextRuntime.callStack.length > 0
-          ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-          : get().activeScope;
+        const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, get().activeScope);
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
         const nextGridState = res.nextGrid as GridState;
@@ -5346,17 +5348,14 @@ export const useAppStore = create<AppState>((set, get) => {
         const wasPlaying = get().isPlaying;
         const prevScope = get().activeScope;
         const prevBeatIndex = beatState.beatIndex;
-        const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv);
+        const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv, getActiveTickOptions());
         const nextBeat = res.nextGrid as BeatState;
 
         if (nextBeat.beatIndex !== prevBeatIndex && !nextBeat.isMuted) {
           beatSynth.playEvent(nextBeat.lastTriggeredEvent, speed);
         }
 
-        const activeScope =
-          res.nextRuntime.callStack.length > 0
-            ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-            : prevScope;
+        const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, prevScope);
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
 
@@ -5415,11 +5414,8 @@ export const useAppStore = create<AppState>((set, get) => {
         const wasSuccess = depotState.status === 'SUCCESS' || currentRuntime.status === 'SUCCESS';
         const wasPlaying = get().isPlaying;
 
-        const res = tickInterpreter(currentRuntime, workspace, depotState, simEnv);
-        const activeScope =
-          res.nextRuntime.callStack.length > 0
-            ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-            : get().activeScope;
+        const res = tickInterpreter(currentRuntime, workspace, depotState, simEnv, getActiveTickOptions());
+        const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, get().activeScope);
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
         const nextDepotState = res.nextGrid as DepotState;
@@ -5483,11 +5479,8 @@ export const useAppStore = create<AppState>((set, get) => {
         const wasSuccess = switchyardState.status === 'SUCCESS' || currentRuntime.status === 'SUCCESS';
         const wasPlaying = get().isPlaying;
 
-        const res = tickInterpreter(currentRuntime, workspace, switchyardState, simEnv);
-        const activeScope =
-          res.nextRuntime.callStack.length > 0
-            ? res.nextRuntime.callStack[res.nextRuntime.callStack.length - 1].scope
-            : get().activeScope;
+        const res = tickInterpreter(currentRuntime, workspace, switchyardState, simEnv, getActiveTickOptions());
+        const activeScope = resolveActiveScopeFromRuntime(res.nextRuntime, get().activeScope);
 
         const isPausedOnPlaceholder = res.nextRuntime.status === 'PAUSED';
         const nextSwitchyardState = res.nextGrid as SwitchyardState;

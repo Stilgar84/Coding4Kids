@@ -71,6 +71,7 @@ export interface StagedPalettePolicy {
   showScopeSelector: boolean;
   allowRepeatBadges: boolean;
   allowVariables: boolean;
+  allowRecursion: boolean;
   paletteVariableBadges: readonly VariableName[];
   subpaletteVariableNames: readonly VariableName[];
   subpaletteOperandVarNames: readonly VariableName[];
@@ -78,6 +79,21 @@ export interface StagedPalettePolicy {
   canUseSubpaletteParams: boolean;
   allowedValueSensors?: string[];
   allowedVarOps?: BinaryOp[];
+}
+
+/**
+ * Returns true when BeatCanvas's active-color indicator/picker should be displayed:
+ * always enabled in Sandbox mode, and enabled in Curriculum mode iff `SET_LED_COLOR`
+ * is present in the activity's `allowedSimBlocks` (or omitted in open palettes).
+ */
+export function isBeatActiveColorToolEnabled(
+  appMode: AppMode,
+  activity?: CurriculumActivity
+): boolean {
+  if (appMode !== 'curriculum' || !activity) return true;
+  const allowedSimBlocks = activity.palette?.allowedSimBlocks;
+  if (allowedSimBlocks === undefined) return true;
+  return allowedSimBlocks.includes('SET_LED_COLOR');
 }
 
 /**
@@ -113,6 +129,7 @@ export function computeStagedPalettePolicy(
       showScopeSelector: true,
       allowRepeatBadges: true,
       allowVariables: true,
+      allowRecursion: true,
       paletteVariableBadges: DEFAULT_PALETTE_VAR_BADGES,
       subpaletteVariableNames: ALL_VARIABLE_NAMES,
       subpaletteOperandVarNames: ALL_VARIABLE_NAMES.slice(0, 8),
@@ -131,6 +148,9 @@ export function computeStagedPalettePolicy(
       : simPaletteItems;
 
   const allowedControlTypes = new Set<string>(palette.allowedControlBlocks ?? []);
+  if (allowedControlTypes.has('LOOP_START')) {
+    allowedControlTypes.add('LOOP_END');
+  }
 
   const allowedScopes: ScopeType[] =
     palette.allowedScopes && palette.allowedScopes.length > 0
@@ -142,6 +162,7 @@ export function computeStagedPalettePolicy(
 
   const allowRepeatBadges = palette.allowRepeatBadges === true;
   const allowVariables = palette.allowVariables === true;
+  const allowRecursion = palette.allowRecursion !== false;
 
   const paletteVariableBadges: readonly VariableName[] = !allowVariables
     ? []
@@ -182,6 +203,7 @@ export function computeStagedPalettePolicy(
     showScopeSelector,
     allowRepeatBadges,
     allowVariables,
+    allowRecursion,
     paletteVariableBadges,
     subpaletteVariableNames,
     subpaletteOperandVarNames,

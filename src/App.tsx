@@ -24,23 +24,32 @@ import { useUndoRedoShortcuts } from './hooks/useUndoRedoShortcuts';
 import { usePerformanceMonitor } from './utils/performanceMonitor';
 
 const ActiveSimulationPane: React.FC = React.memo(() => {
-  const { appMode, activeSimId, activeState, runtimeStatus, runtimeVariables } =
-    useAppStoreSelector((s) => ({
-      appMode: s.appMode,
-      activeSimId: s.activeSimId,
-      activeState:
-        s.activeSimId === 'grid'
-          ? s.grid
-          : s.activeSimId === 'beat'
-          ? s.beatState
-          : s.activeSimId === 'depot'
-          ? s.depotState
-          : s.activeSimId === 'switchyard'
-          ? s.switchyardState
-          : s.turtleState,
-      runtimeStatus: s.runtime?.status,
-      runtimeVariables: s.runtime?.variables,
-    }));
+  const {
+    appMode,
+    activeSimId,
+    activeState,
+    runtimeStatus,
+    runtimeVariables,
+    activeBlockId,
+    activeScope,
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeSimId: s.activeSimId,
+    activeState:
+      s.activeSimId === 'grid'
+        ? s.grid
+        : s.activeSimId === 'beat'
+        ? s.beatState
+        : s.activeSimId === 'depot'
+        ? s.depotState
+        : s.activeSimId === 'switchyard'
+        ? s.switchyardState
+        : s.turtleState,
+    runtimeStatus: s.runtime?.status,
+    runtimeVariables: s.runtime?.variables,
+    activeBlockId: s.runtime?.activeBlockId ?? null,
+    activeScope: s.runtime?.activeScope ?? s.activeScope,
+  }));
 
   const simEnv = getSimEnvironment(activeSimId);
   const Renderer = simEnv?.Renderer;
@@ -50,7 +59,7 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
       data-testid="pane-simulation"
       className="flex flex-col w-full md:w-1/2 h-1/2 md:h-full overflow-hidden bg-slate-900/30"
     >
-      {/* Sandbox Grid Map Editor Top Dock */}
+      {/* Top Dock (shrink-0): Sandbox Grid Map Editor */}
       {appMode === 'sandbox' && activeSimId === 'grid' && (
         <div
           data-testid="grid-editor-dock"
@@ -60,22 +69,35 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
         </div>
       )}
 
+      {/* Main Simulation Viewport (relative flex-1 min-h-0) */}
       <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col">
-        {/* Runtime Variables HUD for Turtle, Beat, Depot & Switchyard (Grid renders inside GridCanvas) */}
-        {activeSimId !== 'grid' && (
+        {/* Runtime Variables HUD for Turtle, Depot & Switchyard (Grid & Beat mount inside their own stage viewports) */}
+        {activeSimId !== 'grid' && activeSimId !== 'beat' && (
           <SimulationTopLeftHud
             variables={runtimeVariables}
-            positionClassName={activeSimId === 'depot' ? 'top-12 left-3' : 'top-3 left-3'}
+            positionClassName="top-3 left-3"
           />
         )}
 
         {/* Top-Center Multi-Run Pips Bar for multi-variant M5–M6+ challenges */}
         <MultiRunPipsBar />
 
-        {Renderer && <Renderer state={activeState} runtimeStatus={runtimeStatus} />}
+        {Renderer && (
+          <Renderer
+            state={activeState}
+            runtimeStatus={runtimeStatus}
+            runtimeVariables={runtimeVariables}
+            activeBlockId={activeBlockId}
+            activeScope={activeScope}
+          />
+        )}
       </div>
-      <CurriculumNextLessonBar />
-      <VariationCardsPanel />
+
+      {/* Bottom Dock (shrink-0): Next Lesson CTA & Creative Variation Cards */}
+      <div className="shrink-0">
+        <CurriculumNextLessonBar />
+        <VariationCardsPanel />
+      </div>
     </section>
   );
 });

@@ -206,7 +206,7 @@ const SaveProgramModalContent: React.FC = () => {
       } else if (activeSimId === 'beat') {
         setTitle(`Beat Mix (${timeStr})`);
       } else if (activeSimId === 'depot') {
-        setTitle(`Crate Depot (${timeStr})`);
+        setTitle(`Depot (${timeStr})`);
       } else {
         setTitle(`Turtle Art (${timeStr})`);
       }

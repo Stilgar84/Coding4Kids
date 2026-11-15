@@ -35,7 +35,7 @@ import {
 } from '../src/engine/physics';
 import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
 import { BeaconAndDialLayer } from '../src/simulations/grid/components/BeaconAndDialLayer';
-import { BackpackHud } from '../src/simulations/grid/components/WorldItemsLayer';
+import { GridCanvas } from '../src/components/GridCanvas';
 import { GridToolbarTools } from '../src/simulations/grid/components/GridToolbarTools';
 import { renderGridMapSvg } from '../src/services/mapThumbnailGenerator';
 import { useAppStore } from '../src/store/useAppStore';
@@ -419,24 +419,36 @@ describe('Commit 22: Grid envVersion=3, Sensors, Dials, Beacons & Stack Depots',
       expect(markup).toContain('×4');
     });
 
-    it('renders BackpackHud with carried count multiplier when carriedCount > 1', () => {
-      const grid = makeBaseGrid({
-        robot: {
-          x: 1,
-          y: 1,
-          dir: 'EAST',
-          initialX: 1,
-          initialY: 1,
-          initialDir: 'EAST',
-          carriedItem: { id: 'crate_1', type: 'crate', x: 0, y: 0 },
-          carriedCount: 3,
-        },
-      });
+    it('renders robot shoulder carry with carried count multiplier when carriedCount > 1 and zero BackpackHud', () => {
+      const initialRef = useAppStore.getInitialState();
+      const backupInitial = { ...initialRef };
 
-      const markup = renderToStaticMarkup(React.createElement(BackpackHud, { grid }));
-      expect(markup).toContain('data-testid="grid-backpack-hud"');
-      expect(markup).toContain('data-carried-count="3"');
-      expect(markup).toContain('×3');
+      try {
+        const grid = makeBaseGrid({
+          robot: {
+            x: 1,
+            y: 1,
+            dir: 'EAST',
+            initialX: 1,
+            initialY: 1,
+            initialDir: 'EAST',
+            carriedItem: { id: 'crate_1', type: 'crate', x: 0, y: 0 },
+            carriedCount: 3,
+          },
+        });
+
+        useAppStore.setState({ activeSimId: 'grid', grid });
+        Object.assign(initialRef, useAppStore.getState());
+
+        const markup = renderToStaticMarkup(React.createElement(GridCanvas, { state: grid }));
+        expect(markup).toContain('data-testid="robot-shoulder-carry"');
+        expect(markup).toContain('data-carried-count="3"');
+        expect(markup).toContain('×3');
+        expect(markup).not.toContain('grid-backpack-hud');
+        expect(markup).not.toContain('🎒');
+      } finally {
+        Object.assign(initialRef, backupInitial);
+      }
     });
 
     it('renders GridToolbarTools with Beacon, Dial, and Stack Depot buttons', () => {

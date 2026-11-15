@@ -318,7 +318,7 @@ export function renderGridMapSvg(grid: GridState): string {
     );
   }
 
-  // Padlock rings & lock badges on locked ordered flags (2+, Goal when prerequisites exist)
+  // Shuttered goal barrier / dashed sequence rings on locked ordered flags (zero padlocks)
   if (grid.flags) {
     for (const flag of grid.flags) {
       if (!isFlagPadlocked(flag, grid.flags, grid.floorSwitches, grid.lockedGates)) continue;
@@ -328,27 +328,25 @@ export function renderGridMapSvg(grid: GridState): string {
         Boolean(grid.robot) && grid.robot.x === flag.x && grid.robot.y === flag.y;
       const baseRadius = flag.isGoal ? 12 : 10;
       const ringRadius = isRobotHere ? 15 : flag.isGoal ? 14 : 12.5;
-      const badgeX = isRobotHere ? 10 : flag.isGoal ? 9 : 8;
-      const badgeY = -(isRobotHere ? 10 : flag.isGoal ? 9 : 8);
       const targetId = flag.isGoal ? `goal-${flag.x}-${flag.y}` : `flag-${flag.order}`;
+      const ringStroke = isRobotHere ? '#fbbf24' : '#cbd5e1';
       const veilSvg = isRobotHere
         ? ''
         : `<circle r="${baseRadius}" fill="#0f172a" fill-opacity="0.42" />`;
+      const shutterSvg = flag.isGoal
+        ? `<g data-shuttered-goal="true" opacity="0.92">
+            <line x1="-8" y1="-6" x2="8" y2="-6" stroke="${ringStroke}" stroke-width="2" stroke-dasharray="3 2" stroke-linecap="round" />
+            <line x1="-9" y1="0" x2="9" y2="0" stroke="#fbbf24" stroke-width="2" stroke-dasharray="3 2" stroke-linecap="round" />
+            <line x1="-8" y1="6" x2="8" y2="6" stroke="${ringStroke}" stroke-width="2" stroke-dasharray="3 2" stroke-linecap="round" />
+          </g>`
+        : '';
 
       elements.push(
         `<g data-padlocked="true" data-padlock-target="${targetId}" transform="translate(${cx}, ${cy})">
           ${veilSvg}
           <circle r="${ringRadius}" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-opacity="0.8" />
-          <circle r="${ringRadius}" fill="none" stroke="${
-            isRobotHere ? '#fbbf24' : '#cbd5e1'
-          }" stroke-width="1.5" stroke-dasharray="3 2.5" stroke-linecap="round" />
-          <g transform="translate(${badgeX}, ${badgeY})">
-            <circle r="5.5" fill="#0f172a" stroke="${
-              isRobotHere ? '#fbbf24' : '#cbd5e1'
-            }" stroke-width="1" />
-            <path d="M -1.8 -0.5 V -2 A 1.8 1.8 0 0 1 1.8 -2 V -0.5" fill="none" stroke="#f8fafc" stroke-width="1.1" stroke-linecap="round" />
-            <rect x="-2.6" y="-0.6" width="5.2" height="4" rx="1" fill="#fbbf24" />
-          </g>
+          <circle r="${ringRadius}" fill="none" stroke="${ringStroke}" stroke-width="1.5" stroke-dasharray="3 2.5" stroke-linecap="round" />
+          ${shutterSvg}
         </g>`
       );
     }
@@ -382,9 +380,12 @@ export function renderTurtleMapSvg(turtle: TurtleState): string {
 
   let elements: string[] = [];
 
-  // White base
+  // Matte #e2e8f0 outer frame wrapping the white #ffffff Turtle canvas
   elements.push(
-    `<rect width="${width}" height="${height}" fill="#ffffff" rx="8" stroke="#e2e8f0" stroke-width="1" />`
+    `<rect width="${width}" height="${height}" fill="#e2e8f0" rx="10" />`
+  );
+  elements.push(
+    `<rect x="4" y="4" width="${Math.max(1, width - 8)}" height="${Math.max(1, height - 8)}" fill="#ffffff" rx="7" stroke="#cbd5e1" stroke-width="1" />`
   );
 
   // Group centered around bounds
@@ -462,7 +463,13 @@ export function renderBeatMapSvg(beat: BeatState): string {
 
   for (let row = 0; row < BEAT_GRID_SIZE; row++) {
     for (let col = 0; col < BEAT_GRID_SIZE; col++) {
-      const cellColor = beat?.leds?.[row]?.[col] ?? null;
+      const rawCellColor = beat?.leds?.[row]?.[col] ?? null;
+      const normalizedCell =
+        typeof rawCellColor === 'string' ? rawCellColor.trim().toLowerCase() : '';
+      const cellColor =
+        normalizedCell && normalizedCell !== '#0f172a' && normalizedCell !== '#000000'
+          ? rawCellColor
+          : null;
       const x = col * (padSize + gap);
       const y = row * (padSize + gap);
       if (cellColor) {
@@ -571,7 +578,7 @@ export function renderDepotMapSvg(depot: DepotState): string {
 }
 
 /**
- * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a Crate Depot state.
+ * Returns a data URL (`data:image/svg+xml;charset=utf-8,...`) for a Depot state.
  */
 export function generateDepotMapThumbnail(depotState: DepotState): string {
   const svg = renderDepotMapSvg(depotState);

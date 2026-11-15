@@ -88,6 +88,65 @@ export interface TickResult<TState = any> {
   done: boolean;
 }
 
+export interface InterpreterTickOptions {
+  /** Whether direct or indirect recursive calls (`F1->F1` or `F1->F2->F1`) are permitted at runtime. Defaults to true. */
+  allowRecursion?: boolean;
+}
+
+const CALL_TYPE_TO_SCOPE: Record<string, ScopeType> = {
+  CALL_F1: 'F1',
+  CALL_F2: 'F2',
+  CALL_F3: 'F3',
+};
+
+/**
+ * Returns the target function scope for `CALL_F1` / `CALL_F2` / `CALL_F3`, or `null` otherwise.
+ */
+export function getCalleeScopeForBlockType(blockType: string): ScopeType | null {
+  return CALL_TYPE_TO_SCOPE[blockType] ?? null;
+}
+
+/**
+ * Returns true when `targetScope` is reachable via call blocks starting at `startScope`.
+ */
+export function workspaceHasReachableScope(
+  workspace: WorkspaceState,
+  startScope: ScopeType,
+  targetScope: ScopeType
+): boolean {
+  if (startScope === targetScope) return true;
+  const visited = new Set<ScopeType>([startScope]);
+  const queue: ScopeType[] = [startScope];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const blocks = workspace[current] || [];
+    for (const block of blocks) {
+      const callee = getCalleeScopeForBlockType(block.type);
+      if (!callee) continue;
+      if (callee === targetScope) return true;
+      if (!visited.has(callee)) {
+        visited.add(callee);
+        queue.push(callee);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns true if placing a call to `calleeScope` inside `callerScope` would create
+ * either direct self-recursion or a transitive cycle across function scopes.
+ */
+export function wouldCallCreateCycle(
+  workspace: WorkspaceState,
+  callerScope: ScopeType,
+  calleeScope: ScopeType
+): boolean {
+  if (callerScope === 'MAIN') return false;
+  if (callerScope === calleeScope) return true;
+  return workspaceHasReachableScope(workspace, calleeScope, callerScope);
+}
+
 export interface LoopValidationResult {
   isValid: boolean;
   unclosedLoopStartIds: string[];
@@ -307,7 +366,8 @@ export function tickInterpreter<TState = GridState>(
   runtime: InterpreterRuntimeState,
   workspace: WorkspaceState,
   simState: TState,
-  simEnv: SimulationEnvironment<TState> = gridSimulationEnvironment as unknown as SimulationEnvironment<TState>
+  simEnv: SimulationEnvironment<TState> = gridSimulationEnvironment as unknown as SimulationEnvironment<TState>,
+  options?: InterpreterTickOptions
 ): TickResult<TState> {
   // If already stopped, do nothing
   if (runtime.status === 'SUCCESS' || runtime.status === 'COLLISION') {
@@ -372,7 +432,7 @@ export function tickInterpreter<TState = GridState>(
 
   if (!currentBlock) {
     callStack.pop();
-    return tickInterpreter({ ...runtime, callStack, loopStack, whileStack, condStack }, workspace, simState, simEnv);
+    return tickInterpreter({ ...runtime, callStack, loopStack, whileStack, condStack }, workspace, simState, simEnv, options);
   }
 
   const blockType = currentBlock.type;
@@ -410,6 +470,29 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'CALL_F1' || blockType === 'CALL_F2' || blockType === 'CALL_F3') {
     const targetScope: ScopeType =
       blockType === 'CALL_F1' ? 'F1' : blockType === 'CALL_F2' ? 'F2' : 'F3';
+
+    // Guard against direct or transitive recursion when disabled by curriculum policy
+    if (
+      options?.allowRecursion === false &&
+      callStack.some((frame) => frame.scope === targetScope)
+    ) {
+      const nextSimState =
+        simState && typeof simState === 'object'
+          ? { ...simState, status: 'COLLISION' }
+          : simState;
+      return {
+        nextRuntime: {
+          ...runtime,
+          status: 'COLLISION',
+          activeBlockId,
+          activeScope,
+          whileStack,
+          condStack,
+        },
+        nextGrid: nextSimState,
+        done: true,
+      };
+    }
 
     // Advance caller's PC
     currentFrame.pc++;
@@ -959,6 +1042,38 @@ export function tickInterpreter<TState = GridState>(
   callStack[callStack.length - 1] = currentFrame;
 
   const isDone = actionRes.isSuccess || actionRes.status === 'SUCCESS';
+
+  if (remainingSubTicks <= 0 && !isDone && actionRes.status !== 'COLLISION') {
+    const hasRemainingWork = callStack.some(
+      (f) => f.pc < (workspace[f.scope] || []).length
+    );
+    if (!hasRemainingWork) {
+      const finalStatus = simEnv.evaluateCompletion
+        ? simEnv.evaluateCompletion(actionRes.nextState)
+        : actionRes.status;
+      const nextGrid =
+        actionRes.nextState && typeof actionRes.nextState === 'object'
+          ? { ...actionRes.nextState, status: finalStatus }
+          : actionRes.nextState;
+
+      return {
+        nextRuntime: {
+          ...runtime,
+          callStack: [],
+          loopStack: [],
+          whileStack: [],
+          condStack: [],
+          activeBlockId,
+          activeScope,
+          status: finalStatus,
+          stepCount: runtime.stepCount + 1,
+          activeRepeatProgress,
+        },
+        nextGrid,
+        done: true,
+      };
+    }
+  }
 
   return {
     nextRuntime: {

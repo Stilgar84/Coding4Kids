@@ -447,26 +447,26 @@ All Grid action opcodes use the Standard Block Envelope (§6.1) with `MASK_HAS_R
 
 | Opcode | Action Type | Parameters (`param0`, `param1`) | Description |
 | :--- | :--- | :--- | :--- |
-| `0x10` | `FORWARD` | None | Step forward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
-| `0x11` | `BACKWARD` | None | Step backward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
-| `0x12` | `TURN_LEFT` | `angle: VLE \| varIdx` | Turn left in degrees (`param0`). |
-| `0x13` | `TURN_RIGHT` | `angle: VLE \| varIdx` | Turn right in degrees (`param0`). |
-| `0x14` | `ARC_LEFT` | `radius: VLE \| varIdx`, `angle: VLE \| varIdx` | Arc left by radius (`param0`) and degrees (`param1`). |
-| `0x15` | `ARC_RIGHT` | `radius: VLE \| varIdx`, `angle: VLE \| varIdx` | Arc right by radius (`param0`) and degrees (`param1`). |
-| `0x16` | `PEN_UP` | None | Lift pen up. |
-| `0x17` | `PEN_DOWN` | None | Lower pen down. |
-| `0x18` | `SET_PEN_COLOR` | `colorId: uint8 \| varIdx \| sensor` | Palette index (`0..9` in `PALETTE_COLORS`: `0`=`#0f172a` Black, `1`=`#ef4444` Red, `2`=`#3b82f6` Blue, `3`=`#10b981` Green, `4`=`#f59e0b` Amber/Yellow, `5`=`#8b5cf6` Purple, `6`=`#ec4899` Pink, `7`=`#06b6d4` Cyan, `8`=`#f97316` Orange, `9`=`#ffffff` White). Supports `paramVarMask & 0x02` for typed color variables, `$randomColor`, or socket refs. |
-| `0x19` | `SET_PEN_WIDTH` | `width: VLE \| varIdx` | Line width in pixels (`param0`). |
-| `0x1A` | `FORWARD` | `length: VLE \| varIdx` | Step forward explicit pixel distance (`param0`, supports `HasRep`). |
-| `0x1B` | `BACKWARD` | `length: VLE \| varIdx` | Step backward explicit pixel distance (`param0`, supports `HasRep`). |
-| `0x1C` | `WAIT` | `duration: VLE \| varIdx` | Pause simulation for `duration` (encoded as hundredths of seconds `VLE`, or `varIdx`). |
-| `0x1D` | `SET_INSTANT` | `mode: uint8` | Toggle instant drawing mode (`1` = ON, `0` = OFF). |
-| `0x1E` | `CLEAR_CANVAS` | None | Clears turtle drawing canvas and resets pen state. |
-| `0x1F` | `TELEPORT` | `refMask: uint8`, `x`, `y`, `heading` | Teleport turtle to coordinate `(x, y)` with `heading`. `refMask` bits `0` (x), `1` (y), `2` (heading) indicate if each coordinate is a `varIdx \| sensorIdx` (`uint8`) or signed `VLE`. |
+| `0x10` | `FORWARD` (`OP_TURTLE_FORWARD`) | None | Step forward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
+| `0x11` | `BACKWARD` (`OP_TURTLE_BACKWARD`) | None | Step backward default `50px` (parameterless M1 / legacy, supports `HasRep`). |
+| `0x12` | `TURN_LEFT` (`OP_TURTLE_TURN_LEFT`) | `angle: VLE \| varOrSensorIdx` | Turn left in degrees (`param0`). |
+| `0x13` | `TURN_RIGHT` (`OP_TURTLE_TURN_RIGHT`) | `angle: VLE \| varOrSensorIdx` | Turn right in degrees (`param0`). |
+| `0x14` | `ARC_LEFT` (`OP_TURTLE_ARC_LEFT`) | `radius: VLE \| varOrSensorIdx`, `angle: VLE \| varOrSensorIdx` | Arc left by radius (`param0`) and degrees (`param1`). |
+| `0x15` | `ARC_RIGHT` (`OP_TURTLE_ARC_RIGHT`) | `radius: VLE \| varOrSensorIdx`, `angle: VLE \| varOrSensorIdx` | Arc right by radius (`param0`) and degrees (`param1`). |
+| `0x16` | `PEN_UP` (`OP_TURTLE_PEN_UP`) | None | Lift pen up. |
+| `0x17` | `PEN_DOWN` (`OP_TURTLE_PEN_DOWN`) | None | Lower pen down. |
+| `0x18` | `SET_PEN_COLOR` (`OP_TURTLE_SET_PEN_COLOR`) | `colorId: uint8` | Palette index (`0..9` in `TURTLE_COLOR_PALETTE`: `0`=`#0f172a` Black, `1`=`#ef4444` Red, `2`=`#3b82f6` Blue, `3`=`#10b981` Green [`#22c55e` aliases to `3`], `4`=`#f59e0b` Amber/Yellow, `5`=`#8b5cf6` Purple, `6`=`#ec4899` Pink, `7`=`#06b6d4` Cyan, `8`=`#f97316` Orange, `9`=`#ffffff` White). Future Phase 3 extends `paramVarMask & 0x02` for typed color vars / `$randomColor`. |
+| `0x19` | `SET_PEN_WIDTH` (`OP_TURTLE_SET_PEN_WIDTH`) | `width: VLE \| varOrSensorIdx` | Line width in pixels (`param0`). |
+| `0x1A` | `FORWARD` (`OP_TURTLE_FORWARD_LEN`) | `length: VLE \| varOrSensorIdx` | Step forward explicit pixel distance (`param0`, supports `HasRep`). |
+| `0x1B` | `BACKWARD` (`OP_TURTLE_BACKWARD_LEN`) | `length: VLE \| varOrSensorIdx` | Step backward explicit pixel distance (`param0`, supports `HasRep`). |
+| `0x1C` | `WAIT` (`OP_TURTLE_WAIT`) | `durationScaled: VLE \| varOrSensorIdx` | Pause simulation for `duration` seconds (`VLE(Math.round(duration * 100))` in hundredths of seconds, or `varOrSensorIdx` via `paramVarMask & 0x02`). |
+| `0x1D` | `SET_INSTANT` (`OP_TURTLE_SET_INSTANT`) | `mode: uint8` | Toggle instant drawing mode (`1` = ON, `0` = OFF). |
+| `0x1E` | `CLEAR_CANVAS` (`OP_TURTLE_CLEAR_CANVAS`) | None | Clears turtle drawing canvas and resets pen state. |
+| `0x1F` | `TELEPORT` (`OP_TURTLE_TELEPORT`) | `refMask: uint8`, `x`, `y`, `heading` | Teleport turtle to `(x, y)` with `heading`. `refMask` bits `0` (`x`), `1` (`y`), `2` (`heading`) indicate if each coordinate is a `varOrSensorIdx` (`uint8`) or signed zigzag `VLE`. |
 
 ---
 
-### 7.4 Beat & Light Matrix Opcodes (`ENV_ID_BEAT = 0x03`, `ENV_VERSION_BEAT = 1..2`)
+### 7.4 Beat & Light Matrix Opcodes (`ENV_ID_BEAT = 0x03`, `ENV_VERSION_BEAT = 1`)
 
 All Beat & Light opcodes use the Standard Block Envelope (§6.1). When any repeat count or action parameter holds a variable name (`'a'..'z'`), sensor ref (`0x80+`), or socket ref (`0xC0+`), `MASK_HAS_VAR_PARAM (0x80)` is set in `blockHeader` and `paramVarMask` (`Byte 1`) indicates which field(s) encode a 1-byte `varOrSensorIdx` (`uint8`) instead of their literal representation (`bit 0 = 0x01` repeat, `bit 1 = 0x02` `param0`, `bit 2 = 0x04` `param1`).
 
@@ -476,19 +476,19 @@ All Beat & Light opcodes use the Standard Block Envelope (§6.1). When any repea
 | `0x11` | `OP_BEAT_DRUM_SNARE` (`DRUM_SNARE`) | None | Snare drum hit, 1 beat (supports `MASK_HAS_REP` + variable repeat). |
 | `0x12` | `OP_BEAT_DRUM_CLAP` (`DRUM_CLAP`) | None | Handclap accent, 1 beat (supports `MASK_HAS_REP` + variable repeat). |
 | `0x13` | `OP_BEAT_PLAY_CHIME` (`PLAY_CHIME`) | None | Bright chime, 1 beat (supports `MASK_HAS_REP` + variable repeat). |
-| `0x14` | `OP_BEAT_STAMP_PRESET` (`STAMP_*` / `STAMP_PRESET`) | `presetByte: uint8 \| varIdx` | `0` = `STAMP_HEART`, `1` = `STAMP_STAR`, `2` = `STAMP_SMILE`; `0x80 \| id` (for `id <= 2`) or `3..7` (`NOTE`, `BOLT`, `DIAMOND`, `CHECK`, `ROBOT`) decodes as parameterized `STAMP_PRESET`; `varIdx` when `paramVarMask & 0x02`. |
+| `0x14` | `OP_BEAT_STAMP_PRESET` (`STAMP_*` / `STAMP_PRESET`) | `presetByte: uint8 \| varIdx` | `0` = `STAMP_HEART`, `1` = `STAMP_STAR`, `2` = `STAMP_SMILE`; `0x80 \| id` (for `id <= 2` in `BEAT_STAMP_PRESETS`) or `3..7` (`NOTE`, `BOLT`, `DIAMOND`, `CHECK`, `ROBOT`) decodes as parameterized `STAMP_PRESET`; `varIdx` when `paramVarMask & 0x02`. |
 | `0x15` | `OP_BEAT_WAIT_BEAT` (`WAIT_BEAT` 1×) | None | Holds current LEDs silent for `1` beat (supports `MASK_HAS_REP` + variable repeat). |
 | `0x16` | `OP_BEAT_CLEAR_LEDS` (`CLEAR_LEDS`) | None | Clears all LEDs on active `W×H` matrix (`null` = off). |
-| `0x17` | `OP_BEAT_PLAY_NOTE` (`PLAY_NOTE`) | `pitch: VLE \| varIdx`, `durCode: uint8 \| varIdx` | Scale note `1..8` (v2 widens to `1..16`, `param0`) + duration (`0`=`0.5`, `1`=`1`, `2`=`2`; v2 supports `0.25`/`4` and variable/sensor duration via `paramVarMask & 0x04`). |
-| `0x18` | `OP_BEAT_SET_LED_COLOR` (`SET_LED_COLOR`) | `colorId: uint8 \| varIdx` | Active LED hardware swatch (`0`=Cyan `#06b6d4`, `1`=Rose `#f43f5e`, `2`=Amber `#fbbf24`, `3`=Emerald `#10b981`, `4`=Purple `#a855f7`, `5`=Blue `#3b82f6`, `6`=Orange `#f97316`, `7`=Pink `#ec4899`, `8`=Black `#0f172a` cutout erase, `9`=White `#ffffff`) or variable/sensor ref (`paramVarMask & 0x02`). |
-| `0x19` | `OP_BEAT_LIGHT_ROW` (`LIGHT_ROW`) | `y: VLE \| varIdx` | Lights row `y` (`1..H`, `param0`) in active LED color. |
-| `0x1A` | `OP_BEAT_LIGHT_COL` (`LIGHT_COL`) | `x: VLE \| varIdx` | Lights column `x` (`1..W`, `param0`) in active LED color. |
+| `0x17` | `OP_BEAT_PLAY_NOTE` (`PLAY_NOTE`) | `pitch: VLE \| varIdx`, `durCode: uint8` | Scale note `1..8` (v2 widens to `1..16`, `param0`) + duration (`0`=`0.5`, `1`=`1`, `2`=`2`). |
+| `0x18` | `OP_BEAT_SET_LED_COLOR` (`SET_LED_COLOR`) | `colorId: uint8 \| varIdx` | Active LED hardware swatch in `BEAT_LED_PALETTE` (`0`=Cyan `#06b6d4`, `1`=Rose `#f43f5e`, `2`=Amber `#fbbf24`, `3`=Emerald `#10b981`, `4`=Purple `#a855f7`, `5`=Blue `#3b82f6`, `6`=Orange `#f97316`, `7`=Pink `#ec4899`, `8`=Black `#0f172a` LED-Off erase `null`, `9`=White `#ffffff`) or `varIdx` (`paramVarMask & 0x02`). |
+| `0x19` | `OP_BEAT_LIGHT_ROW` (`LIGHT_ROW`) | `y: VLE \| varIdx` | Lights row `y` (`1..H`, `param0`) in active LED color (`#0f172a` normalizes to `null`). |
+| `0x1A` | `OP_BEAT_LIGHT_COL` (`LIGHT_COL`) | `x: VLE \| varIdx` | Lights column `x` (`1..W`, `param0`) in active LED color (`#0f172a` normalizes to `null`). |
 | `0x1B` | `OP_BEAT_LIGHT_PIXEL` (`LIGHT_PIXEL`) | `x: VLE \| varIdx`, `y: VLE \| varIdx` | Lights pixel `(x, y)` (`param0` via `0x02`, `param1` via `0x04`) in active LED color. |
 | `0x1C` | `OP_BEAT_CURSOR_STEP` (`CURSOR_STEP`) | None | Advances LED cursor 1 pixel and lights it (supports `MASK_HAS_REP` + variable repeat). |
 | `0x1D` | `OP_BEAT_CURSOR_TURN` (`CURSOR_TURN`) | `dirByte: uint8` | Rotates LED cursor 90° (`0` = `LEFT`, `1` = `RIGHT`). |
-| `0x1E` | `OP_BEAT_SET_DELAY` (`SET_BEAT_DELAY`) | `scaled: VLE \| varIdx` | Sets `stepDelayMultiplier` (`VLE(Math.round(mult * 100))`: `0, 0.25, 0.5, 1, 2, 4`×, plus var ref via `0x02`). |
-| `0x1F` | `OP_BEAT_WAIT_DURATION` (`WAIT_BEAT` `dur != 1`) | `scaled: VLE \| varIdx` | Fractional/variable `WAIT_BEAT` (`VLE(Math.round(dur * 100))`, e.g., `0.25, 0.5`, or var ref via `0x02`). |
-| **`0x0F` → `0x20`** | `OP_EXT` → `EXT_BEAT_STAMP_FROM_TAPE` (`STAMP_FROM_TAPE`) | `width: VLE \| varIdx`, `height: VLE \| varIdx` | Encoded via `OP_EXT = 0x0F` (§7.1) since Beat `0x10..0x1F` are full. Reads `W×H` color cells from shared Tape at active head and blits onto matrix. |
+| `0x1E` | `OP_BEAT_SET_DELAY` (`SET_BEAT_DELAY`) | `scaled: VLE \| varIdx` | Sets `stepDelayMultiplier` (`VLE(Math.round((delay ?? multiplier ?? 0) * 100))`: `0, 0.25, 0.5, 1, 2, 4`×, or `varIdx` via `0x02`). |
+| `0x1F` | `OP_BEAT_WAIT_DURATION` (`WAIT_BEAT` `dur != 1`) | `scaled: VLE \| varIdx` | Fractional/variable `WAIT_BEAT` (`VLE(Math.round(dur * 100))`, e.g., `0.25, 0.5`, or `varIdx` via `0x02`). |
+| **`0x0F` → `0x20`** | *(Reserved Ph4)* `OP_EXT` → `EXT_BEAT_STAMP_FROM_TAPE` (`STAMP_FROM_TAPE`) | `width: VLE \| varIdx`, `height: VLE \| varIdx` | Encoded via `OP_EXT = 0x0F` (§7.1) since Beat `0x10..0x1F` are full. Reads `W×H` color cells from shared Tape at active head and blits onto matrix. |
 
 ---
 

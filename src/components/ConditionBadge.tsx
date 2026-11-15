@@ -77,7 +77,36 @@ export const ConditionBadge: React.FC<ConditionBadgeProps> = ({
       case 'itemHere':
         return <span title="Item Here">💎</span>;
       case 'carryingItem':
-        return <span title="Carrying Item">🎒</span>;
+        return (
+          <span
+            title="Carrying Item"
+            className="inline-flex items-center justify-center"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="w-3.5 h-3.5 text-amber-300"
+            >
+              <path
+                d="M10 2v3M6.5 6.5L10 5l3.5 1.5M5.5 7.5c-1 2.2-.8 4.4.8 5.8M14.5 7.5c1 2.2.8 4.4-.8 5.8"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <rect
+                x="7"
+                y="9"
+                width="6"
+                height="6"
+                rx="1.2"
+                fill="currentColor"
+                fillOpacity="0.9"
+              />
+            </svg>
+          </span>
+        );
       case 'atGoal':
         return <span title="At Goal">🏁</span>;
       case 'tileColor':

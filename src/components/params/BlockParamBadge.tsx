@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ActionParamDef } from '../../engine/simulation/types';
-import { ParamVisual } from './VisualParamBadges';
+import {
+  BeatLedOffEraseOverlay,
+  ParamVisual,
+  isBeatLedEraseOption,
+} from './VisualParamBadges';
 import { ParamSelectionPopover } from './ParamSelectionPopover';
 
 interface BlockParamBadgeProps {
@@ -28,6 +32,7 @@ export const BlockParamBadge: React.FC<BlockParamBadgeProps> = ({
   }, [disabled, isOpen]);
 
   const effectiveValue = value !== undefined ? value : paramDef.defaultValue;
+  const isBeatErase = isBeatLedEraseOption(actionType, effectiveValue);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -61,9 +66,23 @@ export const BlockParamBadge: React.FC<BlockParamBadgeProps> = ({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         title={`Click to edit ${paramDef.label}`}
-        className="flex items-center justify-center min-w-[36px] min-h-[36px] h-[36px] md:min-w-[44px] md:h-[48px] px-1.5 md:px-2 rounded-lg md:rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-slate-600/70 hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-default disabled:opacity-75 group"
+        className={`flex items-center justify-center min-w-[36px] min-h-[36px] h-[36px] md:min-w-[44px] md:h-[48px] px-1.5 md:px-2 rounded-lg md:rounded-xl ${
+          isBeatErase
+            ? 'bg-slate-800/90 hover:bg-slate-700/90 border-slate-600/80'
+            : 'bg-slate-900/80 hover:bg-slate-800/90 border-slate-600/70'
+        } border hover:border-amber-400/80 text-white shadow-inner cursor-pointer transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-default disabled:opacity-75 group`}
       >
-        <ParamVisual paramDef={paramDef} value={effectiveValue} compact={true} actionType={actionType} />
+        {isBeatErase ? (
+          <span
+            data-beat-led-off="true"
+            className="relative inline-flex items-center justify-center rounded-full bg-slate-800/85 border border-slate-600/80 shadow-inner p-0.5"
+          >
+            <ParamVisual paramDef={paramDef} value={effectiveValue} compact={true} actionType={actionType} />
+            <BeatLedOffEraseOverlay size={13} />
+          </span>
+        ) : (
+          <ParamVisual paramDef={paramDef} value={effectiveValue} compact={true} actionType={actionType} />
+        )}
       </button>
 
       {isOpen && (

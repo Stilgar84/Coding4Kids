@@ -490,11 +490,10 @@ const MobileDrawerMenuContent: React.FC = () => {
                   : 'bg-slate-800 text-slate-300 border-slate-700'
               }`}
             >
-              {showTurtle ? (
-                <Eye className="w-4 h-4 shrink-0" />
-              ) : (
-                <EyeOff className="w-4 h-4 shrink-0" />
-              )}
+              <span aria-hidden="true" className="text-sm leading-none">
+                🐢👁️
+              </span>
+              {!showTurtle && <EyeOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
               <span>{showTurtle ? 'Hide Turtle' : 'Show Turtle'}</span>
             </button>
           )}

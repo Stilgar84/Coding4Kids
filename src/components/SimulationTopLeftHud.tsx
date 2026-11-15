@@ -2,20 +2,20 @@ import React from 'react';
 import { VariableWatchOverlay } from './VariableWatchOverlay';
 
 export interface SimulationTopLeftHudProps {
-  /** Optional simulation-specific top pill (e.g., Grid 1-slot BackpackHud). */
+  /** Optional simulation-specific top pill (rendered cleanly above runtime variables). */
   topSlot?: React.ReactNode;
   /** Runtime scalar variables rendered cleanly beneath topSlot. */
   variables?: Record<string, number> | null;
-  /** Reserved vertical slot beneath variables for future CallStack depth pills (M11). */
+  /** Reserved vertical slot beneath variables for CallStack depth pills. */
   callStackSlot?: React.ReactNode;
-  /** Optional top offset override (e.g., below Depot's in-flow status strip). */
+  /** Optional top offset override. */
   positionClassName?: string;
 }
 
 /**
  * Shared Top-Left Non-Overlapping HUD Stack (`flex-col items-start gap-1.5`) per
- * `docs/ui_guidelines.md` §3. Guarantees BackpackHud, VariableWatchOverlay, and
- * future CallStack pills stack cleanly without ever overlapping.
+ * `docs/ui_guidelines.md` §3. Stacks optional topSlot, VariableWatchOverlay, and
+ * CallStack pills cleanly without ever overlapping.
  */
 export const SimulationTopLeftHud: React.FC<SimulationTopLeftHudProps> = ({
   topSlot = null,

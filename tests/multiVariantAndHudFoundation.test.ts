@@ -34,7 +34,6 @@ import {
 import { SimulationTopLeftHud } from '../src/components/SimulationTopLeftHud';
 import { VariableWatchOverlay } from '../src/components/VariableWatchOverlay';
 import { MultiRunPipsBarView } from '../src/components/MultiRunPipsBar';
-import { BackpackHud } from '../src/simulations/grid/components/WorldItemsLayer';
 import { GridOverlayLayer, GRID_CELL_SIZE } from '../src/simulations/grid/components/GridOverlayLayer';
 import { useAppStore } from '../src/store/useAppStore';
 
@@ -174,27 +173,17 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
   });
 
   describe('Shared Non-Overlapping HUD & Simulation Overlay Slots', () => {
-    it('renders SimulationTopLeftHud with BackpackHud, VariableWatchOverlay, and reserved CallStack slot', () => {
-      const grid = createCurriculumGridState({
-        width: 3,
-        height: 3,
-        robot: { x: 0, y: 0, dir: 'EAST' },
-        barriers: [],
-        flags: [{ id: 'goal', x: 2, y: 2, isGoal: true, order: 1, collected: false }],
-        worldItems: [{ id: 'k1', type: 'key', shape: 'diamond', x: 1, y: 0 }],
-      });
-      grid.robot.carriedItem = { id: 'k1', type: 'key', shape: 'diamond', x: 1, y: 0 };
-
+    it('renders SimulationTopLeftHud with topSlot, VariableWatchOverlay, and reserved CallStack slot', () => {
       const markup = renderToStaticMarkup(
         React.createElement(SimulationTopLeftHud, {
-          topSlot: React.createElement(BackpackHud, { grid, stacked: true }),
+          topSlot: React.createElement('div', { 'data-testid': 'mock-hud-top-slot' }, 'Key: 1'),
           variables: { a: 4, b: 9 },
           callStackSlot: React.createElement('div', { 'data-testid': 'mock-callstack' }, 'MAIN > F1'),
         })
       );
 
       expect(markup).toContain('data-testid="simulation-top-left-hud"');
-      expect(markup).toContain('data-testid="grid-backpack-hud"');
+      expect(markup).toContain('data-testid="mock-hud-top-slot"');
       expect(markup).toContain('data-testid="toolbar-variables"');
       expect(markup).toContain('data-testid="var-badge-a"');
       expect(markup).toContain('a=4');
@@ -269,7 +258,7 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
         id: '99.9',
         moduleId: 'module-5',
         format: 'puzzle',
-        palette: { allowedSimBlocks: ['MOVE_FWD'] },
+        palette: { allowedSimBlocks: ['MOVE_FWD', 'PICK_UP'] },
         grid: undefined,
         gridVariants: [
           {
@@ -278,13 +267,18 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
             robot: { x: 0, y: 0, dir: 'EAST' },
             barriers: [],
             flags: [{ id: 'goal', x: 1, y: 0, isGoal: true, order: 1, collected: false }],
+            worldItems: [{ id: 'opt_crate', type: 'crate', x: 1, y: 0 }],
+            requireAllItemsCollected: false,
+            strictInteractionCollision: false,
           },
           {
-            width: 4,
+            width: 3,
             height: 1,
             robot: { x: 0, y: 0, dir: 'EAST' },
             barriers: [],
-            flags: [{ id: 'goal', x: 2, y: 0, isGoal: true, order: 1, collected: false }],
+            flags: [{ id: 'goal', x: 1, y: 0, isGoal: true, order: 1, collected: false }],
+            worldItems: [{ id: 'req_crate', type: 'crate', x: 1, y: 0 }],
+            requireAllItemsCollected: true,
           },
         ],
         antiBypassRules: [{ description: 'synthetic multi-variant test' }],
@@ -298,9 +292,9 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
         let state = useAppStore.getState();
         expect(state.variantRuns).toHaveLength(2);
         expect(state.focusedVariantIndex).toBe(0);
-        expect(state.grid.flags[0].x).toBe(1);
+        expect(state.grid.requireAllItemsCollected).toBe(false);
 
-        // Partial solution: MOVE_FWD x1 solves Variant 0 (goal x=1), leaves Variant 1 un-solved (goal x=2)
+        // Partial solution: MOVE_FWD alone solves Variant 0 (requireAllItemsCollected: false), leaves Variant 1 un-solved
         store.setSpeed('instant');
         store.addBlock('MAIN', 'MOVE_FWD');
         store.runInstantIfActive({ allowVictoryModal: true });
@@ -313,21 +307,20 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
         expect(state.completedActivities['99.9']).toBeFalsy();
         // Automatically focuses the non-passing variant when focused variant passed
         expect(state.focusedVariantIndex).toBe(1);
-        expect(state.grid.flags[0].x).toBe(2);
+        expect(state.grid.requireAllItemsCollected).toBe(true);
 
         // Switching pip focus updates grid snapshot to Variant 0
         store.setFocusedVariantIndex(0);
         state = useAppStore.getState();
         expect(state.focusedVariantIndex).toBe(0);
-        expect(state.grid.flags[0].x).toBe(1);
+        expect(state.grid.requireAllItemsCollected).toBe(false);
         expect(state.grid.status).toBe('SUCCESS');
 
-        // Make Variant 1 fail directly (reset, step twice or add 2 moves? Let's test both passing):
-        // With MOVE_FWD + MOVE_FWD, Variant 0 stops at SUCCESS on step 1, Variant 1 reaches SUCCESS on step 2!
+        // Full solution [MOVE_FWD, PICK_UP] passes BOTH variants at program end!
         store.reset();
         expect(useAppStore.getState().variantRuns.every((v) => v.status === 'IDLE')).toBe(true);
 
-        store.addBlock('MAIN', 'MOVE_FWD');
+        store.addBlock('MAIN', 'PICK_UP');
         store.runInstantIfActive({ allowVictoryModal: true });
 
         state = useAppStore.getState();

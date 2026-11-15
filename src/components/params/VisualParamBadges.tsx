@@ -268,16 +268,46 @@ export const RadiusVisual: React.FC<RadiusVisualProps> = ({
 // ==========================================
 // 4. Color Visual (Clean Color Swatch)
 // ==========================================
+export function isBeatLedOffColor(color: unknown): boolean {
+  if (typeof color !== 'string') return false;
+  const normalized = color.trim().toLowerCase();
+  return normalized === '#0f172a' || normalized === '#000000';
+}
+
+export function isBeatLedEraseOption(actionType: string | undefined, value: unknown): boolean {
+  return actionType === 'SET_LED_COLOR' && isBeatLedOffColor(value);
+}
+
+/**
+ * Crisp ⊘ Erase/Off SVG overlay rendered OUTSIDE `ColorVisual` for Beat `SET_LED_COLOR` on `#0f172a`/`#000000`.
+ */
+export const BeatLedOffEraseOverlay: React.FC<{ size?: number }> = ({ size = 14 }) => (
+  <svg
+    aria-hidden="true"
+    data-testid="beat-led-erase-overlay"
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill="none"
+    className="pointer-events-none absolute inset-0 m-auto text-slate-200 drop-shadow-[0_1px_1px_rgba(2,6,23,0.9)]"
+  >
+    <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.75" />
+    <line x1="4.2" y1="11.8" x2="11.8" y2="4.2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+  </svg>
+);
+
 interface ColorVisualProps {
   color: string;
   size?: number;
   className?: string;
+  showEraserCue?: boolean;
 }
 
 export const ColorVisual: React.FC<ColorVisualProps> = ({
   color,
   size = 20,
   className = '',
+  showEraserCue = false,
 }) => {
   const effectiveColor = color || '#0f172a';
   const normalized = effectiveColor.toLowerCase();
@@ -292,14 +322,29 @@ export const ColorVisual: React.FC<ColorVisualProps> = ({
   return (
     <div
       data-testid="color-swatch-visual"
-      className={`inline-flex items-center justify-center rounded-full border-2 shadow-sm transition-transform select-none ${borderClass} ${className}`}
+      className={`inline-flex items-center justify-center rounded-full border-2 shadow-sm transition-transform select-none ${
+        showEraserCue && isWhite ? 'relative overflow-hidden' : ''
+      } ${borderClass} ${className}`}
       style={{
         backgroundColor: effectiveColor,
         width: `${size}px`,
         height: `${size}px`,
       }}
       title={`Color: ${effectiveColor}`}
-    />
+    >
+      {showEraserCue && isWhite && (
+        <svg
+          aria-hidden="true"
+          data-testid="turtle-white-eraser-cue"
+          viewBox="0 0 16 16"
+          fill="none"
+          className="pointer-events-none absolute inset-0 w-full h-full"
+        >
+          <polygon points="9.5,16 16,9.5 16,16" fill="#fda4af" />
+          <line x1="9" y1="16" x2="16" y2="9" stroke="#94a3b8" strokeWidth="1.2" />
+        </svg>
+      )}
+    </div>
   );
 };
 
@@ -997,7 +1042,13 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
         />
       );
     case 'color':
-      return <ColorVisual color={String(effectiveValue)} size={compact ? 18 : 26} />;
+      return (
+        <ColorVisual
+          color={String(effectiveValue)}
+          size={compact ? 18 : 26}
+          showEraserCue={actionType === 'SET_PEN_COLOR'}
+        />
+      );
     case 'penWidth':
       return (
         <PenWidthVisual

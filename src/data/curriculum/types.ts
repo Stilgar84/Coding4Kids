@@ -101,6 +101,11 @@ export interface PaletteConfig {
    * Allowed variable operation symbols (e.g., ['+', '-']) (Module 6+).
    */
   allowedVarOps?: string[];
+  /**
+   * Whether recursive function calls (direct self-calls or transitive call-graph cycles)
+   * are permitted in function scopes. Defaults to true when omitted.
+   */
+  allowRecursion?: boolean;
 }
 
 export interface SlotCapConfig {
@@ -319,8 +324,15 @@ export interface CreativeVariationCard {
 export type DemoSpotlightType =
   | 'execution-order'
   | 'egocentric-pov'
+  | 'rotation-in-place'
+  | 'south-pov-turn'
   | 'world-item'
+  | 'shoulder-gripper'
   | 'backpack'
+  | 'beat-ring'
+  | 'beat-cursor-reticle'
+  | 'depot-stack-top'
+  | 'depot-out-chute'
   | 'loop-counter'
   | 'call-stack-jump'
   | 'sensor-beam'
@@ -330,6 +342,11 @@ export type DemoSpotlightType =
   | 'pose-bookmark'
   | 'variable-watch';
 
+export interface CurriculumDepotDefinition extends DepotState {
+  /** Bitmask indicating active Depot workshop stations (e.g. stacks 1..3 = 0x07, +OUT = 0x0F). */
+  activeStationsMask?: number;
+}
+
 export interface ExplanationDemoTab {
   id: string;
   label: string;
@@ -337,7 +354,7 @@ export interface ExplanationDemoTab {
   title?: string;
   simId?: CurriculumSimId;
   gridState?: CurriculumGridDefinition;
-  depotState?: DepotState;
+  depotState?: CurriculumDepotDefinition;
   switchyardState?: CurriculumSwitchyardDefinition;
   workspace: WorkspaceState;
   spotlights?: DemoSpotlightType[];
@@ -349,9 +366,9 @@ export interface ActivityVersionPayload {
   /** Ordered multi-map variants evaluated simultaneously on the same student program (M5–M6+) */
   gridVariants?: CurriculumGridDefinition[];
   /** Read-only Depot initial & target stack definition when simId === 'depot' */
-  depot?: DepotState;
+  depot?: CurriculumDepotDefinition;
   /** Ordered multi-run Depot test cases evaluated simultaneously (M5–M6+) */
-  depotVariants?: DepotState[];
+  depotVariants?: CurriculumDepotDefinition[];
   /** Read-only Switchyard train sorting definition when simId === 'switchyard' */
   switchyard?: CurriculumSwitchyardDefinition;
   /** Ordered multi-stream Switchyard variants evaluated simultaneously */
@@ -558,7 +575,10 @@ export function createCurriculumGridState(
 
   const baseItems = cloneWorldItems(def.worldItems);
   const baseGates = cloneLockedGates(def.lockedGates, true);
-  const synced = syncWorldSwitchesAndGates(def.floorSwitches, baseGates, baseItems);
+  const synced = syncWorldSwitchesAndGates(def.floorSwitches, baseGates, baseItems, {
+    x: def.robot.x,
+    y: def.robot.y,
+  });
 
   return {
     width: def.width,

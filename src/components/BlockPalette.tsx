@@ -19,6 +19,10 @@ import {
   getPlaceholderHintCategory,
 } from '../engine/placeholderHelpers';
 import {
+  getCalleeScopeForBlockType,
+  wouldCallCreateCycle,
+} from '../engine/interpreter';
+import {
   computeSlotBudget,
   computeStagedPalettePolicy,
   getAllowedParamDefs,
@@ -636,7 +640,16 @@ export const BlockPalette: React.FC = React.memo(() => {
     addBlock(activeScope, item.actionType, undefined, blocks.length, item.params);
   };
 
+  const insertionTargetScope: ScopeType = activePlaceholderTarget?.scope ?? activeScope;
+  const isControlItemRecursionBlocked = (controlType: string): boolean => {
+    if (policy.allowRecursion) return false;
+    const calleeScope = getCalleeScopeForBlockType(controlType);
+    if (!calleeScope) return false;
+    return wouldCallCreateCycle(workspace, insertionTargetScope, calleeScope);
+  };
+
   const handleAddCoreBlock = (item: CoreControlItem) => {
+    if (isControlItemRecursionBlocked(item.type)) return;
     const resolvedParams = resolveControlItemParams(item);
     if (activePlaceholderTarget) {
       replacePlaceholderBlock(
@@ -712,6 +725,10 @@ export const BlockPalette: React.FC = React.memo(() => {
   };
 
   const handleCoreControlDragStart = (e: React.DragEvent, item: CoreControlItem) => {
+    if (isControlItemRecursionBlocked(item.type)) {
+      e.preventDefault();
+      return;
+    }
     const resolvedParams = resolveControlItemParams(item);
     e.dataTransfer.setData(
       'application/json',
@@ -823,7 +840,9 @@ export const BlockPalette: React.FC = React.memo(() => {
 
         {/* Core Control Structure Blocks (LOOP, Variables, Functions) */}
         {visibleControlItems.map((item) => {
+          const isRecursionBlocked = isControlItemRecursionBlocked(item.type);
           const isHintHighlighted =
+            !isRecursionBlocked &&
             activeHintCategory !== null &&
             doesBlockMatchHintCategory(item.type, undefined, activeHintCategory);
           return (
@@ -831,13 +850,19 @@ export const BlockPalette: React.FC = React.memo(() => {
               key={item.type}
               type="button"
               data-testid={item.testId}
+              data-recursion-blocked={isRecursionBlocked ? 'true' : undefined}
+              disabled={isRecursionBlocked}
               data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
-              draggable
+              draggable={!isRecursionBlocked}
               onDragStart={(e) => handleCoreControlDragStart(e, item)}
               onClick={() => handleAddCoreBlock(item)}
-              title={item.name}
-              aria-label={item.name}
-              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg cursor-grab active:cursor-grabbing transition-all active:scale-95 touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
+              title={isRecursionBlocked ? 'Recursion disabled in this lesson' : item.name}
+              aria-label={isRecursionBlocked ? `${item.name} (recursion disabled)` : item.name}
+              className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg transition-all touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
+                isRecursionBlocked
+                  ? 'opacity-40 cursor-not-allowed grayscale'
+                  : 'cursor-grab active:cursor-grabbing active:scale-95'
+              } ${
                 isHintHighlighted
                   ? 'ring-3 ring-amber-300 shadow-[0_0_16px_rgba(34,211,238,0.75)] scale-[1.03]'
                   : ''

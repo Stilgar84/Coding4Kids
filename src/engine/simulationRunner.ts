@@ -7,6 +7,7 @@ import {
 import { SimulationEnvironment } from './simulation/types';
 import {
   createInitialInterpreterState,
+  InterpreterTickOptions,
   tickInterpreter,
   validateLoopStructure,
 } from './interpreter';
@@ -15,12 +16,14 @@ import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { turtleSimulationEnvironment } from '../simulations/turtle/turtleEnvironment';
 import { beatSimulationEnvironment } from '../simulations/beat/beatEnvironment';
 import { depotSimulationEnvironment } from '../simulations/depot/depotEnvironment';
+import { switchyardSimulationEnvironment } from '../simulations/switchyard/switchyardEnvironment';
 
 // Ensure environments are registered for headless simulation
 registerSimulation(gridSimulationEnvironment);
 registerSimulation(turtleSimulationEnvironment);
 registerSimulation(beatSimulationEnvironment);
 registerSimulation(depotSimulationEnvironment);
+registerSimulation(switchyardSimulationEnvironment);
 
 export const MAX_SAVE_SIMULATION_STEPS = 1000;
 export const MAX_INSTANT_SIMULATION_STEPS = 1000;
@@ -40,7 +43,8 @@ export function runHeadlessSimulation<TState = any>(
   workspace: WorkspaceState,
   simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard',
   simState: TState,
-  maxSteps: number = MAX_SAVE_SIMULATION_STEPS
+  maxSteps: number = MAX_SAVE_SIMULATION_STEPS,
+  options?: InterpreterTickOptions
 ): SimulationRunResult<TState> {
   const simEnv = getSimEnvironment(simId) as SimulationEnvironment<TState> | undefined;
   const initialRuntime = createInitialInterpreterState();
@@ -94,7 +98,7 @@ export function runHeadlessSimulation<TState = any>(
   let steps = 0;
 
   while (steps < maxSteps) {
-    const res = tickInterpreter(runtime, workspace, state, simEnv);
+    const res = tickInterpreter(runtime, workspace, state, simEnv, options);
     runtime = res.nextRuntime;
     state = res.nextGrid;
     steps++;

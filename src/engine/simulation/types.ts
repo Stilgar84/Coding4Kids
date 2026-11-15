@@ -1,5 +1,13 @@
 import React from 'react';
-import { SimulationStatus } from '../../types';
+import { ScopeType, SimulationStatus } from '../../types';
+
+export interface SimulationRendererProps<TState = any> {
+  state: TState;
+  runtimeStatus?: SimulationStatus;
+  runtimeVariables?: Record<string, number> | null;
+  activeBlockId?: string | null;
+  activeScope?: ScopeType;
+}
 
 export type ActionParamType =
   | 'angle'
@@ -110,7 +118,7 @@ export interface SimulationEnvironment<TState = any> {
   evaluateCompletion?: (state: TState) => SimulationStatus;
 
   // 3. Display & Environment-Specific Tools
-  Renderer: React.FC<{ state: TState; runtimeStatus?: SimulationStatus }>;
+  Renderer: React.FC<SimulationRendererProps<TState>>;
 
   // Map Tools: Grid defines wall/robot/flag tools; Turtle defines Pan/Zoom controls!
   ToolsComponent?: React.FC<{ state: TState }>;

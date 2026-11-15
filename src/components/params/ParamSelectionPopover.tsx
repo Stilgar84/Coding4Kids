@@ -1,9 +1,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionParamDef } from '../../engine/simulation/types';
-import { ParamVisual } from './VisualParamBadges';
+import { ParamVisual, BeatLedOffEraseOverlay, isBeatLedEraseOption } from './VisualParamBadges';
 import { X } from 'lucide-react';
-import { useAppStoreSelector } from '../../store/useAppStore';
+import { useAppStore, useAppStoreSelector } from '../../store/useAppStore';
 import { getSimEnvironment } from '../../engine/simulation/registry';
 import {
   computeStagedPalettePolicy,
@@ -66,6 +66,7 @@ interface ParamSelectionPopoverProps {
   onClose: () => void;
   anchorRef?: React.RefObject<HTMLElement>;
   actionType?: string;
+  onBatchSelect?: (patch: Record<string, any>) => void;
 }
 
 export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
@@ -75,6 +76,7 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   onClose,
   anchorRef,
   actionType,
+  onBatchSelect,
 }) => {
   const { appMode, activeActivityId, activeActivityVersion, activeSimId } = useAppStoreSelector((s) => ({
     appMode: s.appMode,
@@ -224,6 +226,40 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
         </button>
       </div>
 
+      {/* Quick Home (0, 0, 0°) preset for TELEPORT coordinates */}
+      {actionType === 'TELEPORT' && paramDef.type === 'coord' && (
+        <button
+          type="button"
+          data-testid="param-option-teleport-home"
+          onClick={(e) => {
+            e.stopPropagation();
+            const container = anchorRef?.current?.closest?.('[data-testid^="block-params-container-"]');
+            const containerTestId = container?.getAttribute('data-testid');
+            const blockId = containerTestId?.startsWith('block-params-container-')
+              ? containerTestId.slice('block-params-container-'.length)
+              : null;
+            if (blockId) {
+              const { workspace, updateBlockParams } = useAppStore.getState();
+              const matchedScope = (['MAIN', 'F1', 'F2', 'F3'] as const).find((sc) =>
+                workspace[sc]?.some((b) => b.id === blockId)
+              );
+              if (matchedScope) {
+                updateBlockParams(matchedScope, blockId, { x: 0, y: 0, heading: 0 });
+                onClose();
+                return;
+              }
+            }
+            onBatchSelect?.({ x: 0, y: 0, heading: 0 });
+            onSelect(0);
+            onClose();
+          }}
+          className="flex items-center justify-center gap-1.5 w-full min-h-[36px] px-2.5 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/60 hover:bg-cyan-900/70 text-cyan-200 hover:border-cyan-400 text-xs font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+        >
+          <span aria-hidden="true">🏠</span>
+          <span>(0, 0, 0°)</span>
+        </button>
+      )}
+
       {/* Options Grid / Row */}
       <div
         className={`grid ${
@@ -236,11 +272,13 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
       >
         {paramDef.options.map((opt) => {
           const isSelected = opt.value === effectiveValue;
+          const isBeatErase = isBeatLedEraseOption(actionType, opt.value);
           return (
             <button
               key={String(opt.value)}
               type="button"
               data-testid={`param-option-${opt.value}`}
+              data-beat-led-off={isBeatErase ? 'true' : undefined}
               aria-pressed={isSelected}
               aria-label={`${paramDef.label}: ${opt.label ?? opt.value}`}
               onClick={(e) => {
@@ -263,10 +301,19 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
               className={`flex flex-col items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] p-2 rounded-lg border text-xs font-semibold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
                 isSelected
                   ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
+                  : isBeatErase
+                  ? 'bg-slate-800/85 hover:bg-slate-700/85 border-slate-600/80 text-slate-200 shadow-inner hover:border-slate-500'
                   : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-200 hover:border-slate-500'
               }`}
             >
-              <ParamVisual paramDef={paramDef} value={opt.value} compact={false} actionType={actionType} />
+              {isBeatErase ? (
+                <span className="relative inline-flex items-center justify-center rounded-full bg-slate-800/85 border border-slate-600/80 shadow-inner p-0.5">
+                  <ParamVisual paramDef={paramDef} value={opt.value} compact={false} actionType={actionType} />
+                  <BeatLedOffEraseOverlay size={16} />
+                </span>
+              ) : (
+                <ParamVisual paramDef={paramDef} value={opt.value} compact={false} actionType={actionType} />
+              )}
               {opt.label && !hideOptionSubLabel && (
                 <span className="text-[10px] mt-1 text-slate-400 truncate max-w-full">
                   {opt.label}

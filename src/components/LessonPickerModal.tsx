@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Check, Flame, GraduationCap, Lock, Sparkles, Wrench, X } from 'lucide-react';
+import { Check, Flame, GraduationCap, Hourglass, Sparkles, Wrench, X } from 'lucide-react';
 import { PRESET_LEVELS, useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import {
   CURRICULUM_ACTIVITIES,
@@ -11,6 +11,9 @@ import {
 import { LESSONS } from '../data/lessons';
 import {
   ProfileCurriculumProgress,
+  getActivityIdVariants,
+  getBadgeIdVariants,
+  getModuleIdVariants,
   getProfileProgress,
 } from '../services/profileService';
 
@@ -37,15 +40,18 @@ export function isDevQueryEnabled(searchOverride?: string): boolean {
 
 /**
  * Determines whether a curriculum module is unlocked for the given profile progress.
- * Module 1 (`module-1`) is always unlocked by default.
+ * First module (`seq` / `module-1`) is always unlocked by default.
  */
 export function isCurriculumModuleUnlocked(
   moduleId: string,
   progress: ProfileCurriculumProgress,
   searchOverride?: string
 ): boolean {
-  if (moduleId === 'module-1') return true;
-  if (progress.unlockedModules.includes(moduleId)) return true;
+  if (moduleId === 'seq' || moduleId === 'module-1' || moduleId === CURRICULUM_MODULES[0]?.id) {
+    return true;
+  }
+  const modVariants = getModuleIdVariants(moduleId);
+  if (modVariants.some((id) => progress.unlockedModules.includes(id))) return true;
   if (Boolean(progress.unlockAllModules)) return true;
   if (isDevQueryEnabled(searchOverride)) return true;
   return false;
@@ -57,20 +63,26 @@ export function isCurriculumModuleUnlocked(
  * Tiers 2-5 are previewed as locked milestones (unlocked via unlockAllModules/dev mode).
  */
 export function isMasteryChallengeTierUnlocked(
-  tier: (typeof MASTERY_CHALLENGE_TIERS)[number],
+  tier: (typeof MASTERY_CHALLENGE_TIERS)[number] | undefined | null,
   progress?: ProfileCurriculumProgress | null,
   searchOverride?: string
 ): boolean {
-  if (!progress) return false;
+  if (!tier || !progress) return false;
   if (Boolean(progress.unlockAllModules)) return true;
   if (isDevQueryEnabled(searchOverride)) return true;
   if (tier.unlockAfterModuleId) {
-    if (progress.earnedBadges && progress.earnedBadges.includes(`badge-${tier.unlockAfterModuleId}`)) return true;
-    const mod = CURRICULUM_MODULES.find((m) => m.id === tier.unlockAfterModuleId);
+    const badgeVariants = getBadgeIdVariants(`badge-${tier.unlockAfterModuleId}`);
+    if (progress.earnedBadges && badgeVariants.some((b) => progress.earnedBadges.includes(b))) {
+      return true;
+    }
+    const modVariants = getModuleIdVariants(tier.unlockAfterModuleId);
+    const mod = CURRICULUM_MODULES.find((m) => modVariants.includes(m.id));
     if (
       mod &&
       mod.capstoneIds.length > 0 &&
-      mod.capstoneIds.every((capId) => Boolean(progress.completedLessons && progress.completedLessons[capId]))
+      mod.capstoneIds.every((capId) =>
+        getActivityIdVariants(capId).some((id) => Boolean(progress.completedLessons?.[id]))
+      )
     ) {
       return true;
     }
@@ -412,7 +424,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
               }`}
             >
               <span className="text-base leading-none" aria-hidden="true">
-                {isUnlockAll ? '🔓' : '🔒'}
+                {isUnlockAll ? '🌟' : '🗝️'}
               </span>
               <span className="hidden md:inline">
                 {isUnlockAll ? 'All Open' : 'Unlock All'}
@@ -441,7 +453,9 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
             <div className="space-y-4">
               {CURRICULUM_MODULES.map((mod) => {
                 const activities = getActivitiesForModule(mod.id);
-                const isBadgeEarned = earnedBadges.includes(mod.badgeId);
+                const isBadgeEarned = getBadgeIdVariants(mod.badgeId).some((b) =>
+                  earnedBadges.includes(b)
+                );
                 const isModuleUnlocked = isCurriculumModuleUnlocked(mod.id, progress);
 
                 if (activities.length === 0) {
@@ -477,7 +491,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                           <span aria-hidden="true">{mod.badgeIcon}</span>
                         </button>
                         <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 shrink-0">
-                          <Lock className="w-3.5 h-3.5" />
+                          <Hourglass className="w-3.5 h-3.5" aria-hidden="true" />
                           <span>Soon</span>
                         </span>
                       </div>
@@ -485,7 +499,9 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                   );
                 }
 
-                const completedCount = activities.filter((a) => completedActivities[a.id]).length;
+                const completedCount = activities.filter((a) =>
+                  getActivityIdVariants(a.id).some((id) => Boolean(completedActivities[id]))
+                ).length;
 
                 return (
                   <section
@@ -518,7 +534,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                                 title="Complete the previous module or tap Unlock All"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-950 border border-amber-500/40 text-xs font-extrabold text-amber-300"
                               >
-                                <span aria-hidden="true">🔒</span>
+                                <span aria-hidden="true">⏳</span>
                                 <span className="sr-only">Locked</span>
                               </span>
                             )}
@@ -567,7 +583,9 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-2.5">
                       {activities.map((act) => {
                         const isActive = act.id === activeActivityId;
-                        const isCompleted = Boolean(completedActivities[act.id]);
+                        const isCompleted = getActivityIdVariants(act.id).some((id) =>
+                          Boolean(completedActivities[id])
+                        );
                         const isCapstone = act.format === 'capstone';
                         const isNextUp =
                           isModuleUnlocked && nextUpActivity?.id === act.id && !isActive;
@@ -619,7 +637,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                               </span>
 
                               {!isModuleUnlocked ? (
-                                <Lock
+                                <Hourglass
                                   className="w-3.5 h-3.5 text-slate-500 shrink-0"
                                   aria-hidden="true"
                                 />
@@ -680,9 +698,25 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                 </div>
               </div>
 
-              {/* 5-Tier Roadmap Cards */}
+              {/* Challenge Roadmap Cards (or V2 upcoming empty state) */}
               <div className="space-y-3">
-                {MASTERY_CHALLENGE_TIERS.map((tier) => {
+                {MASTERY_CHALLENGE_TIERS.length === 0 ? (
+                  <div
+                    data-testid="mastery-challenges-empty"
+                    className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center space-y-2"
+                  >
+                    <div className="text-3xl" aria-hidden="true">
+                      🏆
+                    </div>
+                    <h4 className="text-sm sm:text-base font-extrabold text-slate-200">
+                      Mastery Challenges Coming in Stage 3
+                    </h4>
+                    <p className="text-xs text-slate-400 font-medium">
+                      Finish the core curriculum modules to prepare for upcoming challenge milestones.
+                    </p>
+                  </div>
+                ) : (
+                  MASTERY_CHALLENGE_TIERS.map((tier) => {
                   const unlocked = isMasteryChallengeTierUnlocked(tier, progress);
                   const isTier1 = tier.tier === 1;
 
@@ -701,7 +735,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="text-xl" aria-hidden="true">
-                            {unlocked ? '🔥' : '🔒'}
+                            {unlocked ? '🔥' : '⏳'}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
@@ -747,7 +781,9 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                                 version: 1,
                               } as CurriculumActivity);
 
-                            const isCompleted = Boolean(completedActivities[chalId]);
+                            const isCompleted = getActivityIdVariants(chalId).some((id) =>
+                              Boolean(completedActivities[id])
+                            );
                             const medalId = `medal-${chalId.toLowerCase().replace('.', '-')}`;
                             const hasMedal = earnedMedals.includes(medalId);
                             const isActive = chalId === activeActivityId;
@@ -812,7 +848,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                       )}
                     </section>
                   );
-                })}
+                }))}
               </div>
             </div>
           ) : (
@@ -901,7 +937,7 @@ const LessonPickerModalContent: React.FC<LessonPickerModalProps> = ({ initialTab
                   <span className="text-3xl sm:text-4xl" aria-hidden="true">
                     🏗️
                   </span>
-                  <span className="text-xs sm:text-sm">Crate Depot</span>
+                  <span className="text-xs sm:text-sm">Depot</span>
                 </button>
 
                 <button

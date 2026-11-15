@@ -100,6 +100,7 @@ const BEAT_EXCLUSIVE_BLOCKS = new Set<string>([
   'LIGHT_PIXEL',
   'CURSOR_STEP',
   'CURSOR_TURN',
+  'SET_BEAT_DELAY',
 ]);
 
 const TURTLE_EXCLUSIVE_BLOCKS = new Set<string>([
@@ -132,6 +133,7 @@ const DEPOT_EXCLUSIVE_BLOCKS = new Set<string>([
   'DEPOT_GRAB',
   'DEPOT_PLACE',
   'DEPOT_SEND_OUT',
+  'DEPOT_SEND_GATE',
 ]);
 
 /**

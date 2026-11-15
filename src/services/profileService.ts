@@ -1,5 +1,186 @@
 import { CodeBlock, WorkspaceState } from '../types';
-import { CURRICULUM_MODULES, getActivitiesForModule } from '../data/curriculum';
+import * as CurriculumData from '../data/curriculum';
+
+const { CURRICULUM_MODULES, getActivitiesForModule } = CurriculumData;
+
+export const LEGACY_TO_SLUG_MODULE_MAP: Record<string, string> = {
+  'module-1': 'seq',
+  'module-2': 'param',
+  'module-3': 'loop',
+  'module-4': 'func',
+};
+
+export const LEGACY_TO_SLUG_BADGE_MAP: Record<string, string> = {
+  'badge-module-1': 'badge-seq',
+  'badge-module-2': 'badge-param',
+  'badge-module-3': 'badge-loop',
+  'badge-module-4': 'badge-func',
+};
+
+export const LEGACY_TO_SLUG_ACTIVITY_MAP: Record<string, string> = {
+  '1.0': 'seq.0',
+  '1.1': 'seq.1',
+  '1.2': 'seq.2',
+  '1.2a': 'seq.2a',
+  '1.3': 'seq.3',
+  '1.4': 'seq.4',
+  '1.5': 'seq.5',
+  '1.6': 'seq.6',
+  '1.7': 'seq.7',
+  '1.7a': 'seq.7a',
+  '1.8': 'seq.8',
+  '1A': 'seq.A',
+  '1B': 'seq.B',
+  '1C': 'seq.C',
+  '2.0': 'param.0',
+  '2.1': 'param.1',
+  '2.2': 'param.2',
+  '2.3': 'param.3',
+  '2.4': 'param.4',
+  '2.5': 'param.5',
+  '2.5a': 'param.6',
+  '2.6': 'param.7',
+  '2.7': 'param.8',
+  '2.8': 'param.9',
+  '2.9': 'param.10',
+  '2A': 'param.A',
+  '2B': 'param.B',
+  '2C': 'param.C',
+  '3.0': 'loop.0',
+  '3.1': 'loop.1',
+  '3.2': 'loop.2',
+  '3.3': 'loop.3',
+  '3.3a': 'loop.3a',
+  '3.4': 'loop.4',
+  '3.5': 'loop.5',
+  '3.5a': 'loop.5a',
+  '3.6': 'loop.6',
+  '3.7': 'loop.7',
+  '3.8': 'loop.8',
+  '3.9': 'loop.9',
+  '3.10': 'loop.10',
+  '3.11': 'loop.11',
+  '3A': 'loop.A',
+  '3B': 'loop.B',
+  '3C': 'loop.C',
+  '4.0': 'func.0',
+  '4.1': 'func.1',
+  '4.2': 'func.2',
+  '4.3': 'func.3',
+  '4.4': 'func.4',
+  '4.5': 'func.5',
+  '4.6': 'func.6',
+  '4.7': 'func.7',
+  '4A': 'func.A',
+  '4B': 'func.B',
+  '4C': 'func.C',
+};
+
+function invertAliasMap(map: Record<string, string>): Record<string, string> {
+  const inverted: Record<string, string> = {};
+  for (const [legacy, slug] of Object.entries(map)) {
+    if (!inverted[slug]) inverted[slug] = legacy;
+  }
+  return inverted;
+}
+
+function getEffectiveModuleAliasMap(): Record<string, string> {
+  const upstream = (CurriculumData as Record<string, unknown>).LEGACY_MODULE_ID_ALIASES as
+    | Record<string, string>
+    | undefined;
+  return upstream ? { ...LEGACY_TO_SLUG_MODULE_MAP, ...upstream } : LEGACY_TO_SLUG_MODULE_MAP;
+}
+
+function getEffectiveActivityAliasMap(): Record<string, string> {
+  const upstream = (CurriculumData as Record<string, unknown>).LEGACY_ACTIVITY_ID_ALIASES as
+    | Record<string, string>
+    | undefined;
+  return upstream ? { ...LEGACY_TO_SLUG_ACTIVITY_MAP, ...upstream } : LEGACY_TO_SLUG_ACTIVITY_MAP;
+}
+
+function isSlugCatalogActive(): boolean {
+  return (
+    typeof (CurriculumData as Record<string, unknown>).resolveModuleIdAlias === 'function' ||
+    CURRICULUM_MODULES.some((m) => m.id === 'seq')
+  );
+}
+
+/**
+ * Returns `[id, slugAlias, legacyAlias]` deduplicated for module ID lookups across legacy and slug schemas.
+ */
+export function getModuleIdVariants(moduleId: string): string[] {
+  const legacyToSlug = getEffectiveModuleAliasMap();
+  const slugToLegacy = invertAliasMap(legacyToSlug);
+  const out = new Set<string>([moduleId]);
+  if (legacyToSlug[moduleId]) out.add(legacyToSlug[moduleId]);
+  if (slugToLegacy[moduleId]) out.add(slugToLegacy[moduleId]);
+  const upstreamResolver = (CurriculumData as Record<string, unknown>).resolveModuleIdAlias;
+  if (typeof upstreamResolver === 'function') {
+    const resolved = (upstreamResolver as (id: string) => string)(moduleId);
+    if (resolved) out.add(resolved);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Returns `[id, slugAlias, legacyAlias]` deduplicated for activity ID lookups across legacy and slug schemas.
+ */
+export function getActivityIdVariants(activityId: string): string[] {
+  const legacyToSlug = getEffectiveActivityAliasMap();
+  const slugToLegacy = invertAliasMap(legacyToSlug);
+  const out = new Set<string>([activityId]);
+  if (legacyToSlug[activityId]) out.add(legacyToSlug[activityId]);
+  if (slugToLegacy[activityId]) out.add(slugToLegacy[activityId]);
+  const upstreamResolver = (CurriculumData as Record<string, unknown>).resolveActivityIdAlias;
+  if (typeof upstreamResolver === 'function') {
+    const resolved = (upstreamResolver as (id: string) => string)(activityId);
+    if (resolved) out.add(resolved);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Returns `[badgeId, slugAlias, legacyAlias]` deduplicated for module badge lookups.
+ */
+export function getBadgeIdVariants(badgeId: string): string[] {
+  const slugToLegacy = invertAliasMap(LEGACY_TO_SLUG_BADGE_MAP);
+  const out = new Set<string>([badgeId]);
+  if (LEGACY_TO_SLUG_BADGE_MAP[badgeId]) out.add(LEGACY_TO_SLUG_BADGE_MAP[badgeId]);
+  if (slugToLegacy[badgeId]) out.add(slugToLegacy[badgeId]);
+  return Array.from(out);
+}
+
+/**
+ * Resolves a module ID (legacy `module-1`..`module-4` or slug `seq`..`func`) to the active catalog's canonical ID.
+ */
+export function canonicalizeModuleIdForActiveCurriculum(moduleId: string): string {
+  const legacyToSlug = getEffectiveModuleAliasMap();
+  if (isSlugCatalogActive()) {
+    const upstreamResolver = (CurriculumData as Record<string, unknown>).resolveModuleIdAlias;
+    if (typeof upstreamResolver === 'function') {
+      return (upstreamResolver as (id: string) => string)(moduleId);
+    }
+    return legacyToSlug[moduleId] ?? moduleId;
+  }
+  const slugToLegacy = invertAliasMap(legacyToSlug);
+  return slugToLegacy[moduleId] ?? moduleId;
+}
+
+/**
+ * Resolves an activity ID (legacy `1.0`..`4C` or slug `seq.0`..`func.C`) to the active catalog's canonical ID.
+ */
+export function canonicalizeActivityIdForActiveCurriculum(activityId: string): string {
+  const legacyToSlug = getEffectiveActivityAliasMap();
+  if (isSlugCatalogActive()) {
+    const upstreamResolver = (CurriculumData as Record<string, unknown>).resolveActivityIdAlias;
+    if (typeof upstreamResolver === 'function') {
+      return (upstreamResolver as (id: string) => string)(activityId);
+    }
+    return legacyToSlug[activityId] ?? activityId;
+  }
+  const slugToLegacy = invertAliasMap(legacyToSlug);
+  return slugToLegacy[activityId] ?? activityId;
+}
 import {
   DEFAULT_FALLBACK_THUMBNAIL,
   SavedProgramEntry,
@@ -624,7 +805,9 @@ export function getLessonAutosave(
   lessonId: string
 ): LessonAutosaveEntry | null {
   const bundle = getProfileAutosaveData(profileId || DEFAULT_PROFILE_ID);
-  const entry = bundle.lessons[lessonId];
+  const entry = getActivityIdVariants(lessonId)
+    .map((key) => bundle.lessons[key])
+    .find(Boolean);
   if (!entry) return null;
   return {
     workspace: sanitizeAutosaveWorkspace(entry.workspace),
@@ -814,7 +997,7 @@ export function getProfileProgress(profileId: string): ProfileCurriculumProgress
 
 export function isLessonCompleted(profileId: string, lessonId: string): boolean {
   const progress = getProfileProgress(profileId);
-  return Boolean(progress.completedLessons[lessonId]);
+  return getActivityIdVariants(lessonId).some((id) => Boolean(progress.completedLessons[id]));
 }
 
 export function markLessonCompleted(
@@ -829,9 +1012,14 @@ export function markLessonCompleted(
     ? sanitizeProgress(store.profiles[targetProfileId])
     : createDefaultProgress();
 
-  const alreadyCompleted = Boolean(current.completedLessons[lessonId]);
-  current.completedLessons[lessonId] = {
-    completedAt: current.completedLessons[lessonId]?.completedAt || now,
+  const canonicalLessonId = canonicalizeActivityIdForActiveCurriculum(lessonId);
+  const variants = getActivityIdVariants(lessonId);
+  const existingRecord = variants
+    .map((id) => current.completedLessons[id])
+    .find((rec) => Boolean(rec));
+  const alreadyCompleted = Boolean(existingRecord);
+  current.completedLessons[canonicalLessonId] = {
+    completedAt: existingRecord?.completedAt || now,
     version,
   };
 
@@ -843,14 +1031,19 @@ export function markLessonCompleted(
     const mod = CURRICULUM_MODULES[i];
     const allCapstonesDone =
       mod.capstoneIds.length > 0 &&
-      mod.capstoneIds.every((capId) => Boolean(current.completedLessons[capId]));
+      mod.capstoneIds.every((capId) =>
+        getActivityIdVariants(capId).some((id) => Boolean(current.completedLessons[id]))
+      );
 
     const modActivities = getActivitiesForModule(mod.id);
     const allRegisteredActivitiesDone =
       modActivities.length > 0 &&
-      modActivities.every((act) => Boolean(current.completedLessons[act.id]));
+      modActivities.every((act) =>
+        getActivityIdVariants(act.id).some((id) => Boolean(current.completedLessons[id]))
+      );
 
-    if ((allCapstonesDone || allRegisteredActivitiesDone) && !badgeSet.has(mod.badgeId)) {
+    const hasModBadgeAlready = getBadgeIdVariants(mod.badgeId).some((b) => badgeSet.has(b));
+    if ((allCapstonesDone || allRegisteredActivitiesDone) && !hasModBadgeAlready) {
       badgeSet.add(mod.badgeId);
       newlyEarnedBadges.push(mod.badgeId);
     }

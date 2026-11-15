@@ -535,14 +535,19 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = React.memo(({
 
   if (simId === 'turtle' && turtlePreview) {
     return (
-      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-white border border-slate-300 overflow-hidden shrink-0 flex items-center justify-center shadow-inner">
-        <img
-          src={turtlePreview.thumbnailUrl}
-          alt={`${card.title} drawing preview`}
-          data-testid={`variation-thumbnail-${card.id}`}
-          className="w-full h-full object-contain p-0.5 select-none pointer-events-none"
-          draggable={false}
-        />
+      <div
+        data-testid={`variation-turtle-frame-${card.id}`}
+        className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-[#e2e8f0] border border-slate-300 p-1 overflow-hidden shrink-0 flex items-center justify-center shadow-inner"
+      >
+        <div className="w-full h-full rounded bg-white border border-slate-300/80 overflow-hidden flex items-center justify-center">
+          <img
+            src={turtlePreview.thumbnailUrl}
+            alt={`${card.title} drawing preview`}
+            data-testid={`variation-thumbnail-${card.id}`}
+            className="w-full h-full object-contain p-0.5 select-none pointer-events-none"
+            draggable={false}
+          />
+        </div>
       </div>
     );
   }
@@ -594,7 +599,13 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = React.memo(({
         >
           {Array.from({ length: BEAT_GRID_SIZE }, (_, row) =>
             Array.from({ length: BEAT_GRID_SIZE }, (__, col) => {
-              const ledColor = displayState.leds?.[row]?.[col] ?? null;
+              const rawLedColor = displayState.leds?.[row]?.[col] ?? null;
+              const normalizedLed =
+                typeof rawLedColor === 'string' ? rawLedColor.trim().toLowerCase() : '';
+              const ledColor =
+                normalizedLed && normalizedLed !== '#0f172a' && normalizedLed !== '#000000'
+                  ? rawLedColor
+                  : null;
               const isLit = Boolean(ledColor);
               const isCursorHere =
                 Boolean(displayState.cursor?.visible) &&
