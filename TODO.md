@@ -1,10 +1,5 @@
 
 
-train:
-initial depot show wagon in inverse order. show +4 when 4 available. still show 1 when last wagon is sent
-no animation between initial depot and scanner.
-
-
 end icon for if should just spell END instead of the arrow
 also if and all multiblock structure should use the line under block system that loop use.
 
@@ -13,14 +8,11 @@ in loop.5 bot start on plank, making it invisible
 
 in multi map lesson, reseting should keep current map.
 
+
 in depot, the fifo is missing animation: block should be animated to get to the graber, and also the other block on the belt should animate moving the their new position to clearly show progress. also consider changing shape to be mor like a U shaped belt where block are droped on one side and taken back from the other side? or something like so that we can see the
 blocks on the queue instead of them been cut off.
 
-app should start in learn mode
 
-can update be checked when app get to front/tablet unlock (basically when resuming)?
-=> Yes, a PWA can check for updates when the app comes to the foreground or the tablet unlocks by listening to the visibilitychange event .
-=> do that (with a minimum 5min between checks)
 
 
 ---

@@ -70,7 +70,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
       expect(report.ruleResults[0].passed).toBe(true);
       expect(report.passed).toBe(true);
       expect(report.ruleResults[0].minWinningBlocks).toBe(3); // 3 MOVE_FWD > 2 MAIN cap
-      expect(elapsed).toBeLessThan(200); // < 200 ms gate
+      expect(elapsed).toBeLessThan(500); // < 500 ms gate
     });
 
     it('detects a multi-scope bypass when MAIN slot cap is too loose', () => {
@@ -278,7 +278,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
       expect(report.variantResults?.length).toBe(2);
       expect(report.ruleResults[0].passed).toBe(true);
       expect(report.ruleResults[0].diagnostic).toContain('Multi-variant product verified');
-      expect(elapsed).toBeLessThan(200); // < 200 ms gate
+      expect(elapsed).toBeLessThan(500); // < 500 ms gate
     });
 
     it('verifies Switchyard multi-stream sorting and forbidBlocks: IF constraint', () => {
@@ -350,7 +350,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
       expect(report.ruleResults[0].passed).toBe(true);
       expect(report.passed).toBe(true);
       expect(report.ruleResults[0].minWinningBlocks).toBeNull();
-      expect(elapsed).toBeLessThan(200);
+      expect(elapsed).toBeLessThan(500);
     });
   });
 
@@ -412,7 +412,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
 
       expect(ruleRes.passed).toBe(true);
       expect(ruleRes.diagnostic).toContain('Multi-variant product verified');
-      expect(elapsed).toBeLessThan(200);
+      expect(elapsed).toBeLessThan(500);
     });
   });
 

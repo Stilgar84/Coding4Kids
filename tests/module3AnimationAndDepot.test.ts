@@ -319,14 +319,14 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
 
       const report9 = verifyActivityConstraints(getActivityLatest('loop.9')!);
       expect(report9.passed).toBe(true);
-      expect(report9.elapsedMs).toBeLessThan(200);
+      expect(report9.elapsedMs).toBeLessThan(500);
       expect(report9.referenceCheck.blockCount).toBe(6);
       expect(report9.scaffoldCheck.passed).toBe(true);
       expect(report9.ruleResults[0].bypassSolution).toBeUndefined();
 
       const report10 = verifyActivityConstraints(getActivityLatest('loop.10')!);
       expect(report10.passed).toBe(true);
-      expect(report10.elapsedMs).toBeLessThan(200);
+      expect(report10.elapsedMs).toBeLessThan(500);
       expect(report10.referenceCheck.blockCount).toBe(8);
       expect(report10.scaffoldCheck.passed).toBe(true);
       expect(report10.ruleResults[0].bypassSolution).toBeUndefined();

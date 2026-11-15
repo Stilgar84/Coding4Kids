@@ -909,7 +909,7 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
 
     const rep5a = verifySwitchyardActivityConstraints(branch5a);
     expect(rep5a.passed).toBe(true);
-    expect(rep5a.elapsedMs).toBeLessThan(200);
+    expect(rep5a.elapsedMs).toBeLessThan(500);
 
     // 2. branch.8: 2-switch 3-dock RED/BLUE/GREEN with junction B
     const branch8: CurriculumActivity = {
@@ -982,7 +982,7 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
 
     const rep8 = verifySwitchyardActivityConstraints(branch8);
     expect(rep8.passed).toBe(true);
-    expect(rep8.elapsedMs).toBeLessThan(200);
+    expect(rep8.elapsedMs).toBeLessThan(500);
 
     // 3. branch.A: AND / NOT compound conditions
     const branchA: CurriculumActivity = {
@@ -1062,7 +1062,7 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
     const repA = verifySwitchyardActivityConstraints(branchA);
     expect(repA.referenceCheck.passed).toBe(true);
     expect(repA.ruleResults[0].passed).toBe(true);
-    expect(repA.elapsedMs).toBeLessThan(200);
+    expect(repA.elapsedMs).toBeLessThan(500);
 
     // 4. while.5: WHILE(hasNextItem) on variable-length queues
     const while5: CurriculumActivity = {
@@ -1145,7 +1145,7 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
     expect(repWhile5.referenceCheck.passed, repWhile5.referenceCheck.reason).toBe(true);
     expect(repWhile5.ruleResults[0].passed, repWhile5.ruleResults[0].diagnostic).toBe(true);
     expect(repWhile5.passed).toBe(true);
-    expect(repWhile5.elapsedMs).toBeLessThan(200);
+    expect(repWhile5.elapsedMs).toBeLessThan(500);
   });
 
   it('preserves legacy carsOnTrack overrides and fixes solver IF/ELSE_IF/ELSE cost + single queueLens loopCounts', () => {

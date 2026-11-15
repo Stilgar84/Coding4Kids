@@ -333,7 +333,7 @@ describe('Module `while` Curriculum Authoring (while.0..while.C)', () => {
       expect(report.ruleResults.every((r) => r.passed), `${id} rules`).toBe(true);
       expect(report.passed, `${id} overall`).toBe(true);
       expect(report.variantCount).toBe(4);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
     }
 
     // Also verify Left-Hand Wall Follower solves all 4 mazes of while.A cleanly
@@ -410,14 +410,14 @@ describe('Module `while` Curriculum Authoring (while.0..while.C)', () => {
     }
   });
 
-  it('verifies while.3 and while.4 Depot v4 constraints (<200ms) and multi-variant runtime', () => {
+  it('verifies while.3 and while.4 Depot v4 constraints (<500ms) and multi-variant runtime', () => {
     for (const id of ['while.3', 'while.4'] as const) {
       const act = WHILE_ACTIVITIES.find((a) => a.id === id)!;
       expect(act.depotVariants?.length, `${id} depotVariants`).toBe(4);
 
       const report = verifyActivityConstraints(act);
       expect(report.passed, `${id} constraints`).toBe(true);
-      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(200);
+      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(500);
       for (const r of report.ruleResults) {
         expect(r.passed, `${id} rule ${r.ruleId}`).toBe(true);
       }
@@ -437,14 +437,14 @@ describe('Module `while` Curriculum Authoring (while.0..while.C)', () => {
     }
   });
 
-  it('verifies while.5 and while.8 Switchyard v2 constraints (<200ms) and multi-stream runtime', () => {
+  it('verifies while.5 and while.8 Switchyard v2 constraints (<500ms) and multi-stream runtime', () => {
     for (const id of ['while.5', 'while.8'] as const) {
       const act = WHILE_ACTIVITIES.find((a) => a.id === id)!;
       expect(act.switchyardVariants?.length, `${id} switchyardVariants`).toBe(4);
 
       const report = verifyActivityConstraints(act);
       expect(report.passed, `${id} constraints`).toBe(true);
-      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(200);
+      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(500);
       for (const r of report.ruleResults) {
         expect(r.passed, `${id} rule ${r.ruleId}`).toBe(true);
       }

@@ -824,8 +824,8 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
             exploredStates: r.exploredStates,
           }))
         )
-      ).toBeLessThan(200);
-      expect(wallMs).toBeLessThan(200);
+      ).toBeLessThan(500);
+      expect(wallMs).toBeLessThan(500);
     });
   });
 

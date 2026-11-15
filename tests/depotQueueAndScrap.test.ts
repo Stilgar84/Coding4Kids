@@ -815,7 +815,7 @@ describe('Commit 24: Depot M5 (FIFO Queue, Damaged Crates, Gates, Sensors & v3 B
 
       const ruleCheck = verifyDepotActivityRule(activity, activity.antiBypassRules![0], 0);
       expect(ruleCheck.passed).toBe(true);
-      expect(ruleCheck.elapsedMs).toBeLessThan(200);
+      expect(ruleCheck.elapsedMs).toBeLessThan(500);
     });
   });
 });

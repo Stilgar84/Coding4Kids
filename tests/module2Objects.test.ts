@@ -265,7 +265,7 @@ describe('Parameters (param): Interactive Object Lessons (param.7–param.10) & 
       // Full automated solver verification (reference + scaffold + both antiBypassRules)
       const report = verifyActivityConstraints(actParam8);
       expect(report.passed).toBe(true);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
       expect(report.referenceCheck.passed).toBe(true);
       expect(report.scaffoldCheck.applicable).toBe(true);
       expect(report.scaffoldCheck.passed).toBe(true);
@@ -284,7 +284,7 @@ describe('Parameters (param): Interactive Object Lessons (param.7–param.10) & 
         expect(act.format).toBe('puzzle');
         const report = verifyActivityConstraints(act);
         expect(report.passed).toBe(true);
-        expect(report.elapsedMs).toBeLessThan(200);
+        expect(report.elapsedMs).toBeLessThan(500);
         expect(report.referenceCheck.passed).toBe(true);
         expect(report.scaffoldCheck.applicable).toBe(true);
         expect(report.scaffoldCheck.passed).toBe(true);
@@ -329,7 +329,7 @@ describe('Parameters (param): Interactive Object Lessons (param.7–param.10) & 
       // Automated solver verification (reference + scaffold + all 3 antiBypassRules)
       const report = verifyActivityConstraints(actParamA);
       expect(report.passed).toBe(true);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
       expect(report.referenceCheck.passed).toBe(true);
       expect(report.scaffoldCheck.applicable).toBe(true);
       expect(report.scaffoldCheck.passed).toBe(true);

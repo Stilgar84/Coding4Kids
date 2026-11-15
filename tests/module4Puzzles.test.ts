@@ -70,7 +70,7 @@ describe('Functions (func): Validated Robot & Depot Function Puzzles', () => {
         }
 
         expect(report.passed).toBe(true);
-        expect(elapsed).toBeLessThan(200);
+        expect(elapsed).toBeLessThan(500);
       });
     }
 

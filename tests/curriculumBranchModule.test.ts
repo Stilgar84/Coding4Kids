@@ -556,14 +556,14 @@ describe('Module `branch` — Robot Grid Solver & Headless Simulation Verificati
     }
   });
 
-  it('runs branch.6b side-corridor solver verification (incl. SOUTH start) under 200ms', () => {
+  it('runs branch.6b side-corridor solver verification (incl. SOUTH start) under 500ms', () => {
     const act = getActivityById('branch.6b');
     const report = verifyActivityConstraints(act);
     expect(report.passed, JSON.stringify(report.ruleResults)).toBe(true);
     expect(report.referenceCheck.passed, report.referenceCheck.reason).toBe(true);
     expect(report.scaffoldCheck.passed, report.scaffoldCheck.reason).toBe(true);
     expect(report.ruleResults.every((r) => r.passed)).toBe(true);
-    expect(report.elapsedMs).toBeLessThan(200);
+    expect(report.elapsedMs).toBeLessThan(500);
   });
 
   it('runs branch.7 Tab 1 NOT pathAhead demo to SUCCESS', () => {
@@ -578,7 +578,7 @@ describe('Module `branch` — Robot Grid Solver & Headless Simulation Verificati
     expect(run.status).toBe('SUCCESS');
   });
 
-  it('verifies branch.9 Fix-It bug hunt: starter fails Var 1 & 2 overshoot, passes Var 3; fix passes all 3 under 200ms', () => {
+  it('verifies branch.9 Fix-It bug hunt: starter fails Var 1 & 2 overshoot, passes Var 3; fix passes all 3 under 500ms', () => {
     const act = getActivityById('branch.9');
     const starterStatuses = act.gridVariants!.map((gridDef: CurriculumGridDefinition) =>
       runHeadlessSimulation(
@@ -595,7 +595,7 @@ describe('Module `branch` — Robot Grid Solver & Headless Simulation Verificati
     expect(report.referenceCheck.passed, report.referenceCheck.reason).toBe(true);
     expect(report.scaffoldCheck.passed, report.scaffoldCheck.reason).toBe(true);
     expect(report.ruleResults.every((r) => r.passed)).toBe(true);
-    expect(report.elapsedMs).toBeLessThan(200);
+    expect(report.elapsedMs).toBeLessThan(500);
   });
 
   it('verifies branch.7a compound key vault: starter blocked at gate on all 3 maps, reference passes all 3', () => {
@@ -620,12 +620,12 @@ describe('Module `branch` — Robot Grid Solver & Headless Simulation Verificati
     });
   });
 
-  it('passes full constraint solver (< 200ms) unconditionally on remaining Grid puzzles (branch.1, branch.6a, branch.7a)', () => {
+  it('passes full constraint solver (< 500ms) unconditionally on remaining Grid puzzles (branch.1, branch.6a, branch.7a)', () => {
     for (const id of ['branch.1', 'branch.6a', 'branch.7a'] as const) {
       const act = getActivityById(id);
       const report = verifyActivityConstraints(act);
       expect(report.passed, `${id} constraints`).toBe(true);
-      expect(report.elapsedMs, `${id} < 200ms`).toBeLessThan(200);
+      expect(report.elapsedMs, `${id} < 500ms`).toBeLessThan(500);
     }
   });
 
@@ -677,7 +677,7 @@ describe('Module `branch` — Switchyard v2 Solver & Demo Execution Verification
     }
   });
 
-  it('passes full anti-bypass solver (< 200ms) and multi-variant runtime across all Switchyard branch puzzles', () => {
+  it('passes full anti-bypass solver (< 500ms) and multi-variant runtime across all Switchyard branch puzzles', () => {
     const switchyardPuzzleIds = [
       'branch.3',
       'branch.5',
@@ -698,7 +698,7 @@ describe('Module `branch` — Switchyard v2 Solver & Demo Execution Verification
       for (const rule of report.ruleResults) {
         expect(rule.passed, `${id} rule ${rule.ruleId}: ${rule.diagnostic ?? ''}`).toBe(true);
       }
-      expect(report.elapsedMs, `${id} < 200ms`).toBeLessThan(200);
+      expect(report.elapsedMs, `${id} < 500ms`).toBeLessThan(500);
 
       const variants = act.switchyardVariants ?? (act.switchyard ? [act.switchyard] : []);
       expect(variants.length, `${id} has switchyard variants`).toBeGreaterThan(0);

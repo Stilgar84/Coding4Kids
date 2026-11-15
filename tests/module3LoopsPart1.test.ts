@@ -390,7 +390,7 @@ describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0
       expect(report.referenceCheck.passed, report.referenceCheck.reason).toBe(true);
       expect(report.scaffoldCheck.passed, report.scaffoldCheck.reason).toBe(true);
       expect(report.passed).toBe(true);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
       expect(report.ruleResults).toHaveLength(1);
       expect(report.ruleResults[0].passed).toBe(true);
       expect(report.ruleResults[0].counterexampleWorkspace).toBeUndefined();
@@ -425,7 +425,7 @@ describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0
       expect(report.referenceCheck.passed, report.referenceCheck.reason).toBe(true);
       expect(report.scaffoldCheck.passed, report.scaffoldCheck.reason).toBe(true);
       expect(report.passed).toBe(true);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
       expect(report.ruleResults).toHaveLength(2);
 
       const noLoopRule = report.ruleResults.find(

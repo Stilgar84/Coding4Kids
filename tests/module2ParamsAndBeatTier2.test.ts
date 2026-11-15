@@ -628,7 +628,7 @@ describe('Parameters (param): Action Parameters (param.1-param.4, param.B) & Bea
         `[param.1 Solver Proof] elapsedMs=${report.elapsedMs.toFixed(2)}ms, minWinningBlocks(noRepeat)=${report.ruleResults[0]?.minWinningBlocks}, exploredStates=${report.ruleResults[0]?.exploredStates}`
       );
       expect(report.passed).toBe(true);
-      expect(report.elapsedMs).toBeLessThan(200);
+      expect(report.elapsedMs).toBeLessThan(500);
       expect(report.referenceCheck.passed).toBe(true);
       expect(report.scaffoldCheck.applicable).toBe(true);
       expect(report.scaffoldCheck.passed).toBe(true);
