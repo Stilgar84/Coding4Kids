@@ -8,6 +8,7 @@ import App from '../src/App';
 import { SimulationTopLeftHud } from '../src/components/SimulationTopLeftHud';
 import { ConditionBadge } from '../src/components/ConditionBadge';
 import { LessonPickerModal, isCurriculumModuleUnlocked } from '../src/components/LessonPickerModal';
+import { BadgeCollectionModal } from '../src/components/BadgeCollectionModal';
 import { MobileDrawerMenu } from '../src/components/MobileDrawerMenu';
 import {
   BeatLedOffEraseOverlay,
@@ -30,6 +31,7 @@ import {
   renderTurtleMapSvg,
 } from '../src/services/mapThumbnailGenerator';
 import {
+  awardBadgeForProfile,
   getProfileProgress,
   isLessonCompleted,
   markLessonCompleted,
@@ -68,6 +70,7 @@ import {
 } from '../src/engine/interpreter';
 import {
   CURRICULUM_ACTIVITIES,
+  CURRICULUM_MODULES,
   CurriculumActivity,
   createCurriculumBlock,
   createCurriculumGridState,
@@ -667,6 +670,35 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
       expect(isLessonCompleted('default', 'param.2')).toBe(true);
       expect(isLessonCompleted('default', '2.2')).toBe(true);
       expect(getProfileProgress('default').completedLessons).toBeDefined();
+    });
+
+    it('renders BadgeCollectionModal with Clock (zero padlocks) and badge/capstone alias checks', () => {
+      const firstMod = CURRICULUM_MODULES[0];
+      awardBadgeForProfile('default', 'badge-seq');
+      if (firstMod.capstoneIds[0]) {
+        markLessonCompleted('default', firstMod.capstoneIds[0], 1);
+      }
+
+      const initialRef = useAppStore.getInitialState();
+      const backupInitial = { ...initialRef };
+      try {
+        useAppStore.setState({ isBadgeModalOpen: true });
+        Object.assign(initialRef, useAppStore.getState());
+        const badgeHtml = renderToStaticMarkup(React.createElement(BadgeCollectionModal));
+        expect(badgeHtml).toContain('data-testid="badge-collection-modal"');
+        expect(badgeHtml).toContain('lucide-clock');
+        expect(badgeHtml).not.toContain('lucide-lock');
+        expect(badgeHtml).toContain(`data-testid="badge-card-${firstMod.id}"`);
+        expect(badgeHtml).toContain(`data-badge-id="${firstMod.badgeId}" data-earned="true"`);
+        expect(badgeHtml).toContain(`>🏆</span><span>1/${CURRICULUM_MODULES.length}<`);
+        if (firstMod.capstoneIds[0]) {
+          expect(badgeHtml).toContain(
+            `data-testid="badge-capstone-chip-${firstMod.capstoneIds[0]}" data-completed="true"`
+          );
+        }
+      } finally {
+        Object.assign(initialRef, backupInitial);
+      }
     });
   });
 });

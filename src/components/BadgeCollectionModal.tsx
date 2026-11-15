@@ -1,14 +1,20 @@
 import React, { useEffect, useRef } from 'react';
-import { Check, Lock, Sparkles, X } from 'lucide-react';
+import { Check, Clock, Sparkles, X } from 'lucide-react';
 import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { CURRICULUM_MODULES, getActivityLatest } from '../data/curriculum';
 import {
+  getBadgeIdVariants,
   getProfileAvatar,
   getProfileColor,
   getProfileDisplayName,
   getProfileProgress,
+  isLessonCompleted,
 } from '../services/profileService';
 import { isCurriculumModuleUnlocked } from './LessonPickerModal';
+
+function hasEarnedBadgeVariant(earnedBadges: readonly string[], badgeId: string): boolean {
+  return getBadgeIdVariants(badgeId).some((b) => earnedBadges.includes(b));
+}
 
 export const BadgeCollectionModal: React.FC = () => {
   const isBadgeModalOpen = useAppStoreSelector((s) => s.isBadgeModalOpen);
@@ -84,7 +90,9 @@ const BadgeCollectionModalContent: React.FC = () => {
 
   const progress = getProfileProgress(activeProfileId);
   const earnedBadges = progress.earnedBadges || [];
-  const earnedCount = CURRICULUM_MODULES.filter((m) => earnedBadges.includes(m.badgeId)).length;
+  const earnedCount = CURRICULUM_MODULES.filter((m) =>
+    hasEarnedBadgeVariant(earnedBadges, m.badgeId)
+  ).length;
 
   return (
     <div
@@ -152,7 +160,7 @@ const BadgeCollectionModalContent: React.FC = () => {
         <div className="p-3 sm:p-5 overflow-y-auto flex-1">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3.5">
             {CURRICULUM_MODULES.map((mod) => {
-              const isEarned = earnedBadges.includes(mod.badgeId);
+              const isEarned = hasEarnedBadgeVariant(earnedBadges, mod.badgeId);
               const isModuleUnlocked = isCurriculumModuleUnlocked(mod.id, progress);
 
               return (
@@ -197,7 +205,7 @@ const BadgeCollectionModalContent: React.FC = () => {
                           aria-hidden="true"
                           className="absolute -bottom-1.5 -right-1.5 flex items-center justify-center w-5 h-5 rounded-full bg-slate-800 text-slate-400 border border-slate-700"
                         >
-                          <Lock className="w-3 h-3" />
+                          <Clock className="w-3 h-3" />
                         </span>
                       )}
                     </div>
@@ -230,7 +238,7 @@ const BadgeCollectionModalContent: React.FC = () => {
                     className="flex flex-wrap items-center justify-end md:justify-center gap-1.5 shrink-0"
                   >
                     {mod.capstoneIds.map((capId) => {
-                      const isCapDone = Boolean(progress.completedLessons[capId]);
+                      const isCapDone = isLessonCompleted(activeProfileId, capId);
                       const capActivity = getActivityLatest(capId);
                       const canJump = isModuleUnlocked && Boolean(capActivity);
 
