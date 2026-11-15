@@ -109,11 +109,11 @@ flowchart TD
 | **`while`** | `While [cond]`, boundary sensors | **Queue (FIFO)** vs. Stack (LIFO), indefinite stream/corridor draining | 🤖 🚂 🏗️ 🐢 🎵 |
 | **`var`** | Variables (`a`–`z`), `+`, `-`, `*`, `TELEPORT`, pose sensors, `🎲` | Named mutable state, sensor capture (`$tileDial`, `$x`, `$y`, `$heading`), stepping counters | 🤖 🐢 🎵 |
 | **`cmp`** | `<`, `>`, `<=`, `>=`, `==`, `!=`, `/`, `%` | Running maximum (`$heldValue > $topValue`), quotas, modulo cycles/rhythms, `360 / n` polygons | 🚂 🤖 🐢 🎵 🏗️ |
-| **`tape`** | `TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE` | **Sparse Tape (`1..10,000`)**, **bounds collisions**, **`number` vs `color` types**, linear search | 📼 across 🐢 🎵 🏗️ 🤖 |
+| **`tape`** | `TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`, `STAMP_FROM_TAPE` | **Sparse Tape (`1..10,000`)**, **bounds collisions**, **`number` vs `color` types**, `8×8` sprites, linear search | 📼 across 🐢 🎵 🏗️ 🤖 |
 | **`sort`** | Two pointers (`l`, `h`), `⏱️` tick counter | **Palindrome symmetry**, **Insertion / Selection / Two-Way Merge sort**, step efficiency | 🏗️ 📼 |
 | **`args`** | Parameterized `F1(●, ▲, ■)` | **Local stack-frame sockets vs. shared globals/Tape**, **stored-program interpreter**, `TransferN` | 📼 🐢 🤖 🚂 🎵 🏗️ |
 | **`rec`** | Self-calls (`F1` → `F1`) | **Call-stack unwinding**, **Tower of Hanoi**, **fractals & L-systems**, **cave backtracking** | 🤖 🐢 🏗️ |
-| **`inter`** *(Side)* | `$pointerX/Y`, keys, queued `On Event` | **Event-driven vs. polling loops**, single-threaded run-to-completion event dispatch | 🎵 🐢 |
+| **`inter`** *(Side)* | `$pointerX/Y`, `$pointerDown`, `keyHeld`, queued `ON_TAP` / `ON_KEY_*` | **Event-driven vs. polling loops**, single-threaded run-to-completion event dispatch | 🎵 🐢 |
 | **`anim`** *(Side)* | LOGO Flipbook (`$frame`, `$time`), Beat `0ms` loop | **Stateless (`f(t)`) vs. stateful frame simulation**, hardware display-buffer clearing, physics bounce | 🐢 🎵 📼 |
 | **`conc`** *(Side)* | `Main 1..N`, `🚧 Barrier`, `📨 Send`/`📬 $recv`, `🔀 Fork`/`Join`, `🔒 Lock` | **Lockstep parallelism**, **phase barriers**, **message-passing value copies**, **race conditions & deadlocks**, **mutexes & producer–consumer queues**, **Parallel Sort** | 🎵 🐢 🤖 🏗️ 📼 |
 | **`fp`** *(Side)* | Function sockets `F1([Fn])` *(Planned)* | **Immutability**, **Higher-Order Functions (`Map`, `Filter`, `Fold`)**, recursion over loops | 📼 🚂 🏗️ 🐢 |
@@ -157,8 +157,8 @@ Must teach variables (`a`–`z`) as named memory boxes—storing constants (`s =
 Must teach combining variables with relational and division operators—comparing values (`<`, `>`, `<=`, `>=`, `==`, `!=`, boundary Fix-It `cmp.9`), tracking Depot toy-block maximums (`$heldValue > $topValue`), enforcing Switchyard dock quotas (`cmp.1a`, `cmp.A`), splitting Beat sequencers and LED checkerboards with modulo (`%`, `cmp.5a`), and computing full-scale geometric angles (`360 / n`, `cmp.5`, `cmp.C`). Completing `cmp` unlocks **`tape`**, Side Module **[`inter`](./inter/overview.md)**, and **🔥 Mastery Set `cmp`**.
 
 #### [`tape` — 📼 The Sparse Memory Tape & Typed Color Data](./tape/overview.md)
-*Environments: 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Depot, 🤖 Robot Grid*  
-Must teach 1-indexed random-access memory cells (`TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`) with strict out-of-bounds checks (`1..$tapeLength`, scaling to `10,000` sparse cells in Sandboxes), bounds-safe `While ($headPos < $tapeLength)` scans (plus fencepost Fix-It debugging), distinguishing `color` vs. `number` runtime types (`TYPE_ERROR` visual bounces and `White`/`Black` selective erasing), and data-driven art, music, and linear search.
+*Environments: 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Cargo Depot, 🤖 Robot Grid*  
+Must teach 1-indexed random-access memory cells (`TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`) with strict out-of-bounds checks (`1..$tapeLength`, scaling to `10,000` sparse cells in Sandboxes), `8×8` `STAMP_FROM_TAPE` sprite stamping (`tape.4a`), bidirectional `TAPE_STEP [LEFT]` & `$cellEmpty` writable-tape introduction (`tape.7a`), bounds-safe `While ($headPos < $tapeLength)` scans (plus Robot Grid fencepost Fix-It debugging `tape.9`), distinguishing `color` vs. `number` runtime types (`TYPE_ERROR` visual bounces and `White`/`Black` selective erasing), and data-driven art, music, and linear search. Completing `tape` unlocks **`sort`** and Side Module **[`anim`](./anim/overview.md)**.
 
 #### [`sort` — 🔍 Sorting, Symmetry & Algorithmic Speed](./sort/overview.md)
 *Environments: 🏗️ Depot, 📼 Sparse Memory Tape*  
@@ -178,11 +178,11 @@ Must teach recursion in gentle, explicit steps: (1) tail call + base case, (2) c
 
 #### [`inter` — 🕹️ Interactive Controls & Events](./inter/overview.md) *(Unlocks after `cmp`)*
 *Environments: 🎵 Beat & Light Matrix (`8×8`–`32×32`), 🐢 Turtle LOGO (`♾️ Live Interactive Mode`)*  
-Must teach polling live pointer/tap coordinates (`$pointerX`, `$pointerY`, `$pointerDown`) and virtual D-Pad/action keys alongside **single-threaded queued event handlers** (`On Key` / `On Tap → F1`) and LOGO Live Interactive loops to build playable synths, reactive pixel toys, and mini-games without premature concurrency hazards.
+Must teach polling live pointer/tap coordinates (`$pointerX`, `$pointerY`, `$pointerDown`) and virtual D-Pad/action `keyHeld` polling alongside **single-threaded queued event tabs** (`ON_TAP`, `ON_KEY_UP/DOWN/LEFT/RIGHT/A/B`), Interactive Fix-It debugging (`inter.7`), and LOGO `♾️ Live Interactive Mode` loops to build playable synths, reactive pixel toys, and `16×16`/`32×32` mini-games (`inter.8`, `inter.A`, `inter.B`) without premature concurrency hazards.
 
 #### [`anim` — 🎬 Animation Studio: Flipbooks, Pacing & Physics](./anim/overview.md) *(Unlocks after `tape`)*
 *Environments: 🐢 Turtle LOGO (Flipbook Mode), 🎵 Beat & Light Matrix (Explicit Frame Loops), 📼 Sparse Memory Tape*  
-Must teach **LOGO Flipbook Animation Mode** (`MAIN` called once per frame with `$frame` & `$time`, persistent variables/Tape, first-pass stroke rendering, cached Timeline Scrubber, and optional trail mode) contrasted with **Beat & Light explicit hardware frame loops** (`SET_BEAT_DELAY [0]` + `CLEAR_LEDS` + `WAIT_BEAT`), cyclic modulo motion, and bouncing physics.
+Must teach **LOGO Flipbook Animation Mode** (`anim.0`, `MAIN` called once per frame with `$frame` & `$time` `🕒 Xs`, persistent variables/Tape, first-pass stroke rendering, cached Timeline Scrubber, and optional `🧹 Clear: OFF` trail/eraser mode) contrasted with **Beat & Light explicit hardware frame loops** (`SET_BEAT_DELAY [0]` + loop-top `CLEAR_LEDS` + `WAIT_BEAT`, plus blank-lightshow Fix-It `anim.6a`), `STAMP_FROM_TAPE` multi-frame sprite sheets (`anim.8a`, `anim.B`), cyclic modulo motion, and single-letter `x, y, u, v` bouncing/gravity physics (`anim.11`, `anim.A`).
 
 #### [`conc` — ⚡ Concurrency: Multi-Programs, Synchronization & Parallel Algorithms](./conc/overview.md) *(Unlocks after `args`)*
 *Environments: 🎵 Beat & Light Matrix, 🐢 Turtle LOGO, 🤖 Robot Grid, 🏗️ Depot, 📼 Sparse Memory Tape*  

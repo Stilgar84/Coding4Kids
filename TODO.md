@@ -13,7 +13,7 @@ in depot, the fifo is missing animation: block should be animated to get to the 
 blocks on the queue instead of them been cut off.
 
 
-
+for condition, each selection should be independent. e.g. not show color or position in first selector
 
 ---
 
