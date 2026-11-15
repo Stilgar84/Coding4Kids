@@ -9,6 +9,8 @@ import { SEQ_ACTIVITIES } from './seqActivities';
 import { PARAM_ACTIVITIES } from './paramActivities';
 import { LOOP_ACTIVITIES } from './loopActivities';
 import { FUNC_ACTIVITIES } from './funcActivities';
+import { BRANCH_ACTIVITIES } from './branchActivities';
+import { WHILE_ACTIVITIES } from './whileActivities';
 
 export { SEQ_ACTIVITIES, SEQ_0_DEMO_TABS, SEQ_BEAT_ALLOWED_BLOCKS } from './seqActivities';
 export {
@@ -30,6 +32,23 @@ export {
   FUNC_CAPSTONE_TURTLE_ALLOWED_BLOCKS,
   FUNC_BEAT_ALLOWED_BLOCKS,
 } from './funcActivities';
+export { BRANCH_ACTIVITIES } from './branchActivities';
+export {
+  WHILE_0_DEMO_TABS,
+  WHILE_0_GRID_LONG,
+  WHILE_0_GRID_MID_GOAL,
+  WHILE_0_GRID_SHORT,
+  WHILE_1_GRID_VARIANTS,
+  WHILE_2_DEMO_TABS,
+  WHILE_2_DEPOT_TAB1,
+  WHILE_2_DEPOT_TAB2,
+  WHILE_3_DEPOT_VARIANTS,
+  WHILE_4_DEPOT_VARIANTS,
+  WHILE_5_SWITCHYARD_VARIANTS,
+  WHILE_8_SWITCHYARD_VARIANTS,
+  WHILE_A_GRID_VARIANTS,
+  WHILE_ACTIVITIES,
+} from './whileActivities';
 
 /**
  * One-way backward-compatibility aliases from V1 numeric module IDs
@@ -115,12 +134,20 @@ export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   '5.3': 'branch.3',
   '5.4': 'branch.4',
   '5.5': 'branch.5',
+  '5.5a': 'branch.5a',
   '5.6': 'branch.6',
+  '5.6a': 'branch.6a',
+  '5.6b': 'branch.6b',
   '5.7': 'branch.7',
+  '5.7a': 'branch.7a',
+  '5.7b': 'branch.7b',
   '5.8': 'branch.8',
+  '5.8a': 'branch.8a',
   '5.9': 'branch.9',
   '5.10': 'branch.10',
+  '5.10a': 'branch.10a',
   '5A': 'branch.A',
+  '5B': 'branch.B',
   '5C': 'branch.C',
 };
 
@@ -179,6 +206,28 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
     badgeTitle: 'Function Composer',
     badgeIcon: '🧩',
     capstoneIds: ['func.A', 'func.B', 'func.C'],
+  },
+  {
+    id: 'branch',
+    number: 5,
+    title: 'Conditionals — If / Else / Else-If & Dynamic $input',
+    shortTitle: 'branch',
+    icon: '🔀',
+    badgeId: 'badge-branch',
+    badgeTitle: 'Logic Pathfinder',
+    badgeIcon: '🔀',
+    capstoneIds: ['branch.A', 'branch.B', 'branch.C'],
+  },
+  {
+    id: 'while',
+    number: 6,
+    title: 'While Loops — Condition-Driven Loops & FIFO Queues',
+    shortTitle: 'while',
+    icon: '⏳',
+    badgeId: 'badge-while',
+    badgeTitle: 'Sentinel Strategist',
+    badgeIcon: '⏳',
+    capstoneIds: ['while.A', 'while.B', 'while.C'],
   },
 ];
 
@@ -372,7 +421,7 @@ export function sortCurriculumActivities(
 }
 
 /**
- * Aggregated Phase 1 curriculum activities (`56` total across `seq`, `param`, `loop`, `func`)
+ * Aggregated Phase 2 curriculum activities (`89` total across `seq`, `param`, `loop`, `func`, `branch`, `while`)
  * ordered in canonical play order via `sortCurriculumActivities`.
  */
 export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivities([
@@ -380,6 +429,8 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...PARAM_ACTIVITIES,
   ...LOOP_ACTIVITIES,
   ...FUNC_ACTIVITIES,
+  ...BRANCH_ACTIVITIES,
+  ...WHILE_ACTIVITIES,
 ]);
 
 export function getCurriculumModules(): CurriculumModule[] {

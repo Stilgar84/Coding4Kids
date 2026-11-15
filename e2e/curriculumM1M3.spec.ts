@@ -14,10 +14,9 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await expect(page.getByTestId('tool-world-items-menu')).toHaveCount(0);
     await expect(page.getByTestId('resize-handle-right')).toHaveCount(0);
 
-    // Place a balanced 3-block loop on Default profile in loop.5: Loop Start + Move Fwd + Loop End
+    // Place a balanced 3-block loop on Default profile in loop.5: Loop Start auto-pairs Loop End + Move Fwd inside
     await page.getByTestId('palette-loop-start').click();
     await page.getByTestId('palette-move-fwd').click();
-    await page.getByTestId('palette-loop-end').click();
     await expect(page.locator('[data-block-type]')).toHaveCount(3);
 
     // Navigate to loop.5a and back to loop.5 -> auto-restores Default profile's 3 blocks
@@ -181,14 +180,14 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
       'Module Mastery Badge unlocked: Loop Architect!'
     );
 
-    // Dismiss ceremony via click-to-dismiss and verify BadgeCollectionModal shows 1/4 earned
+    // Dismiss ceremony via click-to-dismiss and verify BadgeCollectionModal shows 1/6 earned
     await page.getByTestId('victory-modal').click({ position: { x: 20, y: 20 } });
     await expect(page.getByTestId('victory-modal')).toHaveCount(0);
 
     await page.getByTestId('btn-hamburger-menu').click();
     await page.getByTestId('drawer-btn-badges').click();
     await expect(page.getByTestId('badge-collection-modal')).toBeVisible();
-    await expect(page.getByTestId('badge-collection-count')).toContainText('1/4');
+    await expect(page.getByTestId('badge-collection-count')).toContainText('1/6');
     await expect(page.getByTestId('badge-card-loop')).toHaveAttribute('data-earned', 'true');
   });
 
@@ -274,13 +273,13 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     });
     expect(migratedProfileId).toBe('default');
 
-    // Verify full 56-activity M1–M4 curriculum catalog & keyboard modal navigation (Enter + Space + Tab + Escape)
+    // Verify full 89-activity M1–M6 curriculum catalog & keyboard modal navigation (Enter + Space + Tab + Escape)
     const pickerBtn = page.getByTestId('btn-lesson-picker');
     await pickerBtn.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
     await page.getByTestId('picker-mode-curriculum').click();
-    await expect(page.locator('[data-testid^="btn-activity-"]')).toHaveCount(56);
+    await expect(page.locator('[data-testid^="btn-activity-"]')).toHaveCount(89);
     await expect(page.getByTestId('mode-status-announcer')).toHaveAttribute('aria-live', 'polite');
 
     // Open BadgeCollectionModal from LessonPickerModal via keyboard Space, Tab focus-trap, and close with Escape

@@ -281,7 +281,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
       expect(elapsed).toBeLessThan(200); // < 200 ms gate
     });
 
-    it('verifies Switchyard multi-stream sorting and forbidBlocks: ELSE constraint', () => {
+    it('verifies Switchyard multi-stream sorting and forbidBlocks: IF constraint', () => {
       const switchyardActivity: CurriculumActivity = {
         id: 'synth-5.5',
         title: 'Switchyard Binary Sorting',
@@ -334,9 +334,9 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
         },
         antiBypassRules: [
           {
-            id: 'rule-forbid-else',
-            description: 'Sorting without ELSE requires >= 9 slots, failing within 8 slots',
-            forbidBlocks: ['ELSE'],
+            id: 'rule-require-if',
+            description: 'Sorting opposing train streams requires IF branching within 8 slots',
+            forbidBlocks: ['IF'],
           },
         ],
       };
@@ -349,7 +349,7 @@ describe('Commit 26: Multi-Scope, Multi-Variant & Variable Anti-Bypass Constrain
       expect(report.referenceCheck.passed).toBe(true);
       expect(report.ruleResults[0].passed).toBe(true);
       expect(report.passed).toBe(true);
-      expect(report.ruleResults[0].minWinningBlocks).toBe(9);
+      expect(report.ruleResults[0].minWinningBlocks).toBeNull();
       expect(elapsed).toBeLessThan(200);
     });
   });

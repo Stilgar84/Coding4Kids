@@ -26,6 +26,7 @@ import {
 import { computeSlotBudget } from '../src/utils/curriculumStagePolicy';
 import { createInitialBeatState } from '../src/simulations/beat/beatEnvironment';
 import type { BeatState } from '../src/simulations/beat/types';
+import { createInitialSwitchyardState } from '../src/simulations/switchyard/physics';
 import { createInitialTurtleState } from '../src/simulations/turtle/turtleEnvironment';
 import type { TurtlePathItem, TurtleState } from '../src/simulations/turtle/types';
 import type { CodeBlock, ScopeType, WorkspaceState } from '../src/types';
@@ -347,39 +348,6 @@ function collectPaletteViolations(
   return violations;
 }
 
-/**
- * NOTE FOR STEP 2C INTEGRATION (@integrator / @verifier-core):
- * Before Step 2C merge on commit 175572b:
- *   - `p2-envs` updates `src/simulations/grid/sensors.ts` to resolve string `tileColor`
- *     params ('blue', 'red', etc.) and updates `src/data/curriculum/types.ts` +
- *     `constraintSolver.ts` to preserve `strictInteractionCollision` on `GridState`.
- *   - `p2-switchyard` updates `switchyardPhysics` / `switchyardConstraintSolver.ts` to
- *     ingest `CurriculumSwitchyardDefinition` directly.
- * Once Wave 2B merges, Step 2C should run these additional unconditional checks:
- *   1. `verifyActivityConstraints` full pass (< 200ms) on `branch.1`, `branch.6a`, `branch.7a`
- *      (in addition to `branch.6b` & `branch.9` already verified here).
- *   2. `runHeadlessSimulation` verification on `branch.4` Tabs 1-2 (`tileColor` beacons) and
- *      `branch.7` Tab 2 (item decoy left uncollected on `(1,0)`, target picked on `(3,0)`).
- *   3. Multi-variant Switchyard execution + solver checks across
- *      `branch.2`, `branch.3`, `branch.4` (Tab 3), `branch.5`, `branch.5a`, `branch.7` (Tab 3),
- *      `branch.7b`, `branch.8a`, `branch.8`, and `branch.A`.
- */
-export const STEP_2C_POST_MERGE_ACTIVITIES = {
-  gridWithTileColorOrStrictCollision: ['branch.1', 'branch.4', 'branch.6a', 'branch.7', 'branch.7a'],
-  switchyardActivities: [
-    'branch.2',
-    'branch.3',
-    'branch.4',
-    'branch.5',
-    'branch.5a',
-    'branch.7',
-    'branch.7b',
-    'branch.8a',
-    'branch.8',
-    'branch.A',
-  ],
-} as const;
-
 // ---------------------------------------------------------------------------
 // 1. Structural & Pedagogical Integrity Tests (All 21 Activities)
 // ---------------------------------------------------------------------------
@@ -650,6 +618,111 @@ describe('Module `branch` — Robot Grid Solver & Headless Simulation Verificati
       expect(refRun.status, `branch.7a ref var ${idx + 1}`).toBe('SUCCESS');
       expect(refRun.finalState.robot.carriedItem).toBeNull();
     });
+  });
+
+  it('passes full constraint solver (< 200ms) unconditionally on remaining Grid puzzles (branch.1, branch.6a, branch.7a)', () => {
+    for (const id of ['branch.1', 'branch.6a', 'branch.7a'] as const) {
+      const act = getActivityById(id);
+      const report = verifyActivityConstraints(act);
+      expect(report.passed, `${id} constraints`).toBe(true);
+      expect(report.elapsedMs, `${id} < 200ms`).toBeLessThan(200);
+    }
+  });
+
+  it('executes branch.4 Tabs 1-2 (tileColor beacons) and branch.7 Tab 2 (decoy vs blue gem) cleanly to SUCCESS', () => {
+    const b4 = getActivityById('branch.4');
+    for (const tabIdx of [0, 1]) {
+      const tab = b4.demoTabs![tabIdx];
+      const run = runHeadlessSimulation(
+        tab.workspace,
+        'grid',
+        createCurriculumGridState(tab.gridState!, false),
+        100
+      );
+      expect(run.status, `branch.4 tab ${tab.label}`).toBe('SUCCESS');
+    }
+
+    const b7 = getActivityById('branch.7');
+    const t2 = b7.demoTabs![1];
+    const t2Run = runHeadlessSimulation(
+      t2.workspace,
+      'grid',
+      createCurriculumGridState(t2.gridState!, false),
+      100
+    );
+    expect(t2Run.status, 'branch.7 tab 2').toBe('SUCCESS');
+    // Decoy item on (1,0) non-blue tile must remain uncollected while target at (3,0) is picked up
+    expect(t2Run.finalState.worldItems?.some((it) => it.x === 1 && it.y === 0)).toBe(true);
+    expect(t2Run.finalState.worldItems?.some((it) => it.x === 3 && it.y === 0)).toBe(false);
+  });
+});
+
+describe('Module `branch` — Switchyard v2 Solver & Demo Execution Verification', () => {
+  it('executes all Switchyard explanation demo tabs (branch.2, branch.4 Tab 3, branch.7 Tab 3, branch.8a) to SUCCESS', () => {
+    const switchyardDemos: Array<{ id: string; tabIndices: number[] }> = [
+      { id: 'branch.2', tabIndices: [0, 1] },
+      { id: 'branch.4', tabIndices: [2] },
+      { id: 'branch.7', tabIndices: [2] },
+      { id: 'branch.8a', tabIndices: [0, 1] },
+    ];
+
+    for (const { id, tabIndices } of switchyardDemos) {
+      const act = getActivityById(id);
+      for (const tabIdx of tabIndices) {
+        const tab = act.demoTabs![tabIdx];
+        const initial = createInitialSwitchyardState(tab.switchyardState!);
+        const run = runHeadlessSimulation(tab.workspace, 'switchyard', initial, 350);
+        expect(run.status, `${id} tab ${tab.label}`).toBe('SUCCESS');
+      }
+    }
+  });
+
+  it('passes full anti-bypass solver (< 200ms) and multi-variant runtime across all Switchyard branch puzzles', () => {
+    const switchyardPuzzleIds = [
+      'branch.3',
+      'branch.5',
+      'branch.5a',
+      'branch.7b',
+      'branch.8',
+      'branch.A',
+    ] as const;
+
+    for (const id of switchyardPuzzleIds) {
+      const act = getActivityById(id);
+      const report = verifyActivityConstraints(act);
+      expect(report.passed, `${id} solver report`).toBe(true);
+      expect(report.referenceCheck.passed, `${id} referenceCheck`).toBe(true);
+      if (report.scaffoldCheck.applicable) {
+        expect(report.scaffoldCheck.passed, `${id} scaffoldCheck`).toBe(true);
+      }
+      for (const rule of report.ruleResults) {
+        expect(rule.passed, `${id} rule ${rule.ruleId}: ${rule.diagnostic ?? ''}`).toBe(true);
+      }
+      expect(report.elapsedMs, `${id} < 200ms`).toBeLessThan(200);
+
+      const variants = act.switchyardVariants ?? (act.switchyard ? [act.switchyard] : []);
+      expect(variants.length, `${id} has switchyard variants`).toBeGreaterThan(0);
+
+      let starterFailedAny = false;
+      variants.forEach((v, idx) => {
+        const refRun = runHeadlessSimulation(
+          act.referenceSolution!,
+          'switchyard',
+          createInitialSwitchyardState(v),
+          350
+        );
+        expect(refRun.status, `${id} ref variant ${idx + 1}`).toBe('SUCCESS');
+
+        const startRun = runHeadlessSimulation(
+          act.starterWorkspace!,
+          'switchyard',
+          createInitialSwitchyardState(v),
+          350
+        );
+        if (startRun.status !== 'SUCCESS') starterFailedAny = true;
+      });
+      expect(starterFailedAny, `${id} starter must fail at least one variant`).toBe(true);
+    }
   });
 });
 

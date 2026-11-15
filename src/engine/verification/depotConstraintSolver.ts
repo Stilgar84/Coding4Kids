@@ -749,7 +749,12 @@ export function checkDepotScaffoldWorkspace(
     };
   }
 
-  if (!activity.depot) {
+  const depotVariants = activity.depotVariants?.length
+    ? activity.depotVariants
+    : activity.depot
+    ? [activity.depot]
+    : [];
+  if (depotVariants.length === 0) {
     return {
       applicable: true,
       passed: false,
@@ -768,8 +773,15 @@ export function checkDepotScaffoldWorkspace(
     });
   }
 
-  const initialDepot = createInitialDepotState(activity.depot);
-  const scaffoldActiveStations = getActiveDepotStations(initialDepot);
+  const initialVariants = depotVariants.map((def) => createInitialDepotState(def));
+  const scaffoldActiveStations: DepotStationId[] = [];
+  for (const variantState of initialVariants) {
+    for (const station of getActiveDepotStations(variantState)) {
+      if (!scaffoldActiveStations.includes(station)) {
+        scaffoldActiveStations.push(station);
+      }
+    }
+  }
 
   const allowedSimBlocks =
     activity.palette.allowedSimBlocks ??
@@ -813,8 +825,10 @@ export function checkDepotScaffoldWorkspace(
 
   const dfs = (slotIdx: number, ws: WorkspaceState): WorkspaceState | null => {
     if (slotIdx >= placeholderSlots.length) {
-      const exec = executeDepotWorkspace(ws, initialDepot);
-      return exec.status === 'SUCCESS' ? ws : null;
+      const allPass = initialVariants.every(
+        (variantState) => executeDepotWorkspace(ws, variantState).status === 'SUCCESS'
+      );
+      return allPass ? ws : null;
     }
     const { scope, index } = placeholderSlots[slotIdx];
     for (const cand of candidatesPerSlot[slotIdx]) {

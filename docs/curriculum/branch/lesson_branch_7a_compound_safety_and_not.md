@@ -61,7 +61,7 @@ Your robot can only carry **one item at a time** on its shoulder gripper! Across
 All `3` corridors share `y = 1` (`#` walls on `y = 0, 2`, Start `(0,1) EAST`, Amber Gate `●` at `(4,1)`, Goal `🏁` at `(5,1)`):
 
 - **Variant 1 (`1` Key at `(3,1)`):** `[S→] [ . ] [ . ] [ 🔑 ] [ ● ] [🏁]`
-- **Variant 2 (`2` Keys at `(2,1), (3,1)`):** `[S→] [ . ] [ 🔑 ] [ 🔑 ] [ ● ] [🏁]`
+- **Variant 2 (`2` Keys at `(1,1), (2,1)`):** `[S→] [ 🔑 ] [ 🔑 ] [ . ] [ ● ] [🏁]`
 - **Variant 3 (`3` Keys at `(1,1), (2,1), (3,1)`):** `[S→] [ 🔑 ] [ 🔑 ] [ 🔑 ] [ ● ] [🏁]`
 
 ---

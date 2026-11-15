@@ -764,17 +764,11 @@ export function verifySwitchyardActivityRule(
   activity: CurriculumActivity,
   rule: AntiBypassRule,
   ruleIndex: number,
-  extraDepthBeyondCap = 20
+  extraDepthBeyondCap = 20,
+  budgetMs = 115
 ): RuleCheckResult {
   const startMs = nowMs();
   const ruleId = rule.id || `rule_${ruleIndex}`;
-  const rawSlotLimit = resolveEffectiveSlotLimit(activity.slotCap);
-  const slotCapLimit = Number.isFinite(rawSlotLimit) ? rawSlotLimit : 24;
-  const maxAllowedCost =
-    rule.maxLoopNestingDepth === 0
-      ? Math.max(slotCapLimit, slotCapLimit + extraDepthBeyondCap)
-      : slotCapLimit;
-
   const variants = resolveActivitySwitchyardVariants(activity);
 
   if (rule.unmodifiedStarterMustFail && activity.starterWorkspace) {
@@ -825,12 +819,50 @@ export function verifySwitchyardActivityRule(
   const forbiddenSet = new Set<string>(rule.forbidBlocks ?? []);
   const forbidCombinators = new Set<string>(rule.forbidCombinators ?? []);
   const forbidSensors = new Set<string>(rule.forbidSensors ?? []);
+  const allowedSim = new Set<string>(
+    activity.palette.allowedSimBlocks ??
+      switchyardSimulationEnvironment.paletteItems.map((p) => p.actionType)
+  );
   const allowedControl = new Set<string>(activity.palette.allowedControlBlocks ?? []);
   const allowedScopes = new Set<ScopeType>(
     activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
       ? activity.palette.allowedScopes
       : ['MAIN']
   );
+
+  const allowF1 =
+    allowedScopes.has('F1') && allowedControl.has('CALL_F1') && !forbiddenSet.has('CALL_F1');
+  const allowScrap = allowedSim.has('SCRAP_ITEM') && !forbiddenSet.has('SCRAP_ITEM');
+
+  if (
+    !allowScrap &&
+    variants.some(
+      (v) =>
+        v.initialQueue.some((it) => it.damaged) && v.docks.every((d) => d.spec.rejectDamaged)
+    )
+  ) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: null,
+      diagnostic: 'Damaged items exist with rejectDamaged docks and SCRAP_ITEM unavailable',
+    };
+  }
+
+  const rawSlotLimit = resolveEffectiveSlotLimit(activity.slotCap);
+  const effectiveRawLimit =
+    !allowF1 && activity.slotCap?.perScope?.MAIN !== undefined
+      ? Math.min(rawSlotLimit, activity.slotCap.perScope.MAIN)
+      : rawSlotLimit;
+  const slotCapLimit = Number.isFinite(effectiveRawLimit) ? effectiveRawLimit : 24;
+  const maxAllowedCost =
+    rule.maxLoopNestingDepth === 0
+      ? Math.max(slotCapLimit, slotCapLimit + extraDepthBeyondCap)
+      : slotCapLimit;
 
   const allowLoops =
     rule.maxLoopNestingDepth !== 0 &&
@@ -852,8 +884,6 @@ export function verifySwitchyardActivityRule(
     !forbiddenSet.has('END_IF');
   const allowElse = allowedControl.has('ELSE') && !forbiddenSet.has('ELSE');
   const allowElseIf = allowedControl.has('ELSE_IF') && !forbiddenSet.has('ELSE_IF');
-  const allowF1 =
-    allowedScopes.has('F1') && allowedControl.has('CALL_F1') && !forbiddenSet.has('CALL_F1');
 
   const atomicSteps = buildAtomicStepPool(activity, variants, forbiddenSet, rule.allowRepeatBadges);
   const conditionPool =
@@ -861,7 +891,7 @@ export function verifySwitchyardActivityRule(
       ? buildConditionPool(activity, variants, forbiddenSet, forbidCombinators, forbidSensors)
       : [];
 
-  const deadlineMs = startMs + 135;
+  const deadlineMs = startMs + budgetMs;
   let exploredStates = 0;
   let winner: WorkspaceState | undefined;
   let winnerCost: number | null = null;
@@ -1325,9 +1355,19 @@ export function verifySwitchyardActivityConstraints(
   const scaffoldCheck = checkSwitchyardScaffoldWorkspace(activity);
 
   const rules = activity.antiBypassRules ?? [];
-  const ruleResults: RuleCheckResult[] = rules.map((rule, idx) =>
-    verifySwitchyardActivityRule(activity, rule, idx, extraDepthBeyondCap)
-  );
+  const ruleResults: RuleCheckResult[] = rules.map((rule, idx) => {
+    const remainingBudget = Math.min(
+      115,
+      Math.max(35, Math.floor((145 - (nowMs() - startMs)) / Math.max(1, rules.length - idx)))
+    );
+    return verifySwitchyardActivityRule(
+      activity,
+      rule,
+      idx,
+      extraDepthBeyondCap,
+      remainingBudget
+    );
+  });
 
   const variants = resolveActivitySwitchyardVariants(activity);
   const passed =

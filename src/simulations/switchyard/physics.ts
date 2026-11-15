@@ -656,44 +656,31 @@ function validateItemForDock(
   const dockId = dock.id;
 
   if (spec.expectedItems && spec.expectedItems.length > 0) {
-    const slotIdx = dock.items.length;
-    if (slotIdx >= spec.expectedItems.length) {
-      return {
-        reason: 'DOCK_QUOTA_EXCEEDED',
-        detail: { code: 'QUOTA_MISMATCH', dockId },
-      };
-    }
-    const exp = spec.expectedItems[slotIdx];
-    if (exp.damaged !== undefined && Boolean(item.damaged) !== Boolean(exp.damaged)) {
-      return {
-        reason: 'WRONG_DOCK',
-        detail: {
-          code: 'DAMAGED_REJECTED',
-          dockId,
-          expectedDamaged: Boolean(exp.damaged),
-          actualDamaged: Boolean(item.damaged),
-        },
-      };
-    }
-    if (exp.color && item.color !== exp.color) {
+    const matchesAnyExpected = spec.expectedItems.some(
+      (exp) =>
+        (exp.damaged === undefined || Boolean(item.damaged) === Boolean(exp.damaged)) &&
+        (!exp.color || item.color === exp.color) &&
+        (!exp.icon || item.icon === exp.icon)
+    );
+    if (!matchesAnyExpected) {
+      const firstExp = spec.expectedItems[0];
+      const hasDamagedMismatch =
+        firstExp.damaged !== undefined && Boolean(item.damaged) !== Boolean(firstExp.damaged);
+      const hasColorMismatch = Boolean(firstExp.color && item.color !== firstExp.color);
       return {
         reason: 'WRONG_DOCK',
         detail: {
-          code: 'WRONG_COLOR',
+          code: hasDamagedMismatch
+            ? 'DAMAGED_REJECTED'
+            : hasColorMismatch
+            ? 'WRONG_COLOR'
+            : 'WRONG_ICON',
           dockId,
-          expectedColor: exp.color,
-          actualColor: item.color,
-        },
-      };
-    }
-    if (exp.icon && item.icon !== exp.icon) {
-      return {
-        reason: 'WRONG_DOCK',
-        detail: {
-          code: 'WRONG_ICON',
-          dockId,
-          expectedIcon: exp.icon,
-          actualIcon: item.icon,
+          ...(firstExp.color ? { expectedColor: firstExp.color, actualColor: item.color } : {}),
+          ...(firstExp.icon ? { expectedIcon: firstExp.icon, actualIcon: item.icon } : {}),
+          ...(firstExp.damaged !== undefined
+            ? { expectedDamaged: Boolean(firstExp.damaged), actualDamaged: Boolean(item.damaged) }
+            : {}),
         },
       };
     }
@@ -759,13 +746,6 @@ function validateItemForDock(
 function areAllDocksSatisfied(docks: readonly DockState[]): boolean {
   return docks.every((d) => {
     if (d.spec.quota !== undefined && d.items.length !== d.spec.quota) return false;
-    if (
-      d.spec.expectedItems &&
-      d.spec.expectedItems.length > 0 &&
-      d.items.length !== d.spec.expectedItems.length
-    ) {
-      return false;
-    }
     return true;
   });
 }

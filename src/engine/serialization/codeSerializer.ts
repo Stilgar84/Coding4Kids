@@ -16,7 +16,6 @@ import {
   ENV_VERSION_BEAT,
   ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_STATE,
-  ENV_VERSION_DEPOT_QUEUE,
   ENV_VERSION_SWITCHYARD,
   ENV_ID_GENERIC,
   ENV_ID_GRID,
@@ -35,9 +34,16 @@ import {
   writeGridState,
   readGridState,
 } from './env/gridSerializer';
-import { writeDepotState, readDepotState } from './env/depotSerializer';
-import { depotStateNeedsQueueVersion } from '../../simulations/depot/depotPhysics';
-import { writeSwitchyardState, readSwitchyardState } from './env/switchyardSerializer';
+import {
+  getDepotSerializationVersion,
+  writeDepotState,
+  readDepotState,
+} from './env/depotSerializer';
+import {
+  getSwitchyardSerializationVersion,
+  writeSwitchyardState,
+  readSwitchyardState,
+} from './env/switchyardSerializer';
 import { writeCodeScopes, readCodeScopes } from './codeScopes';
 
 export { writeCodeScopes, readCodeScopes };
@@ -81,12 +87,12 @@ export function exportToBinary(
       ? ENV_VERSION_BEAT
       : envId === 'depot'
       ? envState && 'stacks' in envState
-        ? depotStateNeedsQueueVersion(envState as DepotState)
-          ? ENV_VERSION_DEPOT_QUEUE
-          : ENV_VERSION_DEPOT_STATE
+        ? getDepotSerializationVersion(envState as DepotState)
         : ENV_VERSION_DEPOT
       : envId === 'switchyard'
-      ? ENV_VERSION_SWITCHYARD
+      ? envState && 'switches' in envState
+        ? getSwitchyardSerializationVersion(envState as SwitchyardState)
+        : ENV_VERSION_SWITCHYARD
       : ENV_VERSION_TURTLE;
   writer.writeUint8(envVersion);
 
@@ -96,7 +102,7 @@ export function exportToBinary(
   } else if (envByte === ENV_ID_DEPOT && envState && 'stacks' in envState) {
     writeDepotState(writer, envState as DepotState, envVersion);
   } else if (envByte === ENV_ID_SWITCHYARD && envState && 'switches' in envState) {
-    writeSwitchyardState(writer, envState as SwitchyardState);
+    writeSwitchyardState(writer, envState as SwitchyardState, envVersion);
   }
 
   // 3. Code Payload
@@ -304,7 +310,7 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
       depotState =
         envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader, envVersion) : undefined;
     } else if (envByte === ENV_ID_SWITCHYARD) {
-      switchyardState = readSwitchyardState(reader);
+      switchyardState = readSwitchyardState(reader, envVersion);
     }
 
     // 3. Code Payload

@@ -869,7 +869,7 @@ const BRANCH_7A_CORRIDOR: CellCoord[] = [
 
 const BRANCH_7A_GRIDS: CurriculumGridDefinition[] = [
   [3],
-  [2, 3],
+  [1, 2],
   [1, 2, 3],
 ].map((keyXs, idx) => ({
   label: `${idx + 1}`,

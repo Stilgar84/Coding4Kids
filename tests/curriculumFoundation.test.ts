@@ -47,10 +47,10 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
   });
 
   describe('Curriculum Module & Activity Schema', () => {
-    it('declares static badgeId and capstoneIds for Phase 1 modules (seq, param, loop, func) and resolves V1 aliases', () => {
+    it('declares static badgeId and capstoneIds for registered modules (seq..while) and resolves legacy aliases', () => {
       const modules = getCurriculumModules();
-      expect(modules).toHaveLength(4);
-      expect(modules.map((m) => m.id)).toEqual(['seq', 'param', 'loop', 'func']);
+      expect(modules).toHaveLength(6);
+      expect(modules.map((m) => m.id)).toEqual(['seq', 'param', 'loop', 'func', 'branch', 'while']);
 
       const seq = getCurriculumModule('seq')!;
       expect(seq.badgeId).toBe('badge-seq');
@@ -68,13 +68,24 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       expect(func.badgeId).toBe('badge-func');
       expect(func.capstoneIds).toEqual(['func.A', 'func.B', 'func.C']);
 
+      const branch = getCurriculumModule('branch')!;
+      expect(branch.badgeId).toBe('badge-branch');
+      expect(branch.capstoneIds).toEqual(['branch.A', 'branch.B', 'branch.C']);
+
+      const whileMod = getCurriculumModule('while')!;
+      expect(whileMod.badgeId).toBe('badge-while');
+      expect(whileMod.capstoneIds).toEqual(['while.A', 'while.B', 'while.C']);
+
       // Backward-compatibility alias lookup
       expect(resolveModuleIdAlias('module-1')).toBe('seq');
       expect(resolveModuleIdAlias('module-4')).toBe('func');
+      expect(resolveModuleIdAlias('module-5')).toBe('branch');
       expect(resolveActivityIdAlias('1.0')).toBe('seq.0');
       expect(resolveActivityIdAlias('2.5a')).toBe('param.6');
       expect(resolveActivityIdAlias('3.8')).toBe('loop.8');
       expect(resolveActivityIdAlias('4C')).toBe('func.C');
+      expect(resolveActivityIdAlias('5.5a')).toBe('branch.5a');
+      expect(resolveActivityIdAlias('5B')).toBe('branch.B');
       expect(getCurriculumModule('module-2')?.id).toBe('param');
       expect(getActivityLatest('2.5a')?.id).toBe('param.6');
     });
@@ -112,12 +123,12 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
         for (const variant of variants) {
           if (variant.kind === 'depot' && variant.depot) {
             const initialDepot = createInitialDepotState(variant.depot);
-            const simResult = runHeadlessSimulation(sol, 'depot', initialDepot, 200);
-            expect(simResult.status).toBe('SUCCESS');
+            const simResult = runHeadlessSimulation(sol, 'depot', initialDepot);
+            expect(simResult.status, `${activity.id} (${variant.label})`).toBe('SUCCESS');
           } else if (variant.kind === 'grid' && variant.grid) {
             const initialGrid = createCurriculumGridState(variant.grid);
-            const simResult = runHeadlessSimulation(sol, 'grid', initialGrid, 200);
-            expect(simResult.status).toBe('SUCCESS');
+            const simResult = runHeadlessSimulation(sol, 'grid', initialGrid);
+            expect(simResult.status, `${activity.id} (${variant.label})`).toBe('SUCCESS');
           }
         }
       }

@@ -3,6 +3,7 @@ import {
   WHILE_0_GRID_LONG,
   WHILE_0_GRID_MID_GOAL,
   WHILE_0_GRID_SHORT,
+  WHILE_2_DEMO_TABS,
   WHILE_ACTIVITIES,
 } from '../src/data/curriculum/whileActivities';
 import {
@@ -18,7 +19,10 @@ import {
 } from '../src/engine/serialization/conditionSerializer';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
 import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
+import { createInitialBeatState } from '../src/simulations/beat/beatEnvironment';
+import { createInitialDepotState } from '../src/simulations/depot/depotPhysics';
 import { DEPOT_STATION_BITS } from '../src/simulations/depot/types';
+import { createInitialSwitchyardState } from '../src/simulations/switchyard/physics';
 import { createInitialTurtleState } from '../src/simulations/turtle/turtleEnvironment';
 import type { CodeBlock, ScopeType, WorkspaceState } from '../src/types';
 import { computeSlotBudget } from '../src/utils/curriculumStagePolicy';
@@ -391,6 +395,126 @@ describe('Module `while` Curriculum Authoring (while.0..while.C)', () => {
           res.finalState.paths.length,
           `while.B ${label} ($input=${sceneInput}) drew paths`
         ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('executes while.2 Depot Queue vs Stack demo tabs to SUCCESS', () => {
+    expect(WHILE_2_DEMO_TABS.length).toBeGreaterThanOrEqual(2);
+    for (const tab of WHILE_2_DEMO_TABS) {
+      expect(tab.simId).toBe('depot');
+      expect(tab.depotState).toBeDefined();
+      const init = createInitialDepotState(tab.depotState!);
+      const res = runHeadlessSimulation(tab.workspace, 'depot', init, 250);
+      expect(res.status, `while.2 tab "${tab.label}"`).toBe('SUCCESS');
+    }
+  });
+
+  it('verifies while.3 and while.4 Depot v4 constraints (<200ms) and multi-variant runtime', () => {
+    for (const id of ['while.3', 'while.4'] as const) {
+      const act = WHILE_ACTIVITIES.find((a) => a.id === id)!;
+      expect(act.depotVariants?.length, `${id} depotVariants`).toBe(4);
+
+      const report = verifyActivityConstraints(act);
+      expect(report.passed, `${id} constraints`).toBe(true);
+      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(200);
+      for (const r of report.ruleResults) {
+        expect(r.passed, `${id} rule ${r.ruleId}`).toBe(true);
+      }
+
+      const starterStatuses = act.depotVariants!.map(
+        (v) => runHeadlessSimulation(act.starterWorkspace!, 'depot', createInitialDepotState(v), 250).status
+      );
+      expect(
+        starterStatuses.some((s) => s !== 'SUCCESS'),
+        `${id} starter must fail at least one variant`
+      ).toBe(true);
+
+      act.depotVariants!.forEach((v, idx) => {
+        const res = runHeadlessSimulation(act.referenceSolution!, 'depot', createInitialDepotState(v), 250);
+        expect(res.status, `${id} referenceSolution variant ${idx + 1}`).toBe('SUCCESS');
+      });
+    }
+  });
+
+  it('verifies while.5 and while.8 Switchyard v2 constraints (<200ms) and multi-stream runtime', () => {
+    for (const id of ['while.5', 'while.8'] as const) {
+      const act = WHILE_ACTIVITIES.find((a) => a.id === id)!;
+      expect(act.switchyardVariants?.length, `${id} switchyardVariants`).toBe(4);
+
+      const report = verifyActivityConstraints(act);
+      expect(report.passed, `${id} constraints`).toBe(true);
+      expect(report.elapsedMs, `${id} elapsedMs`).toBeLessThan(200);
+      for (const r of report.ruleResults) {
+        expect(r.passed, `${id} rule ${r.ruleId}`).toBe(true);
+      }
+
+      const starterStatuses = act.switchyardVariants!.map(
+        (v) =>
+          runHeadlessSimulation(
+            act.starterWorkspace!,
+            'switchyard',
+            createInitialSwitchyardState(v),
+            300
+          ).status
+      );
+      if (id === 'while.8') {
+        expect(starterStatuses[0], 'while.8 starter succeeds on Stream 1').toBe('SUCCESS');
+        expect(
+          starterStatuses.slice(1).every((s) => s !== 'SUCCESS'),
+          'while.8 starter fails Streams 2..4'
+        ).toBe(true);
+      } else {
+        expect(
+          starterStatuses.some((s) => s !== 'SUCCESS'),
+          `${id} starter must fail at least one variant`
+        ).toBe(true);
+      }
+
+      act.switchyardVariants!.forEach((v, idx) => {
+        const res = runHeadlessSimulation(
+          act.referenceSolution!,
+          'switchyard',
+          createInitialSwitchyardState(v),
+          300
+        );
+        expect(res.status, `${id} referenceSolution variant ${idx + 1}`).toBe('SUCCESS');
+      });
+    }
+  });
+
+  it('runs while.7 and while.C Beat cursorAtEdge workspaces cleanly across $input variants', () => {
+    for (const id of ['while.7', 'while.C'] as const) {
+      const act = WHILE_ACTIVITIES.find((a) => a.id === id)!;
+      const maxInput = id === 'while.C' ? 4 : 3;
+      const inputRange = Array.from({ length: maxInput }, (_, i) => i + 1);
+
+      for (const { label, workspace } of collectWorkspacesForActivity(act)) {
+        const inputs = label.includes('var3') ? inputRange : [undefined];
+        for (const sceneInput of inputs) {
+          const init = createInitialBeatState();
+          const res = runHeadlessSimulation(
+            workspace,
+            'beat',
+            init,
+            2500,
+            sceneInput !== undefined ? { sceneInput } : undefined
+          );
+          expect(res.status, `${id} ${label} ($input=${sceneInput})`).not.toBe('COLLISION');
+          expect(res.status, `${id} ${label} ($input=${sceneInput})`).not.toBe('STEP_LIMIT');
+          expect(
+            Boolean(res.finalState.edgeBonk),
+            `${id} ${label} ($input=${sceneInput}) should stop cleanly without edgeBonk`
+          ).toBe(false);
+          if (label !== 'starterWorkspace' && !label.startsWith('partialHelp')) {
+            const litCount = res.finalState.leds.flat().filter(Boolean).length;
+            expect(litCount, `${id} ${label} ($input=${sceneInput}) lit LEDs`).toBeGreaterThan(0);
+            expect(
+              res.finalState.stepCount,
+              `${id} ${label} ($input=${sceneInput}) stepCount`
+            ).toBeGreaterThan(0);
+          }
+        }
       }
     }
   });

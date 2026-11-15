@@ -100,7 +100,6 @@ test.describe('Robot Emulator E2E Suite', () => {
     await page.getByTestId('palette-loop-start').click();
     await page.getByTestId('palette-number-2').click();
     await page.getByTestId('palette-turn-right').click();
-    await page.getByTestId('palette-loop-end').click();
 
     await page.getByTestId('btn-step').click(); // Enter loop
     await page.getByTestId('btn-step').click(); // Turn right (facing SOUTH)
@@ -159,6 +158,9 @@ test.describe('Robot Emulator E2E Suite', () => {
 
   test('detects unclosed loop, displays error banner and disables play/step', async ({ page }) => {
     await page.getByTestId('palette-loop-start').click();
+    // Auto-pairing inserts LOOP_START + LOOP_END; remove LOOP_END to leave an unclosed loop
+    await page.locator('[data-block-type="LOOP_END"]').click();
+    await page.getByTestId('btn-trash').click();
 
     await expect(page.getByTestId('loop-error-banner')).toBeVisible();
 
