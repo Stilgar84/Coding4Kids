@@ -495,25 +495,45 @@ export const GridCanvas: React.FC = () => {
   const isInstant = speed === 'instant' || (speed as any) === 0;
 
   // Track short-lived robot micro-feedback animations (plank 1-ahead lift, hands-full wiggle, wrong-key X, reverse dust)
-  const prevGridRef = useRef<GridState | null>(null);
-  const [microFx, setMicroFx] = useState<{
-    plankLift: boolean;
-    handsFull: boolean;
-    wrongKeyCell: { x: number; y: number } | null;
-    reverseDustCell: { x: number; y: number } | null;
-  }>({
+  const EMPTY_MICRO_FX = {
     plankLift: false,
     handsFull: false,
-    wrongKeyCell: null,
-    reverseDustCell: null,
-  });
+    wrongKeyCell: null as { x: number; y: number } | null,
+    reverseDustCell: null as { x: number; y: number } | null,
+  };
+  const prevGridRef = useRef<GridState | null>(null);
+  const microFxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [microFx, setMicroFx] = useState(EMPTY_MICRO_FX);
+
+  useEffect(() => {
+    return () => {
+      if (microFxTimerRef.current !== null) {
+        clearTimeout(microFxTimerRef.current);
+        microFxTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const prev = prevGridRef.current;
     prevGridRef.current = grid;
 
-    if (!prev || isInstant || isLowQuality) {
-      return undefined;
+    const isCleanReset =
+      grid.status === 'IDLE' &&
+      grid.trace.length <= 1 &&
+      !grid.lastInteractionFeedback;
+
+    if (!prev || isInstant || isLowQuality || isCleanReset) {
+      if (microFxTimerRef.current !== null) {
+        clearTimeout(microFxTimerRef.current);
+        microFxTimerRef.current = null;
+      }
+      setMicroFx((curr) =>
+        curr.plankLift || curr.handsFull || curr.wrongKeyCell || curr.reverseDustCell
+          ? EMPTY_MICRO_FX
+          : curr
+      );
+      return;
     }
 
     const prevBridged = prev.bridgedWaterCells ?? [];
@@ -541,7 +561,11 @@ export const GridCanvas: React.FC = () => {
     const reverseDustCell = movedBack ? { x: prev.robot.x, y: prev.robot.y } : null;
 
     if (!plankLift && !handsFull && !wrongKeyCell && !reverseDustCell) {
-      return undefined;
+      return;
+    }
+
+    if (microFxTimerRef.current !== null) {
+      clearTimeout(microFxTimerRef.current);
     }
 
     setMicroFx({
@@ -551,15 +575,10 @@ export const GridCanvas: React.FC = () => {
       reverseDustCell,
     });
 
-    const timer = setTimeout(() => {
-      setMicroFx({
-        plankLift: false,
-        handsFull: false,
-        wrongKeyCell: null,
-        reverseDustCell: null,
-      });
+    microFxTimerRef.current = setTimeout(() => {
+      microFxTimerRef.current = null;
+      setMicroFx(EMPTY_MICRO_FX);
     }, 450);
-    return () => clearTimeout(timer);
   }, [grid, isInstant, isLowQuality]);
 
   const handleToggleFit = () => {

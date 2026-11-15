@@ -241,8 +241,23 @@ export const FlagPadlockOverlay: React.FC<FlagPadlockOverlayProps> = ({
 }) => {
   const isLowQuality = useAppStoreSelector(isLowQualityActive);
   const prevGridRef = useRef<GridState | null>(null);
+  const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const earlyStepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [animatingIds, setAnimatingIds] = useState<Set<string>>(() => new Set());
   const [earlyStepFlagId, setEarlyStepFlagId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (unlockTimerRef.current !== null) {
+        clearTimeout(unlockTimerRef.current);
+        unlockTimerRef.current = null;
+      }
+      if (earlyStepTimerRef.current !== null) {
+        clearTimeout(earlyStepTimerRef.current);
+        earlyStepTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const prevGrid = prevGridRef.current;
@@ -259,40 +274,65 @@ export const FlagPadlockOverlay: React.FC<FlagPadlockOverlayProps> = ({
       }));
     }
 
-    const hasUnlock = transition.newlyUnlockedFlags.length > 0 && !isInstant && !isLowQuality;
-    const hasEarlyStep = Boolean(transition.steppedLockedFlag) && !isInstant && !isLowQuality;
+    const isCleanReset =
+      grid.status === 'IDLE' &&
+      grid.trace.length <= 1 &&
+      !grid.flags.some((f) => f.collected);
 
-    if (!hasUnlock && !hasEarlyStep) {
-      return undefined;
+    if (isInstant || isLowQuality || isCleanReset) {
+      if (unlockTimerRef.current !== null) {
+        clearTimeout(unlockTimerRef.current);
+        unlockTimerRef.current = null;
+      }
+      if (earlyStepTimerRef.current !== null) {
+        clearTimeout(earlyStepTimerRef.current);
+        earlyStepTimerRef.current = null;
+      }
+      setAnimatingIds((prev) => (prev.size > 0 ? new Set() : prev));
+      setEarlyStepFlagId((prev) => (prev !== null ? null : prev));
+      return;
     }
 
-    const idsToAdd = hasUnlock ? transition.newlyUnlockedFlags.map((f) => f.id) : [];
+    const robotMoved = Boolean(
+      prevGrid && (prevGrid.robot.x !== grid.robot.x || prevGrid.robot.y !== grid.robot.y)
+    );
+    if (robotMoved && !transition.steppedLockedFlag) {
+      if (earlyStepTimerRef.current !== null) {
+        clearTimeout(earlyStepTimerRef.current);
+        earlyStepTimerRef.current = null;
+      }
+      setEarlyStepFlagId((prev) => (prev !== null ? null : prev));
+    }
+
+    const hasUnlock = transition.newlyUnlockedFlags.length > 0;
+    const hasEarlyStep = Boolean(transition.steppedLockedFlag);
+
     if (hasUnlock) {
+      const idsToAdd = transition.newlyUnlockedFlags.map((f) => f.id);
+      if (unlockTimerRef.current !== null) {
+        clearTimeout(unlockTimerRef.current);
+      }
       setAnimatingIds((prev) => {
         const next = new Set(prev);
         for (const id of idsToAdd) next.add(id);
         return next;
       });
+      unlockTimerRef.current = setTimeout(() => {
+        unlockTimerRef.current = null;
+        setAnimatingIds((prev) => (prev.size > 0 ? new Set() : prev));
+      }, UNLOCK_POP_DURATION_MS);
     }
 
     if (hasEarlyStep && transition.steppedLockedFlag) {
+      if (earlyStepTimerRef.current !== null) {
+        clearTimeout(earlyStepTimerRef.current);
+      }
       setEarlyStepFlagId(transition.steppedLockedFlag.id);
-    }
-
-    const timer = setTimeout(() => {
-      if (hasUnlock) {
-        setAnimatingIds((prev) => {
-          const next = new Set(prev);
-          for (const id of idsToAdd) next.delete(id);
-          return next;
-        });
-      }
-      if (hasEarlyStep) {
+      earlyStepTimerRef.current = setTimeout(() => {
+        earlyStepTimerRef.current = null;
         setEarlyStepFlagId(null);
-      }
-    }, UNLOCK_POP_DURATION_MS);
-
-    return () => clearTimeout(timer);
+      }, UNLOCK_POP_DURATION_MS);
+    }
   }, [grid, isInstant, isLowQuality]);
 
   const flags = grid.flags || [];

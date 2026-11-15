@@ -782,7 +782,7 @@ export function executeRobotAction(
         ...baseInteractiveFields,
         interactionFeedback: {
           kind: 'noop-empty',
-          message: 'Backpack is empty.',
+          message: 'Gripper is empty.',
           seq: nextFeedbackSeq,
         },
       };

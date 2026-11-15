@@ -311,9 +311,19 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
 }) => {
   const isLowQuality = useAppStoreSelector(isLowQualityActive);
   const prevGridRef = useRef<GridState | null>(null);
+  const fxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recentBridgeKeys, setRecentBridgeKeys] = useState<string[]>([]);
   const [recentUnbridgeKeys, setRecentUnbridgeKeys] = useState<string[]>([]);
   const [recentUnlockedGateIds, setRecentUnlockedGateIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    return () => {
+      if (fxTimerRef.current !== null) {
+        clearTimeout(fxTimerRef.current);
+        fxTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const prevGrid = prevGridRef.current;
@@ -329,8 +339,21 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
       }));
     }
 
-    if (!prevGrid || isInstant || isLowQuality) {
-      return undefined;
+    const isCleanReset =
+      grid.status === 'IDLE' &&
+      grid.trace.length <= 1 &&
+      (grid.bridgedWaterCells?.length ?? 0) === 0 &&
+      !(grid.lockedGates?.some((g) => g.unlockedByKey));
+
+    if (!prevGrid || isInstant || isLowQuality || isCleanReset) {
+      if (fxTimerRef.current !== null) {
+        clearTimeout(fxTimerRef.current);
+        fxTimerRef.current = null;
+      }
+      setRecentBridgeKeys((prev) => (prev.length > 0 ? [] : prev));
+      setRecentUnbridgeKeys((prev) => (prev.length > 0 ? [] : prev));
+      setRecentUnlockedGateIds((prev) => (prev.length > 0 ? [] : prev));
+      return;
     }
 
     const prevBridges = prevGrid.bridgedWaterCells ?? [];
@@ -342,19 +365,23 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
     const unlockedIds = transition.newlyUnlockedGateIds;
 
     if (bridged.length === 0 && unbridged.length === 0 && unlockedIds.length === 0) {
-      return undefined;
+      return;
+    }
+
+    if (fxTimerRef.current !== null) {
+      clearTimeout(fxTimerRef.current);
     }
 
     setRecentBridgeKeys(bridged);
     setRecentUnbridgeKeys(unbridged);
     setRecentUnlockedGateIds(unlockedIds);
 
-    const timer = setTimeout(() => {
+    fxTimerRef.current = setTimeout(() => {
+      fxTimerRef.current = null;
       setRecentBridgeKeys([]);
       setRecentUnbridgeKeys([]);
       setRecentUnlockedGateIds([]);
     }, 450);
-    return () => clearTimeout(timer);
   }, [grid, isInstant, isLowQuality]);
 
   const waterCells = grid.waterCells ?? [];
