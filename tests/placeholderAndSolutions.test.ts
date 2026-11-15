@@ -588,10 +588,10 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
       expect(fallback.MAIN.some((b) => b.type === 'PLACEHOLDER')).toBe(true);
     });
 
-    it('renders Two-Tier Help Modal in Curriculum mode while preserving Sandbox SolutionModal layout', () => {
+    it('renders Two-Tier Help Modal in Curriculum mode and Adult Math Check gate in Sandbox SolutionModal', () => {
       const store = useAppStore.getState();
 
-      // Curriculum mode on 1.1: Tier 1 Ghost card visible, Tier 2 Full Solution collapsed behind disclosure
+      // Curriculum mode on seq.1: Tier 1 Ghost card ungated, Tier 2 Full Solution collapsed behind disclosure
       store.setAppMode('curriculum');
       store.setCurriculumActivity('seq.1');
       store.setSolutionOpen(true);
@@ -603,16 +603,24 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
       expect(curriculumModalHtml).toContain('data-testid="tier2-full-solution-section"');
       expect(curriculumModalHtml).toContain('data-testid="btn-reveal-full-solution"');
       expect(curriculumModalHtml).toContain('aria-expanded="false"');
-      // Full solution load button is hidden until learner reveals Tier 2
+      // Full solution load button is hidden until learner reveals Tier 2 & passes adult math gate
       expect(curriculumModalHtml).not.toContain('data-testid="btn-load-solution"');
 
-      // Sandbox mode: immediately displays Recommended Solution and btn-load-solution as before
+      // Sandbox mode: renders Recommended Solution header and Adult Math Gate above the fold, hiding btn-load-solution
       store.setAppMode('sandbox');
       store.setSolutionOpen(true);
       const sandboxModalHtml = renderToStaticMarkup(React.createElement(SolutionModal));
       expect(sandboxModalHtml).toContain('Recommended Solution');
-      expect(sandboxModalHtml).toContain('data-testid="btn-load-solution"');
+      expect(sandboxModalHtml).toContain('data-testid="adult-math-gate"');
+      expect(sandboxModalHtml).toContain('data-testid="adult-math-prompt"');
+      expect(sandboxModalHtml).toContain('data-testid="adult-math-input"');
+      expect(sandboxModalHtml).toContain('data-testid="btn-adult-math-submit"');
+      expect(sandboxModalHtml).toContain('🧮');
+      expect(sandboxModalHtml).toContain('Grown-Up Check');
+      expect(sandboxModalHtml).not.toContain('data-testid="btn-load-solution"');
       expect(sandboxModalHtml).not.toContain('data-testid="tier1-ghost-card"');
+      expect(sandboxModalHtml).not.toContain('🔒');
+      expect(sandboxModalHtml).not.toContain('🔓');
     });
   });
 });
