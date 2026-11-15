@@ -777,6 +777,35 @@ describe('Parameters (param): Action Parameters (param.1-param.4, param.B) & Bea
           expect(ring.sweepAngle).toBe(360);
         }
       }
+
+      // Verify synced 4c06f1c LOGO parameter scales across param.2, param.3, and param.B
+      const lengthsOf = (blocks: { type: string; params?: Record<string, unknown> }[]) =>
+        blocks
+          .filter((b) => b.type === 'FORWARD' || b.type === 'BACKWARD')
+          .map((b) => b.params?.length);
+      const radiiOf = (blocks: { type: string; params?: Record<string, unknown> }[]) =>
+        blocks
+          .filter((b) => b.type === 'ARC_LEFT' || b.type === 'ARC_RIGHT')
+          .map((b) => b.params?.radius);
+
+      const param2 = getActivityLatest('param.2')!;
+      expect(lengthsOf(param2.starterWorkspace!.MAIN)).toEqual([200, 200, 200]);
+      expect(lengthsOf(param2.variations![0].workspace.MAIN)).toEqual([150, 150, 100, 100]);
+      expect(lengthsOf(param2.variations![1].workspace.MAIN)).toEqual([150, 150, 150, 150]);
+      expect(lengthsOf(param2.variations![2].workspace.MAIN)).toEqual([100, 100, 100, 100, 100, 100]);
+      expect(lengthsOf(param2.variations![3].workspace.MAIN)).toEqual([200, 200, 200, 200, 200]);
+
+      const param3 = getActivityLatest('param.3')!;
+      expect(lengthsOf(param3.starterWorkspace!.MAIN)).toEqual([200, 50, 200, 150]);
+      expect(lengthsOf(param3.variations![0].workspace.MAIN)).toEqual([200, 200, 200]);
+
+      expect(lengthsOf(capParamB.starterWorkspace!.MAIN)).toEqual([150, 150, 150, 150]);
+      expect(radiiOf(capParamB.starterWorkspace!.MAIN)).toEqual([75]);
+      expect(lengthsOf(capParamB.variations![0].workspace.MAIN)).toEqual([100, 100]);
+      expect(radiiOf(capParamB.variations![0].workspace.MAIN)).toEqual([100, 50, 50]);
+      const flowerBlocks = capParamB.variations![3].workspace.MAIN;
+      expect(lengthsOf(flowerBlocks)).toEqual([150, 25]);
+      expect(radiiOf(flowerBlocks)).toEqual([75, 75, 75, 75, 75, 75, 75, 75, 25]);
     });
 
     it('executes param.5 Beat & Light starter and all 4 playable variations with lit 8x8 frames and staged Tier 2 palette', () => {

@@ -596,8 +596,8 @@ export const SEQ_ACTIVITIES: CurriculumActivity[] = [
     title: 'Continuous Line Sketches',
     concept: 'Spatial Sequence in Turtle LOGO',
     description:
-      'Draw crisp 50px line shapes with fixed 90° turns, or load a starter card and remix it!',
-    hint: 'Forward draws 50px, turns pivot 90°, and Backward retraces without turning around.',
+      'Draw crisp 100px line shapes with fixed 90° turns, or load a starter card and remix it!',
+    hint: 'Forward draws 100px, turns pivot 90°, and Backward retraces without turning around.',
     palette: {
       allowedSimBlocks: ['FORWARD', 'BACKWARD', 'TURN_LEFT', 'TURN_RIGHT'],
       allowedControlBlocks: [],
@@ -702,11 +702,13 @@ export const SEQ_ACTIVITIES: CurriculumActivity[] = [
     starterWorkspace: makeMainWorkspace([
       block('TURN_RIGHT', undefined, undefined, 'start_seq7'),
       block('FORWARD', undefined, undefined, 'start_seq7'),
+      block('FORWARD', undefined, undefined, 'start_seq7'),
       block('PEN_UP', undefined, undefined, 'start_seq7'),
       block('TURN_LEFT', undefined, undefined, 'start_seq7'),
       block('FORWARD', undefined, undefined, 'start_seq7'),
       block('PEN_DOWN', undefined, undefined, 'start_seq7'),
       block('TURN_LEFT', undefined, undefined, 'start_seq7'),
+      block('FORWARD', undefined, undefined, 'start_seq7'),
       block('FORWARD', undefined, undefined, 'start_seq7'),
     ]),
     variations: [
@@ -1054,7 +1056,7 @@ export const SEQ_ACTIVITIES: CurriculumActivity[] = [
     title: 'Postcard Sketch',
     concept: 'Multi-Part LOGO Composition with Pen Up / Pen Down',
     description:
-      'Create multi-part postcard artwork by combining 50px steps, 90° turns, Pen Up hops, and Pen Down ink.',
+      'Create multi-part postcard artwork by combining 100px steps, 90° turns, Pen Up hops, and Pen Down ink.',
     hint: 'Pick any illustrated card to watch how Pen Up hops connect separate shapes.',
     palette: {
       allowedSimBlocks: ['FORWARD', 'BACKWARD', 'TURN_LEFT', 'TURN_RIGHT', 'PEN_UP', 'PEN_DOWN'],

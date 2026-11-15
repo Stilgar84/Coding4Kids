@@ -37,6 +37,7 @@ import {
   getEffectiveTurtlePaletteItems,
   turtleSimulationEnvironment,
 } from '../src/simulations/turtle/turtleEnvironment';
+import { DEFAULT_STEP_DISTANCE } from '../src/simulations/turtle/physics';
 import { TurtleState } from '../src/simulations/turtle/types';
 import { generateTurtleMapThumbnail } from '../src/services/mapThumbnailGenerator';
 import { clearPendingUpdateState } from '../src/services/pwaStateRestoreService';
@@ -263,38 +264,58 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
   });
 
   describe('Parameterless LOGO Execution & Hidden Parameter Badges (allowActionParams === false)', () => {
-    it('executes 50px steps and 90° turns cleanly whether block.params is omitted or present, including MOVE_FWD/MOVE_BACK aliases', () => {
+    it('executes DEFAULT_STEP_DISTANCE steps and 90° turns cleanly whether block.params is omitted or present, including MOVE_FWD/MOVE_BACK aliases', () => {
       let state = createInitialTurtleState();
 
       // Omitted params on FORWARD, TURN_RIGHT, MOVE_FWD, TURN_LEFT, BACKWARD, MOVE_BACK
       state = turtleSimulationEnvironment.executeAction('FORWARD', state).nextState;
-      expect(state.robot).toEqual({ x: 0, y: -50, heading: 0 });
+      expect(state.robot).toEqual({ x: 0, y: -DEFAULT_STEP_DISTANCE, heading: 0 });
 
       state = turtleSimulationEnvironment.executeAction('TURN_RIGHT', state).nextState;
-      expect(state.robot).toEqual({ x: 0, y: -50, heading: 90 });
+      expect(state.robot).toEqual({ x: 0, y: -DEFAULT_STEP_DISTANCE, heading: 90 });
 
       state = turtleSimulationEnvironment.executeAction('MOVE_FWD', state).nextState;
-      expect(state.robot).toEqual({ x: 50, y: -50, heading: 90 });
+      expect(state.robot).toEqual({
+        x: DEFAULT_STEP_DISTANCE,
+        y: -DEFAULT_STEP_DISTANCE,
+        heading: 90,
+      });
 
       state = turtleSimulationEnvironment.executeAction('TURN_LEFT', state).nextState;
-      expect(state.robot).toEqual({ x: 50, y: -50, heading: 0 });
+      expect(state.robot).toEqual({
+        x: DEFAULT_STEP_DISTANCE,
+        y: -DEFAULT_STEP_DISTANCE,
+        heading: 0,
+      });
 
       state = turtleSimulationEnvironment.executeAction('BACKWARD', state).nextState;
-      expect(state.robot).toEqual({ x: 50, y: 0, heading: 0 });
+      expect(state.robot).toEqual({ x: DEFAULT_STEP_DISTANCE, y: 0, heading: 0 });
 
       state = turtleSimulationEnvironment.executeAction('MOVE_BACK', state).nextState;
-      expect(state.robot).toEqual({ x: 50, y: 50, heading: 0 });
+      expect(state.robot).toEqual({
+        x: DEFAULT_STEP_DISTANCE,
+        y: DEFAULT_STEP_DISTANCE,
+        heading: 0,
+      });
 
       // Explicit params still work when provided
       state = turtleSimulationEnvironment.executeAction('FORWARD', state, {
         params: { length: 25 },
       }).nextState;
-      expect(state.robot).toEqual({ x: 50, y: 25, heading: 0 });
+      expect(state.robot).toEqual({
+        x: DEFAULT_STEP_DISTANCE,
+        y: DEFAULT_STEP_DISTANCE - 25,
+        heading: 0,
+      });
 
       state = turtleSimulationEnvironment.executeAction('TURN_RIGHT', state, {
         params: { angle: 45 },
       }).nextState;
-      expect(state.robot).toEqual({ x: 50, y: 25, heading: 45 });
+      expect(state.robot).toEqual({
+        x: DEFAULT_STEP_DISTANCE,
+        y: DEFAULT_STEP_DISTANCE - 25,
+        heading: 45,
+      });
 
       // Effective palette items helper strips paramDefs when allowActionParams === false
       const strippedItems = getEffectiveTurtlePaletteItems(false);
@@ -325,14 +346,14 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
       store.updateBlockParams('MAIN', blocks[1].id, { angle: 45 });
       expect(useAppStore.getState().workspace.MAIN[1].params).toBeUndefined();
 
-      // Headless execution of the newly added blocks runs clean 50px steps & 90° turns
+      // Headless execution of the newly added blocks runs clean DEFAULT_STEP_DISTANCE steps & 90° turns
       const result = runHeadlessSimulation(
         useAppStore.getState().workspace,
         'turtle',
         createInitialTurtleState()
       ).finalState as TurtleState;
-      // (0,0) -> FORWARD (0,-50) -> TURN_RIGHT (90°) -> FORWARD (50,-50) -> BACKWARD (0,-50)
-      expect(result.robot).toEqual({ x: 0, y: -50, heading: 90 });
+      // (0,0) -> FORWARD (0,-D) -> TURN_RIGHT (90°) -> FORWARD (D,-D) -> BACKWARD (0,-D)
+      expect(result.robot).toEqual({ x: 0, y: -DEFAULT_STEP_DISTANCE, heading: 90 });
     });
 
     it('hides BlockParamBadge in BlockItem when allowActionParams === false in Curriculum mode, and shows it in Sandbox mode', () => {
@@ -439,11 +460,16 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
       expect(useAppStore.getState().workspace.MAIN).toHaveLength(8);
       expect(useAppStore.getState().turtleState.paths).toHaveLength(5); // 2 flagpole + 3 flag sides!
 
-      // Switch to seq.7: resets previous turtle paths and runs seq.7 starter (2 ink lines)
+      // Switch to seq.7: resets previous turtle paths and runs seq.7 starter (Parallel Bars =: 10 blocks, 4 ink lines)
       store.setCurriculumActivity('seq.7');
       expect(useAppStore.getState().activeSimId).toBe('turtle');
-      expect(useAppStore.getState().workspace.MAIN).toHaveLength(8);
-      expect(useAppStore.getState().turtleState.paths).toHaveLength(2);
+      expect(useAppStore.getState().workspace.MAIN).toHaveLength(10);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(4);
+      expect(useAppStore.getState().turtleState.robot).toEqual({
+        x: 0,
+        y: -DEFAULT_STEP_DISTANCE,
+        heading: 270,
+      });
 
       // Switch to Capstone seq.B: runs seq.B starter (4 ink segments across pen lifts)
       store.setCurriculumActivity('seq.B');
