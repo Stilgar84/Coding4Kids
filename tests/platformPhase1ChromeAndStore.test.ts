@@ -76,7 +76,8 @@ import {
   createCurriculumGridState,
 } from '../src/data/curriculum';
 import { useAppStore } from '../src/store/useAppStore';
-import { GridState, WorkspaceState } from '../src/types';
+import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
+import { GridState, WallEdge, WorkspaceState } from '../src/types';
 
 function makeMinimalGrid(): GridState {
   return createCurriculumGridState({
@@ -699,6 +700,127 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
       } finally {
         Object.assign(initialRef, backupInitial);
       }
+    });
+
+    it('verifies 9x9 +-greenhouse loop.A constraints (8 crates + 8 requiredForGoal switches, slotCap 10, maxLoopNestingDepth 1) in < 150ms', () => {
+      const barriers: WallEdge[] = [];
+      for (const y of [0, 1, 2, 3, 5, 6, 7, 8]) {
+        barriers.push({ orientation: 'V', x: 4, y });
+        barriers.push({ orientation: 'V', x: 5, y });
+      }
+      for (const x of [0, 1, 2, 3, 5, 6, 7, 8]) {
+        barriers.push({ orientation: 'H', x, y: 4 });
+        barriers.push({ orientation: 'H', x, y: 5 });
+      }
+
+      const loopAActivity: CurriculumActivity = {
+        id: 'loop.A',
+        moduleId: 'loop',
+        version: 1,
+        format: 'capstone',
+        capstoneType: 'puzzle',
+        simId: 'grid',
+        icon: '🤖',
+        title: '9x9 Automated Greenhouse',
+        concept: 'Nested Loops with 8 Crates and 8 Switches',
+        description: 'Deliver 8 crates onto 8 floor switches across 4 wings.',
+        hint: 'Use nested loops within 10 slots.',
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD', 'MOVE_BACK', 'TURN_LEFT', 'TURN_RIGHT', 'PICK_UP', 'USE_DROP'],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+          allowedScopes: ['MAIN'],
+          allowRepeatBadges: true,
+          allowActionParams: false,
+          allowVariables: false,
+        },
+        slotCap: { maxTotal: 10 },
+        grid: {
+          width: 9,
+          height: 9,
+          robot: { x: 4, y: 4, dir: 'NORTH' },
+          barriers,
+          worldItems: [
+            { id: 'c1', type: 'crate', x: 4, y: 3 },
+            { id: 'c2', type: 'crate', x: 4, y: 1 },
+            { id: 'c3', type: 'crate', x: 5, y: 4 },
+            { id: 'c4', type: 'crate', x: 7, y: 4 },
+            { id: 'c5', type: 'crate', x: 4, y: 5 },
+            { id: 'c6', type: 'crate', x: 4, y: 7 },
+            { id: 'c7', type: 'crate', x: 3, y: 4 },
+            { id: 'c8', type: 'crate', x: 1, y: 4 },
+          ],
+          floorSwitches: [
+            { id: 'sw1', x: 4, y: 2, requiredForGoal: true, active: false },
+            { id: 'sw2', x: 4, y: 0, requiredForGoal: true, active: false },
+            { id: 'sw3', x: 6, y: 4, requiredForGoal: true, active: false },
+            { id: 'sw4', x: 8, y: 4, requiredForGoal: true, active: false },
+            { id: 'sw5', x: 4, y: 6, requiredForGoal: true, active: false },
+            { id: 'sw6', x: 4, y: 8, requiredForGoal: true, active: false },
+            { id: 'sw7', x: 2, y: 4, requiredForGoal: true, active: false },
+            { id: 'sw8', x: 0, y: 4, requiredForGoal: true, active: false },
+          ],
+          flags: [{ id: 'goal_loopA', x: 4, y: 4, isGoal: true, order: 1, collected: false }],
+        },
+        referenceSolution: {
+          MAIN: [
+            createCurriculumBlock('LOOP_START', 4, undefined, 'la_1'),
+            createCurriculumBlock('LOOP_START', 2, undefined, 'la_2'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'la_3'),
+            createCurriculumBlock('PICK_UP', undefined, undefined, 'la_4'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'la_5'),
+            createCurriculumBlock('USE_DROP', undefined, undefined, 'la_6'),
+            createCurriculumBlock('LOOP_END', undefined, undefined, 'la_7'),
+            createCurriculumBlock('MOVE_BACK', 4, undefined, 'la_8'),
+            createCurriculumBlock('TURN_RIGHT', undefined, undefined, 'la_9'),
+            createCurriculumBlock('LOOP_END', undefined, undefined, 'la_10'),
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+        antiBypassRules: [
+          {
+            id: 'loopA-require-nested-loops',
+            description: 'Cannot satisfy all 8 switches across 4 wings in <= 10 slots with flat loops only',
+            maxLoopNestingDepth: 1,
+          },
+          {
+            id: 'loopA-require-crate-interaction',
+            description: 'Cannot satisfy all 8 switches without PICK_UP / USE_DROP',
+            forbidBlocks: ['PICK_UP', 'USE_DROP'],
+          },
+        ],
+      };
+
+      const t0 = performance.now();
+      const report = verifyActivityConstraints(loopAActivity);
+      const wallMs = performance.now() - t0;
+
+      expect(report.referenceCheck.passed).toBe(true);
+      expect(
+        report.passed,
+        JSON.stringify(
+          report.ruleResults.map((r) => ({
+            ruleId: r.ruleId,
+            passed: r.passed,
+            elapsedMs: Math.round(r.elapsedMs),
+            exploredStates: r.exploredStates,
+            diagnostic: r.diagnostic,
+          }))
+        )
+      ).toBe(true);
+      expect(
+        report.elapsedMs,
+        JSON.stringify(
+          report.ruleResults.map((r) => ({
+            ruleId: r.ruleId,
+            passed: r.passed,
+            elapsedMs: Math.round(r.elapsedMs),
+            exploredStates: r.exploredStates,
+          }))
+        )
+      ).toBeLessThan(150);
+      expect(wallMs).toBeLessThan(150);
     });
   });
 });

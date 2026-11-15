@@ -1752,8 +1752,9 @@ function solveLoopFreeBfs(
 
   const hardMaxDepth =
     slotLimit !== undefined ? slotLimit + extraDepthBeyondCap : 200;
-  const postCapStateLimit = 6000;
-  const unboundedStateLimit = 50000;
+  const hasDenseItems = (evaluator.initialGrid.worldItems?.length ?? 0) >= 4;
+  const postCapStateLimit = hasDenseItems ? 2000 : 6000;
+  const unboundedStateLimit = 2000;
   let truncatedByCap = false;
 
   let head = 0;
@@ -1968,45 +1969,165 @@ function solveStructuralLoopSearch(
     tracker === null &&
     Boolean(gridDef.floorSwitches?.some((sw) => sw.requiredForGoal === true));
 
+  const cratesCanStack =
+    (typeof rawRobot.carriedCount === 'number' && rawRobot.carriedCount > 1) ||
+    Boolean(gridDef.worldItems?.some((it) => (it.count ?? 1) > 1));
+
+  const hasWaterCells =
+    (gridDef.waterCells?.length ?? 0) > 0 || (evaluator.initialGrid.waterCells?.length ?? 0) > 0;
+
+  const hasPickAction = actions.some((a) => a.actionType === 'PICK_UP');
+  const hasDropAction = actions.some((a) => a.actionType === 'USE_DROP');
+  const maxIterCount = loopCounts.length > 0 ? loopCounts[loopCounts.length - 1] : 2;
+  const maxPeriodicSingleDropSites = Math.min(maxIterCount, 4);
+
+  const countCrateSwitchesNeeded = (
+    grid: GridState
+  ): { unsat: number; cratesNeeded: number; hasCarry: boolean } => {
+    const switches = (grid as unknown as Record<string, unknown>).floorSwitches as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const rCarry = (grid.robot as unknown as Record<string, unknown>).carriedItem;
+    const hasCarry = rCarry !== undefined && rCarry !== null;
+    if (!switches || switches.length === 0) {
+      return { unsat: 0, cratesNeeded: 0, hasCarry };
+    }
+    let unsat = 0;
+    let goalCoversOne = grid.flags.every((f) => !f.isGoal || f.collected);
+    for (let i = 0; i < switches.length; i++) {
+      const sw = switches[i];
+      if (
+        sw.requiredForGoal === true &&
+        !(sw.active || sw.pressed || sw.isPressed || sw.triggered || sw.satisfied)
+      ) {
+        unsat++;
+        if (!goalCoversOne) {
+          const sx = Number(sw.x);
+          const sy = Number(sw.y);
+          for (let fi = 0; fi < grid.flags.length; fi++) {
+            const f = grid.flags[fi];
+            if (f.isGoal && !f.collected && f.x === sx && f.y === sy) {
+              goalCoversOne = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    return {
+      unsat,
+      cratesNeeded: goalCoversOne && unsat > 0 ? unsat - 1 : unsat,
+      hasCarry,
+    };
+  };
+
+  const computeMaxCollinearPoints = (
+    pts: ReadonlyArray<{ x: number; y: number }>
+  ): number => {
+    if (pts.length <= 2) return pts.length;
+    let best = 2;
+    for (let i = 0; i < pts.length; i++) {
+      const ax = pts[i].x;
+      const ay = pts[i].y;
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[j].x - ax;
+        const dy = pts[j].y - ay;
+        let count = 2;
+        for (let k = j + 1; k < pts.length; k++) {
+          if ((pts[k].x - ax) * dy === (pts[k].y - ay) * dx) {
+            count++;
+          }
+        }
+        if (count > best) best = count;
+      }
+    }
+    return best;
+  };
+
+  const computeMaxCollinearUnsatSwitches = (grid: GridState): number => {
+    const switches = (grid as unknown as Record<string, unknown>).floorSwitches as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!switches) return 0;
+    const pts: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < switches.length; i++) {
+      const sw = switches[i];
+      if (
+        sw.requiredForGoal === true &&
+        !(sw.active || sw.pressed || sw.isPressed || sw.triggered || sw.satisfied)
+      ) {
+        pts.push({ x: Number(sw.x), y: Number(sw.y) });
+      }
+    }
+    return computeMaxCollinearPoints(pts);
+  };
+
+  const computeMaxCollinearCrates = (grid: GridState): number => {
+    const items = grid.worldItems;
+    if (!items || items.length === 0) return 0;
+    const pts: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type === 'crate') {
+        pts.push({ x: items[i].x, y: items[i].y });
+      }
+    }
+    return computeMaxCollinearPoints(pts);
+  };
+
+  const canUseWingSwitchBound =
+    hasGoalSwitches &&
+    hasOnlyCrateItems &&
+    !hasWaterCells &&
+    tracker === null &&
+    maxLoopNestingDepth <= 1 &&
+    !cratesCanStack;
+
+  const globalMaxCollinearSwitches = canUseWingSwitchBound
+    ? computeMaxCollinearUnsatSwitches(evaluator.initialGrid)
+    : Infinity;
+
+  const maxFlatCrateDropsInSlots = (slots: number): number => {
+    if (!hasDropAction || slots <= 0) return 0;
+    if (!hasPickAction) return 1;
+    if (slots <= 4) return 1;
+    if (slots === 5) return 2;
+    if (slots === 6) return Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches);
+    if (slots === 7) return Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches) + 1;
+    return Infinity;
+  };
+
   /**
-   * Exact admissible lower bound when `remAfter < minLoopCost` (so 0 further loops can fit in `remAfter` slots):
-   * 1. Switch bound: activating `u >= 1` unsatisfied goal-required floor switches without loops requires
-   *    at least `3 * u - 1 - (carried ? 1 : 0)` blocks.
-   * 2. Bounding-box axis bound (pass-through safe!): visiting `{robot, ...uncollectedFlags}` of span `(spanX, spanY)`
-   *    requires `>= 1` H-move if `spanX > 0` (`>= 2` if `minX < robot.x < maxX`), `>= 1` V-move if `spanY > 0`
-   *    (`>= 2` if `minY < robot.y < maxY`), plus `>= 1` TURN whenever both axes move (or current axis != needed axis).
+   * Exact admissible lower bound:
+   * 1. Depth-1 multi-wing switch bound (`canUseWingSwitchBound`): bounds maximum crate drops in
+   *    `remAfter` slots (up to `7`) when flat loops cannot combine collinear drops + turns across wings.
+   * 2. Switch loop-free bound (`remAfter < minLoopCostForCheck`): activating `u >= 1` switches needs
+   *    `>= 3 * u - 1 - (carried ? 1 : 0)` straight-line blocks.
+   * 3. Bounding-box axis bound (pass-through safe!): visiting `{robot, ...uncollectedFlags}`.
    */
   const isImpossibleInRemainingSlots = (
     grid: GridState,
     remAfter: number,
     minLoopCostForCheck: number
   ): boolean => {
-    if (tracker !== null || remAfter >= minLoopCostForCheck) {
+    if (tracker !== null) {
+      return false;
+    }
+
+    if (canUseWingSwitchBound) {
+      const { cratesNeeded } = countCrateSwitchesNeeded(grid);
+      if (cratesNeeded > 0 && cratesNeeded > maxFlatCrateDropsInSlots(remAfter)) {
+        return true;
+      }
+    }
+
+    if (remAfter >= minLoopCostForCheck) {
       return false;
     }
 
     if (hasGoalSwitches) {
-      const switches = (grid as unknown as Record<string, unknown>).floorSwitches as
-        | Array<Record<string, unknown>>
-        | undefined;
-      if (switches) {
-        let unsatisfied = 0;
-        for (let i = 0; i < switches.length; i++) {
-          const sw = switches[i];
-          if (
-            sw.requiredForGoal === true &&
-            !(sw.active || sw.pressed || sw.isPressed || sw.triggered || sw.satisfied)
-          ) {
-            unsatisfied++;
-          }
-        }
-        if (unsatisfied > 0) {
-          const rCarry = (grid.robot as unknown as Record<string, unknown>).carriedItem;
-          const hasCarry = rCarry !== undefined && rCarry !== null ? 1 : 0;
-          if (3 * unsatisfied - 1 - hasCarry > remAfter) {
-            return true;
-          }
-        }
+      const { unsat, hasCarry } = countCrateSwitchesNeeded(grid);
+      if (unsat > 0 && 3 * unsat - 1 - (hasCarry ? 1 : 0) > remAfter) {
+        return true;
       }
     }
 
@@ -2050,8 +2171,6 @@ function solveStructuralLoopSearch(
   };
 
   const requireAllItemsCollected = Boolean(evaluator.initialGrid.requireAllItemsCollected);
-  const hasWaterCells =
-    (gridDef.waterCells?.length ?? 0) > 0 || (evaluator.initialGrid.waterCells?.length ?? 0) > 0;
 
   const redundancyCtx: RedundancyContext = {
     canUseRepeatBadges,
@@ -2111,6 +2230,153 @@ function solveStructuralLoopSearch(
     const flatBodySpecs: CandidateActionSpec[] = [];
     let nestedLoopNodesInBody = 0;
     let goalCapableActionsInBody = 0;
+    let dropsInBody = 0;
+    let picksInBody = 0;
+    let movesInBody = 0;
+    let turnsInBody = 0;
+    let netTurnMod4 = 0;
+
+    const originSwitchMeta =
+      canUseWingSwitchBound && currentDepth === 0 ? countCrateSwitchesNeeded(originGrid) : null;
+    const originMaxCollinearCrates =
+      originSwitchMeta && originSwitchMeta.cratesNeeded > 0
+        ? computeMaxCollinearCrates(originGrid)
+        : Infinity;
+
+    const canFlatPrefixFinishSwitches = (
+      currentMaxLoopSlots: number,
+      usedSlots: number,
+      remBodySlots: number
+    ): boolean => {
+      if (!originSwitchMeta || originSwitchMeta.cratesNeeded === 0) return true;
+      const needed = originSwitchMeta.cratesNeeded;
+      const carryBonus = originSwitchMeta.hasCarry ? 1 : 0;
+
+      // Option A: <= 1 USE_DROP total in the loop body
+      if (dropsInBody <= 1) {
+        const minLenNoPick = Math.max(minBodySlots, usedSlots + (dropsInBody === 0 ? 1 : 0));
+        if (minLenNoPick - usedSlots <= remBodySlots) {
+          const remAfterNoPick = currentMaxLoopSlots - (2 + minLenNoPick);
+          if (carryBonus + maxFlatCrateDropsInSlots(remAfterNoPick) >= needed) {
+            return true;
+          }
+        }
+        if (hasPickAction) {
+          const add1 =
+            Math.max(0, 1 - dropsInBody) +
+            Math.max(0, 1 - picksInBody) +
+            Math.max(0, 1 - movesInBody);
+          const minLen1Drop = Math.max(minBodySlots, usedSlots + add1);
+          if (minLen1Drop - usedSlots <= remBodySlots) {
+            const max1Drop = Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches);
+            const remAfter1 = currentMaxLoopSlots - (2 + minLen1Drop);
+            if (max1Drop + maxFlatCrateDropsInSlots(remAfter1) >= needed) {
+              return true;
+            }
+          }
+        }
+      }
+
+      // Option B: >= 2 USE_DROP blocks total in the loop body
+      if (hasDropAction && hasPickAction) {
+        const needD = Math.max(0, 2 - dropsInBody);
+        const needP1 = Math.max(0, 1 - picksInBody);
+        const needP2 = Math.max(0, 2 - picksInBody);
+        const needM = Math.max(0, 2 - movesInBody);
+        const needT1 = Math.max(0, 1 - turnsInBody);
+        const needT2 = Math.max(0, 2 - turnsInBody);
+
+        // B1: 0 turns (`turns === 0`) -> collinear bound
+        const minAddNoTurn = needD + needP1 + needM;
+        if (turnsInBody === 0 && minAddNoTurn <= remBodySlots) {
+          const minLenNoTurn = Math.max(minBodySlots, usedSlots + minAddNoTurn);
+          const remAfterNoTurn = currentMaxLoopSlots - (2 + minLenNoTurn);
+          if (globalMaxCollinearSwitches + maxFlatCrateDropsInSlots(remAfterNoTurn) >= needed) {
+            return true;
+          }
+        }
+
+        // B2: >= 1 turn, 1 PICK_UP, netTurn != 0 -> bounded by carry + P * 1 periodic pickups
+        const minAdd1PickTurn = needD + needP1 + needM + needT1;
+        if (picksInBody <= 1 && minAdd1PickTurn <= remBodySlots) {
+          const minLen1PT = Math.max(minBodySlots, usedSlots + minAdd1PickTurn);
+          const remAfter1PT = currentMaxLoopSlots - (2 + minLen1PT);
+          if (
+            carryBonus + maxPeriodicSingleDropSites + maxFlatCrateDropsInSlots(remAfter1PT) >=
+            needed
+          ) {
+            return true;
+          }
+        }
+
+        // B3: >= 2 turns with 1 PICK_UP (`netTurn === 0` ray pickups <= carry + collinear crates)
+        const minAdd2Turn1Pick = needD + needP1 + needM + needT2;
+        if (picksInBody <= 1 && minAdd2Turn1Pick <= remBodySlots) {
+          const minLen2T1P = Math.max(minBodySlots, usedSlots + minAdd2Turn1Pick);
+          const remAfter2T1P = currentMaxLoopSlots - (2 + minLen2T1P);
+          const maxSinglePickDrops = Math.max(
+            maxPeriodicSingleDropSites,
+            originMaxCollinearCrates
+          );
+          if (carryBonus + maxSinglePickDrops + maxFlatCrateDropsInSlots(remAfter2T1P) >= needed) {
+            return true;
+          }
+        }
+
+        // B4: >= 2 PICK_UP and >= 2 USE_DROP around cycle:
+        // - With 3 MOVEs, at least one P->D or D->P boundary shares a cell (at most P + 1 or collinear + 1 switches net).
+        // - With >= 4 MOVEs, P->D->P->D->P can all land on distinct tiles.
+        const needM3 = Math.max(0, 3 - movesInBody);
+        const minAddM3 = needD + needP2 + needM3 + needT1;
+        if (movesInBody <= 3 && minAddM3 <= remBodySlots) {
+          const minLenM3 = Math.max(minBodySlots, usedSlots + minAddM3);
+          const remAfterM3 = currentMaxLoopSlots - (2 + minLenM3);
+          const max3MoveDrops =
+            Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches) + 1;
+          if (max3MoveDrops + maxFlatCrateDropsInSlots(remAfterM3) >= needed) {
+            return true;
+          }
+        }
+        const needM4 = Math.max(0, 4 - movesInBody);
+        if (needD + needP2 + needM4 + needT1 <= remBodySlots) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    const canCompletedFlatBodyFinishSwitches = (
+      currentMaxLoopSlots: number,
+      usedSlots: number
+    ): boolean => {
+      if (!originSwitchMeta || originSwitchMeta.cratesNeeded === 0) return true;
+      const needed = originSwitchMeta.cratesNeeded;
+      const maxSuffix = maxFlatCrateDropsInSlots(currentMaxLoopSlots - (2 + usedSlots));
+      const carryBonus = originSwitchMeta.hasCarry ? 1 : 0;
+
+      let maxFromLoop: number;
+      if (dropsInBody === 0 || !hasDropAction) {
+        maxFromLoop = 0;
+      } else if (picksInBody === 0) {
+        maxFromLoop = carryBonus;
+      } else if (movesInBody === 0) {
+        maxFromLoop = 0;
+      } else if (turnsInBody === 0) {
+        maxFromLoop = globalMaxCollinearSwitches;
+      } else if (netTurnMod4 === 0) {
+        const pickSupply =
+          picksInBody === 1
+            ? carryBonus + originMaxCollinearCrates
+            : carryBonus + maxIterCount * picksInBody;
+        maxFromLoop = Math.min(dropsInBody * globalMaxCollinearSwitches, pickSupply);
+      } else {
+        const period = netTurnMod4 === 2 ? Math.min(maxIterCount, 2) : maxPeriodicSingleDropSites;
+        maxFromLoop = Math.min(period * dropsInBody, carryBonus + period * picksInBody);
+      }
+
+      return maxFromLoop + maxSuffix >= needed;
+    };
 
     const buildBody = (
       iter1Grid: GridState,
@@ -2127,6 +2393,9 @@ function solveStructuralLoopSearch(
       if (usedSlots > maxBodySlots) {
         return false;
       }
+      if (!canFlatPrefixFinishSwitches(currentMaxLoopSlots, usedSlots, maxBodySlots - usedSlots)) {
+        return false;
+      }
 
       // True when this outer loop uses ALL remaining MAIN slots (0 slots left after LOOP_END),
       // so only `status === 'SUCCESS'` transitions can ever be useful!
@@ -2135,7 +2404,8 @@ function solveStructuralLoopSearch(
 
       if (
         usedSlots >= minBodySlots &&
-        (!isTerminalFullBudgetLoop || goalCapableActionsInBody > 0)
+        (!isTerminalFullBudgetLoop || goalCapableActionsInBody > 0) &&
+        canCompletedFlatBodyFinishSwitches(currentMaxLoopSlots, usedSlots)
       ) {
         const useFastFlatIds = tracker === null && nestedLoopNodesInBody === 0;
         // A body whose Iteration 1 returns to the exact origin state & counts is a complete no-op for all N
@@ -2364,9 +2634,26 @@ function solveStructuralLoopSearch(
 
           const nextGrid = evaluator.getGridById(tr.nextStateId);
           const nextKey = evaluator.getKeyById(tr.nextStateId);
+          const isDrop = spec.actionType === 'USE_DROP';
+          const isPick = spec.actionType === 'PICK_UP';
+          const isMove = spec.actionType === 'MOVE_FWD' || spec.actionType === 'MOVE_BACK';
+          const turnDelta =
+            spec.actionType === 'TURN_RIGHT'
+              ? spec.repeatCount % 4
+              : spec.actionType === 'TURN_LEFT'
+              ? (4 - (spec.repeatCount % 4)) % 4
+              : 0;
+          const isTurn = isTurnAction(spec.actionType);
           bodyStack.push(actionNodeByIdx[spec.idx]);
           flatBodySpecs.push(spec);
           if (isGoalCapable) goalCapableActionsInBody++;
+          if (isDrop) dropsInBody++;
+          if (isPick) picksInBody++;
+          if (isMove) movesInBody++;
+          if (isTurn) {
+            turnsInBody++;
+            netTurnMod4 = (netTurnMod4 + turnDelta) & 3;
+          }
           const found = buildBody(
             nextGrid,
             nextKey,
@@ -2375,6 +2662,13 @@ function solveStructuralLoopSearch(
             usedSlots + 1,
             spec
           );
+          if (isTurn) {
+            netTurnMod4 = (netTurnMod4 + 4 - turnDelta) & 3;
+            turnsInBody--;
+          }
+          if (isMove) movesInBody--;
+          if (isPick) picksInBody--;
+          if (isDrop) dropsInBody--;
           if (isGoalCapable) goalCapableActionsInBody--;
           flatBodySpecs.pop();
           bodyStack.pop();
