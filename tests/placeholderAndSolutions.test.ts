@@ -312,8 +312,9 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
       expect(pausedState.isPlaying).toBe(false);
       expect(pausedState.runtime?.activeBlockId).toBe(placeholderId);
       expect(pausedState.selectedBlockId).toBe(placeholderId);
-      expect(pausedState.statusAnnouncement).toContain('paused on ? placeholder block');
-      expect(pausedState.statusAnnouncement).toContain('movement hint');
+      expect(pausedState.statusAnnouncement).toBe('Paused on ? block.');
+      expect(pausedState.statusAnnouncement).not.toContain('movement');
+      expect(pausedState.statusAnnouncement).not.toContain('hint');
 
       // Replace PLACEHOLDER with MOVE_FWD in place and continue stepping to reach the goal!
       expect(store.replacePlaceholderBlock('MAIN', placeholderId, 'MOVE_FWD')).toBe(true);
@@ -335,7 +336,8 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
       expect(instantState.grid.status).toBe('PAUSED');
       expect(instantState.runtime?.status).toBe('PAUSED');
       expect(instantState.runtime?.activeBlockId).toBe(instantPhId);
-      expect(instantState.statusAnnouncement).toContain('turn hint');
+      expect(instantState.statusAnnouncement).toBe('Paused on ? block.');
+      expect(instantState.statusAnnouncement).not.toContain('turn');
     });
   });
 
@@ -431,31 +433,46 @@ describe('Wave 2 / Commit 7: OP_PLACEHOLDER Blocks, Ghost Preview & Two-Tier Sol
       expect(checkMatch('MOVE_FWD', 'motion', 'any')).toBe(true);
       expect(checkMatch('LOOP_START', undefined, 'any')).toBe(true);
 
-      // Select a 'turn' PLACEHOLDER block in the store and render BlockPalette + BlockItem
+      // Render both a 'turn' and 'motion' PLACEHOLDER and verify neutral '?' rendering without leaking category
       const store = useAppStore.getState();
       store.addBlock('MAIN', 'PLACEHOLDER', undefined, undefined, { hintCategory: 'turn' });
-      const phBlock = useAppStore.getState().workspace.MAIN[0];
-      store.setSelectedBlockId(phBlock.id);
+      store.addBlock('MAIN', 'PLACEHOLDER', undefined, undefined, { hintCategory: 'motion' });
+      const turnPhBlock = useAppStore.getState().workspace.MAIN[0];
+      const motionPhBlock = useAppStore.getState().workspace.MAIN[1];
+      store.setSelectedBlockId(turnPhBlock.id);
 
-      const blockMarkup = renderToStaticMarkup(
+      const turnBlockMarkup = renderToStaticMarkup(
         React.createElement(BlockItem, {
-          block: phBlock,
+          block: turnPhBlock,
           index: 0,
           scope: 'MAIN',
           isActive: false,
           isSelected: true,
         })
       );
-      expect(blockMarkup).toContain('data-placeholder-hint="turn"');
-      expect(blockMarkup).toContain('tabindex="0"');
-      expect(blockMarkup).toContain('border-dashed');
+      const motionBlockMarkup = renderToStaticMarkup(
+        React.createElement(BlockItem, {
+          block: { ...motionPhBlock, id: turnPhBlock.id },
+          index: 0,
+          scope: 'MAIN',
+          isActive: false,
+          isSelected: true,
+        })
+      );
+      expect(turnBlockMarkup).toContain('tabindex="0"');
+      expect(turnBlockMarkup).toContain('border-dashed border-cyan-400');
+      expect(turnBlockMarkup).toContain('aria-label="Clue ? block, slot 1');
+      expect(turnBlockMarkup).not.toContain('data-placeholder-hint');
+      expect(turnBlockMarkup).not.toContain('turn');
+      expect(turnBlockMarkup).not.toContain('<svg');
+      expect(motionBlockMarkup).toBe(turnBlockMarkup);
 
       const paletteMarkup = renderToStaticMarkup(React.createElement(BlockPalette));
-      // Turn buttons should have data-hint-highlighted="true", while move-fwd should not
-      expect(paletteMarkup).toMatch(
+      expect(paletteMarkup).not.toContain('data-hint-highlighted="true"');
+      expect(paletteMarkup).not.toMatch(
         /data-testid="palette-turn-left"[^>]*data-hint-highlighted="true"/
       );
-      expect(paletteMarkup).toMatch(
+      expect(paletteMarkup).not.toMatch(
         /data-testid="palette-turn-right"[^>]*data-hint-highlighted="true"/
       );
       expect(paletteMarkup).not.toMatch(

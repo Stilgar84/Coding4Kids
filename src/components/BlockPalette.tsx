@@ -15,10 +15,6 @@ import { TouchDataTransfer, dispatchDragEvent } from '../utils/touchDragDrop';
 import { BlockSubpalette } from './BlockSubpalette';
 import { CodeBlock, ScopeType, VariableName } from '../types';
 import {
-  doesBlockMatchHintCategory,
-  getPlaceholderHintCategory,
-} from '../engine/placeholderHelpers';
-import {
   getCalleeScopeForBlockType,
   wouldCallCreateCycle,
 } from '../engine/interpreter';
@@ -517,7 +513,12 @@ export const BlockPalette: React.FC = React.memo(() => {
     activeActivityId,
     activeActivityVersion
   );
-  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const policy = computeStagedPalettePolicy(
+    appMode,
+    activeActivity,
+    simPaletteItems,
+    activeDemoTabIndex
+  );
   let effectiveInputConfig: SceneInputConfig | undefined =
     activeVariationInputConfig ?? undefined;
   if (
@@ -559,7 +560,8 @@ export const BlockPalette: React.FC = React.memo(() => {
         condition: resolveDefaultConditionForContext(
           activeSimId,
           policy.palette,
-          effectiveInputConfig
+          effectiveInputConfig,
+          policy.allowedDepotStations
         ),
       };
     }
@@ -603,10 +605,6 @@ export const BlockPalette: React.FC = React.memo(() => {
     return null;
   })();
 
-  const activeHintCategory = activePlaceholderTarget
-    ? getPlaceholderHintCategory(activePlaceholderTarget.block)
-    : null;
-
   let targetBlock = explicitlySelectedBlock;
   if (!targetBlock && blocks.length > 0) {
     const last = blocks[blocks.length - 1];
@@ -615,7 +613,9 @@ export const BlockPalette: React.FC = React.memo(() => {
       last.type,
       lastPaletteItem?.paramDefs,
       appMode,
-      policy.palette
+      policy.palette,
+      activeActivity,
+      activeDemoTabIndex
     );
     if (allowedLastParams.length > 0) {
       targetBlock = last;
@@ -630,7 +630,9 @@ export const BlockPalette: React.FC = React.memo(() => {
         targetBlock.type,
         targetPaletteItem?.paramDefs,
         appMode,
-        policy.palette
+        policy.palette,
+        activeActivity,
+        activeDemoTabIndex
       )
     : [];
   const isVarBlock =
@@ -845,9 +847,7 @@ export const BlockPalette: React.FC = React.memo(() => {
         {/* Dynamic Simulation Palette Blocks */}
         {visibleSimItems.map((item) => {
           const testId = `palette-${item.id}`;
-          const isHintHighlighted =
-            activeHintCategory !== null &&
-            doesBlockMatchHintCategory(item.actionType, item.category, activeHintCategory);
+          const isHintHighlighted = false;
           return (
             <button
               key={item.id}
@@ -885,10 +885,7 @@ export const BlockPalette: React.FC = React.memo(() => {
             budget.isCapped &&
             budget.remainingForScope !== null &&
             budget.remainingForScope < requiredSlots;
-          const isHintHighlighted =
-            !isRecursionBlocked &&
-            activeHintCategory !== null &&
-            doesBlockMatchHintCategory(item.type, undefined, activeHintCategory);
+          const isHintHighlighted = false;
           return (
             <button
               key={item.type}

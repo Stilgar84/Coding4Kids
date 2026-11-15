@@ -103,11 +103,10 @@ import {
 import {
   GhostPreviewState,
   computeGhostPreviewSteps,
-  getPlaceholderHintCategory,
-  getPlaceholderHintLabel,
   resolveActivityScaffoldWorkspace,
 } from '../engine/placeholderHelpers';
 import {
+  computeAllowedDepotStationsAndGates,
   computeSlotBudget,
   findNextUnviewedDemoTabIndex,
   formatSlotCapFullAnnouncement,
@@ -182,6 +181,53 @@ export const getInitialGridState = (grid: GridState): GridState =>
 
 export const getInitialTurtleState = (turtleState: TurtleState): TurtleState =>
   turtleSimulationEnvironment.resetState(turtleState);
+
+/**
+ * Returns the timer interval (ms) per step for step-interval playback simulations.
+ * Scales Depot and Switchyard steps slower so kids can track crane/train movement clearly.
+ */
+export function getSimStepIntervalMs(
+  activeSimId: string,
+  speed: number | 'instant'
+): number {
+  if (speed === 'instant' || speed <= 0) return 0;
+  if (activeSimId === 'depot' || activeSimId === 'switchyard') {
+    if (speed <= 25) return 260;
+    if (speed <= 100) return 650;
+    return Math.round(speed * 3.75);
+  }
+  return speed;
+}
+
+function resolveStagedDefaultSimParams(
+  blockType: string,
+  baseParams: Record<string, any> | undefined,
+  appMode: AppMode,
+  activeActivity: CurriculumActivity | undefined,
+  activeDemoTabIndex: number
+): Record<string, any> | undefined {
+  if (!baseParams) return undefined;
+  const next = { ...baseParams };
+  if (appMode === 'curriculum' && activeActivity) {
+    const { stations, gates } = computeAllowedDepotStationsAndGates(
+      activeActivity,
+      activeDemoTabIndex
+    );
+    if (blockType === 'DEPOT_MOVE_TO' && stations && stations.size > 0) {
+      const currentStation = String(next.station ?? 'STACK_1');
+      if (!stations.has(currentStation)) {
+        next.station = Array.from(stations)[0];
+      }
+    }
+    if (blockType === 'DEPOT_SEND_GATE' && gates && gates.size > 0) {
+      const currentGate = String(next.gate ?? 'OUT');
+      if (!gates.has(currentGate)) {
+        next.gate = Array.from(gates)[0];
+      }
+    }
+  }
+  return next;
+}
 
 export const getInitialBeatState = (beatState?: BeatState): BeatState =>
   resetBeatState(beatState);
@@ -1745,15 +1791,9 @@ export const useAppStore = create<AppState>((set, get) => {
   };
 
   const getPlaceholderPauseAnnouncement = (
-    ws: WorkspaceState,
-    rt: InterpreterRuntimeState
-  ): string => {
-    const pausedBlock = rt.activeBlockId
-      ? ws[rt.activeScope]?.find((b) => b.id === rt.activeBlockId)
-      : undefined;
-    const hintLabel = getPlaceholderHintLabel(getPlaceholderHintCategory(pausedBlock));
-    return `Execution paused on ? placeholder block (${hintLabel} hint). Choose a highlighted block from the palette to replace it.`;
-  };
+    _ws?: WorkspaceState,
+    _rt?: InterpreterRuntimeState
+  ): string => 'Paused on ? block.';
 
   const applyLessonWorkspaceLoad = (
     lessonId: string,
@@ -3856,6 +3896,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === newType);
       const activeActivityForDefaults = getActiveCurriculumActivityObj();
       const effectiveInputForDefaults = getEffectiveInputConfig(activeActivityForDefaults);
+      const { stations: allowedDepotStations } = computeAllowedDepotStationsAndGates(
+        activeActivityForDefaults,
+        get().activeDemoTabIndex
+      );
       const isConditionBlock = newType === 'IF' || newType === 'ELSE_IF' || newType === 'WHILE';
       const resolvedParams = params
         ? params
@@ -3864,13 +3908,23 @@ export const useAppStore = create<AppState>((set, get) => {
             condition: resolveDefaultConditionForContext(
               get().activeSimId,
               activeActivityForDefaults?.palette,
-              effectiveInputForDefaults
+              effectiveInputForDefaults,
+              allowedDepotStations
             ),
           }
-        : paletteItem?.params
-        ? { ...paletteItem.params }
-        : undefined;
-      const newBlock: CodeBlock = { id, type: newType, params: resolvedParams };
+        : resolveStagedDefaultSimParams(
+            newType,
+            paletteItem?.params,
+            get().appMode,
+            activeActivityForDefaults,
+            get().activeDemoTabIndex
+          );
+      const newBlock: CodeBlock = {
+        id,
+        type: newType,
+        ...(newType === 'LOOP_START' ? { repeatCount: 2 } : {}),
+        params: resolvedParams,
+      };
 
       const nextBlocks = [...currentBlocks];
       const closerType = getControlPairCloserType(newType);
@@ -4061,14 +4115,17 @@ export const useAppStore = create<AppState>((set, get) => {
                 if (!get().isPlaying) return;
                 get().step();
                 if (get().isPlaying) {
-                  const sp = get().speed;
-                  if (typeof sp === 'number' && sp > 0) {
-                    scheduleTick(sp);
+                  const nextDelay = getSimStepIntervalMs(get().activeSimId, get().speed);
+                  if (nextDelay > 0) {
+                    scheduleTick(nextDelay);
                   }
                 }
               }, delay);
             };
-            scheduleTick(normalizedSpeed as number);
+            const initialDelay = getSimStepIntervalMs(get().activeSimId, normalizedSpeed);
+            if (initialDelay > 0) {
+              scheduleTick(initialDelay);
+            }
           }
         } else {
           // Turtle mode: dynamically scale remaining duration of active animation
@@ -4354,22 +4411,38 @@ export const useAppStore = create<AppState>((set, get) => {
         normalizedType === 'PLACEHOLDER' ||
         isConditionBlock;
       const effectiveInputConfig = getEffectiveInputConfig(activeActivity);
+      const { stations: allowedDepotStations } = computeAllowedDepotStationsAndGates(
+        activeActivity,
+        currentState.activeDemoTabIndex
+      );
       const defaultParams = isConditionBlock
         ? {
             condition: resolveDefaultConditionForContext(
               currentState.activeSimId,
               activeActivity?.palette,
-              effectiveInputConfig
+              effectiveInputConfig,
+              allowedDepotStations
             ),
           }
-        : paletteItem?.params
-        ? { ...paletteItem.params }
-        : undefined;
+        : resolveStagedDefaultSimParams(
+            normalizedType,
+            paletteItem?.params,
+            currentState.appMode,
+            activeActivity,
+            currentState.activeDemoTabIndex
+          );
       const resolvedParams =
         !allowActionParams && !isVariableOrPlaceholderOrCondBlock
           ? undefined
           : params ?? defaultParams;
-      const newBlock: CodeBlock = { id, type: normalizedType, repeatCount, params: resolvedParams };
+      const resolvedRepeatCount =
+        normalizedType === 'LOOP_START' && repeatCount === undefined ? 2 : repeatCount;
+      const newBlock: CodeBlock = {
+        id,
+        type: normalizedType,
+        repeatCount: resolvedRepeatCount,
+        params: resolvedParams,
+      };
       const closerBlock: CodeBlock | null = pairCloserType
         ? {
             id: `${pairCloserType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -5939,17 +6012,17 @@ export const useAppStore = create<AppState>((set, get) => {
             }
             get().step();
             if (get().isPlaying) {
-              const currentSpeed = get().speed;
-              if (typeof currentSpeed === 'number' && currentSpeed > 0) {
-                scheduleNextTick(currentSpeed);
+              const nextDelay = getSimStepIntervalMs(get().activeSimId, get().speed);
+              if (nextDelay > 0) {
+                scheduleNextTick(nextDelay);
               }
             }
           }, delayMs);
         };
 
-        const initialSpeed = get().speed;
-        if (typeof initialSpeed === 'number' && initialSpeed > 0) {
-          scheduleNextTick(initialSpeed);
+        const initialDelay = getSimStepIntervalMs(activeSimId, get().speed);
+        if (initialDelay > 0) {
+          scheduleNextTick(initialDelay);
         }
       } else if (activeSimId === 'beat') {
         if (timerId) {

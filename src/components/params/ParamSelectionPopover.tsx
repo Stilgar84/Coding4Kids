@@ -7,6 +7,7 @@ import { useAppStore, useAppStoreSelector } from '../../store/useAppStore';
 import { getSimEnvironment } from '../../engine/simulation/registry';
 import {
   computeStagedPalettePolicy,
+  filterParamDefForDepot,
   resolveActiveCurriculumActivity,
 } from '../../utils/curriculumStagePolicy';
 
@@ -70,7 +71,7 @@ interface ParamSelectionPopoverProps {
 }
 
 export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
-  paramDef,
+  paramDef: rawParamDef,
   currentValue,
   onSelect,
   onClose,
@@ -78,10 +79,17 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
   actionType,
   onBatchSelect,
 }) => {
-  const { appMode, activeActivityId, activeActivityVersion, activeSimId } = useAppStoreSelector((s) => ({
+  const {
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    activeDemoTabIndex,
+    activeSimId,
+  } = useAppStoreSelector((s) => ({
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
     activeSimId: s.activeSimId,
   }));
   const simEnv = getSimEnvironment(activeSimId);
@@ -90,7 +98,14 @@ export const ParamSelectionPopover: React.FC<ParamSelectionPopoverProps> = ({
     activeActivityId,
     activeActivityVersion
   );
-  const policy = computeStagedPalettePolicy(appMode, activeActivity, []);
+  const policy = computeStagedPalettePolicy(appMode, activeActivity, [], activeDemoTabIndex);
+  const paramDef = policy.isCurriculum
+    ? filterParamDefForDepot(
+        rawParamDef,
+        policy.allowedDepotStations,
+        policy.allowedDepotGates
+      )
+    : rawParamDef;
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<Coords | null>(() => {

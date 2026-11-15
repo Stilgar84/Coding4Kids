@@ -114,7 +114,8 @@ function getSwatchHex(colorNameOrVal: unknown): string {
 function makeDefaultExprForSensor(
   sensor: string,
   prevAtom: ConditionExpr | undefined,
-  inputConfig?: SceneInputConfig | null
+  inputConfig?: SceneInputConfig | null,
+  allowedDepotStations?: ReadonlySet<string>
 ): ConditionExpr {
   if (sensor === '$input') {
     const prevRight = prevAtom?.kind === 'cmp' && prevAtom.left === '$input' ? prevAtom.right : undefined;
@@ -153,11 +154,25 @@ function makeDefaultExprForSensor(
     return { kind: 'sensor', sensor: 'itemIcon', param: prevIcon };
   }
   if (sensor === 'stationEmpty') {
+    const fallbackStation =
+      allowedDepotStations && allowedDepotStations.size > 0
+        ? allowedDepotStations.has('QUEUE')
+          ? 'QUEUE'
+          : Array.from(allowedDepotStations)[0] ?? 'CURRENT'
+        : 'QUEUE';
     const prevStation =
       prevAtom?.kind === 'sensor' && prevAtom.sensor === 'stationEmpty' && prevAtom.param
         ? prevAtom.param
-        : 'QUEUE';
-    return { kind: 'sensor', sensor: 'stationEmpty', param: prevStation };
+        : undefined;
+    const validPrev =
+      prevStation &&
+      (!allowedDepotStations ||
+        allowedDepotStations.size === 0 ||
+        prevStation === 'CURRENT' ||
+        allowedDepotStations.has(prevStation))
+        ? prevStation
+        : undefined;
+    return { kind: 'sensor', sensor: 'stationEmpty', param: validPrev ?? fallbackStation };
   }
   return { kind: 'sensor', sensor: sensor as ConditionSensorType };
 }
@@ -176,10 +191,12 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
     setActiveSlot('left');
   }, [block.id]);
 
+  const allowedDepotStations = policy.isCurriculum ? policy.allowedDepotStations : undefined;
   const fallbackExpr = resolveDefaultConditionForContext(
     activeSimId,
     policy.palette,
-    inputConfig
+    inputConfig,
+    allowedDepotStations
   );
   const currentCond: ConditionExpr =
     block.params?.condition && typeof block.params.condition === 'object'
@@ -256,12 +273,22 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
       allowedSensors.length > 1
         ? allowedSensors[1]
         : allowedSensors[0] ?? 'pathAhead';
-    const secondClause = makeDefaultExprForSensor(secondSensor, undefined, inputConfig);
+    const secondClause = makeDefaultExprForSensor(
+      secondSensor,
+      undefined,
+      inputConfig,
+      allowedDepotStations
+    );
     commitCondition({ kind: mode, left: currentCond, right: secondClause });
   };
 
   const handleSelectSensor = (sensorId: string) => {
-    const nextAtom = makeDefaultExprForSensor(sensorId, activeAtom, inputConfig);
+    const nextAtom = makeDefaultExprForSensor(
+      sensorId,
+      activeAtom,
+      inputConfig,
+      allowedDepotStations
+    );
     commitActiveClause(wrapNot(nextAtom, isActiveNegated));
   };
 
@@ -402,7 +429,8 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
           const previewExpr = makeDefaultExprForSensor(
             sensorId,
             isSelected ? activeAtom : undefined,
-            inputConfig
+            inputConfig,
+            allowedDepotStations
           );
           return (
             <button
@@ -500,8 +528,17 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
           data-testid="cond-station-picker"
           className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 px-0.5"
         >
-          {DEPOT_STATION_CHOICES.filter(({ id }) => STATION_CODE_NAMES.includes(id)).map(
-            ({ id, badge }) => {
+          {DEPOT_STATION_CHOICES.filter(({ id }) => {
+            if (!STATION_CODE_NAMES.includes(id)) return false;
+            if (
+              policy.isCurriculum &&
+              policy.allowedDepotStations &&
+              policy.allowedDepotStations.size > 0
+            ) {
+              return id === 'CURRENT' || policy.allowedDepotStations.has(id);
+            }
+            return true;
+          }).map(({ id, badge }) => {
               const isSelected = (activeAtom.param ?? 'CURRENT') === id;
               return (
                 <button

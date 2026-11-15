@@ -14,17 +14,12 @@ import {
   PenTool,
   Slash,
   Palette,
-  Sparkles,
 } from 'lucide-react';
 import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
 import { ConditionBadge } from './ConditionBadge';
-import {
-  getPlaceholderHintCategory,
-  getPlaceholderHintLabel,
-} from '../engine/placeholderHelpers';
 import {
   computeStagedPalettePolicy,
   getAllowedParamDefs,
@@ -312,7 +307,6 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
   const [isReplaceHovered, setIsReplaceHovered] = useState(false);
 
   const isPlaceholder = block.type === 'PLACEHOLDER';
-  const placeholderHintCategory = isPlaceholder ? getPlaceholderHintCategory(block) : 'any';
 
   const activeCurriculumActivity =
     appMode === 'curriculum'
@@ -370,10 +364,22 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     activeActivityId,
     activeActivityVersion
   );
-  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  const policy = computeStagedPalettePolicy(
+    appMode,
+    activeActivity,
+    simPaletteItems,
+    activeDemoTabIndex
+  );
   const paramDefs = isPlaceholder
     ? []
-    : getAllowedParamDefs(lookupActionType, paletteItem?.paramDefs, appMode, policy.palette);
+    : getAllowedParamDefs(
+        lookupActionType,
+        paletteItem?.paramDefs,
+        appMode,
+        policy.palette,
+        activeActivity,
+        activeDemoTabIndex
+      );
   const hasParams = !isPlaceholder && paramDefs.length > 0 && allowActionParams;
 
   // Check if block type supports repeat multipliers
@@ -394,11 +400,17 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     ? paletteItem.supportsRepeat !== false
     : !nonRepeatableTypes.includes(block.type);
 
-  const isVarRepeat = typeof block.repeatCount === 'string' && /^[a-z]$/.test(block.repeatCount);
+  const effectiveRepeatCount =
+    block.type === 'LOOP_START' && block.repeatCount === undefined ? 2 : block.repeatCount;
+  const isVarRepeat =
+    typeof effectiveRepeatCount === 'string' && /^[a-z]$/.test(effectiveRepeatCount);
   const showRepeatBadge =
     supportsMultiplier &&
-    block.repeatCount !== undefined &&
-    (isVarRepeat || (block.type === 'LOOP_START' ? (block.repeatCount as number) >= 0 : (block.repeatCount as number) > 1));
+    effectiveRepeatCount !== undefined &&
+    (isVarRepeat ||
+      (block.type === 'LOOP_START'
+        ? (effectiveRepeatCount as number) >= 0
+        : (effectiveRepeatCount as number) > 1));
 
   // Theme & color classes for action and parameter container
   const getBlockTheme = () => {
@@ -427,20 +439,7 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     switch (block.type) {
       case 'PLACEHOLDER':
         bgClass = 'bg-slate-900/90';
-        borderClass =
-          placeholderHintCategory === 'motion'
-            ? 'border-dashed border-sky-400'
-            : placeholderHintCategory === 'turn'
-            ? 'border-dashed border-amber-400'
-            : placeholderHintCategory === 'loop'
-            ? 'border-dashed border-purple-400'
-            : placeholderHintCategory === 'function'
-            ? 'border-dashed border-emerald-400'
-            : placeholderHintCategory === 'item'
-            ? 'border-dashed border-teal-400'
-            : placeholderHintCategory === 'variable'
-            ? 'border-dashed border-violet-400'
-            : 'border-dashed border-cyan-400';
+        borderClass = 'border-dashed border-cyan-400';
         break;
 
       case 'MOVE_FWD':
@@ -812,7 +811,6 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
       }
 
       case 'PLACEHOLDER': {
-        const cueColor = isActive ? 'text-slate-900' : 'text-cyan-300/90';
         return (
           <div className="relative w-full h-full flex items-center justify-center">
             <span
@@ -822,26 +820,6 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
             >
               ?
             </span>
-            {placeholderHintCategory === 'motion' && (
-              <ArrowUp className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
-            )}
-            {placeholderHintCategory === 'turn' && (
-              <CornerUpRight className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
-            )}
-            {placeholderHintCategory === 'loop' && (
-              <Repeat className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
-            )}
-            {placeholderHintCategory === 'function' && (
-              <PhoneCall className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[3]`} />
-            )}
-            {placeholderHintCategory === 'item' && (
-              <Sparkles className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 absolute -bottom-1 -right-1 ${cueColor} stroke-[2.5]`} />
-            )}
-            {placeholderHintCategory === 'variable' && (
-              <span className={`text-[10px] md:text-xs absolute -bottom-1 -right-1 font-bold ${cueColor}`} aria-hidden="true">
-                📦
-              </span>
-            )}
           </div>
         );
       }
@@ -1072,20 +1050,17 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
       ? `, iteration ${iterationProgress.current} of ${iterationProgress.total}`
       : '';
   const blockAriaLabel = isPlaceholder
-    ? `Placeholder ? block (${getPlaceholderHintLabel(
-        placeholderHintCategory
-      )} hint), slot ${index + 1}${
+    ? `Clue ? block, slot ${index + 1}${
         loopRolePhrase ? `, ${loopRolePhrase}` : ''
       }. Select and choose a palette block to replace.`
     : `${blockLabelName}, slot ${index + 1}${
-        showRepeatBadge ? `, repeat ${block.repeatCount}` : ''
+        showRepeatBadge ? `, repeat ${effectiveRepeatCount}` : ''
       }${loopRolePhrase ? `, ${loopRolePhrase}` : ''}${activeLoopIterationAria}`;
 
   return (
     <div
       data-testid={`block-${block.id}`}
       data-block-type={block.type}
-      data-placeholder-hint={isPlaceholder ? placeholderHintCategory : undefined}
       data-active={isActive ? 'true' : 'false'}
       data-selected={isSelected ? 'true' : 'false'}
       data-loop-depth={loopDepth > 0 ? String(loopDepth) : undefined}
@@ -1289,15 +1264,15 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           data-testid={`badge-repeat-${block.id}`}
           onClick={(e) => {
             e.stopPropagation();
-            updateBlockRepeat(scope, block.id, undefined);
+            updateBlockRepeat(scope, block.id, block.type === 'LOOP_START' ? 2 : undefined);
           }}
           className="absolute -bottom-1.5 -right-1 z-20 flex items-center justify-center w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-yellow-200 bg-yellow-400 hover:bg-red-500 hover:border-red-300 hover:text-white text-slate-950 font-black text-[10px] md:text-xs shadow-md transition-colors cursor-pointer"
-          title="Click to remove tag"
+          title={block.type === 'LOOP_START' ? 'Click to reset to 2' : 'Click to remove tag'}
         >
-          {typeof block.repeatCount === 'string' ? (
-            <span className="italic font-mono">{block.repeatCount}</span>
+          {typeof effectiveRepeatCount === 'string' ? (
+            <span className="italic font-mono">{effectiveRepeatCount}</span>
           ) : (
-            block.repeatCount
+            effectiveRepeatCount
           )}
         </button>
       ) : null}

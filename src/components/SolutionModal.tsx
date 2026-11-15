@@ -14,10 +14,7 @@ import {
   getActivityLatest,
   isValidatedPuzzleActivity,
 } from '../data/curriculum';
-import {
-  getPlaceholderHintCategory,
-  resolveActivityScaffoldWorkspace,
-} from '../engine/placeholderHelpers';
+import { resolveActivityScaffoldWorkspace } from '../engine/placeholderHelpers';
 import {
   ActivityConstraintReport,
   verifyActivityConstraints,
@@ -28,6 +25,7 @@ import {
   Lightbulb,
   ArrowUp,
   ArrowDown,
+  ArrowLeftRight,
   CornerUpLeft,
   CornerUpRight,
   CornerDownLeft,
@@ -244,43 +242,13 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
 
   const renderBlockMini = (block: CodeBlock, index: number) => {
     if (block.type === 'PLACEHOLDER') {
-      const hintCategory = getPlaceholderHintCategory(block);
-      const borderTint =
-        hintCategory === 'motion'
-          ? 'border-sky-400'
-          : hintCategory === 'turn'
-          ? 'border-amber-400'
-          : hintCategory === 'loop'
-          ? 'border-purple-400'
-          : hintCategory === 'function'
-          ? 'border-emerald-400'
-          : hintCategory === 'item'
-          ? 'border-teal-400'
-          : 'border-cyan-400';
-
       return (
         <div
           key={`${block.id || index}`}
           data-testid="solution-mini-placeholder"
-          data-placeholder-hint={hintCategory}
-          className={`relative flex items-center justify-center min-w-[46px] h-11 px-2 rounded-xl border-2 border-dashed bg-slate-900/90 text-amber-300 shadow-sm font-black text-lg select-none ${borderTint}`}
+          className="relative flex items-center justify-center min-w-[46px] h-11 px-2 rounded-xl border-2 border-dashed border-cyan-400 bg-slate-900/90 text-amber-300 shadow-sm font-black text-lg select-none"
         >
           <span>?</span>
-          {hintCategory === 'motion' && (
-            <ArrowUp className="w-3 h-3 absolute bottom-1 right-1 text-cyan-300 stroke-[3]" />
-          )}
-          {hintCategory === 'turn' && (
-            <CornerUpRight className="w-3 h-3 absolute bottom-1 right-1 text-cyan-300 stroke-[3]" />
-          )}
-          {hintCategory === 'loop' && (
-            <Repeat className="w-3 h-3 absolute bottom-1 right-1 text-cyan-300 stroke-[3]" />
-          )}
-          {hintCategory === 'function' && (
-            <PhoneCall className="w-3 h-3 absolute bottom-1 right-1 text-cyan-300 stroke-[3]" />
-          )}
-          {hintCategory === 'item' && (
-            <Sparkles className="w-3 h-3 absolute bottom-1 right-1 text-cyan-300 stroke-[2.5]" />
-          )}
         </div>
       );
     }
@@ -487,7 +455,7 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
       case 'MOVE_TO_S3':
       case 'MOVE_TO_QUEUE':
         bg = 'bg-sky-700 border-sky-400 text-white';
-        icon = <ArrowUp className="w-4 h-4 stroke-[2]" />;
+        icon = <ArrowLeftRight className="w-4 h-4 stroke-[2.2]" />;
         label = String(block.params?.station ?? block.type.replace('MOVE_TO_', '')).replace('STACK_', 'S');
         break;
       case 'DEPOT_GRAB':

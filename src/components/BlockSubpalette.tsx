@@ -66,7 +66,12 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
       activeActivityId,
       activeActivityVersion
     );
-    const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+    const policy = computeStagedPalettePolicy(
+      appMode,
+      activeActivity,
+      simPaletteItems,
+      activeDemoTabIndex
+    );
     const targetVarNames = policy.subpaletteVariableNames;
     const operandVarNames =
       policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
@@ -498,7 +503,9 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
     selectedBlock.type,
     paletteItem?.paramDefs,
     appMode,
-    policy.palette
+    policy.palette,
+    activeActivity,
+    activeDemoTabIndex
   );
 
   if (paramDefs.length === 0) {

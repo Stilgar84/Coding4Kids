@@ -12,12 +12,18 @@ import {
   ConditionExpr,
   ConditionSensorType,
   CurriculumActivity,
+  CurriculumDepotDefinition,
   PaletteConfig,
   SceneInputConfig,
   SlotCapConfig,
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
+import {
+  createInitialDepotState,
+  getEffectiveActiveStationsMask,
+} from '../simulations/depot/depotPhysics';
+import type { DepotState } from '../simulations/depot/types';
 
 export const DEFAULT_PALETTE_VAR_BADGES: readonly VariableName[] = [
   'a',
@@ -45,24 +51,133 @@ export function resolveActiveCurriculumActivity(
 }
 
 /**
- * Filters a block's ActionParamDef list according to the active mode and PaletteConfig.
+ * Computes the permitted Depot stations and gates for a curriculum activity
+ * from its active `depot`, `depotVariants`, or `demoTabs` configurations.
+ */
+export function computeAllowedDepotStationsAndGates(
+  activity?: CurriculumActivity,
+  activeDemoTabIndex = 0
+): { stations?: ReadonlySet<string>; gates?: ReadonlySet<string> } {
+  if (!activity) return {};
+
+  const depotConfigs: Array<CurriculumDepotDefinition | DepotState> = [];
+  if (activity.depot) {
+    depotConfigs.push(activity.depot);
+  }
+  if (activity.depotVariants && activity.depotVariants.length > 0) {
+    depotConfigs.push(...activity.depotVariants);
+  }
+  if (activity.demoTabs && activity.demoTabs.length > 0) {
+    const clampedIdx = Math.min(Math.max(0, activeDemoTabIndex), activity.demoTabs.length - 1);
+    const activeTabDepot = activity.demoTabs[clampedIdx]?.depotState;
+    if (activeTabDepot) {
+      depotConfigs.push(activeTabDepot);
+    } else {
+      for (const tab of activity.demoTabs) {
+        if (tab.depotState) depotConfigs.push(tab.depotState);
+      }
+    }
+  }
+
+  if (depotConfigs.length === 0) return {};
+
+  let unionMask = 0;
+  for (const cfg of depotConfigs) {
+    const initial = createInitialDepotState(cfg as any);
+    unionMask |= getEffectiveActiveStationsMask(initial);
+    if (typeof cfg.activeStationsMask === 'number' && Number.isFinite(cfg.activeStationsMask)) {
+      unionMask |= Math.trunc(cfg.activeStationsMask) & 0xff;
+    }
+  }
+
+  const stations = new Set<string>();
+  if ((unionMask & 0x01) !== 0) stations.add('STACK_1');
+  if ((unionMask & 0x02) !== 0) stations.add('STACK_2');
+  if ((unionMask & 0x04) !== 0) stations.add('STACK_3');
+  if ((unionMask & 0x08) !== 0) stations.add('QUEUE');
+  if ((unionMask & 0x10) !== 0) stations.add('INPUT');
+
+  const gates = new Set<string>();
+  if ((unionMask & 0x40) !== 0) gates.add('OUT');
+  if ((unionMask & 0x20) !== 0) gates.add('ACCEPT');
+  if ((unionMask & 0x80) !== 0) gates.add('REJECT');
+
+  return { stations, gates };
+}
+
+/**
+ * Filters a single ActionParamDef's Depot station/gate options against active stage masks.
+ */
+export function filterParamDefForDepot(
+  def: ActionParamDef,
+  allowedDepotStations?: ReadonlySet<string>,
+  allowedDepotGates?: ReadonlySet<string>
+): ActionParamDef {
+  if (def.type === 'depot-station' && allowedDepotStations && allowedDepotStations.size > 0) {
+    const nextOptions = def.options.filter((opt) =>
+      allowedDepotStations.has(String(opt.value))
+    );
+    if (nextOptions.length > 0) {
+      const nextDefault = allowedDepotStations.has(String(def.defaultValue))
+        ? def.defaultValue
+        : nextOptions[0].value;
+      return {
+        ...def,
+        options: nextOptions,
+        defaultValue: nextDefault,
+      };
+    }
+  }
+  if (def.type === 'depot-gate' && allowedDepotGates && allowedDepotGates.size > 0) {
+    const nextOptions = def.options.filter((opt) =>
+      allowedDepotGates.has(String(opt.value))
+    );
+    if (nextOptions.length > 0) {
+      const nextDefault = allowedDepotGates.has(String(def.defaultValue))
+        ? def.defaultValue
+        : nextOptions[0].value;
+      return {
+        ...def,
+        options: nextOptions,
+        defaultValue: nextDefault,
+      };
+    }
+  }
+  return def;
+}
+
+/**
+ * Filters a block's ActionParamDef list according to the active mode and PaletteConfig,
+ * and filters Depot station/gate options to the stations/gates present on the active stage.
  */
 export function getAllowedParamDefs(
   blockType: string,
   paramDefs: ActionParamDef[] | undefined,
   appMode: AppMode,
-  palette?: PaletteConfig
+  palette?: PaletteConfig,
+  activity?: CurriculumActivity,
+  activeDemoTabIndex = 0
 ): ActionParamDef[] {
   if (!paramDefs || paramDefs.length === 0) return [];
   if (appMode !== 'curriculum' || !palette) return paramDefs;
   if (palette.allowActionParams === false) return [];
 
+  let filtered = paramDefs;
   if (palette.allowedBlockParams !== undefined) {
     const allowedIds = palette.allowedBlockParams[blockType] ?? [];
-    return paramDefs.filter((def) => allowedIds.includes(def.id));
+    filtered = filtered.filter((def) => allowedIds.includes(def.id));
   }
 
-  return paramDefs;
+  if (activity) {
+    const { stations: allowedDepotStations, gates: allowedDepotGates } =
+      computeAllowedDepotStationsAndGates(activity, activeDemoTabIndex);
+
+    filtered = filtered.map((def) =>
+      filterParamDefForDepot(def, allowedDepotStations, allowedDepotGates)
+    );
+  }
+
+  return filtered;
 }
 
 export interface StagedPalettePolicy {
@@ -84,6 +199,8 @@ export interface StagedPalettePolicy {
   allowedCombinators?: ('NOT' | 'AND' | 'OR')[];
   allowedValueSensors?: string[];
   allowedVarOps?: BinaryOp[];
+  allowedDepotStations?: ReadonlySet<string>;
+  allowedDepotGates?: ReadonlySet<string>;
 }
 
 /**
@@ -108,7 +225,8 @@ export function isBeatActiveColorToolEnabled(
 export function computeStagedPalettePolicy(
   appMode: AppMode,
   activity: CurriculumActivity | undefined,
-  simPaletteItems: SimPaletteItem[]
+  simPaletteItems: SimPaletteItem[],
+  activeDemoTabIndex = 0
 ): StagedPalettePolicy {
   if (appMode !== 'curriculum' || !activity) {
     return {
@@ -144,10 +262,14 @@ export function computeStagedPalettePolicy(
       allowedCombinators: undefined,
       allowedValueSensors: undefined,
       allowedVarOps: undefined,
+      allowedDepotStations: undefined,
+      allowedDepotGates: undefined,
     };
   }
 
   const palette = activity.palette;
+  const { stations: allowedDepotStations, gates: allowedDepotGates } =
+    computeAllowedDepotStationsAndGates(activity, activeDemoTabIndex);
 
   const visibleSimItems =
     palette.allowedSimBlocks !== undefined
@@ -173,7 +295,10 @@ export function computeStagedPalettePolicy(
   const showScopeSelector =
     allowedScopes.length > 1 || allowedScopes.some((s) => s !== 'MAIN');
 
-  const allowRepeatBadges = palette.allowRepeatBadges === true;
+  const isPreRepeatModule = activity.moduleId === 'seq' || activity.id.startsWith('seq.');
+  const allowRepeatBadges =
+    allowedControlTypes.has('LOOP_START') ||
+    (!isPreRepeatModule && palette.allowRepeatBadges !== false);
   const allowVariables = palette.allowVariables === true;
   const allowRecursion = palette.allowRecursion !== false;
 
@@ -199,7 +324,14 @@ export function computeStagedPalettePolicy(
     allowActionParams &&
     visibleSimItems.some(
       (item) =>
-        getAllowedParamDefs(item.actionType, item.paramDefs, 'curriculum', palette).length > 0
+        getAllowedParamDefs(
+          item.actionType,
+          item.paramDefs,
+          'curriculum',
+          palette,
+          activity,
+          activeDemoTabIndex
+        ).length > 0
     );
 
   const hasAllowedVarControlBlock =
@@ -232,6 +364,8 @@ export function computeStagedPalettePolicy(
     allowedCombinators: palette.allowedCombinators,
     allowedValueSensors: palette.allowedValueSensors,
     allowedVarOps: (palette.allowedVarOps as BinaryOp[]) ?? ['+', '-'],
+    allowedDepotStations,
+    allowedDepotGates,
   };
 }
 
@@ -283,7 +417,8 @@ export function normalizeColorLiteralParam(color: string | number): string {
 export function resolveDefaultConditionForContext(
   simId: string,
   palette?: PaletteConfig,
-  inputConfig?: SceneInputConfig | null
+  inputConfig?: SceneInputConfig | null,
+  allowedDepotStations?: ReadonlySet<string>
 ): ConditionExpr {
   const allowed = palette?.allowedSensors;
   const allowsInput =
@@ -314,7 +449,13 @@ export function resolveDefaultConditionForContext(
       return { kind: 'sensor', sensor: first, param: 'crate' };
     }
     if (first === 'stationEmpty') {
-      return { kind: 'sensor', sensor: first, param: 'QUEUE' };
+      const defaultStation =
+        allowedDepotStations && allowedDepotStations.size > 0
+          ? allowedDepotStations.has('QUEUE')
+            ? 'QUEUE'
+            : Array.from(allowedDepotStations)[0] ?? 'CURRENT'
+          : 'QUEUE';
+      return { kind: 'sensor', sensor: first, param: defaultStation };
     }
     if (first !== '$input') {
       return { kind: 'sensor', sensor: first as ConditionSensorType };
