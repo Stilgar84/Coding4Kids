@@ -24,7 +24,7 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
     "allowRepeatBadges": true,
     "allowActionParams": true,
     "allowedBlockParams": {
-      "length": [25, 50, 75, 100, 125, 150],
+      "length": [25, 50, 75, 100, 125, 150, 200],
       "angle": [15, 30, 45, 60, 72, 90, 120, 135, 144, 150, 180]
     },
     "allowVariables": false,
@@ -42,11 +42,11 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
 ![Starter Equilateral Triangle](./svg/param_2_starter.svg)
 
 - **MAIN (`blocks.length = 6`):**
-  1. `FORWARD {"length": 100}`
+  1. `FORWARD {"length": 200}`
   2. `TURN_RIGHT {"angle": 120}`
-  3. `FORWARD {"length": 100}`
+  3. `FORWARD {"length": 200}`
   4. `TURN_RIGHT {"angle": 120}`
-  5. `FORWARD {"length": 100}`
+  5. `FORWARD {"length": 200}`
   6. `TURN_RIGHT {"angle": 120}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 0°`, `pathCount: 3`.
 
@@ -61,14 +61,14 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
 
 - **MAIN (`blocks.length = 8`):**
   1. `TURN_RIGHT {"angle": 15}`
-  2. `FORWARD {"length": 100}`
+  2. `FORWARD {"length": 150}`
   3. `TURN_RIGHT {"angle": 150}`
-  4. `FORWARD {"length": 100}`
+  4. `FORWARD {"length": 150}`
   5. `TURN_LEFT {"angle": 120}`
-  6. `FORWARD {"length": 75}`
+  6. `FORWARD {"length": 100}`
   7. `TURN_RIGHT {"angle": 90}`
-  8. `FORWARD {"length": 75}`
-- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (157.8298, 0), heading: 135°`, `pathCount: 4`.
+  8. `FORWARD {"length": 100}`
+- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (219.0672, 0), heading: 135°`, `pathCount: 4`.
 
 ### Variation 2 (`param-2-var2-tilted-diamond`): `🔷 Upright Diamond (60° / 120°)` (`8` blocks `≤ 20`)
 *(Upgraded from legacy `2.2-tilted-diamond` horizontal parallelogram into a vertical upright rhombus.)*
@@ -77,13 +77,13 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
 
 - **MAIN (`blocks.length = 8`):**
   1. `TURN_RIGHT {"angle": 30}`
-  2. `FORWARD {"length": 100}`
+  2. `FORWARD {"length": 150}`
   3. `TURN_RIGHT {"angle": 120}`
-  4. `FORWARD {"length": 100}`
+  4. `FORWARD {"length": 150}`
   5. `TURN_RIGHT {"angle": 60}`
-  6. `FORWARD {"length": 100}`
+  6. `FORWARD {"length": 150}`
   7. `TURN_RIGHT {"angle": 120}`
-  8. `FORWARD {"length": 100}`
+  8. `FORWARD {"length": 150}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 330°`, `pathCount: 4`.
 
 ### Variation 3 (`param-2-var3-hexagon`): `🛑 Closed Stop-Sign Hexagon` (`12` blocks `≤ 30`)
@@ -92,17 +92,17 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
 ![Variation 3 Closed Hexagon](./svg/param_2_var3_hexagon.svg)
 
 - **MAIN (`blocks.length = 12`):**
-  1. `FORWARD {"length": 75}`
+  1. `FORWARD {"length": 100}`
   2. `TURN_RIGHT {"angle": 60}`
-  3. `FORWARD {"length": 75}`
+  3. `FORWARD {"length": 100}`
   4. `TURN_RIGHT {"angle": 60}`
-  5. `FORWARD {"length": 75}`
+  5. `FORWARD {"length": 100}`
   6. `TURN_RIGHT {"angle": 60}`
-  7. `FORWARD {"length": 75}`
+  7. `FORWARD {"length": 100}`
   8. `TURN_RIGHT {"angle": 60}`
-  9. `FORWARD {"length": 75}`
+  9. `FORWARD {"length": 100}`
   10. `TURN_RIGHT {"angle": 60}`
-  11. `FORWARD {"length": 75}`
+  11. `FORWARD {"length": 100}`
   12. `TURN_RIGHT {"angle": 60}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 0°`, `pathCount: 6`.
 
@@ -113,15 +113,15 @@ In Turtle LOGO, `TURN_LEFT` and `TURN_RIGHT` spin the turtle by an **exterior tu
 
 - **MAIN (`blocks.length = 11`):**
   1. `TURN_RIGHT {"angle": 18}`
-  2. `FORWARD {"length": 125}`
+  2. `FORWARD {"length": 200}`
   3. `TURN_RIGHT {"angle": 144}`
-  4. `FORWARD {"length": 125}`
+  4. `FORWARD {"length": 200}`
   5. `TURN_RIGHT {"angle": 144}`
-  6. `FORWARD {"length": 125}`
+  6. `FORWARD {"length": 200}`
   7. `TURN_RIGHT {"angle": 144}`
-  8. `FORWARD {"length": 125}`
+  8. `FORWARD {"length": 200}`
   9. `TURN_RIGHT {"angle": 144}`
-  10. `FORWARD {"length": 125}`
+  10. `FORWARD {"length": 200}`
   11. `TURN_RIGHT {"angle": 144}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 18°`, `pathCount: 5`.
 

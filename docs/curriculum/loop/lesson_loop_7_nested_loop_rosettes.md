@@ -102,7 +102,7 @@ Here is the secret behind every spirograph: put **one shape loop** (`Loop ×4` f
           "op": "LOOP_START",
           "count": 2,
           "body": [
-            { "op": "ARC_RIGHT", "radius": 50, "angle": 90 },
+            { "op": "ARC_RIGHT", "radius": 75, "angle": 90 },
             { "op": "TURN_RIGHT", "angle": 90 }
           ]
         },
@@ -135,7 +135,7 @@ Here is the secret behind every spirograph: put **one shape loop** (`Loop ×4` f
           "op": "LOOP_START",
           "count": 3,
           "body": [
-            { "op": "FORWARD", "length": 85 },
+            { "op": "FORWARD", "length": 100 },
             { "op": "TURN_RIGHT", "angle": 120 }
           ]
         },
@@ -145,7 +145,7 @@ Here is the secret behind every spirograph: put **one shape loop** (`Loop ×4` f
           "op": "LOOP_START",
           "count": 2,
           "body": [
-            { "op": "ARC_RIGHT", "radius": 55, "angle": 90 },
+            { "op": "ARC_RIGHT", "radius": 75, "angle": 90 },
             { "op": "TURN_RIGHT", "angle": 90 }
           ]
         },
@@ -155,7 +155,7 @@ Here is the secret behind every spirograph: put **one shape loop** (`Loop ×4` f
           "op": "LOOP_START",
           "count": 4,
           "body": [
-            { "op": "FORWARD", "length": 50 },
+            { "op": "FORWARD", "length": 75 },
             { "op": "TURN_RIGHT", "angle": 90 }
           ]
         },
@@ -189,12 +189,12 @@ Here is the secret behind every spirograph: put **one shape loop** (`Loop ×4` f
           "op": "LOOP_START",
           "count": 5,
           "body": [
-            { "op": "FORWARD", "length": 40 },
+            { "op": "FORWARD", "length": 75 },
             { "op": "TURN_RIGHT", "angle": 144 }
           ]
         },
         { "op": "PEN_UP" },
-        { "op": "FORWARD", "length": 75 },
+        { "op": "FORWARD", "length": 150 },
         { "op": "TURN_RIGHT", "angle": 72 },
         { "op": "PEN_DOWN" }
       ]

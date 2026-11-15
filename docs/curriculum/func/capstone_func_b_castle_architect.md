@@ -23,9 +23,9 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   - `allowedSimBlocks`: `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "ARC_LEFT", "ARC_RIGHT", "PEN_UP", "PEN_DOWN", "SET_PEN_COLOR", "SET_PEN_WIDTH", "HIDE_TURTLE", "SHOW_TURTLE"]` *(strictly **NO `TELEPORT`**)*
   - `allowedControlBlocks`: `["LOOP_START", "LOOP_END", "CALL_FN"]` (`targets: ["F1", "F2", "F3"]` from `MAIN`; `F1/F2` may call lower helper `F3` safely without cycles)
   - `allowedBlockParams`:
-    - `FORWARD` / `BACKWARD`: `[4, 8, 10, 12, 14, 16, 18, 20, 22, 24, 25, 26, 28, 30, 32, 36, 40, 45, 48, 50, 52, 54, 55, 60, 62, 64, 75, 80, 90, 100, 110, 125, 140, 200]`
+    - `FORWARD` / `BACKWARD`: `[8, 12, 16, 20, 24, 25, 28, 32, 36, 40, 44, 45, 48, 50, 52, 56, 60, 64, 72, 75, 80, 90, 96, 100, 104, 108, 110, 124, 128, 140, 150, 180, 190, 200, 220, 250]`
     - `TURN_LEFT` / `TURN_RIGHT`: `[15, 30, 45, 60, 72, 90, 120, 135, 144, 150, 180]`
-    - `ARC_LEFT` / `ARC_RIGHT`: radii `[8, 12, 16, 24, 25, 50]`, sweeps `[90, 180, 270, 360]`
+    - `ARC_LEFT` / `ARC_RIGHT`: radii `[16, 24, 25, 32, 50]`, sweeps `[90, 180, 270, 360]`
     - `SET_PEN_COLOR`: canonical `0..9` (`black, red, blue, green, amber, purple, pink, cyan, orange, white`)
     - `SET_PEN_WIDTH`: `[2, 4, 6, 8]`
   - `allowRepeatBadges`: `false`
@@ -43,13 +43,13 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
 ![Fairy-Tale Castle](./svg/funcB_starter.svg)
 
 - **Architecture:** `MAIN` (`7`) → `F1` Twin Blue Towers (`14`) & `F2` Amber Arched Gatehouse (`13`); `F1` → `F3` Red Pennant Flags (`9`). Every single tab sits at `≤ 14` flat blocks!
-- **Verified Render Metrics:** `finalPose: (55, 0, 0°)`, `penDown: false`, `pathCount: 20`.
+- **Verified Render Metrics:** `finalPose: (110, 0, 0°)`, `penDown: false`, `pathCount: 20`.
 - **`MAIN` (`7` flat blocks):**
   ```json
   [
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 55 },
+    { "op": "FORWARD", "length": 110 },
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "CALL_FN", "fn": "F2" },
@@ -61,16 +61,16 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   [
     { "op": "SET_PEN_COLOR", "color": "blue" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 75 },
+    { "op": "FORWARD", "length": 150 },
     { "op": "TURN_RIGHT", "angle": 30 },
-    { "op": "FORWARD", "length": 30 },
+    { "op": "FORWARD", "length": 60 },
     { "op": "TURN_LEFT", "angle": 30 },
     { "op": "CALL_FN", "fn": "F3" },
     { "op": "SET_PEN_COLOR", "color": "blue" },
     { "op": "TURN_RIGHT", "angle": 150 },
-    { "op": "FORWARD", "length": 30 },
+    { "op": "FORWARD", "length": 60 },
     { "op": "TURN_RIGHT", "angle": 30 },
-    { "op": "FORWARD", "length": 75 },
+    { "op": "FORWARD", "length": 150 },
     { "op": "PEN_UP" },
     { "op": "TURN_RIGHT", "angle": 180 }
   ]
@@ -80,16 +80,16 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   [
     { "op": "SET_PEN_COLOR", "color": "amber" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 45 },
+    { "op": "FORWARD", "length": 90 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 50 },
+    { "op": "FORWARD", "length": 100 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 45 },
+    { "op": "FORWARD", "length": 90 },
     { "op": "TURN_RIGHT", "angle": 180 },
-    { "op": "ARC_LEFT", "radius": 25, "angle": 180 },
+    { "op": "ARC_LEFT", "radius": 50, "angle": 180 },
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 50 },
+    { "op": "FORWARD", "length": 100 },
     { "op": "TURN_LEFT", "angle": 90 }
   ]
   ```
@@ -98,13 +98,13 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   [
     { "op": "SET_PEN_COLOR", "color": "red" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 18 },
+    { "op": "FORWARD", "length": 36 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 14 },
+    { "op": "FORWARD", "length": 28 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 14 },
+    { "op": "FORWARD", "length": 28 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "BACKWARD", "length": 4 }
+    { "op": "BACKWARD", "length": 8 }
   ]
   ```
 
@@ -115,13 +115,13 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
 ![Choo-Choo Steam Train](./svg/funcB_var1_train.svg)
 
 - **Architecture:** `MAIN` (`8`) hooks up two Blue Train Cars (`F1`, `20` each looped `×2`) + Red Steam Engine (`F2`, `35`); both `F1` and `F2` call `F3` (`4`) to stamp rolling black wheels along the track (`y=0`), topped by a black smokestack and floating cyan steam curl!
-- **Verified Render Metrics:** `finalPose: (80, -48, 90°)`, `penDown: false`, `pathCount: 26`.
+- **Verified Render Metrics:** `finalPose: (160, -96, 90°)`, `penDown: false`, `pathCount: 26`.
 - **`MAIN` (`8` flat blocks):**
   ```json
   [
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 110 },
+    { "op": "FORWARD", "length": 220 },
     { "op": "TURN_RIGHT", "angle": 90 },
     {
       "op": "LOOP_START",
@@ -140,22 +140,22 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
       "op": "LOOP_START",
       "count": 2,
       "body": [
-        { "op": "FORWARD", "length": 36 },
+        { "op": "FORWARD", "length": 72 },
         { "op": "TURN_RIGHT", "angle": 90 },
-        { "op": "FORWARD", "length": 64 },
+        { "op": "FORWARD", "length": 128 },
         { "op": "TURN_RIGHT", "angle": 90 }
       ]
     },
     { "op": "PEN_UP" },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 18 },
+    { "op": "FORWARD", "length": 36 },
     { "op": "CALL_FN", "fn": "F3" },
-    { "op": "FORWARD", "length": 28 },
+    { "op": "FORWARD", "length": 56 },
     { "op": "CALL_FN", "fn": "F3" },
-    { "op": "FORWARD", "length": 18 },
+    { "op": "FORWARD", "length": 36 },
     { "op": "SET_PEN_COLOR", "color": "black" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 8 },
+    { "op": "FORWARD", "length": 16 },
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 }
   ]
@@ -165,38 +165,38 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   [
     { "op": "SET_PEN_COLOR", "color": "red" },
     { "op": "PEN_DOWN" },
+    { "op": "FORWARD", "length": 104 },
+    { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "FORWARD", "length": 52 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 26 },
-    { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 22 },
+    { "op": "FORWARD", "length": 44 },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 36 },
+    { "op": "FORWARD", "length": 72 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 30 },
+    { "op": "FORWARD", "length": 60 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 62 },
+    { "op": "FORWARD", "length": 124 },
     { "op": "TURN_RIGHT", "angle": 180 },
     { "op": "PEN_UP" },
-    { "op": "FORWARD", "length": 16 },
+    { "op": "FORWARD", "length": 32 },
     { "op": "CALL_FN", "fn": "F3" },
-    { "op": "FORWARD", "length": 28 },
+    { "op": "FORWARD", "length": 56 },
     { "op": "CALL_FN", "fn": "F3" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 30 },
+    { "op": "FORWARD", "length": 60 },
     { "op": "SET_PEN_COLOR", "color": "black" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 16 },
+    { "op": "FORWARD", "length": 32 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 10 },
+    { "op": "FORWARD", "length": 20 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 16 },
+    { "op": "FORWARD", "length": 32 },
     { "op": "PEN_UP" },
     { "op": "TURN_RIGHT", "angle": 180 },
-    { "op": "FORWARD", "length": 26 },
+    { "op": "FORWARD", "length": 52 },
     { "op": "SET_PEN_COLOR", "color": "cyan" },
     { "op": "PEN_DOWN" },
-    { "op": "ARC_LEFT", "radius": 8, "angle": 270 },
+    { "op": "ARC_LEFT", "radius": 16, "angle": 270 },
     { "op": "PEN_UP" }
   ]
   ```
@@ -205,7 +205,7 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
   [
     { "op": "SET_PEN_COLOR", "color": "black" },
     { "op": "PEN_DOWN" },
-    { "op": "ARC_RIGHT", "radius": 12, "angle": 360 },
+    { "op": "ARC_RIGHT", "radius": 24, "angle": 360 },
     { "op": "PEN_UP" }
   ]
   ```
@@ -217,25 +217,25 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
 ![Sunny Harbor](./svg/funcB_var2_harbor.svg)
 
 - **Architecture:** `F1` (`9`) paints scalloped cyan waves, `F2` (`24`) draws a bright Red Hull + Orange Sailboat (zero `#ffffff` white-on-white strokes!), and `F3` (`17`) stamps a radiant Orange + Amber 6-ray Sunburst in the upper-right sky!
-- **Verified Render Metrics:** `finalPose: (48.7644, -70.4308, 0°)`, `penDown: false`, `pathCount: 20`.
+- **Verified Render Metrics:** `finalPose: (97.5288, -140.8616, 0°)`, `penDown: false`, `pathCount: 20`.
 - **`MAIN` (`16` flat blocks):**
   ```json
   [
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 90 },
+    { "op": "FORWARD", "length": 180 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "BACKWARD", "length": 45 },
+    { "op": "BACKWARD", "length": 90 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 125 },
+    { "op": "FORWARD", "length": 250 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 20 },
+    { "op": "FORWARD", "length": 40 },
     { "op": "CALL_FN", "fn": "F2" },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "FORWARD", "length": 100 },
+    { "op": "FORWARD", "length": 200 },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 95 },
+    { "op": "FORWARD", "length": 190 },
     { "op": "CALL_FN", "fn": "F3" }
   ]
   ```
@@ -249,7 +249,7 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
       "op": "LOOP_START",
       "count": 6,
       "body": [
-        { "op": "ARC_RIGHT", "radius": 16, "angle": 90 },
+        { "op": "ARC_RIGHT", "radius": 32, "angle": 90 },
         { "op": "TURN_LEFT", "angle": 90 }
       ]
     },
@@ -263,50 +263,50 @@ Now all four tabs (`Main`, `F1`, `F2`, `F3`) are open! Think like a master archi
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "SET_PEN_COLOR", "color": "red" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 64 },
+    { "op": "FORWARD", "length": 128 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 24 },
+    { "op": "FORWARD", "length": 48 },
     { "op": "TURN_RIGHT", "angle": 60 },
-    { "op": "FORWARD", "length": 40 },
+    { "op": "FORWARD", "length": 80 },
     { "op": "TURN_RIGHT", "angle": 60 },
-    { "op": "FORWARD", "length": 24 },
+    { "op": "FORWARD", "length": 48 },
     { "op": "PEN_UP" },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 28 },
+    { "op": "FORWARD", "length": 56 },
     { "op": "TURN_LEFT", "angle": 90 },
     { "op": "SET_PEN_COLOR", "color": "orange" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 54 },
+    { "op": "FORWARD", "length": 108 },
     { "op": "TURN_RIGHT", "angle": 150 },
-    { "op": "FORWARD", "length": 48 },
+    { "op": "FORWARD", "length": 96 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 24 },
+    { "op": "FORWARD", "length": 48 },
     { "op": "PEN_UP" },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "BACKWARD", "length": 12 }
+    { "op": "BACKWARD", "length": 24 }
   ]
   ```
 - **`F3` — Glowing Sunburst (`17` flat blocks):**
   ```json
   [
     { "op": "SET_PEN_COLOR", "color": "orange" },
-    { "op": "FORWARD", "length": 16 },
+    { "op": "FORWARD", "length": 32 },
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "PEN_DOWN" },
-    { "op": "ARC_RIGHT", "radius": 16, "angle": 360 },
+    { "op": "ARC_RIGHT", "radius": 32, "angle": 360 },
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "BACKWARD", "length": 16 },
+    { "op": "BACKWARD", "length": 32 },
     { "op": "SET_PEN_COLOR", "color": "amber" },
     {
       "op": "LOOP_START",
       "count": 6,
       "body": [
-        { "op": "FORWARD", "length": 22 },
+        { "op": "FORWARD", "length": 44 },
         { "op": "PEN_DOWN" },
-        { "op": "FORWARD", "length": 10 },
+        { "op": "FORWARD", "length": 20 },
         { "op": "PEN_UP" },
-        { "op": "BACKWARD", "length": 32 },
+        { "op": "BACKWARD", "length": 64 },
         { "op": "TURN_RIGHT", "angle": 60 }
       ]
     }

@@ -29,7 +29,7 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
     "allowRepeatBadges": true,
     "allowActionParams": true,
     "allowedBlockParams": {
-      "length": [25, 50, 75, 100, 125, 150],
+      "length": [25, 50, 75, 100, 125, 150, 200],
       "angle": [15, 30, 45, 60, 72, 90, 120, 135, 144, 150, 180, 270, 360],
       "radius": [25, 30, 40, 50, 60, 75, 100, 125, 150],
       "color": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -53,15 +53,15 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
   1. `SET_PEN_COLOR {"color": "#3b82f6"}` *(2=Blue V-ribbon)*
   2. `SET_PEN_WIDTH {"width": 8}`
   3. `TURN_LEFT {"angle": 30}`
-  4. `FORWARD {"length": 100}`
-  5. `BACKWARD {"length": 100}`
+  4. `FORWARD {"length": 150}`
+  5. `BACKWARD {"length": 150}`
   6. `TURN_RIGHT {"angle": 60}`
-  7. `FORWARD {"length": 100}`
-  8. `BACKWARD {"length": 100}`
+  7. `FORWARD {"length": 150}`
+  8. `BACKWARD {"length": 150}`
   9. `TURN_RIGHT {"angle": 60}`
   10. `SET_PEN_COLOR {"color": "#f59e0b"}` *(4=Amber/Gold medallion)*
   11. `SET_PEN_WIDTH {"width": 16}`
-  12. `ARC_RIGHT {"radius": 50, "angle": 360}`
+  12. `ARC_RIGHT {"radius": 75, "angle": 360}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 90°`, `pathCount: 5`.
 
 ---
@@ -69,7 +69,7 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
 ## Creative Variation Cards (`variations[]`)
 
 ### Variation 1 (`param-b-var1-heart-crest`): `💝 Heart Medallion Crest` (`13` blocks `≤ 14`)
-*(New `≤ 14`-block bridge card combining a Gold `R=50` outer halo ring with a compact `param.4` Pink heart centered cleanly inside.)*
+*(New `≤ 14`-block bridge card combining a Gold `R=100` outer halo ring with a `param.4` Pink heart centered cleanly inside.)*
 
 ![Variation 1 Heart Medallion Crest](./svg/param_b_var1_heart_crest.svg)
 
@@ -77,17 +77,17 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
   1. `SET_PEN_COLOR {"color": "#f59e0b"}` *(Gold halo)*
   2. `SET_PEN_WIDTH {"width": 8}`
   3. `TURN_RIGHT {"angle": 90}`
-  4. `ARC_LEFT {"radius": 50, "angle": 360}`
+  4. `ARC_LEFT {"radius": 100, "angle": 360}`
   5. `TURN_LEFT {"angle": 90}`
   6. `SET_PEN_COLOR {"color": "#ec4899"}` *(Pink heart)*
   7. `SET_PEN_WIDTH {"width": 6}`
   8. `TURN_LEFT {"angle": 45}`
-  9. `FORWARD {"length": 50}`
-  10. `ARC_RIGHT {"radius": 25, "angle": 180}`
+  9. `FORWARD {"length": 100}`
+  10. `ARC_RIGHT {"radius": 50, "angle": 180}`
   11. `TURN_LEFT {"angle": 90}`
-  12. `ARC_RIGHT {"radius": 25, "angle": 180}`
-  13. `FORWARD {"length": 50}`
-- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0.0002, 0), heading: 225°`, `pathCount: 5`.
+  12. `ARC_RIGHT {"radius": 50, "angle": 180}`
+  13. `FORWARD {"length": 100}`
+- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (-0.0002, 0), heading: 225°`, `pathCount: 5`.
 
 ### Variation 2 (`param-b-var2-winking-emoji`): `😉 Winking Emoji` (`22` blocks `~20`)
 *(Draws a `R=100` Gold face centered at `(100, 0)` with `PEN_UP` repositioned Black `R=75` smile, `R=25` right wink arch, and thick left open eye.)*
@@ -152,33 +152,33 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (75, 0), heading: 0°`, `pathCount: 4`.
 
 ### Variation 4 (`param-b-var4-curved-flower`): `🌸 4-Petal Curved Flower` (`30` blocks `≤ 30`)
-*(Fixes legacy broken `2B-curved-flower` where petals floated upward off-axis: draws 4 symmetric alternating Pink/Purple pointed petals meeting cleanly at `(0, -100)` with a dead-center `R=25` Amber pollen ring.)*
+*(Fixes legacy broken `2B-curved-flower` where petals floated upward off-axis: draws 4 symmetric alternating Pink/Purple pointed petals meeting cleanly at `(0, -150)` with a dead-center `R=25` Amber pollen ring.)*
 
 ![Variation 4 Curved Petal Flower](./svg/param_b_var4_curved_flower.svg)
 
 - **MAIN (`blocks.length = 30`):**
   1. `SET_PEN_COLOR {"color": "#10b981"}` *(Green stem)*
   2. `SET_PEN_WIDTH {"width": 8}`
-  3. `FORWARD {"length": 100}`
+  3. `FORWARD {"length": 150}`
   4. `SET_PEN_COLOR {"color": "#ec4899"}` *(Pink NE petal)*
-  5. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  5. `ARC_RIGHT {"radius": 75, "angle": 90}`
   6. `TURN_RIGHT {"angle": 90}`
-  7. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  7. `ARC_RIGHT {"radius": 75, "angle": 90}`
   8. `TURN_RIGHT {"angle": 180}`
   9. `SET_PEN_COLOR {"color": "#8b5cf6"}` *(Purple SE petal)*
-  10. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  10. `ARC_RIGHT {"radius": 75, "angle": 90}`
   11. `TURN_RIGHT {"angle": 90}`
-  12. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  12. `ARC_RIGHT {"radius": 75, "angle": 90}`
   13. `TURN_RIGHT {"angle": 180}`
   14. `SET_PEN_COLOR {"color": "#ec4899"}` *(Pink SW petal)*
-  15. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  15. `ARC_RIGHT {"radius": 75, "angle": 90}`
   16. `TURN_RIGHT {"angle": 90}`
-  17. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  17. `ARC_RIGHT {"radius": 75, "angle": 90}`
   18. `TURN_RIGHT {"angle": 180}`
   19. `SET_PEN_COLOR {"color": "#8b5cf6"}` *(Purple NW petal)*
-  20. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  20. `ARC_RIGHT {"radius": 75, "angle": 90}`
   21. `TURN_RIGHT {"angle": 90}`
-  22. `ARC_RIGHT {"radius": 50, "angle": 90}`
+  22. `ARC_RIGHT {"radius": 75, "angle": 90}`
   23. `SET_PEN_COLOR {"color": "#f59e0b"}` *(Amber centered core)*
   24. `SET_PEN_WIDTH {"width": 12}`
   25. `PEN_UP`
@@ -187,9 +187,9 @@ Here kids combine every Turtle LOGO parameter unlocked in `param.2`, `param.3`, 
   28. `TURN_RIGHT {"angle": 90}`
   29. `PEN_DOWN`
   30. `ARC_RIGHT {"radius": 25, "angle": 360}`
-- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (25, -100), heading: 180°`, `pathCount: 10`.
+- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (25, -150), heading: 180°`, `pathCount: 10`.
 
 ## Verification Checklist
 - [x] Every script uses pure unrolled Turtle LOGO ops (`FORWARD`/`BACKWARD`, no `TELEPORT`, no `Loop`).
-- [x] Fixes legacy `2B-curved-flower` symmetry & center offset (`center = (0, -100)`).
+- [x] Fixes legacy `2B-curved-flower` symmetry & center offset (`center = (0, -150)`).
 - [x] All 5 figures (`12`, `13`, `22`, `24`, `30`) verified via `render_logo_svg.mjs` within Sandbox block budgets.

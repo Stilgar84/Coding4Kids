@@ -7,7 +7,7 @@
 <details>
 <summary>📖 Parent / Teacher Tip (Adult Context — Collapsed by Default)</summary>
 
-While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (`scale(1.12)`, soft shadow, hollow nib) and leaves a brief fading dotted air-trail in animated playback—so 5–7yo kids can see *where* the turtle hops across empty paper before `Pen Down` (`PEN_DOWN`) sets the ink nib back onto the canvas. All cards stay inside a compact viewport (`≤ 150px` radius) and avoid text/letter themes.
+While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (`scale(1.12)`, soft shadow, hollow nib) and leaves a brief fading dotted air-trail in animated playback—so 5–7yo kids can see *where* the turtle hops across empty paper before `Pen Down` (`PEN_DOWN`) sets the ink nib back onto the canvas. All cards stay inside a compact viewport (`≤ 300px` radius) and avoid text/letter themes.
 
 </details>
 
@@ -17,7 +17,7 @@ While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (
 
 - **Allowed Blocks (`allowedSimBlocks`):** `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "PEN_UP", "PEN_DOWN"]`
 - **Allowed Control Blocks (`allowedControlBlocks`):** `[]`
-- **Block Parameter Lock (`allowedBlockParams`):** Fixed `50px` steps, `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }`, `allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`
+- **Block Parameter Lock (`allowedBlockParams`):** Fixed `100px` steps, `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }`, `allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`
 - **Allowed Scope Tabs:** `["MAIN"]` (`allowRecursion: false`)
 - **Slot Cap (`slotCap`):** `null`
 - **Environment Setup:** Start pose `(0, 0, 0° NORTH)`, `penDown: true`, `penColor: "#0f172a"`, `penWidth: 6`; dual-state turtle avatar (`Pen Up` vs `Pen Down`); `#e2e8f0` card borders.
@@ -26,20 +26,22 @@ While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (
 
 ## Starter Workspace (`starterWorkspace`)
 
-### ⏸️ Parallel Bars `=` (`8` flat blocks ≤ 14)
+### ⏸️ Parallel Bars `=` (`10` flat blocks ≤ 14)
 
 ![Parallel Bars =](./svg/seq_7_starter.svg)
 
-- **MAIN (`8` blocks):**
+- **MAIN (`10` blocks):**
   1. `TURN_RIGHT`
   2. `FORWARD`
-  3. `PEN_UP`
-  4. `TURN_LEFT`
-  5. `FORWARD`
-  6. `PEN_DOWN`
-  7. `TURN_LEFT`
-  8. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Two horizontal `50px` bars at `(0, 0)–(50, 0)` and `(50, -50)–(0, -50)` separated by a `50px` invisible hop; `finalPose: (0, -50, 270°)`; `penDown: true`; `pathCount: 2`.
+  3. `FORWARD`
+  4. `PEN_UP`
+  5. `TURN_LEFT`
+  6. `FORWARD`
+  7. `PEN_DOWN`
+  8. `TURN_LEFT`
+  9. `FORWARD`
+  10. `FORWARD`
+- **Rendered Verification (`render_logo_svg.mjs`):** Two horizontal `200px` bars at `(0, 0)–(200, 0)` and `(200, -100)–(0, -100)` separated by a `100px` invisible hop (`200×100px` overall span); `finalPose: (0, -100, 270°)`; `penDown: true`; `pathCount: 4`.
 
 ---
 
@@ -61,7 +63,7 @@ While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (
   9. `FORWARD`
   10. `PEN_DOWN`
   11. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Three separate `50px` dashes wrapping clockwise around a corner (`(0,0)–(0,-50)`, `(50,-50)–(100,-50)`, `(100,0)–(100,50)`) safely centered within `[-180..+180]`; `finalPose: (100, 50, 180°)`; `penDown: true`; `pathCount: 3`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Three separate `100px` dashes wrapping clockwise around a corner (`(0,0)–(0,-100)`, `(100,-100)–(200,-100)`, `(200,0)–(200,100)`); `finalPose: (200, 100, 180°)`; `penDown: true`; `pathCount: 3`.
 
 ---
 
@@ -89,7 +91,7 @@ While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (
   17. `FORWARD`
   18. `TURN_RIGHT`
   19. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Left square `[0..50] × [-50..0]` + `50px` air-gap using `BACKWARD × 2` while facing West + right square `[100..150] × [-50..0]`; `finalPose: (100, 0, 270°)`; `penDown: true`; `pathCount: 8`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Left square `[0..100] × [-100..0]` + `100px` air-gap using `BACKWARD × 2` while facing West + right square `[200..300] × [-100..0]`; `finalPose: (200, 0, 270°)`; `penDown: true`; `pathCount: 8`.
 
 ---
 
@@ -115,4 +117,4 @@ While `Pen Up` (`PEN_UP`) is active, the turtle avatar visually lifts slightly (
   15. `FORWARD`
   16. `TURN_RIGHT`
   17. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Two detached vertical eyes at `(0, -50)–(0, 0)` and `(100, -50)–(100, 0)` above a wide U-shaped smile `(100, 50)–(100, 100)–(0, 100)–(0, 50)`; `finalPose: (0, 50, 0°)`; `penDown: true`; `pathCount: 6`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Two detached vertical eyes at `(0, -100)–(0, 0)` and `(200, -100)–(200, 0)` above a wide U-shaped smile `(200, 100)–(200, 200)–(0, 200)–(0, 100)`; `finalPose: (0, 100, 0°)`; `penDown: true`; `pathCount: 6`.

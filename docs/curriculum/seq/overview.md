@@ -6,7 +6,7 @@
 
 **Environments:**
 - [🤖 Robot Grid](../../envs/robot_grid.md) (`3×3`–`4×4` compact grids)
-- [🐢 Turtle LOGO](../../envs/turtle_logo.md) (Fixed `50px` steps, `90°`-locked turns, `#0f172a` ink, `penWidth: 6`)
+- [🐢 Turtle LOGO](../../envs/turtle_logo.md) (Fixed `100px` steps, `90°`-locked turns, `#0f172a` ink, `penWidth: 6`)
 - [🎵 Beat & Light Matrix](../../envs/beat_light.md) (`8×8` matrix, Tier-1 parameterless drums & stamps; `(1,1)` cursor reticle and active-color tool hidden)
 
 ---
@@ -23,7 +23,7 @@
    - **Beat Isolation (`envs/beat_light.md` §1):** `(1, 1)` cursor reticle (`visible: false`) and `tool-beat-active-color` remain hidden throughout `seq`. Tier-1 `WAIT_BEAT` uses parameterless 1-beat wait (`0x15`). `STAMP_*` overlays foreground LEDs without clearing background pixels.
    - **Turtle Origin (`envs/turtle_logo.md` §1):** Every LOGO workspace starts at `(0, 0)` facing `0°` North (`-y`), `penDown: true`, `penColor: "#0f172a"`, `penWidth: 6`, using `FORWARD`/`BACKWARD` (never `MOVE_FWD`/`MOVE_BACK` in LOGO palettes).
 4. **Guaranteed Competencies Handed Off to Module `param`:**
-   - Ordered top-to-bottom execution, `⏭ Step` debugging, `MOVE_FWD`, `MOVE_BACK`, `TURN_LEFT`, `TURN_RIGHT`, ordered waypoints (`1 ⋯▶ 2`), fixed-unit LOGO motion (`50px` / `90°` + `PEN_UP`/`PEN_DOWN`), and Tier-1 Beat drums + `STAMP_*` / `CLEAR_LEDS` / `WAIT_BEAT`.
+   - Ordered top-to-bottom execution, `⏭ Step` debugging, `MOVE_FWD`, `MOVE_BACK`, `TURN_LEFT`, `TURN_RIGHT`, ordered waypoints (`1 ⋯▶ 2`), fixed-unit LOGO motion (`100px` / `90°` + `PEN_UP`/`PEN_DOWN`), and Tier-1 Beat drums + `STAMP_*` / `CLEAR_LEDS` / `WAIT_BEAT`.
 
 ---
 

@@ -69,7 +69,7 @@ Press **Run** right away to watch the **5-Pointed Gold Star**! Notice why the tu
       "op": "LOOP_START",
       "count": 5,
       "body": [
-        { "op": "FORWARD", "length": 120 },
+        { "op": "FORWARD", "length": 200 },
         { "op": "TURN_RIGHT", "angle": 144 }
       ]
     }
@@ -97,9 +97,9 @@ Press **Run** right away to watch the **5-Pointed Gold Star**! Notice why the tu
       "op": "LOOP_START",
       "count": 6,
       "body": [
-        { "op": "FORWARD", "length": 50 },
+        { "op": "FORWARD", "length": 75 },
         { "op": "TURN_LEFT", "angle": 60 },
-        { "op": "FORWARD", "length": 50 },
+        { "op": "FORWARD", "length": 75 },
         { "op": "TURN_RIGHT", "angle": 120 }
       ]
     }
@@ -109,7 +109,7 @@ Press **Run** right away to watch the **5-Pointed Gold Star**! Notice why the tu
 
 ### Variation 2 — Dual-Tone Woven Compass Star (`9` flat blocks, `<= 20`)
 
-*(Alternates long Purple chords `125` and medium Pink chords `90` with `150°` turns over 6 iterations (`6 × 300° = 1800°`), closing cleanly at `(0,0)`.)*
+*(Alternates long Purple chords `200` and medium Pink chords `150` with `150°` turns over 6 iterations (`6 × 300° = 1800°`), closing cleanly at `(0,0)`.)*
 
 ![Variation 2 — Dual-Tone Woven Compass Star](./svg/loop_3_var2_compass_star.svg)
 
@@ -126,10 +126,10 @@ Press **Run** right away to watch the **5-Pointed Gold Star**! Notice why the tu
       "count": 6,
       "body": [
         { "op": "SET_PEN_COLOR", "color": "purple" },
-        { "op": "FORWARD", "length": 125 },
+        { "op": "FORWARD", "length": 200 },
         { "op": "TURN_RIGHT", "angle": 150 },
         { "op": "SET_PEN_COLOR", "color": "pink" },
-        { "op": "FORWARD", "length": 90 },
+        { "op": "FORWARD", "length": 150 },
         { "op": "TURN_RIGHT", "angle": 150 }
       ]
     }

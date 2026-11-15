@@ -2,12 +2,12 @@
 
 > [← Module `seq` Overview](./overview.md) · **Format:** 🐢 Sandbox · **Environment:** [🐢 Turtle LOGO](../../envs/turtle_logo.md) · **ID:** `seq.6` (Legacy Alias: `1.6`)
 
-**One-Concept Goal:** Transition sequential `50px` movement and `90°`-locked turns into open-ended creative continuous-line drawings (introducing **no pass/fail grading**, working Starter examples, and 1-tap **Variation Cards**).
+**One-Concept Goal:** Transition sequential `100px` movement and `90°`-locked turns into open-ended creative continuous-line drawings (introducing **no pass/fail grading**, working Starter examples, and 1-tap **Variation Cards**).
 
 <details>
 <summary>📖 Parent / Teacher Tip (Adult Context — Collapsed by Default)</summary>
 
-Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to fail. Every `Forward` or `Backward` block slides the turtle `50px` while leaving a `#0f172a` ink stroke (`penWidth: 6`), and turns pivot cleanly by `90°` (`fixedAngle: 90`). Kids can immediately run the pre-loaded **Flag on a Pole** starter (`8` blocks) or load one of the 3 joyful illustrated cards (`3-Step Staircase`, `Square Snail Spiral`, `Four-Way Plus Cross`) and remix freely—with zero letter/reading prompts!
+Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to fail. Every `Forward` or `Backward` block slides the turtle `100px` while leaving a `#0f172a` ink stroke (`penWidth: 6`), and turns pivot cleanly by `90°` (`fixedAngle: 90`). Kids can immediately run the pre-loaded **Flag on a Pole** starter (`8` blocks) or load one of the 3 joyful illustrated cards (`3-Step Staircase`, `Square Snail Spiral`, `Four-Way Plus Cross`) and remix freely—with zero letter/reading prompts!
 
 </details>
 
@@ -17,7 +17,7 @@ Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to 
 
 - **Allowed Blocks (`allowedSimBlocks`):** `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT"]` *(strictly omits Grid opcodes `MOVE_FWD` / `MOVE_BACK`)*
 - **Allowed Control Blocks (`allowedControlBlocks`):** `[]`
-- **Block Parameter Lock (`allowedBlockParams`):** Fixed `50px` `FORWARD` (`0x10`) / `BACKWARD` (`0x11`), `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }` (`allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`)
+- **Block Parameter Lock (`allowedBlockParams`):** Fixed `100px` `FORWARD` (`0x10`) / `BACKWARD` (`0x11`), `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }` (`allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`)
 - **Allowed Scope Tabs:** `["MAIN"]` (`allowRecursion: false`)
 - **Slot Cap (`slotCap`):** `null` *(Sandbox guidelines: Starter & Var 1 ≤ 14, Var 2 ≤ 20, Var 3 ≤ 30)*
 - **Environment Setup:** Start pose `(0, 0, 0° NORTH)`, `penDown: true`, `penColor: "#0f172a"`, `penWidth: 6`, `#e2e8f0` card borders.
@@ -39,7 +39,7 @@ Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to 
   6. `FORWARD`
   7. `TURN_RIGHT`
   8. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Flagpole `(0, 0) → (0, -100)` with closed `50×50` flag `[0..50] × [-100..-50]`; `finalPose: (0, -50, 270°)`; `penDown: true`; `pathCount: 5`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Flagpole `(0, 0) → (0, -200)` with closed `100×100` flag `[0..100] × [-200..-100]`; `finalPose: (0, -100, 270°)`; `penDown: true`; `pathCount: 5`.
 
 ---
 
@@ -61,7 +61,7 @@ Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to 
   9. `FORWARD`
   10. `TURN_RIGHT`
   11. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Three rising stair risers & treads from `(0, 0)` to `(150, -150)`; `finalPose: (150, -150, 90°)`; `penDown: true`; `pathCount: 6`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Three rising stair risers & treads from `(0, 0)` to `(300, -300)`; `finalPose: (300, -300, 90°)`; `penDown: true`; `pathCount: 6`.
 
 ---
 
@@ -83,7 +83,7 @@ Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to 
   11. `FORWARD`
   12. `FORWARD`
   13. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Growing clockwise square spiral `(0,0) → (0,-50) → (50,-50) → (50,50) → (-50,50) → (-50,-100)`; `finalPose: (-50, -100, 0°)`; `penDown: true`; `pathCount: 9`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Growing clockwise square spiral `(0,0) → (0,-100) → (100,-100) → (100,100) → (-100,100) → (-100,-200)`; `finalPose: (-100, -200, 0°)`; `penDown: true`; `pathCount: 9`.
 
 ---
 
@@ -103,4 +103,4 @@ Welcome to **Turtle LOGO**! Unlike Robot Grid, there are no walls or puzzles to 
   9. `TURN_RIGHT`
   10. `FORWARD`
   11. `BACKWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Demonstrates `FORWARD` + `BACKWARD` symmetry around `(0, 0)` spanning `[-50..50] × [-50..50]`; `finalPose: (0, 0, 270°)`; `penDown: true`; `pathCount: 8`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Demonstrates `FORWARD` + `BACKWARD` symmetry around `(0, 0)` spanning `[-100..100] × [-100..100]`; `finalPose: (0, 0, 270°)`; `penDown: true`; `pathCount: 8`.

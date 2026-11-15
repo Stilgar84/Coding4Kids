@@ -29,7 +29,7 @@ Once you set a pen color or stroke width, the turtle remembers that style for ev
     "allowRepeatBadges": true,
     "allowActionParams": true,
     "allowedBlockParams": {
-      "length": [25, 50, 75, 100, 125, 150],
+      "length": [25, 50, 75, 100, 125, 150, 200],
       "angle": [15, 30, 45, 60, 72, 90, 120, 135, 144, 150, 180],
       "color": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
       "width": [2, 4, 6, 8, 12, 16, 20]
@@ -53,19 +53,19 @@ Once you set a pen color or stroke width, the turtle remembers that style for ev
 - **MAIN (`blocks.length = 14`):**
   1. `SET_PEN_WIDTH {"width": 16}`
   2. `SET_PEN_COLOR {"color": "#ef4444"}` *(1=Red)*
-  3. `FORWARD {"length": 100}`
+  3. `FORWARD {"length": 200}`
   4. `PEN_UP`
   5. `TURN_RIGHT {"angle": 90}`
-  6. `FORWARD {"length": 25}`
+  6. `FORWARD {"length": 50}`
   7. `TURN_RIGHT {"angle": 90}`
   8. `PEN_DOWN`
   9. `SET_PEN_COLOR {"color": "#3b82f6"}` *(2=Blue — `width: 16` persists!)*
-  10. `FORWARD {"length": 100}`
+  10. `FORWARD {"length": 200}`
   11. `TURN_RIGHT {"angle": 135}`
   12. `SET_PEN_COLOR {"color": "#ffffff"}` *(9=White eraser)*
   13. `SET_PEN_WIDTH {"width": 8}`
-  14. `FORWARD {"length": 75}`
-- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (-28.033, -53.033), heading: 315°`, `penColor: '#ffffff'`, `penWidth: 8`, `pathCount: 3`.
+  14. `FORWARD {"length": 150}`
+- **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (-56.066, -106.066), heading: 315°`, `penColor: '#ffffff'`, `penWidth: 8`, `pathCount: 3`.
 
 ---
 
@@ -79,13 +79,13 @@ Once you set a pen color or stroke width, the turtle remembers that style for ev
 - **MAIN (`blocks.length = 10`):**
   1. `SET_PEN_WIDTH {"width": 8}`
   2. `SET_PEN_COLOR {"color": "#ef4444"}` *(Red)*
-  3. `FORWARD {"length": 100}`
+  3. `FORWARD {"length": 200}`
   4. `TURN_RIGHT {"angle": 120}`
   5. `SET_PEN_COLOR {"color": "#3b82f6"}` *(Blue)*
-  6. `FORWARD {"length": 100}`
+  6. `FORWARD {"length": 200}`
   7. `TURN_RIGHT {"angle": 120}`
   8. `SET_PEN_COLOR {"color": "#10b981"}` *(Green)*
-  9. `FORWARD {"length": 100}`
+  9. `FORWARD {"length": 200}`
   10. `TURN_RIGHT {"angle": 120}`
 - **Verified Renderer Output (`render_logo_svg.mjs`):** `finalPose: (0, 0), heading: 0°`, `penColor: '#10b981'`, `penWidth: 8`, `pathCount: 3`.
 

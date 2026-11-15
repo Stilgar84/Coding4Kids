@@ -23,9 +23,9 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
   - `allowedSimBlocks`: `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "ARC_LEFT", "ARC_RIGHT", "PEN_UP", "PEN_DOWN", "SET_PEN_COLOR", "SET_PEN_WIDTH"]` *(strictly **NO `TELEPORT`**)*
   - `allowedControlBlocks`: `["LOOP_START", "LOOP_END", "CALL_FN"]` (`targets: ["F1"]`)
   - `allowedBlockParams`:
-    - `FORWARD` / `BACKWARD`: `[10, 20, 25, 35, 38, 40, 44, 45, 50, 55, 60, 80, 85, 100]` *(with default `50` quick-tap)*
+    - `FORWARD` / `BACKWARD`: `[40, 50, 75, 76, 80, 88, 90, 100, 110, 120, 150, 200]` *(with default `100` quick-tap)*
     - `TURN_LEFT` / `TURN_RIGHT`: `[15, 18, 30, 45, 60, 72, 75, 90, 120, 135, 144, 180, 210]`
-    - `ARC_LEFT` / `ARC_RIGHT`: radii `[24, 25, 50, 75]`, sweeps `[90, 180, 270, 360]`
+    - `ARC_LEFT` / `ARC_RIGHT`: radii `[25, 50, 75, 100]`, sweeps `[90, 180, 270, 360]`
     - `SET_PEN_COLOR`: canonical 10-swatch indices `0..9` (`black, red, blue, green, amber, purple, pink, cyan, orange, white`)
     - `SET_PEN_WIDTH`: `[2, 3, 4, 6, 8]`
   - `allowRepeatBadges`: `false`
@@ -53,7 +53,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 4,
       "body": [
-        { "op": "FORWARD", "length": 85 },
+        { "op": "FORWARD", "length": 150 },
         { "op": "CALL_FN", "fn": "F1" },
         { "op": "TURN_RIGHT", "angle": 90 }
       ]
@@ -70,7 +70,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 5,
       "body": [
-        { "op": "FORWARD", "length": 35 },
+        { "op": "FORWARD", "length": 75 },
         { "op": "TURN_RIGHT", "angle": 144 }
       ]
     },
@@ -85,14 +85,14 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
 
 ![Pine Forest](./svg/func2_var1_forest.svg)
 
-- **State Hygiene Highlight:** `F1` paints an orange trunk and green triangle canopy, then drops straight back to ground level (`(x, 0, 0°)`) with `PEN_UP` so `Main` marches cleanly `80px` East to the next tree!
-- **Verified Render Metrics:** `finalPose: (160, 0, 0°)`, `penDown: false`, `pathCount: 18`.
+- **State Hygiene Highlight:** `F1` paints an orange trunk and green triangle canopy, then drops straight back to ground level (`(x, 0, 0°)`) with `PEN_UP` so `Main` marches cleanly `150px` East to the next tree!
+- **Verified Render Metrics:** `finalPose: (300, 0, 0°)`, `penDown: false`, `pathCount: 18`.
 - **`MAIN` (`10` flat blocks):**
   ```json
   [
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 80 },
+    { "op": "FORWARD", "length": 150 },
     { "op": "TURN_RIGHT", "angle": 90 },
     {
       "op": "LOOP_START",
@@ -100,7 +100,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "body": [
         { "op": "CALL_FN", "fn": "F1" },
         { "op": "TURN_RIGHT", "angle": 90 },
-        { "op": "FORWARD", "length": 80 },
+        { "op": "FORWARD", "length": 150 },
         { "op": "TURN_LEFT", "angle": 90 }
       ]
     }
@@ -111,22 +111,22 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
   [
     { "op": "SET_PEN_COLOR", "color": "orange" },
     { "op": "PEN_DOWN" },
-    { "op": "FORWARD", "length": 20 },
+    { "op": "FORWARD", "length": 50 },
     { "op": "SET_PEN_COLOR", "color": "green" },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "BACKWARD", "length": 20 },
+    { "op": "BACKWARD", "length": 50 },
     {
       "op": "LOOP_START",
       "count": 3,
       "body": [
-        { "op": "FORWARD", "length": 40 },
+        { "op": "FORWARD", "length": 100 },
         { "op": "TURN_LEFT", "angle": 120 }
       ]
     },
-    { "op": "FORWARD", "length": 20 },
+    { "op": "FORWARD", "length": 50 },
     { "op": "TURN_LEFT", "angle": 90 },
     { "op": "PEN_UP" },
-    { "op": "BACKWARD", "length": 20 }
+    { "op": "BACKWARD", "length": 50 }
   ]
   ```
 
@@ -136,7 +136,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
 
 ![Petal Crown Ring](./svg/func2_var2_flower_ring.svg)
 
-- **State Hygiene Highlight:** `F1` tilts `+15°`, arcs an almond pink petal (`ARC_RIGHT 24, 90°` × 2), lifts the pen, and counter-tilts `-15°` so six petals bloom around a symmetric hexagon!
+- **State Hygiene Highlight:** `F1` tilts `+15°`, arcs an almond pink petal (`ARC_RIGHT 50, 90°` × 2), lifts the pen, and counter-tilts `-15°` so six petals bloom around a symmetric hexagon!
 - **Verified Render Metrics:** `finalPose: (0, 0, 0°)`, `penDown: false`, `pathCount: 12`.
 - **`MAIN` (`7` flat blocks):**
   ```json
@@ -147,7 +147,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 6,
       "body": [
-        { "op": "FORWARD", "length": 60 },
+        { "op": "FORWARD", "length": 100 },
         { "op": "CALL_FN", "fn": "F1" },
         { "op": "TURN_RIGHT", "angle": 60 }
       ]
@@ -160,9 +160,9 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
     { "op": "TURN_RIGHT", "angle": 15 },
     { "op": "SET_PEN_COLOR", "color": "pink" },
     { "op": "PEN_DOWN" },
-    { "op": "ARC_RIGHT", "radius": 24, "angle": 90 },
+    { "op": "ARC_RIGHT", "radius": 50, "angle": 90 },
     { "op": "TURN_RIGHT", "angle": 90 },
-    { "op": "ARC_RIGHT", "radius": 24, "angle": 90 },
+    { "op": "ARC_RIGHT", "radius": 50, "angle": 90 },
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "PEN_UP" },
     { "op": "TURN_LEFT", "angle": 15 }
@@ -175,8 +175,8 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
 
 ![Cozy Cottage](./svg/func2_var3_house.svg)
 
-- **State Hygiene Highlight:** `Main` paints the orange walls and red roof, then hops inside to stamp four `20 × 20` cyan windows with `F1` (`PEN_UP` at end keeps travel lines clean).
-- **Verified Render Metrics:** `finalPose: (18, -60, 0°)`, `penDown: false`, `pathCount: 22`.
+- **State Hygiene Highlight:** `Main` paints the orange walls and red roof, then hops inside to stamp four `40 × 40` cyan windows with `F1` (`PEN_UP` at end keeps travel lines clean).
+- **Verified Render Metrics:** `finalPose: (36, -120, 0°)`, `penDown: false`, `pathCount: 22`.
 - **`MAIN` (`28` flat blocks):**
   ```json
   [
@@ -185,32 +185,32 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 4,
       "body": [
-        { "op": "FORWARD", "length": 100 },
+        { "op": "FORWARD", "length": 200 },
         { "op": "TURN_RIGHT", "angle": 90 }
       ]
     },
     { "op": "PEN_UP" },
-    { "op": "FORWARD", "length": 100 },
+    { "op": "FORWARD", "length": 200 },
     { "op": "SET_PEN_COLOR", "color": "red" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_RIGHT", "angle": 30 },
-    { "op": "FORWARD", "length": 100 },
+    { "op": "FORWARD", "length": 200 },
     { "op": "TURN_RIGHT", "angle": 120 },
-    { "op": "FORWARD", "length": 100 },
+    { "op": "FORWARD", "length": 200 },
     { "op": "TURN_RIGHT", "angle": 210 },
     { "op": "PEN_UP" },
-    { "op": "BACKWARD", "length": 40 },
+    { "op": "BACKWARD", "length": 80 },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 38 },
+    { "op": "FORWARD", "length": 76 },
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "CALL_FN", "fn": "F1" },
-    { "op": "BACKWARD", "length": 40 },
+    { "op": "BACKWARD", "length": 80 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 44 },
+    { "op": "FORWARD", "length": 88 },
     { "op": "TURN_RIGHT", "angle": 90 },
     { "op": "CALL_FN", "fn": "F1" },
-    { "op": "FORWARD", "length": 40 },
+    { "op": "FORWARD", "length": 80 },
     { "op": "CALL_FN", "fn": "F1" }
   ]
   ```
@@ -223,7 +223,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 4,
       "body": [
-        { "op": "FORWARD", "length": 20 },
+        { "op": "FORWARD", "length": 40 },
         { "op": "TURN_RIGHT", "angle": 90 }
       ]
     },
@@ -238,7 +238,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
 ![Glowing Big Dipper](./svg/func2_var4_dipper.svg)
 
 - **State Hygiene Highlight:** `F1` demonstrates **3-way state hygiene**: after switching to `"amber"` for each star and tilting `+18°`, `F1` lifts the pen (`PEN_UP`), restores `"cyan"`, and counter-tilts `-18°` so `Main`'s sky-line constellation connects all 7 stars and closes cleanly back on Star #4!
-- **Verified Render Metrics:** `finalPose: (151.4222, -1.294, 270°)`, `penDown: false`, `pathCount: 42`.
+- **Verified Render Metrics:** `finalPose: (302.8444, -2.5882, 270°)`, `penDown: false`, `pathCount: 42`.
 - **`MAIN` (`30` flat blocks):**
   ```json
   [
@@ -246,31 +246,31 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_RIGHT", "angle": 75 },
-    { "op": "FORWARD", "length": 55 },
+    { "op": "FORWARD", "length": 110 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_RIGHT", "angle": 15 },
-    { "op": "FORWARD", "length": 50 },
+    { "op": "FORWARD", "length": 100 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_RIGHT", "angle": 15 },
-    { "op": "FORWARD", "length": 50 },
+    { "op": "FORWARD", "length": 100 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_RIGHT", "angle": 75 },
-    { "op": "FORWARD", "length": 45 },
+    { "op": "FORWARD", "length": 90 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 60 },
+    { "op": "FORWARD", "length": 120 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 45 },
+    { "op": "FORWARD", "length": 90 },
     { "op": "CALL_FN", "fn": "F1" },
     { "op": "PEN_DOWN" },
     { "op": "TURN_LEFT", "angle": 90 },
-    { "op": "FORWARD", "length": 60 },
+    { "op": "FORWARD", "length": 120 },
     { "op": "PEN_UP" }
   ]
   ```
@@ -284,7 +284,7 @@ A tidy stamp helper paints its shape, lifts its pen (`PEN_UP`), and turns back t
       "op": "LOOP_START",
       "count": 5,
       "body": [
-        { "op": "FORWARD", "length": 20 },
+        { "op": "FORWARD", "length": 40 },
         { "op": "TURN_RIGHT", "angle": 144 }
       ]
     },

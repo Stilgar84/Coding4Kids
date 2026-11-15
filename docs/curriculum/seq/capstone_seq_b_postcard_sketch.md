@@ -2,12 +2,12 @@
 
 > [← Module `seq` Overview](./overview.md) · **Format:** 🎨 Capstone Sandbox · **Environment:** [🐢 Turtle LOGO](../../envs/turtle_logo.md) · **ID:** `seq.B` (Legacy Alias: `1B`)
 
-**One-Concept Goal:** Synthesize `50px` movement, `90°`-locked turns, `Pen Up`, and `Pen Down` to illustrate charming multi-part postcard artwork (`≤ 14` block Starter & Var 1, up to `20` Var 2, up to `30` Showcase Var 3) with zero text/letter prompts.
+**One-Concept Goal:** Synthesize `100px` movement, `90°`-locked turns, `Pen Up`, and `Pen Down` to illustrate charming multi-part postcard artwork (`≤ 14` block Starter & Var 1, up to `20` Var 2, up to `30` Showcase Var 3) with zero text/letter prompts.
 
 <details>
 <summary>📖 Parent / Teacher Tip (Adult Context — Collapsed by Default)</summary>
 
-This creative capstone celebrates everything learned in Turtle LOGO while honoring Module `seq`'s two-axis block guardrails (`≤ 14` Starter/Var 1, `≤ 20` Var 2, `≤ 30` Showcase Var 3). Kids start with a `14`-block **Pixel Buddy Face** (`| |` eyes + smile bar) and can explore **Sailboat on Water** (`14` blocks), **Twin Towers** (`19` blocks), or a **`27`-block Blocky Robot with Visor & Antenna**—all verified on the `50px` lattice with zero reading required!
+This creative capstone celebrates everything learned in Turtle LOGO while honoring Module `seq`'s two-axis block guardrails (`≤ 14` Starter/Var 1, `≤ 20` Var 2, `≤ 30` Showcase Var 3). Kids start with a `14`-block **Pixel Buddy Face** (`| |` eyes + smile bar) and can explore **Sailboat on Water** (`14` blocks), **Twin Towers** (`19` blocks), or a **`27`-block Blocky Robot with Visor & Antenna**—all verified on the `100px` lattice with zero reading required!
 
 </details>
 
@@ -17,7 +17,7 @@ This creative capstone celebrates everything learned in Turtle LOGO while honori
 
 - **Allowed Blocks (`allowedSimBlocks`):** `["FORWARD", "BACKWARD", "TURN_LEFT", "TURN_RIGHT", "PEN_UP", "PEN_DOWN"]` *(strictly omits Grid opcodes `MOVE_FWD` / `MOVE_BACK`)*
 - **Allowed Control Blocks (`allowedControlBlocks`):** `[]`
-- **Block Parameter Lock (`allowedBlockParams`):** Fixed `50px` steps, `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }`, `allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`
+- **Block Parameter Lock (`allowedBlockParams`):** Fixed `100px` steps, `TURN_LEFT: { fixedAngle: 90 }`, `TURN_RIGHT: { fixedAngle: 90 }`, `allowActionParams: false`, `allowRepeatBadges: false`, `allowVariables: false`
 - **Allowed Scope Tabs:** `["MAIN"]` (`allowRecursion: false`)
 - **Slot Cap (`slotCap`):** `null`
 - **Environment Setup:** Start pose `(0, 0, 0° NORTH)`, `penDown: true`, `penColor: "#0f172a"`, `penWidth: 6`; dual-state turtle avatar (`Pen Up` vs `Pen Down`); `#e2e8f0` card borders.
@@ -45,7 +45,7 @@ This creative capstone celebrates everything learned in Turtle LOGO while honori
   12. `TURN_RIGHT`
   13. `FORWARD`
   14. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Two vertical eyes `(0, 0)–(0, -50)` & `(100, -50)–(100, 0)` and horizontal smile `(100, 50)–(0, 50)`; `finalPose: (0, 50, 270°)`; `penDown: true`; `pathCount: 4`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Two vertical eyes `(0, 0)–(0, -100)` & `(200, -100)–(200, 0)` and horizontal smile `(200, 100)–(0, 100)`; `finalPose: (0, 100, 270°)`; `penDown: true`; `pathCount: 4`.
 
 ---
 
@@ -70,7 +70,7 @@ This creative capstone celebrates everything learned in Turtle LOGO while honori
   12. `FORWARD`
   13. `TURN_RIGHT`
   14. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Open boat hull `(0,0)→(0,50)→(100,50)→(100,0)`, hops invisibly back to deck center `(50, 0)`, raises mast `(50, 0)→(50, -50)` and flag `(50, -50)→(100, -50)`; `finalPose: (100, -50, 90°)`; `penDown: true`; `pathCount: 6`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Open boat hull `(0,0)→(0,100)→(200,100)→(200,0)`, hops invisibly back to deck center `(100, 0)`, raises mast `(100, 0)→(100, -100)` and flag `(100, -100)→(200, -100)`; `finalPose: (200, -100, 90°)`; `penDown: true`; `pathCount: 6`.
 
 ---
 
@@ -98,7 +98,7 @@ This creative capstone celebrates everything learned in Turtle LOGO while honori
   17. `TURN_RIGHT`
   18. `FORWARD`
   19. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Two `50×100` open tower arches at `[0..50] × [-100..0]` and `[100..150] × [-100..0]` separated by a `50px` street gap; `finalPose: (150, 0, 180°)`; `penDown: true`; `pathCount: 10`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Two `100×200` open tower arches at `[0..100] × [-200..0]` and `[200..300] × [-200..0]` separated by a `100px` street gap; `finalPose: (300, 0, 180°)`; `penDown: true`; `pathCount: 10`.
 
 ---
 
@@ -134,4 +134,4 @@ This creative capstone celebrates everything learned in Turtle LOGO while honori
   25. `FORWARD`
   26. `TURN_LEFT`
   27. `FORWARD`
-- **Rendered Verification (`render_logo_svg.mjs`):** Closed `150×100` robot head `[0..150] × [-100..0]`, detached centered visor `(50, -50)–(100, -50)`, and top-mounted L-antenna `(100, -100)→(100, -150)→(50, -150)`; `finalPose: (50, -150, 270°)`; `penDown: true`; `pathCount: 13`.
+- **Rendered Verification (`render_logo_svg.mjs`):** Closed `300×200` robot head `[0..300] × [-200..0]`, detached centered visor `(100, -100)–(200, -100)`, and top-mounted L-antenna `(200, -200)→(200, -300)→(100, -300)`; `finalPose: (100, -300, 270°)`; `penDown: true`; `pathCount: 13`.
