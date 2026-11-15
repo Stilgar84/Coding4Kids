@@ -17,6 +17,17 @@ import {
   getPlaceholderHintCategory,
 } from '../src/engine/placeholderHelpers';
 import { CodeBlock } from '../src/types';
+import { renderTurtleVariationPreview } from '../src/components/VariationCardsPanel';
+
+const lengthsOf = (blocks: CodeBlock[]) =>
+  blocks
+    .filter((b) => b.type === 'FORWARD' || b.type === 'BACKWARD')
+    .map((b) => b.params?.length);
+
+const radiiOf = (blocks: CodeBlock[]) =>
+  blocks
+    .filter((b) => b.type === 'ARC_LEFT' || b.type === 'ARC_RIGHT')
+    .map((b) => b.params?.radius);
 
 describe('Functions (func): UI & Creative/Demo Activities', () => {
   const funcCreativeActivities = FUNC_ACTIVITIES.filter((a) => !isValidatedPuzzleActivity(a));
@@ -103,6 +114,24 @@ describe('Functions (func): UI & Creative/Demo Activities', () => {
         'func.2-var3a-cottage',
         'func.2-var3b-dipper',
       ]);
+
+      expect(lengthsOf(act.starterWorkspace!.MAIN)).toEqual([150]);
+      expect(lengthsOf(act.starterWorkspace!.F1)).toEqual([75]);
+      expect(lengthsOf(act.variations![0].workspace.MAIN)).toEqual([150, 150]);
+      expect(lengthsOf(act.variations![0].workspace.F1)).toEqual([50, 50, 100, 50, 50]);
+      expect(lengthsOf(act.variations![1].workspace.MAIN)).toEqual([100]);
+      expect(radiiOf(act.variations![1].workspace.F1)).toEqual([50, 50]);
+      expect(lengthsOf(act.variations![2].workspace.MAIN)).toEqual([
+        200, 200, 200, 200, 80, 76, 80, 88, 80,
+      ]);
+      expect(lengthsOf(act.variations![2].workspace.F1)).toEqual([40]);
+      expect(lengthsOf(act.variations![3].workspace.MAIN)).toEqual([110, 100, 100, 90, 120, 90, 120]);
+      expect(lengthsOf(act.variations![3].workspace.F1)).toEqual([40]);
+
+      expect(renderTurtleVariationPreview(act.starterWorkspace!).finalState.paths.length).toBeGreaterThan(0);
+      for (const v of act.variations!) {
+        expect(renderTurtleVariationPreview(v.workspace).finalState.paths.length).toBeGreaterThan(0);
+      }
     });
 
     it('verifies Lesson func.3 Beat & Light sandbox and composition variations', () => {
@@ -137,6 +166,31 @@ describe('Functions (func): UI & Creative/Demo Activities', () => {
       expect(act.starterWorkspace?.F2.length).toBeGreaterThan(0);
       expect(act.starterWorkspace?.F3.length).toBeGreaterThan(0);
       expect(act.variations).toHaveLength(3);
+
+      expect(lengthsOf(act.starterWorkspace!.MAIN)).toEqual([110]);
+      expect(lengthsOf(act.starterWorkspace!.F1)).toEqual([150, 60, 60, 150]);
+      expect(lengthsOf(act.starterWorkspace!.F2)).toEqual([90, 100, 90, 100]);
+      expect(radiiOf(act.starterWorkspace!.F2)).toEqual([50]);
+      expect(lengthsOf(act.starterWorkspace!.F3)).toEqual([36, 28, 28, 8]);
+
+      const train = act.variations![0].workspace;
+      expect(lengthsOf(train.MAIN)).toEqual([220]);
+      expect(lengthsOf(train.F1)).toEqual([72, 128, 36, 56, 36, 16]);
+      expect(lengthsOf(train.F2)).toEqual([104, 52, 44, 72, 60, 124, 32, 56, 60, 32, 20, 32, 52]);
+      expect(radiiOf(train.F2)).toEqual([16]);
+      expect(radiiOf(train.F3)).toEqual([24]);
+
+      const harbor = act.variations![1].workspace;
+      expect(lengthsOf(harbor.MAIN)).toEqual([180, 90, 250, 40, 200, 190]);
+      expect(radiiOf(harbor.F1)).toEqual([32]);
+      expect(lengthsOf(harbor.F2)).toEqual([128, 48, 80, 48, 56, 108, 96, 48, 24]);
+      expect(lengthsOf(harbor.F3)).toEqual([32, 32, 44, 20, 64]);
+      expect(radiiOf(harbor.F3)).toEqual([32]);
+
+      expect(renderTurtleVariationPreview(act.starterWorkspace!).finalState.paths.length).toBeGreaterThan(0);
+      for (const v of act.variations!) {
+        expect(renderTurtleVariationPreview(v.workspace).finalState.paths.length).toBeGreaterThan(0);
+      }
     });
 
     it('verifies Capstone func.C Beat & Light 4-tab full song choreography', () => {

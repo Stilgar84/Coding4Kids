@@ -515,6 +515,26 @@ describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0
         'loop.4',
       ]);
       expect(CURRICULUM_ACTIVITIES.some((a) => a.id === 'loop.3')).toBe(true);
+
+      // Verify synced 4c06f1c LOGO parameter scales for loop.3 and loop.7
+      const lengthsOf = (blocks: { type: string; params?: Record<string, unknown> }[]) =>
+        blocks
+          .filter((b) => b.type === 'FORWARD' || b.type === 'BACKWARD')
+          .map((b) => b.params?.length);
+      const radiiOf = (blocks: { type: string; params?: Record<string, unknown> }[]) =>
+        blocks
+          .filter((b) => b.type === 'ARC_LEFT' || b.type === 'ARC_RIGHT')
+          .map((b) => b.params?.radius);
+
+      expect(lengthsOf(activity!.starterWorkspace!.MAIN)).toEqual([200]);
+      expect(lengthsOf(activity!.variations![0].workspace.MAIN)).toEqual([75, 75]);
+      expect(lengthsOf(activity!.variations![1].workspace.MAIN)).toEqual([200, 150]);
+
+      const loop7 = getActivityLatest('loop.7')!;
+      expect(radiiOf(loop7.variations![0].workspace.MAIN)).toEqual([75]);
+      expect(lengthsOf(loop7.variations![1].workspace.MAIN)).toEqual([100, 75]);
+      expect(radiiOf(loop7.variations![1].workspace.MAIN)).toEqual([75]);
+      expect(lengthsOf(loop7.variations![2].workspace.MAIN)).toEqual([75, 150]);
     });
   });
 });
