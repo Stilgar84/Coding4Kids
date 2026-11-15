@@ -22,6 +22,7 @@ import { switchyardSimulationEnvironment } from '../../simulations/switchyard/sw
 import {
   createInitialSwitchyardState,
   evaluateSwitchyardCompletion,
+  evaluateSwitchyardSensor,
   normalizeSwitchyardColor,
   normalizeSwitchyardIcon,
   resetSwitchyardState,
@@ -234,18 +235,21 @@ export function validateSwitchyardWorkspaceAgainstPalette(
 export function executeSwitchyardWorkspace(
   workspace: WorkspaceState,
   initialState: SwitchyardState,
-  maxTicks: number = 600
+  maxTicks: number = 600,
+  skipValidation = false
 ): { status: SimulationStatus; finalState: SwitchyardState; ticks: number } {
-  for (const sc of ALL_SCOPES) {
-    const blocks = workspace[sc] || [];
-    if (blocks.length > 0) {
-      const val = validateLoopStructure(blocks);
-      if (val.hasError) {
-        return {
-          status: 'COLLISION',
-          finalState: { ...initialState, status: 'COLLISION' },
-          ticks: 0,
-        };
+  if (!skipValidation) {
+    for (const sc of ALL_SCOPES) {
+      const blocks = workspace[sc] || [];
+      if (blocks.length > 0) {
+        const val = validateLoopStructure(blocks);
+        if (val.hasError) {
+          return {
+            status: 'COLLISION',
+            finalState: { ...initialState, status: 'COLLISION' },
+            ticks: 0,
+          };
+        }
       }
     }
   }
@@ -495,16 +499,98 @@ function buildConditionPool(
     }
   }
 
+  const evalCondExprOnState = (expr: ConditionExpr, st: SwitchyardState): boolean => {
+    if (expr.kind === 'sensor') {
+      return evaluateSwitchyardSensor(expr.sensor, st, expr.param);
+    }
+    if (expr.kind === 'not') {
+      return !evalCondExprOnState(expr.operand, st);
+    }
+    if (expr.kind === 'and') {
+      return evalCondExprOnState(expr.left, st) && evalCondExprOnState(expr.right, st);
+    }
+    if (expr.kind === 'or') {
+      return evalCondExprOnState(expr.left, st) || evalCondExprOnState(expr.right, st);
+    }
+    return false;
+  };
+
+  const isCondExprAllowed = (expr: ConditionExpr): boolean => {
+    if (expr.kind === 'sensor') {
+      return (
+        sensors.includes(expr.sensor) &&
+        !forbidSensors.has(expr.sensor) &&
+        !forbiddenSet.has(expr.sensor)
+      );
+    }
+    if (expr.kind === 'not') {
+      return (
+        !forbidCombinators.has('NOT') &&
+        !forbiddenSet.has('NOT') &&
+        isCondExprAllowed(expr.operand)
+      );
+    }
+    if (expr.kind === 'and') {
+      return (
+        !forbidCombinators.has('AND') &&
+        !forbiddenSet.has('AND') &&
+        isCondExprAllowed(expr.left) &&
+        isCondExprAllowed(expr.right)
+      );
+    }
+    if (expr.kind === 'or') {
+      return (
+        !forbidCombinators.has('OR') &&
+        !forbiddenSet.has('OR') &&
+        isCondExprAllowed(expr.left) &&
+        isCondExprAllowed(expr.right)
+      );
+    }
+    return false;
+  };
+
+  const probeItems = new Map<string, SwitchyardState>();
+  for (const v of variants) {
+    for (const item of v.initialQueue) {
+      const k = `${item.color}|${item.icon}|${item.damaged ? 1 : 0}`;
+      if (!probeItems.has(k)) {
+        probeItems.set(k, { ...v, queue: [item] });
+      }
+    }
+  }
+  const itemProbes = Array.from(probeItems.values());
+  const emptyProbe: SwitchyardState | null =
+    variants.length > 0 ? { ...variants[0], queue: [] } : null;
+
   const result: Array<{ label: string; expr: ConditionExpr; costTag: number }> = [];
   const seenKey = new Set<string>();
-  const pushCond = (label: string, expr: ConditionExpr, costTag: number) => {
+  const seenFullSig = new Set<string>();
+  const seenItemSig = new Set<string>();
+  const pushCond = (label: string, expr: ConditionExpr, costTag: number, isAtom = false) => {
+    if (!isCondExprAllowed(expr)) return;
     const key = JSON.stringify(expr);
     if (seenKey.has(key)) return;
     seenKey.add(key);
+
+    if (itemProbes.length > 0) {
+      const itemSig = itemProbes.map((p) => (evalCondExprOnState(expr, p) ? '1' : '0')).join('');
+      const emptyBit = emptyProbe ? (evalCondExprOnState(expr, emptyProbe) ? '1' : '0') : '0';
+      const fullSig = `${itemSig}|${emptyBit}`;
+      if (isAtom) {
+        if (!/1/.test(fullSig) || seenFullSig.has(fullSig)) return;
+      } else {
+        if (!/1/.test(itemSig) || !/0/.test(itemSig) || seenItemSig.has(itemSig)) return;
+      }
+      seenFullSig.add(fullSig);
+      if (/1/.test(itemSig) && /0/.test(itemSig)) {
+        seenItemSig.add(itemSig);
+      }
+    }
+
     result.push({ label, expr, costTag });
   };
 
-  for (const a of atoms) pushCond(a.label, a.expr, 1);
+  for (const a of atoms) pushCond(a.label, a.expr, 1, true);
 
   if (combinators.includes('NOT') && !forbidCombinators.has('NOT') && !forbiddenSet.has('NOT')) {
     for (const a of atoms) {
@@ -547,7 +633,7 @@ function buildConditionPool(
   }
 
   for (const rc of refConds) {
-    pushCond('refCond', rc, 2);
+    pushCond('refCond', rc, 2, rc.kind === 'sensor');
   }
 
   return result;
@@ -775,28 +861,47 @@ export function verifySwitchyardActivityRule(
       ? buildConditionPool(activity, variants, forbiddenSet, forbidCombinators, forbidSensors)
       : [];
 
-  const deadlineMs = startMs + 160;
+  const deadlineMs = startMs + 135;
   let exploredStates = 0;
   let winner: WorkspaceState | undefined;
   let winnerCost: number | null = null;
 
-  const actionPrimitives = atomicSteps.filter((s) => s.kind === 'ACTION' || s.kind === 'SWITCH');
+  const actionPrimitives = atomicSteps.filter(
+    (s) => (s.kind === 'ACTION' || s.kind === 'SWITCH') && (s.blocks[0]?.repeatCount ?? 1) === 1
+  );
   const smallBodies: Array<{ blocks: CodeBlock[]; cost: number }> = [];
 
   for (const s1 of actionPrimitives) {
     smallBodies.push({ blocks: s1.blocks, cost: 1 });
     for (const s2 of actionPrimitives) {
       if (s1.kind === 'SWITCH' && s2.kind === 'SWITCH' && s1.junction === s2.junction) continue;
+      if (s1.kind === 'SWITCH' && s2.actionType === 'SCRAP_ITEM') continue;
       smallBodies.push({ blocks: [...s1.blocks, ...s2.blocks], cost: 2 });
     }
   }
+
+  const blocksEqual = (a: readonly CodeBlock[], b: readonly CodeBlock[]): boolean =>
+    a.length === b.length &&
+    a.every((blk, i) => blk.type === b[i].type && blk.params?.junction === b[i].params?.junction);
+  const allDocksRejectDamaged = variants.every((v) => v.docks.every((d) => d.spec.rejectDamaged));
+  const scrapDamagedOnlyAll = variants.every((v) => v.scrapRule === 'damaged_only');
+  const isDirectDamagedSensor = (expr: ConditionExpr): boolean =>
+    expr.kind === 'sensor' && expr.sensor === 'itemDamaged';
+  const branchIncompatibleWithDamaged = (blocks: readonly CodeBlock[]): boolean =>
+    allDocksRejectDamaged && blocks.some((b) => b.type === 'SEND_NEXT');
+  const branchIncompatibleWithHealthy = (blocks: readonly CodeBlock[]): boolean =>
+    scrapDamagedOnlyAll && blocks.some((b) => b.type === 'SCRAP_ITEM');
 
   const controlSteps: CandidateStep[] = [];
   if (allowIf && conditionPool.length > 0) {
     const thenChoices = smallBodies.filter((b) => b.cost <= 2);
     const elseChoices = smallBodies.filter((b) => b.cost <= 2);
     for (const cond of conditionPool) {
+      if (nowMs() >= deadlineMs) break;
+      const condIsDamaged = isDirectDamagedSensor(cond.expr);
       for (const tb of thenChoices) {
+        if (nowMs() >= deadlineMs) break;
+        if (condIsDamaged && branchIncompatibleWithDamaged(tb.blocks)) continue;
         controlSteps.push({
           id: `if_${cond.label}_c${tb.cost}`,
           cost: 2 + tb.cost,
@@ -809,14 +914,8 @@ export function verifySwitchyardActivityRule(
         });
         if (allowElse) {
           for (const eb of elseChoices) {
-            if (
-              tb.cost === 1 &&
-              eb.cost === 1 &&
-              eb.blocks[0].type === tb.blocks[0].type &&
-              eb.blocks[0].params?.junction === tb.blocks[0].params?.junction
-            ) {
-              continue;
-            }
+            if (blocksEqual(tb.blocks, eb.blocks)) continue;
+            if (condIsDamaged && branchIncompatibleWithHealthy(eb.blocks)) continue;
             controlSteps.push({
               id: `ifelse_${cond.label}_${tb.cost}_${eb.cost}`,
               cost: 3 + tb.cost + eb.cost,
@@ -831,27 +930,46 @@ export function verifySwitchyardActivityRule(
             });
           }
         }
-        if (allowElseIf && tb.cost === 1 && conditionPool.length >= 2) {
+        if (allowElseIf && conditionPool.length >= 2 && 3 + tb.cost + 1 <= maxAllowedCost) {
           for (const cond2 of conditionPool) {
+            if (nowMs() >= deadlineMs) break;
             if (cond2.label === cond.label) continue;
-            for (const eib of smallBodies.filter((b) => b.cost === 1)) {
-              controlSteps.push({
-                id: `ifelif_${cond.label}_${cond2.label}`,
-                cost: 3 + tb.cost + eib.cost,
-                kind: 'CONTROL',
-                blocks: [
-                  makeBlock('if', 'IF', { params: { condition: cond.expr } }),
-                  ...tb.blocks,
-                  makeBlock('elseif', 'ELSE_IF', { params: { condition: cond2.expr } }),
-                  ...eib.blocks,
-                  makeBlock('endif', 'END_IF'),
-                ],
-              });
-              if (allowElse) {
-                for (const eb of smallBodies.filter((b) => b.cost === 1)) {
+            const cond2IsDamaged = isDirectDamagedSensor(cond2.expr);
+            const eibChoices = tb.cost === 1 ? smallBodies : smallBodies.filter((b) => b.cost === 1);
+            for (const eib of eibChoices) {
+              if (blocksEqual(tb.blocks, eib.blocks)) continue;
+              if (condIsDamaged && branchIncompatibleWithHealthy(eib.blocks)) continue;
+              if (cond2IsDamaged && branchIncompatibleWithDamaged(eib.blocks)) continue;
+              const elifCost = 3 + tb.cost + eib.cost;
+              if (elifCost <= maxAllowedCost && tb.cost === 1 && eib.cost === 1) {
+                controlSteps.push({
+                  id: `ifelif_${cond.label}_${cond2.label}`,
+                  cost: elifCost,
+                  kind: 'CONTROL',
+                  blocks: [
+                    makeBlock('if', 'IF', { params: { condition: cond.expr } }),
+                    ...tb.blocks,
+                    makeBlock('elseif', 'ELSE_IF', { params: { condition: cond2.expr } }),
+                    ...eib.blocks,
+                    makeBlock('endif', 'END_IF'),
+                  ],
+                });
+              }
+              if (allowElse && 4 + tb.cost + eib.cost + 1 <= maxAllowedCost) {
+                const ebChoices =
+                  tb.cost === 1 && eib.cost === 1 && 4 + tb.cost + eib.cost + 2 <= maxAllowedCost
+                    ? smallBodies
+                    : smallBodies.filter((b) => b.cost === 1);
+                for (const eb of ebChoices) {
+                  if (blocksEqual(eib.blocks, eb.blocks)) continue;
+                  if ((condIsDamaged || cond2IsDamaged) && branchIncompatibleWithHealthy(eb.blocks)) {
+                    continue;
+                  }
+                  const elifElseCost = 4 + tb.cost + eib.cost + eb.cost;
+                  if (elifElseCost > maxAllowedCost) continue;
                   controlSteps.push({
-                    id: `ifelifelse_${cond.label}_${cond2.label}`,
-                    cost: 5 + tb.cost + eib.cost + eb.cost,
+                    id: `ifelifelse_${cond.label}_${cond2.label}_c${tb.cost}`,
+                    cost: elifElseCost,
                     kind: 'CONTROL',
                     blocks: [
                       makeBlock('if', 'IF', { params: { condition: cond.expr } }),
@@ -894,17 +1012,17 @@ export function verifySwitchyardActivityRule(
     let anyActionCollision = false;
 
     for (const v of variants) {
-      const exec = executeSwitchyardWorkspace(ws, v, 350);
-      keys.push(canonicalizeSwitchyardState(exec.finalState));
+      const exec = executeSwitchyardWorkspace(ws, v, 350, true);
       if (exec.status !== 'SUCCESS') allSuccess = false;
       if (
         exec.status === 'COLLISION' &&
         exec.finalState.lastFailureReason &&
-        exec.finalState.lastFailureReason !== 'UNSORTED_ITEMS_REMAIN' &&
-        exec.finalState.lastFailureReason !== 'DOCK_QUOTA_EXCEEDED'
+        exec.finalState.lastFailureReason !== 'UNSORTED_ITEMS_REMAIN'
       ) {
         anyActionCollision = true;
+        break;
       }
+      keys.push(canonicalizeSwitchyardState(exec.finalState));
     }
 
     if (allSuccess && checkRuleRequirementsOnWorkspace(ws, rule)) {
@@ -918,68 +1036,193 @@ export function verifySwitchyardActivityRule(
     return { allSuccess, anyActionCollision, stateKey: keys.join('||') };
   };
 
+  const hasQueueConsumer = (blocks: readonly CodeBlock[]): boolean =>
+    blocks.some((b) => b.type === 'SEND_NEXT' || b.type === 'SCRAP_ITEM');
+  const maxItemsConsumedPerPass = (blocks: readonly CodeBlock[]): number => {
+    const walk = (start: number): [number, number] => {
+      let total = 0;
+      let i = start;
+      while (i < blocks.length) {
+        const t = blocks[i].type;
+        if (
+          t === 'ELSE_IF' ||
+          t === 'ELSE' ||
+          t === 'END_IF' ||
+          t === 'LOOP_END' ||
+          t === 'END_WHILE'
+        ) {
+          return [total, i];
+        }
+        if (t === 'SEND_NEXT' || t === 'SCRAP_ITEM') {
+          total += 1;
+          i++;
+          continue;
+        }
+        if (t === 'IF') {
+          let branchMax = 0;
+          let cursor = i + 1;
+          while (cursor < blocks.length) {
+            const [branchCount, stoppedAt] = walk(cursor);
+            if (branchCount > branchMax) branchMax = branchCount;
+            const stopType = blocks[stoppedAt]?.type;
+            if (stopType === 'ELSE_IF' || stopType === 'ELSE') {
+              cursor = stoppedAt + 1;
+            } else if (stopType === 'END_IF') {
+              cursor = stoppedAt + 1;
+              break;
+            } else {
+              cursor = stoppedAt;
+              break;
+            }
+          }
+          total += branchMax;
+          i = cursor;
+          continue;
+        }
+        i++;
+      }
+      return [total, i];
+    };
+    return walk(0)[0];
+  };
+  const everyControlBranchConsumes = (blocks: readonly CodeBlock[]): boolean => {
+    let hasBranchConsumer = false;
+    for (let i = 1; i < blocks.length; i++) {
+      const t = blocks[i].type;
+      if (t === 'ELSE_IF' || t === 'ELSE' || t === 'END_IF') {
+        if (!hasBranchConsumer) return false;
+        hasBranchConsumer = false;
+        if (t === 'END_IF') return true;
+      } else if (t === 'SEND_NEXT' || t === 'SCRAP_ITEM') {
+        hasBranchConsumer = true;
+      }
+    }
+    return hasBranchConsumer;
+  };
+  const initialStateKey = evaluateMainAndWin([]).stateKey;
+
   if (allowLoops || allowWhile) {
     const queueLens = Array.from(
       new Set(variants.map((v) => v.initialQueue.length).filter((n) => n > 0))
     );
-    const rawLoopCounts =
-      queueLens.length === 1 ? [queueLens[0]] : [Math.max(...queueLens, 2), 2, 3, 4];
+    const maxVariantQueueLen = queueLens.length > 0 ? Math.max(...queueLens) : 0;
+    const rawLoopCounts = Array.from(new Set([...queueLens, 2, 3, 4])).sort((a, b) => a - b);
     const loopCounts =
       activity.palette.allowRepeatBadges === true
         ? rawLoopCounts
         : rawLoopCounts.filter((n) => n <= 2);
     const maxLoopBodyCost = Math.max(0, maxAllowedCost - 2);
+    const whileConds = allowWhile
+      ? conditionPool.filter(
+          (c) =>
+            c.expr.kind === 'sensor' &&
+            (c.expr.sensor === 'hasNextItem' || c.expr.sensor === 'itemDamaged')
+        )
+      : [];
 
-    const bodyBuckets: Array<
-      Array<{ blocks: CodeBlock[]; cost: number; lastSwitchJunction?: string }>
-    > = Array.from({ length: maxLoopBodyCost + 1 }, () => []);
-    bodyBuckets[0].push({ blocks: [], cost: 0 });
+    const tryWrapBody = (bodyBlocks: CodeBlock[], bodyCost: number) => {
+      if (nowMs() >= deadlineMs) return;
+      if (bodyCost <= 0 || bodyCost + 2 > maxAllowedCost) return;
+      if (winnerCost !== null && bodyCost + 2 >= winnerCost) return;
+      const maxConsumed = maxItemsConsumedPerPass(bodyBlocks);
+      if (maxConsumed <= 0) return;
 
-    for (let cost = 0; cost <= maxLoopBodyCost && nowMs() < deadlineMs && !winner; cost++) {
-      for (const cur of bodyBuckets[cost]) {
-        if (nowMs() >= deadlineMs || winner) break;
-        if (cur.cost > 0) {
-          if (allowLoops) {
-            for (const n of loopCounts) {
-              if (cur.cost + 2 > maxAllowedCost) continue;
-              const wrapped = [
-                makeBlock('l_s', 'LOOP_START', { repeatCount: n }),
-                ...cur.blocks,
-                makeBlock('l_e', 'LOOP_END'),
-              ];
-              evaluateMainAndWin(wrapped);
-              if (winner) break;
-            }
-          }
-          if (!winner && allowWhile && cur.cost + 2 <= maxAllowedCost) {
-            const whileConds = conditionPool.filter(
-              (c) =>
-                c.expr.kind === 'sensor' &&
-                (c.expr.sensor === 'hasNextItem' || c.expr.sensor === 'itemDamaged')
-            );
-            for (const wc of whileConds) {
-              const wrapped = [
-                makeBlock('w_s', 'WHILE', { params: { condition: wc.expr } }),
-                ...cur.blocks,
-                makeBlock('w_e', 'END_WHILE'),
-              ];
-              evaluateMainAndWin(wrapped);
-              if (winner) break;
-            }
-          }
+      if (allowLoops) {
+        for (const n of loopCounts) {
+          if (nowMs() >= deadlineMs) return;
+          if (n * maxConsumed < maxVariantQueueLen) continue;
+          const wrapped = [
+            makeBlock('l_s', 'LOOP_START', { repeatCount: n }),
+            ...bodyBlocks,
+            makeBlock('l_e', 'LOOP_END'),
+          ];
+          const sim = evaluateMainAndWin(wrapped);
+          if (winnerCost !== null && bodyCost + 2 >= winnerCost) return;
+          if (sim.anyActionCollision) break;
         }
+      }
+      if (allowWhile && (winnerCost === null || bodyCost + 2 < winnerCost)) {
+        for (const wc of whileConds) {
+          if (nowMs() >= deadlineMs) return;
+          const wrapped = [
+            makeBlock('w_s', 'WHILE', { params: { condition: wc.expr } }),
+            ...bodyBlocks,
+            makeBlock('w_e', 'END_WHILE'),
+          ];
+          evaluateMainAndWin(wrapped);
+          if (winnerCost !== null && bodyCost + 2 >= winnerCost) return;
+        }
+      }
+    };
 
-        if (winner || cur.cost >= maxLoopBodyCost) continue;
+    // Single-step loop pre-pass: evaluate minimal single-step bodies (e.g. standalone IF/ELSE_IF/ELSE
+    // inside LOOP/WHILE) before multi-step permutations so exact-cost control loops are never starved.
+    for (const step of allStepItems) {
+      if (nowMs() >= deadlineMs || winner) break;
+      if (step.cost > maxLoopBodyCost) break;
+      if (!hasQueueConsumer(step.blocks)) continue;
+      if (step.kind === 'CONTROL' && !everyControlBranchConsumes(step.blocks)) continue;
+      tryWrapBody(step.blocks, step.cost);
+    }
 
-        for (const step of allStepItems) {
-          const nc = cur.cost + step.cost;
-          if (nc > maxLoopBodyCost) break;
-          if (step.kind === 'SWITCH' && cur.lastSwitchJunction === step.junction) continue;
-          bodyBuckets[nc].push({
-            blocks: [...cur.blocks, ...step.blocks],
-            cost: nc,
-            lastSwitchJunction: step.kind === 'SWITCH' ? step.junction : undefined,
-          });
+    const compoundMaxCost =
+      winnerCost !== null ? Math.min(maxLoopBodyCost, winnerCost - 3) : maxLoopBodyCost;
+    if (compoundMaxCost >= 2 && nowMs() < deadlineMs) {
+      const bestFlatBodyCostByState = new Map<string, number>([[initialStateKey, 0]]);
+      const bodyBuckets: Array<
+        Array<{
+          blocks: CodeBlock[];
+          cost: number;
+          lastSwitchJunction?: string;
+          hasControl: boolean;
+          stepCount: number;
+        }>
+      > = Array.from({ length: compoundMaxCost + 1 }, () => []);
+      bodyBuckets[0].push({ blocks: [], cost: 0, hasControl: false, stepCount: 0 });
+
+      for (let cost = 0; cost <= compoundMaxCost && nowMs() < deadlineMs; cost++) {
+        if (winnerCost !== null && cost + 2 >= winnerCost) break;
+        for (const cur of bodyBuckets[cost]) {
+          if (nowMs() >= deadlineMs || (winnerCost !== null && cost + 2 >= winnerCost)) break;
+          if (cur.stepCount >= 2 && hasQueueConsumer(cur.blocks)) {
+            tryWrapBody(cur.blocks, cur.cost);
+          }
+
+          if (cur.cost >= compoundMaxCost || (winnerCost !== null && cur.cost + 3 >= winnerCost)) {
+            continue;
+          }
+
+          for (const step of allStepItems) {
+            if (nowMs() >= deadlineMs) break;
+            if (winnerCost !== null && cur.cost + step.cost + 2 >= winnerCost) break;
+            const nc = cur.cost + step.cost;
+            if (nc > compoundMaxCost) break;
+            if (cur.stepCount === 0 && nc >= compoundMaxCost) continue;
+            if (step.kind === 'SWITCH' && cur.lastSwitchJunction === step.junction) continue;
+
+            const nextBlocks = [...cur.blocks, ...step.blocks];
+            if (nc === compoundMaxCost && !hasQueueConsumer(nextBlocks)) continue;
+            const nextHasControl = cur.hasControl || step.kind === 'CONTROL';
+            const sim = evaluateMainAndWin(nextBlocks);
+            if (sim.allSuccess && winnerCost !== null && nc < winnerCost) {
+              if (winnerCost <= cur.cost + 2) break;
+            }
+            if (sim.anyActionCollision) continue;
+
+            if (!nextHasControl) {
+              const prevBest = bestFlatBodyCostByState.get(sim.stateKey);
+              if (prevBest !== undefined && prevBest <= nc) continue;
+              bestFlatBodyCostByState.set(sim.stateKey, nc);
+            }
+
+            bodyBuckets[nc].push({
+              blocks: nextBlocks,
+              cost: nc,
+              lastSwitchJunction: step.kind === 'SWITCH' ? step.junction : undefined,
+              hasControl: nextHasControl,
+              stepCount: cur.stepCount + 1,
+            });
+          }
         }
       }
     }
@@ -993,7 +1236,7 @@ export function verifySwitchyardActivityRule(
       lastSwitchJunction?: string;
     }
 
-    const bestCostByState = new Map<string, number>();
+    const bestCostByState = new Map<string, number>([[initialStateKey, 0]]);
     const buckets: BfsNode[][] = Array.from({ length: Math.max(0, flatMaxCost) + 1 }, () => []);
     buckets[0].push({ blocks: [], cost: 0 });
 
@@ -1003,6 +1246,7 @@ export function verifySwitchyardActivityRule(
         if (nowMs() >= deadlineMs || (winnerCost !== null && cost >= winnerCost)) break;
 
         for (const step of allStepItems) {
+          if (nowMs() >= deadlineMs) break;
           const nextCost = cur.cost + step.cost;
           if (nextCost > flatMaxCost) break;
           if (winnerCost !== null && nextCost >= winnerCost) break;

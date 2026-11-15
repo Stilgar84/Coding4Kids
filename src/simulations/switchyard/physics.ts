@@ -423,7 +423,38 @@ export function normalizeSwitchyardDefinition(
   ];
   const status: SimulationStatus = validStatuses.includes(raw.status) ? raw.status : 'IDLE';
 
+  const KNOWN_INPUT_KEYS = new Set([
+    'queue',
+    'initialQueue',
+    'incomingStream',
+    'docks',
+    'initialDockSpecs',
+    'switches',
+    'initialSwitchDirections',
+    'scrapped',
+    'scrap',
+    'scrapRule',
+    'scrapRules',
+    'scrapExpectedDamagedOnly',
+    'scrapChute',
+    'status',
+    'stepCount',
+    'lastFailureReason',
+    'lastFailureDetail',
+    'lastRoutedDock',
+    'lastAnimEvent',
+  ]);
+  const legacyExtra: Record<string, any> = {};
+  if (!isCurriculumInput) {
+    for (const [key, val] of Object.entries(raw)) {
+      if (!KNOWN_INPUT_KEYS.has(key) && val !== undefined) {
+        legacyExtra[key] = val;
+      }
+    }
+  }
+
   return {
+    ...legacyExtra,
     queue,
     initialQueue,
     docks,

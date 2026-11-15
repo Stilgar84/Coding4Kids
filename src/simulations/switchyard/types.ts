@@ -226,4 +226,6 @@ export interface SwitchyardState {
   lastFailureDetail?: SwitchyardFailureDetail;
   lastRoutedDock?: DockId;
   lastAnimEvent?: SwitchyardAnimEvent;
+  /** @deprecated Legacy test-only property preserved across createInitialSwitchyardState overrides */
+  carsOnTrack?: any[];
 }

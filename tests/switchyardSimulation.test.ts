@@ -1140,4 +1140,217 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
     expect(repWhile5.passed).toBe(true);
     expect(repWhile5.elapsedMs).toBeLessThan(200);
   });
+
+  it('preserves legacy carsOnTrack overrides and fixes solver IF/ELSE_IF/ELSE cost + single queueLens loopCounts', () => {
+    // 1. Legacy carsOnTrack preservation across createInitialSwitchyardState
+    const withCars = createInitialSwitchyardState({
+      ...DEFAULT_SWITCHYARD_STATE,
+      carsOnTrack: [{ id: 'v1-car', color: 'BLUE', shape: 'square', damaged: false, x: 2, y: 0 }],
+    });
+    expect(withCars.carsOnTrack?.[0]?.id).toBe('v1-car');
+
+    // 2. Exact 10-block loop-wrapped IF/ELSE_IF/ELSE solver cost (LOOP(3) + 4 + tb(1) + eib(2) + eb(1) = 10, previously 11)
+    const loopElifElse: CurriculumActivity = {
+      id: 'test-ifelifelse-10',
+      title: 'Exact 10-Block Loop + IF/ELSE_IF/ELSE',
+      simId: 'switchyard',
+      kind: 'puzzle',
+      palette: {
+        allowedSimBlocks: ['SWITCH_LEFT', 'SWITCH_RIGHT', 'SEND_NEXT', 'SCRAP_ITEM'],
+        allowedControlBlocks: ['IF', 'ELSE_IF', 'ELSE', 'END_IF', 'LOOP_START', 'LOOP_END'],
+        allowedSensors: ['itemDamaged', 'itemColor'],
+        allowRepeatBadges: true,
+      },
+      slotCap: 10,
+      switchyardVariants: [
+        {
+          switches: [{ id: 'A', initialDirection: 'LEFT' }],
+          incomingStream: [
+            { color: 'red', icon: 'crate', damaged: false },
+            { color: 'red', icon: 'crate', damaged: false },
+            { color: 'blue', icon: 'crate', damaged: false },
+          ],
+          docks: [
+            { id: 'A', expectedColor: 'red', acceptsDamaged: false },
+            { id: 'B', expectedColor: 'blue', acceptsDamaged: false },
+          ],
+          scrapRules: 'damaged_only',
+        },
+        {
+          switches: [{ id: 'A', initialDirection: 'LEFT' }],
+          incomingStream: [
+            { color: 'blue', icon: 'crate', damaged: true },
+            { color: 'red', icon: 'crate', damaged: false },
+            { color: 'blue', icon: 'crate', damaged: false },
+          ],
+          docks: [
+            { id: 'A', expectedColor: 'red', acceptsDamaged: false },
+            { id: 'B', expectedColor: 'blue', acceptsDamaged: false },
+          ],
+          scrapRules: 'damaged_only',
+        },
+        {
+          switches: [{ id: 'A', initialDirection: 'LEFT' }],
+          incomingStream: [
+            { color: 'red', icon: 'crate', damaged: true },
+            { color: 'blue', icon: 'crate', damaged: true },
+            { color: 'red', icon: 'crate', damaged: false },
+          ],
+          docks: [
+            { id: 'A', expectedColor: 'red', acceptsDamaged: false },
+            { id: 'B', expectedColor: 'blue', acceptsDamaged: false },
+          ],
+          scrapRules: 'damaged_only',
+        },
+        {
+          switches: [{ id: 'A', initialDirection: 'LEFT' }],
+          incomingStream: [
+            { color: 'red', icon: 'crate', damaged: false },
+            { color: 'red', icon: 'crate', damaged: true },
+            { color: 'blue', icon: 'crate', damaged: false },
+          ],
+          docks: [
+            { id: 'A', expectedColor: 'red', acceptsDamaged: false },
+            { id: 'B', expectedColor: 'blue', acceptsDamaged: false },
+          ],
+          scrapRules: 'damaged_only',
+        },
+      ],
+      referenceSolution: {
+        MAIN: [
+          createCurriculumBlock('LOOP_START', 3),
+          createCurriculumBlock('IF', undefined, { sensor: 'itemDamaged' }),
+          createCurriculumBlock('SCRAP_ITEM'),
+          createCurriculumBlock('ELSE_IF', undefined, { sensor: 'itemColor', param: 'blue' }),
+          createCurriculumBlock('SWITCH_RIGHT'),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('ELSE'),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('END_IF'),
+          createCurriculumBlock('LOOP_END'),
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      },
+      antiBypassRules: [
+        {
+          id: 'detect-exact-10-ifelifelse',
+          description: 'Finds exact 10-block LOOP(3)+IF/ELSE_IF/ELSE solution within slotCap 10',
+          forbidBlocks: [],
+        },
+      ],
+    };
+
+    const repLoop10 = verifySwitchyardActivityConstraints(loopElifElse);
+    expect(repLoop10.referenceCheck.passed).toBe(true);
+    expect(repLoop10.ruleResults[0].passed, repLoop10.ruleResults[0].diagnostic).toBe(false);
+    expect(
+      repLoop10.ruleResults[0].minWinningBlocks,
+      repLoop10.ruleResults[0].diagnostic
+    ).toBe(10);
+    expect(
+      repLoop10.ruleResults[0].counterexampleWorkspace?.MAIN.some((b) => b.type === 'ELSE_IF')
+    ).toBe(true);
+
+    // 3a. Single shared queue length L=4 with allowRepeatBadges=false still tries LOOP_START(2)
+    const sameLenNoBadges: CurriculumActivity = {
+      id: 'test-loop2-L4-nobadge',
+      title: 'Shared Length 4 Loop 2 No Repeat Badges',
+      simId: 'switchyard',
+      kind: 'puzzle',
+      palette: {
+        allowedSimBlocks: ['SEND_NEXT'],
+        allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+        allowRepeatBadges: false,
+      },
+      slotCap: 4,
+      switchyard: {
+        switches: [],
+        incomingStream: [
+          { color: 'red', icon: 'crate', damaged: false },
+          { color: 'red', icon: 'crate', damaged: false },
+          { color: 'red', icon: 'crate', damaged: false },
+          { color: 'red', icon: 'crate', damaged: false },
+        ],
+        docks: [{ id: 'A', expectedColor: 'red' }],
+      },
+      referenceSolution: {
+        MAIN: [
+          createCurriculumBlock('LOOP_START', 2),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('LOOP_END'),
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      },
+      antiBypassRules: [
+        {
+          id: 'catch-loop2-len4',
+          description: 'Solver explores LOOP_START(2) when queueLens is [4]',
+          forbidBlocks: [],
+        },
+      ],
+    };
+
+    const repLen4NoBadge = verifySwitchyardActivityConstraints(sameLenNoBadges);
+    expect(repLen4NoBadge.referenceCheck.passed).toBe(true);
+    expect(repLen4NoBadge.ruleResults[0].passed).toBe(false);
+    expect(repLen4NoBadge.ruleResults[0].minWinningBlocks).toBe(4);
+
+    // 3b. Single shared queue length L=4 with allowRepeatBadges=true also finds LOOP_START(2) 2-item-per-iter bypass
+    const sameLenWithBadges: CurriculumActivity = {
+      id: 'test-loop2-L4-withbadge',
+      title: 'Shared Length 4 Loop 2 With Repeat Badges',
+      simId: 'switchyard',
+      kind: 'puzzle',
+      palette: {
+        allowedSimBlocks: ['SWITCH_LEFT', 'SWITCH_RIGHT', 'SEND_NEXT'],
+        allowedControlBlocks: ['IF', 'ELSE', 'END_IF', 'LOOP_START', 'LOOP_END'],
+        allowedSensors: ['itemColor'],
+        allowRepeatBadges: true,
+      },
+      slotCap: 6,
+      switchyard: {
+        switches: [{ id: 'A', initialDirection: 'LEFT' }],
+        incomingStream: [
+          { color: 'red', icon: 'crate', damaged: false },
+          { color: 'blue', icon: 'crate', damaged: false },
+          { color: 'red', icon: 'crate', damaged: false },
+          { color: 'blue', icon: 'crate', damaged: false },
+        ],
+        docks: [
+          { id: 'A', expectedColor: 'red' },
+          { id: 'B', expectedColor: 'blue' },
+        ],
+      },
+      referenceSolution: {
+        MAIN: [
+          createCurriculumBlock('LOOP_START', 2),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('SWITCH_RIGHT'),
+          createCurriculumBlock('SEND_NEXT'),
+          createCurriculumBlock('SWITCH_LEFT'),
+          createCurriculumBlock('LOOP_END'),
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      },
+      antiBypassRules: [
+        {
+          id: 'catch-loop2-forbid-if-len4',
+          description: 'Catches LOOP_START(2) alternating pair bypass even when queueLens=[4] and allowRepeatBadges=true',
+          forbidBlocks: ['IF'],
+        },
+      ],
+    };
+
+    const repLen4Badge = verifySwitchyardActivityConstraints(sameLenWithBadges);
+    expect(repLen4Badge.referenceCheck.passed).toBe(true);
+    expect(repLen4Badge.ruleResults[0].passed).toBe(false);
+    expect(repLen4Badge.ruleResults[0].minWinningBlocks).toBe(6);
+  });
 });
