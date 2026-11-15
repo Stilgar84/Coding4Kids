@@ -3,6 +3,11 @@ import { EditorTool, useAppStoreSelector, isLowQualityActive } from '../../../st
 import { GridState, KeyGateShape } from '../../../types';
 import { SHAPE_SYMBOLS } from '../../../engine/physics';
 import {
+  setEditorDialValue,
+  setEditorStackCount,
+  useGridEditorPrefs,
+} from '../editorToolPrefs';
+import {
   Bot,
   Square,
   Flag,
@@ -18,6 +23,9 @@ import {
   Gauge,
   Boxes,
 } from 'lucide-react';
+
+export const DIAL_VALUE_OPTIONS: readonly number[] = Array.from({ length: 20 }, (_, i) => i + 1);
+export const STACK_COUNT_OPTIONS: readonly number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export const WORLD_EDITOR_TOOLS: readonly EditorTool[] = [
   'WATER',
@@ -90,6 +98,7 @@ export function GridToolbarTools({
     isLowQuality: isLowQualityActive(s),
   }));
 
+  const { editorDialValue, editorStackCount } = useGridEditorPrefs();
   const [isWorldMenuOpen, setIsWorldMenuOpen] = useState(defaultWorldMenuOpen);
   const menuContainerRef = useRef<HTMLDivElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
@@ -264,6 +273,24 @@ export function GridToolbarTools({
               {SHAPE_SYMBOLS[editorKeyGateVariant]}
             </span>
           )}
+          {editorTool === 'DIAL' && (
+            <span
+              data-testid="tool-dial-active-badge"
+              aria-hidden="true"
+              className="absolute -bottom-1 -right-1 px-1 rounded-full bg-slate-900 border border-amber-400/70 text-[9px] font-black text-amber-200 leading-tight"
+            >
+              {editorDialValue}
+            </span>
+          )}
+          {editorTool === 'STACK_DEPOT' && (
+            <span
+              data-testid="tool-stack-active-badge"
+              aria-hidden="true"
+              className="absolute -bottom-1 -right-1 px-1 rounded-full bg-slate-900 border border-sky-400/70 text-[9px] font-black text-sky-200 leading-tight"
+            >
+              ×{editorStackCount}
+            </span>
+          )}
         </button>
 
         {isWorldMenuOpen && (
@@ -393,7 +420,7 @@ export function GridToolbarTools({
                 data-testid="tool-dial"
                 onClick={() => handleWorldToolSelect('DIAL')}
                 aria-pressed={editorTool === 'DIAL'}
-                aria-label="Floor dial tool"
+                aria-label={`Floor dial tool (${editorDialValue})`}
                 className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all ${
                   editorTool === 'DIAL'
                     ? 'bg-amber-600 border-amber-300 text-white'
@@ -401,7 +428,7 @@ export function GridToolbarTools({
                 }`}
               >
                 <Gauge className="w-4 h-4 text-amber-300" />
-                <span>Dial</span>
+                <span>Dial {editorDialValue}</span>
               </button>
 
               <button
@@ -409,7 +436,7 @@ export function GridToolbarTools({
                 data-testid="tool-stack-depot"
                 onClick={() => handleWorldToolSelect('STACK_DEPOT')}
                 aria-pressed={editorTool === 'STACK_DEPOT'}
-                aria-label="Stack depot tool"
+                aria-label={`Stack depot tool (×${editorStackCount})`}
                 className={`flex flex-col items-center justify-center gap-1 py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all ${
                   editorTool === 'STACK_DEPOT'
                     ? 'bg-sky-600 border-sky-300 text-white'
@@ -417,9 +444,97 @@ export function GridToolbarTools({
                 }`}
               >
                 <Boxes className="w-4 h-4 text-sky-300" />
-                <span>Depot</span>
+                <span>Depot ×{editorStackCount}</span>
               </button>
             </div>
+
+            {/* Rotary Floor Dial Value Picker (1..20) */}
+            {editorTool === 'DIAL' && (
+              <div
+                data-testid="dial-value-picker"
+                role="group"
+                aria-label="Floor Dial Value (1 to 20)"
+                className="pt-2 border-t border-slate-800 flex flex-col gap-1.5"
+              >
+                <div className="flex items-center justify-between gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="dial-value-dec"
+                    onClick={() => setEditorDialValue(editorDialValue > 1 ? editorDialValue - 1 : 20)}
+                    aria-label="Decrease dial value"
+                    className="w-8 h-7 rounded-lg bg-slate-800 border border-slate-700 text-amber-200 font-black hover:border-amber-400"
+                  >
+                    −
+                  </button>
+                  <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/60 text-amber-200 text-xs font-black font-mono">
+                    <Gauge className="w-3.5 h-3.5 text-amber-300" />
+                    <span data-testid="dial-value-current">{editorDialValue}</span>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="dial-value-inc"
+                    onClick={() => setEditorDialValue(editorDialValue < 20 ? editorDialValue + 1 : 1)}
+                    aria-label="Increase dial value"
+                    className="w-8 h-7 rounded-lg bg-slate-800 border border-slate-700 text-amber-200 font-black hover:border-amber-400"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {DIAL_VALUE_OPTIONS.map((n) => {
+                    const selected = editorDialValue === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        data-testid={`dial-value-option-${n}`}
+                        onClick={() => setEditorDialValue(n)}
+                        aria-pressed={selected}
+                        aria-label={`Dial value ${n}`}
+                        className={`h-7 rounded-lg border text-[11px] font-black font-mono transition-all ${
+                          selected
+                            ? 'bg-amber-500 border-amber-200 text-slate-950 scale-105'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-amber-400/60'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Stack Depot Count Picker (×2..×10) */}
+            {editorTool === 'STACK_DEPOT' && (
+              <div
+                data-testid="stack-count-picker"
+                role="group"
+                aria-label="Stack Depot Count (×2 to ×10)"
+                className="pt-2 border-t border-slate-800 grid grid-cols-3 gap-1"
+              >
+                {STACK_COUNT_OPTIONS.map((n) => {
+                  const selected = editorStackCount === n;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      data-testid={`stack-count-option-${n}`}
+                      onClick={() => setEditorStackCount(n)}
+                      aria-pressed={selected}
+                      aria-label={`Stack count ×${n}`}
+                      className={`h-7 rounded-lg border text-[11px] font-black transition-all ${
+                        selected
+                          ? 'bg-sky-500 border-sky-200 text-slate-950 scale-105'
+                          : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-sky-400/60'
+                      }`}
+                    >
+                      ×{n}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Color-Blind Inclusive Shape + Color Selector for Keys & Gates */}
             <div
