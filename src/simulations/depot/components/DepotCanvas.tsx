@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trophy } from 'lucide-react';
-import { SimulationSpeed, SimulationStatus } from '../../../types';
+import { SimulationSpeed } from '../../../types';
+import { SimulationRendererProps } from '../../../engine/simulation/types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import {
   CrateColor,
@@ -14,6 +15,7 @@ import {
   getEffectiveActiveStationsMask,
   normalizeCrateColor,
   normalizeDepotStation,
+  readDepotTypedSensor,
   stationToIndex,
 } from '../depotPhysics';
 import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculum';
@@ -23,11 +25,8 @@ import { WorkspaceState } from '../../../types';
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
 
-interface DepotCanvasProps {
-  state: DepotState;
-  runtimeStatus?: SimulationStatus;
+interface DepotCanvasProps extends SimulationRendererProps<DepotState> {
   spotlightsOverride?: string[];
-  activeBlockId?: string | null;
 }
 
 /** Lighter specular & rim palette for all 10 uniform glossy Toy-Crane workshop rings. */
@@ -47,8 +46,12 @@ const RING_STYLES: Record<
   WHITE: { top: '#ffffff', mid: '#f1f5f9', bottom: '#94a3b8', dark: '#475569', rim: '#cbd5e1' },
 };
 
+const LIGHT_TEXT_BLOCK_COLORS = new Set<CrateColor>(['BLACK', 'RED', 'BLUE', 'PURPLE', 'PINK']);
+
 const RingToken: React.FC<{
   color: CrateColor;
+  value?: number;
+  enforceHanoiRule?: boolean;
   damaged?: boolean;
   isTop?: boolean;
   isDimmed?: boolean;
@@ -57,6 +60,8 @@ const RingToken: React.FC<{
   compact?: boolean;
 }> = ({
   color,
+  value,
+  enforceHanoiRule = false,
   damaged = false,
   isTop = false,
   isDimmed = false,
@@ -67,29 +72,99 @@ const RingToken: React.FC<{
   const canonical = normalizeCrateColor(color);
   const meta = DEPOT_CRATE_COLORS[canonical];
   const palette = RING_STYLES[canonical];
-  const sizeClass = compact
-    ? 'w-11 h-5 sm:w-12 sm:h-6'
-    : 'w-14 h-6 sm:w-16 sm:h-7';
+  const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
+  const sizeClass = hasNumericValue
+    ? compact
+      ? 'w-11 h-6 sm:w-12 sm:h-6'
+      : 'w-14 h-7 sm:w-16 sm:h-7'
+    : compact
+      ? 'w-11 h-5 sm:w-12 sm:h-6'
+      : 'w-14 h-6 sm:w-16 sm:h-7';
+  const hanoiWidthStyle: React.CSSProperties | undefined =
+    hasNumericValue && enforceHanoiRule
+      ? {
+          width: `${Math.min(72, Math.max(36, 32 + Math.min(Math.max(value, 1), 10) * 4))}px`,
+        }
+      : undefined;
 
   if (isGhost) {
     const ghostFill =
       canonical === 'WHITE' ? 'rgba(203, 213, 225, 0.55)' : `${palette.mid}40`;
     return (
       <div
-        className={`${sizeClass} relative rounded-full border-2 border-dashed flex items-center justify-center select-none pointer-events-none opacity-80 transition-all`}
+        data-block-kind={hasNumericValue ? (enforceHanoiRule ? 'hanoi-disc' : 'numbered-block') : 'ring'}
+        data-value={hasNumericValue ? value : undefined}
+        className={`${sizeClass} relative ${
+          hasNumericValue && !enforceHanoiRule ? 'rounded-lg' : 'rounded-full'
+        } border-2 border-dashed flex items-center justify-center select-none pointer-events-none opacity-80 transition-all`}
         style={{
+          ...hanoiWidthStyle,
           borderColor: palette.dark,
           background: ghostFill,
         }}
-        aria-label={`Target ${meta.label}`}
+        aria-label={`Target ${meta.label}${hasNumericValue ? ` ${value}` : ''}`}
+      >
+        {hasNumericValue ? (
+          <span
+            className="text-xs font-black tabular-nums leading-none"
+            style={{ color: palette.dark }}
+          >
+            {value}
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="w-3.5 h-2 rounded-full border-2 border-dashed border-white/85 bg-white/75"
+            style={{
+              boxShadow: `0 0 0 1px ${palette.dark}55`,
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (hasNumericValue) {
+    const useLightText = LIGHT_TEXT_BLOCK_COLORS.has(canonical);
+    return (
+      <div
+        data-testid={enforceHanoiRule ? 'depot-hanoi-disc' : 'depot-numbered-block'}
+        data-block-kind={enforceHanoiRule ? 'hanoi-disc' : 'numbered-block'}
+        data-value={value}
+        data-damaged={damaged ? 'true' : 'false'}
+        data-matched={isMatched ? 'true' : undefined}
+        className={`${sizeClass} relative ${
+          enforceHanoiRule ? 'rounded-full' : 'rounded-lg'
+        } border-2 flex items-center justify-center select-none transition-all duration-200 ${
+          isTop
+            ? 'ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.48)] scale-[1.03] z-10'
+            : isDimmed
+              ? 'opacity-80 saturate-[0.82]'
+              : 'shadow-sm'
+        }`}
+        style={{
+          ...hanoiWidthStyle,
+          background: `linear-gradient(180deg, ${palette.top} 0%, ${palette.mid} 55%, ${palette.bottom} 100%)`,
+          borderColor: isTop ? '#ffffff' : palette.dark,
+          boxShadow: isTop
+            ? '0 3px 10px rgba(14,165,233,0.35), inset 0 2px 3px rgba(255,255,255,0.65)'
+            : '0 2px 4px rgba(15,23,42,0.18), inset 0 1.5px 2px rgba(255,255,255,0.45)',
+        }}
+        aria-label={`${meta.label} ${value}`}
       >
         <span
           aria-hidden="true"
-          className="w-3.5 h-2 rounded-full border-2 border-dashed border-white/85 bg-white/75"
-          style={{
-            boxShadow: `0 0 0 1px ${palette.dark}55`,
-          }}
+          className="pointer-events-none absolute top-[2px] inset-x-1.5 h-[3px] rounded-full bg-white/55"
         />
+        <span
+          className={`relative z-10 px-1.5 py-0.5 rounded font-black text-xs sm:text-sm tabular-nums leading-none ${
+            useLightText
+              ? 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.65)]'
+              : 'text-slate-900 bg-white/55'
+          }`}
+        >
+          {value}
+        </span>
       </div>
     );
   }
@@ -180,6 +255,8 @@ function getFailureCueSymbol(reason: DepotState['lastFailureReason']): string {
     case 'INPUT_READ_ONLY':
     case 'INVALID_STATION':
       return '⛔';
+    case 'HANOI_VIOLATION':
+      return '📏';
     case 'WRONG_OUTPUT_ORDER':
       return '❌';
     default:
@@ -187,11 +264,48 @@ function getFailureCueSymbol(reason: DepotState['lastFailureReason']): string {
   }
 }
 
+interface ActiveCmpHint {
+  op: string;
+  left: unknown;
+  right: unknown;
+}
+
 interface ActiveSensorHints {
   stationEmptyTarget: string | null;
   hasItemActive: boolean;
   heldColorActive: boolean;
   topColorActive: boolean;
+  heldValueActive: boolean;
+  topValueActive: boolean;
+  activeCmp: ActiveCmpHint | null;
+  moveVarName: string | null;
+}
+
+function collectOperandHint(operand: unknown, out: ActiveSensorHints): void {
+  if (typeof operand !== 'string') return;
+  const trimmed = operand.trim();
+  const base = trimmed.includes('[') ? trimmed.slice(0, trimmed.indexOf('[')) : trimmed;
+  if (base === '$heldValue') {
+    out.heldValueActive = true;
+    out.heldColorActive = true;
+  } else if (base === '$topValue') {
+    out.topValueActive = true;
+    out.topColorActive = true;
+  } else if (base === '$heldColor') {
+    out.heldColorActive = true;
+  } else if (base === '$topColor') {
+    out.topColorActive = true;
+  } else if (base === '$stationLen' && !out.stationEmptyTarget) {
+    const m = trimmed.match(/^[^[]+\[([^\]]+)\]$/);
+    out.stationEmptyTarget = m ? m[1] : 'CURRENT';
+  }
+}
+
+function isDepotBridgeOperand(operand: unknown): boolean {
+  if (typeof operand !== 'string') return false;
+  return /^\$(heldValue|topValue|heldColor|topColor|stationLen|stack1|stack2|stack3|out)(\[[^\]]+\])?$/.test(
+    operand.trim()
+  );
 }
 
 function collectConditionSensorHints(cond: any, out: ActiveSensorHints): void {
@@ -201,7 +315,13 @@ function collectConditionSensorHints(cond: any, out: ActiveSensorHints): void {
     if (s === 'hasItem') out.hasItemActive = true;
     else if (s === 'heldColor') out.heldColorActive = true;
     else if (s === 'topColor') out.topColorActive = true;
-    else if (s === 'stationEmpty' && !out.stationEmptyTarget) {
+    else if (s === 'heldValue') {
+      out.heldValueActive = true;
+      out.heldColorActive = true;
+    } else if (s === 'topValue') {
+      out.topValueActive = true;
+      out.topColorActive = true;
+    } else if (s === 'stationEmpty' && !out.stationEmptyTarget) {
       out.stationEmptyTarget = 'CURRENT';
     }
     return;
@@ -209,7 +329,7 @@ function collectConditionSensorHints(cond: any, out: ActiveSensorHints): void {
   if (typeof cond !== 'object') return;
   if (cond.kind === 'sensor' && typeof cond.sensor === 'string') {
     const s = cond.sensor.replace(/^\$/, '');
-    if (s === 'stationEmpty') {
+    if (s === 'stationEmpty' || s === 'stationLen') {
       out.stationEmptyTarget = typeof cond.param === 'string' ? cond.param : 'CURRENT';
     } else if (s === 'hasItem') {
       out.hasItemActive = true;
@@ -217,6 +337,27 @@ function collectConditionSensorHints(cond: any, out: ActiveSensorHints): void {
       out.heldColorActive = true;
     } else if (s === 'topColor') {
       out.topColorActive = true;
+    } else if (s === 'heldValue') {
+      out.heldValueActive = true;
+      out.heldColorActive = true;
+    } else if (s === 'topValue') {
+      out.topValueActive = true;
+      out.topColorActive = true;
+    }
+    return;
+  }
+  if (cond.kind === 'cmp') {
+    collectOperandHint(cond.left, out);
+    collectOperandHint(cond.right, out);
+    if (
+      !out.activeCmp &&
+      (isDepotBridgeOperand(cond.left) || isDepotBridgeOperand(cond.right))
+    ) {
+      out.activeCmp = {
+        op: String(cond.op ?? '='),
+        left: cond.left,
+        right: cond.right,
+      };
     }
     return;
   }
@@ -235,16 +376,121 @@ function extractActiveSensorHints(
     hasItemActive: false,
     heldColorActive: false,
     topColorActive: false,
+    heldValueActive: false,
+    topValueActive: false,
+    activeCmp: null,
+    moveVarName: null,
   };
   if (!workspace || !activeBlockId) return hints;
   for (const scope of ['MAIN', 'F1', 'F2', 'F3'] as const) {
     const found = workspace[scope]?.find((b) => b.id === activeBlockId);
-    if (found?.params?.condition) {
+    if (!found) continue;
+    if (found.params?.condition) {
       collectConditionSensorHints(found.params.condition, hints);
-      break;
     }
+    if (found.type === 'VAR_ASSIGN' || found.type === 'VAR_OP') {
+      collectOperandHint(found.params?.b, hints);
+      collectOperandHint(found.params?.c, hints);
+    }
+    if (found.type === 'DEPOT_MOVE_TO' && typeof found.params?.station === 'string') {
+      const st = found.params.station.trim();
+      if (/^[a-z]$/.test(st)) {
+        hints.moveVarName = st;
+      }
+    }
+    break;
   }
   return hints;
+}
+
+const COLOR_DOT_HEX: Record<string, string> = {
+  black: '#0f172a',
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#10b981',
+  amber: '#f59e0b',
+  yellow: '#f59e0b',
+  purple: '#8b5cf6',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+  orange: '#f97316',
+  white: '#f8fafc',
+};
+
+function resolveBridgeOperand(
+  raw: unknown,
+  state: DepotState,
+  runtimeVariables?: Record<string, unknown>
+): { label: string; colorHex?: string; rawVal?: number | string } {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return { label: String(raw), rawVal: raw };
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('$')) {
+      const sensed = readDepotTypedSensor(trimmed, state);
+      if (typeof sensed === 'number' && Number.isFinite(sensed)) {
+        return { label: String(sensed), rawVal: sensed };
+      }
+      if (sensed && typeof sensed === 'object' && sensed.type === 'color') {
+        return {
+          label: '●',
+          colorHex: COLOR_DOT_HEX[sensed.value] ?? '#94a3b8',
+          rawVal: sensed.value,
+        };
+      }
+      return { label: '∅' };
+    }
+    if (/^[a-z]$/.test(trimmed)) {
+      const varVal = runtimeVariables?.[trimmed];
+      if (typeof varVal === 'number' && Number.isFinite(varVal)) {
+        return { label: String(varVal), rawVal: varVal };
+      }
+      if (varVal && typeof varVal === 'object' && (varVal as any).type === 'color') {
+        const c = String((varVal as any).value ?? '');
+        return { label: '●', colorHex: COLOR_DOT_HEX[c] ?? '#94a3b8', rawVal: c };
+      }
+      return { label: trimmed };
+    }
+    const colKey = trimmed.replace(/^color:/i, '').toLowerCase();
+    if (COLOR_DOT_HEX[colKey]) {
+      return { label: '●', colorHex: COLOR_DOT_HEX[colKey], rawVal: colKey === 'yellow' ? 'amber' : colKey };
+    }
+    const asNum = Number(trimmed);
+    if (trimmed.length > 0 && Number.isFinite(asNum)) {
+      return { label: String(asNum), rawVal: asNum };
+    }
+    return { label: trimmed };
+  }
+  return { label: '?' };
+}
+
+function evalBridgeOp(op: string, a: number | string | undefined, b: number | string | undefined): boolean | null {
+  if (a === undefined || b === undefined) return null;
+  if (typeof a === 'number' && typeof b === 'number') {
+    switch (op) {
+      case '=':
+      case '==':
+        return a === b;
+      case '!=':
+        return a !== b;
+      case '>':
+        return a > b;
+      case '>=':
+        return a >= b;
+      case '<':
+        return a < b;
+      case '<=':
+        return a <= b;
+      default:
+        return null;
+    }
+  }
+  if (typeof a === 'string' && typeof b === 'string') {
+    if (op === '=' || op === '==') return a === b;
+    if (op === '!=') return a !== b;
+  }
+  return null;
 }
 
 /**
@@ -535,6 +781,7 @@ const DEPOT_ANIMATION_CSS = `
 export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   state: propState,
   runtimeStatus,
+  runtimeVariables,
   spotlightsOverride,
   activeBlockId: propActiveBlockId,
 }) => {
@@ -549,6 +796,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     activeDemoTabIndex,
     workspace,
     storeActiveBlockId,
+    storeRuntimeVariables,
   } = useAppStoreSelector((s) => ({
     storeDepotState: s.depotState,
     isLowQuality: isLowQualityActive(s),
@@ -560,6 +808,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     activeDemoTabIndex: s.activeDemoTabIndex,
     workspace: s.workspace,
     storeActiveBlockId: s.runtime?.activeBlockId ?? null,
+    storeRuntimeVariables: s.runtime?.variables,
   }));
 
   const spotlights = React.useMemo(() => {
@@ -574,6 +823,9 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
 
   const effectiveActiveBlockId = propActiveBlockId ?? storeActiveBlockId;
+  const effectiveVariables = (runtimeVariables ?? storeRuntimeVariables ?? undefined) as
+    | Record<string, unknown>
+    | undefined;
   const sensorHints = React.useMemo(
     () => extractActiveSensorHints(workspace, effectiveActiveBlockId),
     [workspace, effectiveActiveBlockId]
@@ -814,7 +1066,33 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
         : undefined;
 
   const isCollision = effectiveStatus === 'COLLISION' || state.status === 'COLLISION';
+  const isTypeError = effectiveStatus === 'TYPE_ERROR';
   const isSuccess = effectiveStatus === 'SUCCESS' || state.status === 'SUCCESS';
+  const isBumperOob = isCollision && state.lastFailureReason === 'INVALID_STATION';
+
+  const trolleyIndexValue: number | undefined = React.useMemo(() => {
+    if (action?.attemptedStationIndex !== undefined) {
+      return action.attemptedStationIndex;
+    }
+    if (sensorHints.moveVarName && effectiveVariables) {
+      const v = effectiveVariables[sensorHints.moveVarName];
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+    }
+    return undefined;
+  }, [action?.attemptedStationIndex, sensorHints.moveVarName, effectiveVariables]);
+
+  const comparisonBridge = React.useMemo(() => {
+    if (!sensorHints.activeCmp || isTypeError || isCollision) return null;
+    const left = resolveBridgeOperand(sensorHints.activeCmp.left, state, effectiveVariables);
+    const right = resolveBridgeOperand(sensorHints.activeCmp.right, state, effectiveVariables);
+    const matched = evalBridgeOp(sensorHints.activeCmp.op, left.rawVal, right.rawVal);
+    return {
+      op: sensorHints.activeCmp.op,
+      left,
+      right,
+      matched,
+    };
+  }, [sensorHints.activeCmp, isTypeError, isCollision, state, effectiveVariables]);
 
   const outputGoal = state.targetOutput ?? [];
   const totalOutputSlots = Math.max(state.output.length, outputGoal.length, 3);
@@ -860,7 +1138,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
         )}
       </div>
 
-      {/* Centered Status Overlay Pills (Collision / Victory) below Top HUD Clearance */}
+      {/* Centered Status Overlay Pills (Collision / Type Error / Comparison Bridge / Victory) below Top HUD Clearance */}
       {isCollision && (
         <div
           data-testid="status-collision"
@@ -871,6 +1149,63 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
           <span className="text-lg leading-none">
             {getFailureCueSymbol(state.lastFailureReason)}
           </span>
+        </div>
+      )}
+
+      {isTypeError && (
+        <div
+          data-testid="depot-type-error-cue"
+          aria-label="Type mismatch"
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-12'} left-1/2 -translate-x-1/2 z-30 px-3.5 py-1 bg-amber-500 text-slate-950 rounded-full font-black shadow-lg shadow-amber-500/35 border-2 border-white ${
+            isLowQuality ? '' : 'animate-bounce '
+          }flex items-center gap-1.5 pointer-events-none`}
+        >
+          <span className="text-sm leading-none">🎨 ↔ #</span>
+          <span className="text-sm leading-none">∅</span>
+        </div>
+      )}
+
+      {comparisonBridge && (
+        <div
+          data-testid="depot-comparison-bridge"
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-12'} left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full bg-white/95 border-2 ${
+            comparisonBridge.matched === true
+              ? 'border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.4)]'
+              : comparisonBridge.matched === false
+                ? 'border-rose-400 shadow-[0_0_14px_rgba(244,63,94,0.35)]'
+                : 'border-sky-400 shadow-[0_0_14px_rgba(56,189,248,0.4)]'
+          } flex items-center gap-1.5 text-xs font-black text-slate-800 pointer-events-none`}
+        >
+          <span className="px-1.5 py-0.5 rounded bg-sky-100 border border-sky-300 tabular-nums flex items-center gap-1">
+            {comparisonBridge.left.colorHex ? (
+              <span
+                className="inline-block w-3 h-3 rounded-full border border-slate-500"
+                style={{ backgroundColor: comparisonBridge.left.colorHex }}
+              />
+            ) : (
+              comparisonBridge.left.label
+            )}
+          </span>
+          <span className="text-sky-700 font-black">{comparisonBridge.op}</span>
+          <span className="px-1.5 py-0.5 rounded bg-violet-100 border border-violet-300 tabular-nums flex items-center gap-1">
+            {comparisonBridge.right.colorHex ? (
+              <span
+                className="inline-block w-3 h-3 rounded-full border border-slate-500"
+                style={{ backgroundColor: comparisonBridge.right.colorHex }}
+              />
+            ) : (
+              comparisonBridge.right.label
+            )}
+          </span>
+          {comparisonBridge.matched !== null && (
+            <span
+              className={
+                comparisonBridge.matched ? 'text-emerald-600' : 'text-rose-600'
+              }
+            >
+              {comparisonBridge.matched ? '✓' : '✗'}
+            </span>
+          )}
         </div>
       )}
 
@@ -914,7 +1249,13 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                 } as React.CSSProperties
               }
             >
-              <RingToken color={action.color} damaged={action.damaged} isTop />
+              <RingToken
+                color={action.color}
+                value={action.value}
+                enforceHanoiRule={Boolean(state.enforceHanoiRule)}
+                damaged={action.damaged}
+                isTop
+              />
             </div>
           )}
 
@@ -939,6 +1280,14 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                     'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 4px, #334155 4px, #334155 8px)',
                 }}
               />
+              {isBumperOob && (
+                <div
+                  data-testid="depot-bumper-collision"
+                  className="absolute top-0 left-3 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-xs font-black shadow border border-white z-40"
+                >
+                  💥
+                </div>
+              )}
               {/* Brushed Aluminum I-Beam Rail */}
               <div
                 aria-hidden="true"
@@ -984,6 +1333,18 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                   className="w-11 h-5 rounded-lg bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-md flex items-center justify-center relative"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-300 ring-2 ring-sky-900/20" />
+                  {trolleyIndexValue !== undefined && (
+                    <span
+                      data-testid="depot-trolley-index-pill"
+                      className={`absolute -right-4 -top-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-black tabular-nums leading-none border border-white shadow ${
+                        trolleyIndexValue >= 1 && trolleyIndexValue <= 3
+                          ? 'bg-amber-400 text-slate-900'
+                          : 'bg-rose-600 text-white'
+                      }`}
+                    >
+                      [{trolleyIndexValue}]
+                    </span>
+                  )}
                 </div>
 
                 {/* Keyed Cable + Jaws + Held Crate Rig for per-step choreography */}
@@ -1060,6 +1421,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       >
                         <RingToken
                           color={state.heldCrate}
+                          value={state.heldValue}
+                          enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                           damaged={state.heldDamaged}
                           isTop
                         />
@@ -1076,6 +1439,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       >
                         <RingToken
                           color={action.color}
+                          value={action.value}
+                          enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                           damaged={action.damaged}
                           isTop
                         />
@@ -1233,6 +1598,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                             )}
                             <RingToken
                               color={item.color}
+                              value={item.value}
+                              enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                               damaged={item.damaged}
                               isTop={isFrontCradle}
                               isDimmed={!isFrontCradle}
@@ -1355,13 +1722,16 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       {/* Stacked Rings + High-Contrast Dashed Ghost Blueprints */}
                       {Array.from({ length: maxSlots }).map((_, slotIdx) => {
                         const liveColor = stack[slotIdx];
+                        const liveValue = state.stackValues?.[idx]?.[slotIdx];
                         const ghostColor = targetStack?.[slotIdx];
+                        const ghostValue = state.targetStackValues?.[idx]?.[slotIdx];
                         const isTop = slotIdx === topIndex && liveColor !== undefined;
                         const isDimmed = liveColor !== undefined && !isTop;
                         const slotMatched =
                           liveColor !== undefined &&
                           ghostColor !== undefined &&
-                          liveColor === ghostColor;
+                          liveColor === ghostColor &&
+                          (ghostValue === undefined || liveValue === ghostValue);
                         const isNewlyPlacedHere =
                           isAnimPlace &&
                           action?.toStation !== 'QUEUE' &&
@@ -1404,6 +1774,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                                 >
                                   <RingToken
                                     color={liveColor}
+                                    value={liveValue}
+                                    enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                                     isTop={isTop}
                                     isDimmed={isDimmed}
                                     isMatched={slotMatched && isStackMatched}
@@ -1421,7 +1793,12 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                               </div>
                             ) : ghostColor ? (
                               <div data-testid={`depot-stack-${idx + 1}-ghost-${slotIdx}`}>
-                                <RingToken color={ghostColor} isGhost />
+                                <RingToken
+                                  color={ghostColor}
+                                  value={ghostValue}
+                                  enforceHanoiRule={Boolean(state.enforceHanoiRule)}
+                                  isGhost
+                                />
                               </div>
                             ) : (
                               <div className="h-5 sm:h-6 w-full pointer-events-none" />
@@ -1600,6 +1977,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                               >
                                 <RingToken
                                   color={item.color}
+                                  value={item.value}
+                                  enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                                   damaged={item.damaged}
                                   isTop={qIdx === 0}
                                   isDimmed={qIdx > 0}
@@ -1738,12 +2117,20 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                           >
                             <RingToken
                               color={delivered}
+                              value={state.outputValues?.[slotIdx]}
+                              enforceHanoiRule={Boolean(state.enforceHanoiRule)}
                               isMatched={matched}
                               compact
                             />
                           </div>
                         ) : expected ? (
-                          <RingToken color={expected} isGhost compact />
+                          <RingToken
+                            color={expected}
+                            value={state.targetOutputValues?.[slotIdx]}
+                            enforceHanoiRule={Boolean(state.enforceHanoiRule)}
+                            isGhost
+                            compact
+                          />
                         ) : (
                           <div className="w-11 h-5 sm:w-12 sm:h-6 rounded-full border border-dashed border-slate-300/80 bg-white/40" />
                         )}

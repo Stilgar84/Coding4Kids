@@ -20,10 +20,19 @@ export type CrateColor =
 
 export type DepotStacks = [CrateColor[], CrateColor[], CrateColor[]];
 
+/** Parallel optional numeric values ([1]..[99]) aligned with stack/output crate slots. */
+export type DepotStackValues = [
+  Array<number | undefined>,
+  Array<number | undefined>,
+  Array<number | undefined>,
+];
+
 /** A single ring/crate item in QUEUE or INPUT (Phase 3 prep: optional numeric value). */
 export interface DepotQueueItem {
   color: CrateColor;
   value?: number;
+  /** Optional Phase 3 flag for number-only/verdict tokens without color identity. */
+  colorless?: boolean;
   /** Legacy M5 field preserved strictly for v3 binary decode compatibility. */
   damaged?: boolean;
 }
@@ -36,6 +45,7 @@ export type DepotFailureReason =
   | 'WRONG_OUTPUT_ORDER'
   | 'INPUT_READ_ONLY'     // v4: dropping into one-way INPUT dispenser → COLLISION
   | 'INVALID_STATION'
+  | 'HANOI_VIOLATION'     // Phase 3: enforceHanoiRule=true and heldValue > topValue → COLLISION
   | 'DAMAGED_TO_STACK'    // Legacy M5: damaged crate placed on a target stack → COLLISION
   | 'INTACT_TO_SCRAP';    // Legacy M5: intact crate sent to SCRAP gate → COLLISION
 
@@ -210,12 +220,14 @@ export interface DepotActionTransition {
   toStation: DepotStationId;
   gate?: DepotSendGate;
   color?: CrateColor;
+  value?: number;
   damaged?: boolean;
   stackIndex?: number;
   stackSlotIndex?: number;
   queueIndex?: number;
   inputIndex?: number;
   outputSlotIndex?: number;
+  attemptedStationIndex?: number;
   failureReason?: DepotFailureReason;
 }
 
@@ -224,12 +236,22 @@ export interface DepotState {
   stacks: DepotStacks;
   /** Snapshot used by resetState */
   initialStacks: DepotStacks;
+  /** Optional parallel numeric values ([1]..[99]) for Stack 1, 2, 3 items (Phase 3 numbered blocks). */
+  stackValues?: DepotStackValues;
+  /** Initial stackValues snapshot used by resetState. */
+  initialStackValues?: DepotStackValues;
   /** Items delivered to the OUTPUT bay in delivery order */
   output: CrateColor[];
+  /** Optional parallel numeric values ([1]..[99]) for OUTPUT bay items. */
+  outputValues?: Array<number | undefined>;
   /** Optional ghost outline target stacks required to win */
   targetStacks?: DepotStacks;
+  /** Optional target stack numeric values required to win (Phase 3). */
+  targetStackValues?: DepotStackValues;
   /** Optional ghost outline target output sequence required to win */
   targetOutput?: CrateColor[];
+  /** Optional target output numeric values required to win (Phase 3). */
+  targetOutputValues?: Array<number | undefined>;
   /** Current station above which the worker crane is positioned */
   workerStation: DepotStationId;
   /** Starting station restored on resetState */
@@ -238,8 +260,10 @@ export interface DepotState {
   heldCrate: CrateColor | null;
   /** Whether the held crate is damaged (legacy M5 decode compat). */
   heldDamaged: boolean;
-  /** Optional numeric payload of the held ring (Phase 3 prep). */
+  /** Optional numeric payload of the held ring/block (Phase 3). */
   heldValue?: number;
+  /** Optional flag indicating held item is a number-only token without color sensor identity. */
+  heldColorless?: boolean;
   /** Failure tag set when an invalid LIFO / claw / INPUT / output action triggers COLLISION */
   lastFailureReason: DepotFailureReason | null;
   status: SimulationStatus;

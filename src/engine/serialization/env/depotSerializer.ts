@@ -8,11 +8,13 @@ import {
   DepotQueueItem,
   DepotSendGate,
   DepotStacks,
+  DepotStackValues,
   DepotState,
 } from '../../../simulations/depot/types';
 import {
   cloneQueue,
   cloneStacks,
+  cloneStackValues,
   codeToStation,
   createInitialDepotState,
   depotStateNeedsQueueVersion,
@@ -122,22 +124,55 @@ function readCanonicalColorList(reader: BinaryReader): CrateColor[] {
 
 function writeV4Item(writer: BinaryWriter, item: DepotQueueItem): void {
   writer.writeUint8(ringColorToCanonicalByte(item.color));
+  let flags = 0;
+  if (item.value !== undefined) flags |= 0x01;
+  if (item.colorless) flags |= 0x02;
+  writer.writeUint8(flags);
   if (item.value !== undefined) {
-    writer.writeUint8(0x01);
     writer.writeSignedVLE(item.value);
-  } else {
-    writer.writeUint8(0x00);
   }
 }
 
 function readV4Item(reader: BinaryReader): DepotQueueItem {
   const color = canonicalByteToRingColor(reader.readUint8());
   const valueFlags = reader.readUint8();
+  const colorless = (valueFlags & 0x02) !== 0 ? true : undefined;
   if ((valueFlags & 0x01) !== 0) {
     const value = reader.readSignedVLE();
-    return { color, value };
+    return { color, value, ...(colorless ? { colorless: true } : {}) };
   }
-  return { color };
+  return { color, ...(colorless ? { colorless: true } : {}) };
+}
+
+function writeOptionalValueList(
+  writer: BinaryWriter,
+  list: ReadonlyArray<number | undefined> | undefined,
+  len: number
+): void {
+  writer.writeVLE(len);
+  for (let i = 0; i < len; i++) {
+    const v = list?.[i];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      writer.writeUint8(0x01);
+      writer.writeSignedVLE(v);
+    } else {
+      writer.writeUint8(0x00);
+    }
+  }
+}
+
+function readOptionalValueList(reader: BinaryReader): Array<number | undefined> {
+  const len = reader.readVLE();
+  const out: Array<number | undefined> = [];
+  for (let i = 0; i < len; i++) {
+    const hasVal = reader.readUint8() !== 0;
+    out.push(hasVal ? reader.readSignedVLE() : undefined);
+  }
+  return out;
+}
+
+function hasAnyDefinedNum(list?: ReadonlyArray<number | undefined>): boolean {
+  return Boolean(list && list.some((v) => typeof v === 'number' && Number.isFinite(v)));
 }
 
 function writeV4ItemList(writer: BinaryWriter, list: readonly DepotQueueItem[]): void {
@@ -195,10 +230,20 @@ function readQueueItemList(reader: BinaryReader): DepotQueueItem[] {
 function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
   const activeMask = getEffectiveActiveStationsMask(state);
   const initStacks = cloneStacks(state.initialStacks ?? state.stacks);
+  const initStackValues = cloneStackValues(state.initialStackValues ?? state.stackValues);
   const initQueue = cloneQueue(state.initialQueue ?? state.queue);
   const initInput = cloneQueue(state.initialInput ?? state.input ?? []);
+  const hasStackOrOutputValues =
+    hasAnyDefinedNum(initStackValues[0]) ||
+    hasAnyDefinedNum(initStackValues[1]) ||
+    hasAnyDefinedNum(initStackValues[2]) ||
+    hasAnyDefinedNum(state.targetStackValues?.[0]) ||
+    hasAnyDefinedNum(state.targetStackValues?.[1]) ||
+    hasAnyDefinedNum(state.targetStackValues?.[2]) ||
+    hasAnyDefinedNum(state.targetOutputValues);
   const hasExtendedRules =
     state.mode !== undefined ||
+    state.enforceHanoiRule !== undefined ||
     state.requireEmptyStacks !== undefined ||
     state.allowNonEmptyInput !== undefined ||
     state.exactOutputCount !== undefined;
@@ -208,6 +253,7 @@ function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
   if (state.targetOutput && state.targetOutput.length > 0) v4Flags |= 0x02;
   if (initQueue.length > 0) v4Flags |= 0x04;
   if (initInput.length > 0) v4Flags |= 0x08;
+  if (hasStackOrOutputValues) v4Flags |= 0x10;
   if (state.enforceHanoiRule) v4Flags |= 0x20;
   if (hasExtendedRules) v4Flags |= 0x80;
 
@@ -222,6 +268,7 @@ function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
     writeV4Item(writer, {
       color: state.heldCrate,
       ...(state.heldValue !== undefined ? { value: state.heldValue } : {}),
+      ...(state.heldColorless ? { colorless: true } : {}),
     });
   } else {
     writer.writeUint8(0);
@@ -254,6 +301,27 @@ function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
     writeCanonicalColorList(writer, state.targetOutput);
   }
 
+  // Phase 3 stack & target numeric values
+  if ((v4Flags & 0x10) !== 0) {
+    if ((activeMask & DEPOT_STATION_BITS.STACK_1) !== 0) {
+      writeOptionalValueList(writer, initStackValues[0], initStacks[0].length);
+    }
+    if ((activeMask & DEPOT_STATION_BITS.STACK_2) !== 0) {
+      writeOptionalValueList(writer, initStackValues[1], initStacks[1].length);
+    }
+    if ((activeMask & DEPOT_STATION_BITS.STACK_3) !== 0) {
+      writeOptionalValueList(writer, initStackValues[2], initStacks[2].length);
+    }
+    if ((v4Flags & 0x01) !== 0 && state.targetStacks) {
+      for (let i = 0; i < 3; i++) {
+        writeOptionalValueList(writer, state.targetStackValues?.[i], state.targetStacks[i].length);
+      }
+    }
+    if ((v4Flags & 0x02) !== 0 && state.targetOutput) {
+      writeOptionalValueList(writer, state.targetOutputValues, state.targetOutput.length);
+    }
+  }
+
   // Extended curriculum rule metadata
   if ((v4Flags & 0x80) !== 0) {
     let ruleBits = 0;
@@ -266,6 +334,10 @@ function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
     if (state.allowNonEmptyInput !== undefined) {
       ruleBits |= 0x10;
       if (state.allowNonEmptyInput) ruleBits |= 0x20;
+    }
+    if (state.enforceHanoiRule !== undefined) {
+      ruleBits |= 0x40;
+      if (state.enforceHanoiRule) ruleBits |= 0x80;
     }
     writer.writeUint8(ruleBits);
     if ((ruleBits & 0x01) !== 0 && state.mode !== undefined) {
@@ -280,7 +352,7 @@ function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
 function readDepotStateV4(reader: BinaryReader): DepotState {
   const v4Flags = reader.readUint8();
   const activeStationsMask = reader.readUint8();
-  const enforceHanoiRule = (v4Flags & 0x20) !== 0 ? true : undefined;
+  let enforceHanoiRule: boolean | undefined = (v4Flags & 0x20) !== 0 ? true : undefined;
 
   const clawCount = Math.max(1, reader.readUint8());
   let startStation = normalizeDepotStation('STACK_1');
@@ -330,6 +402,41 @@ function readDepotStateV4(reader: BinaryReader): DepotState {
     targetOutput = readCanonicalColorList(reader);
   }
 
+  let initialStackValues: DepotStackValues | undefined;
+  let targetStackValues: DepotStackValues | undefined;
+  let targetOutputValues: Array<number | undefined> | undefined;
+  if ((v4Flags & 0x10) !== 0) {
+    const sv0 =
+      (activeStationsMask & DEPOT_STATION_BITS.STACK_1) !== 0
+        ? readOptionalValueList(reader)
+        : [];
+    const sv1 =
+      (activeStationsMask & DEPOT_STATION_BITS.STACK_2) !== 0
+        ? readOptionalValueList(reader)
+        : [];
+    const sv2 =
+      (activeStationsMask & DEPOT_STATION_BITS.STACK_3) !== 0
+        ? readOptionalValueList(reader)
+        : [];
+    if (hasAnyDefinedNum(sv0) || hasAnyDefinedNum(sv1) || hasAnyDefinedNum(sv2)) {
+      initialStackValues = [sv0, sv1, sv2];
+    }
+    if ((v4Flags & 0x01) !== 0) {
+      const tv0 = readOptionalValueList(reader);
+      const tv1 = readOptionalValueList(reader);
+      const tv2 = readOptionalValueList(reader);
+      if (hasAnyDefinedNum(tv0) || hasAnyDefinedNum(tv1) || hasAnyDefinedNum(tv2)) {
+        targetStackValues = [tv0, tv1, tv2];
+      }
+    }
+    if ((v4Flags & 0x02) !== 0) {
+      const ov = readOptionalValueList(reader);
+      if (hasAnyDefinedNum(ov)) {
+        targetOutputValues = ov;
+      }
+    }
+  }
+
   let mode: string | undefined;
   let exactOutputCount: number | undefined;
   let requireEmptyStacks: boolean | undefined;
@@ -348,15 +455,23 @@ function readDepotStateV4(reader: BinaryReader): DepotState {
     if ((ruleBits & 0x10) !== 0) {
       allowNonEmptyInput = (ruleBits & 0x20) !== 0;
     }
+    if ((ruleBits & 0x40) !== 0) {
+      enforceHanoiRule = (ruleBits & 0x80) !== 0;
+    }
   }
 
   const base = createInitialDepotState({
     initialStacks,
     stacks: initialStacks,
+    ...(initialStackValues !== undefined
+      ? { initialStackValues, stackValues: initialStackValues }
+      : {}),
     initialWorkerStation: startStation,
     workerStation: startStation,
     targetStacks,
+    ...(targetStackValues !== undefined ? { targetStackValues } : {}),
     targetOutput,
+    ...(targetOutputValues !== undefined ? { targetOutputValues } : {}),
     queue,
     initialQueue: queue,
     ...(input.length > 0 || (activeStationsMask & DEPOT_STATION_BITS.INPUT) !== 0
@@ -375,6 +490,7 @@ function readDepotStateV4(reader: BinaryReader): DepotState {
       ...base,
       heldCrate: heldItem.color,
       ...(heldItem.value !== undefined ? { heldValue: heldItem.value } : {}),
+      ...(heldItem.colorless ? { heldColorless: true } : {}),
     };
   }
   return base;

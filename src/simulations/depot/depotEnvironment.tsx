@@ -12,6 +12,8 @@ import {
   createInitialDepotState,
   evaluateDepotCompletion,
   evaluateDepotSensor,
+  readDepotNumericSensor,
+  readDepotTypedSensor,
   resetDepotState,
 } from './depotPhysics';
 import { DepotCanvas } from './components/DepotCanvas';
@@ -182,13 +184,19 @@ export const DEPOT_SENSORS: SimSensorDef[] = [
   { id: '$topColor', label: 'Top/Front Color', icon: '🔝', shortLabel: 'TCol' },
 ];
 
+export const DEPOT_PHASE3_VALUE_SENSORS: SimSensorDef[] = [
+  { id: '$heldValue', label: 'Held Value', icon: '#️⃣', shortLabel: 'HVal' },
+  { id: '$topValue', label: 'Top/Front Value', icon: '🔢', shortLabel: 'TVal' },
+  { id: '$stationLen', label: 'Station Length', icon: '📏', shortLabel: 'Len' },
+];
+
 export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
   id: 'depot',
   name: 'Depot',
   icon: <span className="text-xl">🏗️</span>,
 
   paletteItems: DEPOT_PALETTE_ITEMS,
-  sensors: DEPOT_SENSORS,
+  sensors: [...DEPOT_SENSORS, ...DEPOT_PHASE3_VALUE_SENSORS],
 
   createInitialState: () => createInitialDepotState(),
 
@@ -208,20 +216,11 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
     };
   },
 
-  readSensor: (sensorId: string, state: DepotState): number => {
-    switch (sensorId) {
-      case '$stack1':
-        return state.stacks[0]?.length ?? 0;
-      case '$stack2':
-        return state.stacks[1]?.length ?? 0;
-      case '$stack3':
-        return state.stacks[2]?.length ?? 0;
-      case '$out':
-        return state.output?.length ?? 0;
-      default:
-        return 0;
-    }
-  },
+  readTypedSensor: (sensorId: string, state: DepotState) =>
+    readDepotTypedSensor(sensorId, state),
+
+  readSensor: (sensorId: string, state: DepotState): number =>
+    readDepotNumericSensor(sensorId, state),
 
   /**
    * Depot boolean sensor evaluation for IF/ELSE_IF/WHILE conditions.

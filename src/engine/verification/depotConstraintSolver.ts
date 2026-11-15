@@ -71,8 +71,25 @@ function countWorkspaceBlocks(ws: WorkspaceState): number {
   return ALL_SCOPES.reduce((sum, sc) => sum + (ws[sc]?.length || 0), 0);
 }
 
+function formatStackKey(colors: readonly string[], values?: ReadonlyArray<number | undefined>): string {
+  if (!values || values.every((v) => v === undefined)) {
+    return colors.join(',');
+  }
+  return colors.map((c, idx) => (values[idx] !== undefined ? `${c}:${values[idx]}` : c)).join(',');
+}
+
 function canonicalDepotKey(s: DepotState): string {
-  const base = `${s.workerStation}|${s.heldCrate ?? '_'}|${s.stacks[0].join(',')}|${s.stacks[1].join(',')}|${s.stacks[2].join(',')}|${s.output.join(',')}`;
+  const s0 = formatStackKey(s.stacks[0], s.stackValues?.[0]);
+  const s1 = formatStackKey(s.stacks[1], s.stackValues?.[1]);
+  const s2 = formatStackKey(s.stacks[2], s.stackValues?.[2]);
+  const out = formatStackKey(s.output, s.outputValues);
+  const held =
+    s.heldCrate === null
+      ? '_'
+      : s.heldValue !== undefined
+      ? `${s.heldCrate}:${s.heldValue}${s.heldColorless ? '!' : ''}`
+      : s.heldCrate;
+  const base = `${s.workerStation}|${held}|${s0}|${s1}|${s2}|${out}`;
   const inputItems = s.input ?? [];
   if (
     s.queue.length === 0 &&
@@ -83,7 +100,12 @@ function canonicalDepotKey(s: DepotState): string {
   ) {
     return base;
   }
-  const qStr = s.queue.map((q) => (q.damaged ? `${q.color}!` : q.color)).join(',');
+  const qStr = s.queue
+    .map((q) => {
+      const val = q.value !== undefined ? `:${q.value}` : '';
+      return q.damaged ? `${q.color}${val}!` : `${q.color}${val}`;
+    })
+    .join(',');
   const inStr = inputItems
     .map((q) => (q.value !== undefined ? `${q.color}:${q.value}` : q.color))
     .join(',');
@@ -99,11 +121,34 @@ function cloneDepotState(s: DepotState): DepotState {
       [...s.initialStacks[1]],
       [...s.initialStacks[2]],
     ],
+    ...(s.stackValues
+      ? { stackValues: [[...s.stackValues[0]], [...s.stackValues[1]], [...s.stackValues[2]]] }
+      : {}),
+    ...(s.initialStackValues
+      ? {
+          initialStackValues: [
+            [...s.initialStackValues[0]],
+            [...s.initialStackValues[1]],
+            [...s.initialStackValues[2]],
+          ],
+        }
+      : {}),
     output: [...s.output],
+    ...(s.outputValues ? { outputValues: [...s.outputValues] } : {}),
     targetStacks: s.targetStacks
       ? [[...s.targetStacks[0]], [...s.targetStacks[1]], [...s.targetStacks[2]]]
       : undefined,
+    ...(s.targetStackValues
+      ? {
+          targetStackValues: [
+            [...s.targetStackValues[0]],
+            [...s.targetStackValues[1]],
+            [...s.targetStackValues[2]],
+          ],
+        }
+      : {}),
     targetOutput: s.targetOutput ? [...s.targetOutput] : undefined,
+    ...(s.targetOutputValues ? { targetOutputValues: [...s.targetOutputValues] } : {}),
     queue: s.queue.map((item) => ({ ...item })),
     initialQueue: s.initialQueue.map((item) => ({ ...item })),
     ...(s.input !== undefined ? { input: s.input.map((item) => ({ ...item })) } : {}),
@@ -232,9 +277,23 @@ function validateDepotWorkspaceAgainstPalette(
       }
 
       if (blk.type === 'DEPOT_MOVE_TO') {
-        const station = blk.params?.station as DepotStationId | undefined;
-        if (!station || !DEPOT_STATIONS.includes(station)) {
-          violations.push(`Invalid DEPOT_MOVE_TO station param: '${String(station)}'`);
+        const rawStation = blk.params?.station;
+        const isVarStation =
+          typeof rawStation === 'string' && /^[a-z]$/.test(rawStation.trim());
+        const varAllowed =
+          palette.allowVariables !== false ||
+          allowedControl.has('VAR_ASSIGN') ||
+          allowedControl.has('VAR_OP');
+        const isValidLiteral =
+          (typeof rawStation === 'string' &&
+            (DEPOT_STATIONS.includes(rawStation as DepotStationId) ||
+              rawStation === 'TAPE' ||
+              rawStation === '1' ||
+              rawStation === '2' ||
+              rawStation === '3')) ||
+          (typeof rawStation === 'number' && [1, 2, 3].includes(rawStation));
+        if (!isValidLiteral && !(isVarStation && varAllowed)) {
+          violations.push(`Invalid DEPOT_MOVE_TO station param: '${String(rawStation)}'`);
         }
       }
 
@@ -295,6 +354,13 @@ function executeDepotWorkspace(
       ? 'SUCCESS'
       : state.status === 'COLLISION'
       ? 'COLLISION'
+      : runtime.status === 'TYPE_ERROR' ||
+        runtime.status === 'MATH_ERROR' ||
+        runtime.status === 'STACK_OVERFLOW' ||
+        runtime.status === 'STEP_LIMIT' ||
+        runtime.status === 'DEADLOCK' ||
+        runtime.status === 'COLLISION'
+      ? runtime.status
       : runtime.status === 'PAUSED'
       ? 'PAUSED'
       : 'IDLE';
