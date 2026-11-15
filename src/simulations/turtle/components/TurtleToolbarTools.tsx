@@ -1,5 +1,7 @@
 import React from 'react';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
+import { MIN_TURTLE_ZOOM, MAX_TURTLE_ZOOM } from '../physics';
+import { notifyTurtleCameraPinned } from '../types';
 import {
   ZoomIn,
   ZoomOut,
@@ -16,20 +18,23 @@ export const TurtleToolbarTools: React.FC = React.memo(() => {
   }));
 
   const handleZoomIn = () => {
+    notifyTurtleCameraPinned(true);
     updateTurtleViewport({
-      zoom: Math.min(5, Number((zoom * 1.25).toFixed(2))),
+      zoom: Math.min(MAX_TURTLE_ZOOM, Number((zoom * 1.25).toFixed(4))),
       fitToView: false,
     });
   };
 
   const handleZoomOut = () => {
+    notifyTurtleCameraPinned(true);
     updateTurtleViewport({
-      zoom: Math.max(0.2, Number((zoom * 0.8).toFixed(2))),
+      zoom: Math.max(MIN_TURTLE_ZOOM, Number((zoom * 0.8).toFixed(4))),
       fitToView: false,
     });
   };
 
   const handleResetView = () => {
+    notifyTurtleCameraPinned(false);
     updateTurtleViewport({
       pan: { x: 0, y: 0 },
       zoom: 1,
@@ -38,6 +43,7 @@ export const TurtleToolbarTools: React.FC = React.memo(() => {
   };
 
   const handleToggleFit = () => {
+    notifyTurtleCameraPinned(true);
     updateTurtleViewport({
       fitToView: !fitToView,
     });

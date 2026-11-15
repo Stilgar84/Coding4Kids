@@ -419,16 +419,39 @@ export function renderTurtleMapSvg(turtle: TurtleState): string {
     }
   }
 
-  // Draw turtle at final pose
-  const tx = turtle.robot.x;
-  const ty = turtle.robot.y;
-  const heading = turtle.robot.heading;
+  // Draw turtle at final pose (matching TurtleCanvas block-sized SVG geometry)
+  if (turtle.showTurtle !== false) {
+    const tx = turtle.robot.x;
+    const ty = turtle.robot.y;
+    const heading = turtle.robot.heading;
+    const isPenDown = turtle.penDown !== false;
+    const rawPenColor = turtle.penColor || '#0f172a';
+    const penColor = /^#[0-9a-fA-F]{3,8}$/.test(rawPenColor) ? rawPenColor : '#0f172a';
+    const isWhiteInk = penColor.toLowerCase() === '#ffffff' || penColor.toLowerCase() === '#fff';
+    const nibStroke = isWhiteInk ? '#94a3b8' : '#ffffff';
 
-  elements.push(
-    `<g transform="translate(${tx}, ${ty}) rotate(${heading})">
-      <polygon points="0,-9 6,6 -6,6" fill="#10b981" stroke="#047857" stroke-width="1.5" />
+    elements.push(
+      `<g data-testid="thumbnail-turtle-robot" transform="translate(${tx}, ${ty}) rotate(${heading})">
+      <circle r="16" fill="#38bdf8" opacity="0.15" />
+      <circle r="12" fill="#0284c7" stroke="#38bdf8" stroke-width="1.8" />
+      <ellipse cx="0" cy="-13" rx="4.2" ry="5.5" fill="#38bdf8" />
+      <ellipse cx="-11" cy="-7" rx="2.8" ry="4.8" fill="#0369a1" transform="rotate(-30 -11 -7)" />
+      <ellipse cx="11" cy="-7" rx="2.8" ry="4.8" fill="#0369a1" transform="rotate(30 11 -7)" />
+      <ellipse cx="-10" cy="8.5" rx="2.5" ry="4.2" fill="#0369a1" transform="rotate(-40 -10 8.5)" />
+      <ellipse cx="10" cy="8.5" rx="2.5" ry="4.2" fill="#0369a1" transform="rotate(40 10 8.5)" />
+      <circle r="7.5" fill="#0369a1" stroke="#0ea5e9" stroke-width="1.1" />
+      <polygon points="0,-5.5 4.8,-2.8 4.8,2.8 0,5.5 -4.8,2.8 -4.8,-2.8" fill="#0284c7" />
+      <circle cx="-2" cy="-14.5" r="1.1" fill="#0f172a" />
+      <circle cx="2" cy="-14.5" r="1.1" fill="#0f172a" />
+      ${
+        isPenDown
+          ? `<circle r="4" fill="${penColor}" stroke="${nibStroke}" stroke-width="1.2" />`
+          : `<circle r="3.8" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-dasharray="2 1.6" opacity="0.95" />
+      <circle r="1.9" fill="none" stroke="${isWhiteInk ? '#94a3b8' : penColor}" stroke-width="1" />`
+      }
     </g>`
-  );
+    );
+  }
 
   elements.push(`</g>`);
 

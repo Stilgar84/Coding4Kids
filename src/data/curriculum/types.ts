@@ -347,6 +347,10 @@ export interface CurriculumDepotDefinition extends DepotState {
   activeStationsMask?: number;
 }
 
+export interface CurriculumTurtleDefinition {
+  canvasBounds?: { halfWidth: number; halfHeight: number };
+}
+
 export interface ExplanationDemoTab {
   id: string;
   label: string;

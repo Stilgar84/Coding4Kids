@@ -2,20 +2,30 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  DEFAULT_STEP_DISTANCE,
+  DEFAULT_TURTLE_CANVAS_BOUNDS,
   moveTurtleForward,
   moveTurtleBackward,
   turnTurtle,
   arcTurtle,
   normalizeHeading,
   updateBoundingBox,
+  isTurtleInsideCanvas,
 } from '../src/simulations/turtle/physics';
 import { TurtleState } from '../src/simulations/turtle/types';
 import {
   TURTLE_ANGLE_PARAM_DEF,
+  TURTLE_ARC_RADIUS_PARAM_DEF,
+  TURTLE_LENGTH_PARAM_DEF,
+  TURTLE_TELEPORT_X_PARAM_DEF,
+  TURTLE_TELEPORT_Y_PARAM_DEF,
   createInitialTurtleState,
+  resetTurtleState,
   turtleSimulationEnvironment,
 } from '../src/simulations/turtle/turtleEnvironment';
 import { TurtleCanvas } from '../src/simulations/turtle/components/TurtleCanvas';
+import { CurriculumTurtleDefinition } from '../src/data/curriculum/types';
+import { renderTurtleMapSvg } from '../src/services/mapThumbnailGenerator';
 
 function createInitialState(): TurtleState {
   return {
@@ -29,6 +39,8 @@ function createInitialState(): TurtleState {
     zoom: 1,
     fitToView: false,
     computedBounds: { minX: -140, minY: -140, maxX: 140, maxY: 140 },
+    instantMode: false,
+    showTurtle: true,
   };
 }
 
@@ -294,5 +306,117 @@ describe('Turtle Physics & Kinematics', () => {
     expect(maskedGroupMatch).not.toBeNull();
     expect(maskedGroupMatch![2]).toContain('data-testid="turtle-line-0"');
     expect(maskedGroupMatch![2]).not.toContain('data-testid="turtle-line-2"');
+  });
+
+  it('uses DEFAULT_STEP_DISTANCE = 100 and aligns length, radius, and teleport parameter presets', () => {
+    expect(DEFAULT_STEP_DISTANCE).toBe(100);
+    const moved = moveTurtleForward(createInitialState());
+    expect(moved.robot.x).toBe(0);
+    expect(moved.robot.y).toBe(-100);
+    expect(moved.paths[0]).toMatchObject({ fromX: 0, fromY: 0, toX: 0, toY: -100 });
+
+    expect(TURTLE_LENGTH_PARAM_DEF.defaultValue).toBe(100);
+    expect(TURTLE_LENGTH_PARAM_DEF.options?.map((o) => o.value)).toEqual([
+      25, 50, 75, 100, 125, 150, 200, 250, 300,
+    ]);
+
+    expect(TURTLE_ARC_RADIUS_PARAM_DEF.defaultValue).toBe(50);
+    expect(TURTLE_ARC_RADIUS_PARAM_DEF.options?.map((o) => o.value)).toEqual([
+      25, 50, 75, 100, 150, 200,
+    ]);
+
+    const expectedCoords = [-250, -200, -150, -100, -50, 0, 50, 100, 150, 200, 250];
+    expect(TURTLE_TELEPORT_X_PARAM_DEF.options?.map((o) => o.value)).toEqual(expectedCoords);
+    expect(TURTLE_TELEPORT_Y_PARAM_DEF.options?.map((o) => o.value)).toEqual(expectedCoords);
+
+    const forwardItem = turtleSimulationEnvironment.paletteItems.find((p) => p.actionType === 'FORWARD');
+    const backwardItem = turtleSimulationEnvironment.paletteItems.find((p) => p.actionType === 'BACKWARD');
+    expect(forwardItem?.params).toEqual({ length: 100 });
+    expect(backwardItem?.params).toEqual({ length: 100 });
+  });
+
+  it('evaluates insideCanvas against 600x480 default nominal bounds and preserves custom canvasBounds', () => {
+    expect(DEFAULT_TURTLE_CANVAS_BOUNDS).toEqual({ halfWidth: 300, halfHeight: 240 });
+
+    const baseState = createInitialTurtleState();
+    expect(isTurtleInsideCanvas(baseState)).toBe(true);
+    expect(turtleSimulationEnvironment.evaluateSensor?.('insideCanvas', baseState)).toBe(true);
+    expect(turtleSimulationEnvironment.evaluateSensor?.('$insideCanvas', baseState)).toBe(true);
+    expect(turtleSimulationEnvironment.evaluateSensor?.(0x28, baseState)).toBe(true);
+
+    // Inclusive boundary + 1e-6 epsilon check
+    expect(
+      isTurtleInsideCanvas({
+        ...baseState,
+        robot: { x: 300, y: -240, heading: 0 },
+      })
+    ).toBe(true);
+    expect(
+      isTurtleInsideCanvas({
+        ...baseState,
+        robot: { x: 300 + 5e-7, y: 240 + 5e-7, heading: 0 },
+      })
+    ).toBe(true);
+    expect(
+      isTurtleInsideCanvas({
+        ...baseState,
+        robot: { x: 300.01, y: 0, heading: 0 },
+      })
+    ).toBe(false);
+    expect(
+      isTurtleInsideCanvas({
+        ...baseState,
+        robot: { x: 0, y: -240.01, heading: 0 },
+      })
+    ).toBe(false);
+
+    // Custom canvasBounds on TurtleState & CurriculumTurtleDefinition preserved through resetTurtleState
+    const customDef: CurriculumTurtleDefinition = {
+      canvasBounds: { halfWidth: 180, halfHeight: 140 },
+    };
+    const customInitial = createInitialTurtleState(customDef.canvasBounds);
+    expect(customInitial.canvasBounds).toEqual({ halfWidth: 180, halfHeight: 140 });
+    expect(
+      isTurtleInsideCanvas({
+        ...customInitial,
+        robot: { x: 185, y: 0, heading: 0 },
+      })
+    ).toBe(false);
+
+    const afterMove: TurtleState = {
+      ...customInitial,
+      pan: { x: 25, y: -15 },
+      zoom: 0.5,
+      robot: { x: 185, y: 0, heading: 90 },
+    };
+    const reset = resetTurtleState(afterMove);
+    expect(reset.canvasBounds).toEqual({ halfWidth: 180, halfHeight: 140 });
+    expect(reset.pan).toEqual({ x: 25, y: -15 });
+    expect(reset.zoom).toBe(0.5);
+    expect(reset.robot).toEqual({ x: 0, y: 0, heading: 0 });
+  });
+
+  it('renders block-sized sky-blue turtle geometry in renderTurtleMapSvg thumbnails matching TurtleCanvas', () => {
+    const state = {
+      ...createInitialState(),
+      robot: { x: 100, y: -100, heading: 90 },
+      penColor: '#ef4444',
+      penDown: true,
+    };
+    const svgDown = renderTurtleMapSvg(state);
+    expect(svgDown).toContain('data-testid="thumbnail-turtle-robot"');
+    expect(svgDown).toContain('transform="translate(100, -100) rotate(90)"');
+    expect(svgDown).toContain('<circle r="16" fill="#38bdf8" opacity="0.15"');
+    expect(svgDown).toContain('<circle r="12" fill="#0284c7" stroke="#38bdf8" stroke-width="1.8"');
+    expect(svgDown).toContain('<ellipse cx="0" cy="-13" rx="4.2" ry="5.5" fill="#38bdf8"');
+    expect(svgDown).toContain('r="4" fill="#ef4444"');
+    expect(svgDown).not.toContain('points="0,-9 6,6 -6,6"');
+
+    const svgUp = renderTurtleMapSvg({ ...state, penDown: false });
+    expect(svgUp).toContain('stroke-dasharray="2 1.6"');
+    expect(svgUp).toContain('r="1.9"');
+
+    const svgHidden = renderTurtleMapSvg({ ...state, showTurtle: false });
+    expect(svgHidden).not.toContain('data-testid="thumbnail-turtle-robot"');
   });
 });

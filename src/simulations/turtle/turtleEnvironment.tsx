@@ -5,7 +5,7 @@ import {
   ActionParamDef,
 } from '../../engine/simulation/types';
 import { registerSimulation } from '../../engine/simulation/registry';
-import { TurtleState } from './types';
+import { TurtleCanvasBounds, TurtleState } from './types';
 import {
   moveTurtleForward,
   moveTurtleBackward,
@@ -13,7 +13,11 @@ import {
   arcTurtle,
   teleportTurtle,
   DEFAULT_STEP_DISTANCE,
+  DEFAULT_TURTLE_CANVAS_BOUNDS,
+  isTurtleInsideCanvas,
 } from './physics';
+
+export { DEFAULT_TURTLE_CANVAS_BOUNDS };
 import { TurtleCanvas } from './components/TurtleCanvas';
 import { TurtleToolbarTools } from './components/TurtleToolbarTools';
 import {
@@ -49,7 +53,7 @@ export function getEffectiveTurtlePaletteItems(allowActionParams = true): SimPal
   }));
 }
 
-export function createInitialTurtleState(): TurtleState {
+export function createInitialTurtleState(canvasBounds?: TurtleCanvasBounds): TurtleState {
   return {
     robot: {
       x: 0,
@@ -68,6 +72,17 @@ export function createInitialTurtleState(): TurtleState {
     activeAnimation: null,
     instantMode: false,
     showTurtle: true,
+    ...(canvasBounds ? { canvasBounds: { ...canvasBounds } } : {}),
+  };
+}
+
+export function resetTurtleState(state: TurtleState): TurtleState {
+  return {
+    ...createInitialTurtleState(state.canvasBounds),
+    pan: state.pan,
+    zoom: state.zoom,
+    fitToView: state.fitToView,
+    showTurtle: state.showTurtle,
   };
 }
 
@@ -105,6 +120,7 @@ export const TURTLE_ARC_RADIUS_PARAM_DEF: ActionParamDef = {
     { value: 75, label: '75' },
     { value: 100, label: '100' },
     { value: 150, label: '150' },
+    { value: 200, label: '200' },
   ],
 };
 
@@ -166,16 +182,18 @@ export const TURTLE_LENGTH_PARAM_DEF: ActionParamDef = {
   id: 'length',
   label: 'Length',
   type: 'length',
-  defaultValue: 50,
+  defaultValue: DEFAULT_STEP_DISTANCE,
   unit: 'px',
   options: [
-    { value: 10, label: '10' },
     { value: 25, label: '25' },
     { value: 50, label: '50' },
     { value: 75, label: '75' },
     { value: 100, label: '100' },
+    { value: 125, label: '125' },
     { value: 150, label: '150' },
     { value: 200, label: '200' },
+    { value: 250, label: '250' },
+    { value: 300, label: '300' },
   ],
 };
 
@@ -211,6 +229,8 @@ export const TURTLE_TELEPORT_X_PARAM_DEF: ActionParamDef = {
   defaultValue: 0,
   unit: 'px',
   options: [
+    { value: -250, label: '-250' },
+    { value: -200, label: '-200' },
     { value: -150, label: '-150' },
     { value: -100, label: '-100' },
     { value: -50, label: '-50' },
@@ -218,6 +238,8 @@ export const TURTLE_TELEPORT_X_PARAM_DEF: ActionParamDef = {
     { value: 50, label: '50' },
     { value: 100, label: '100' },
     { value: 150, label: '150' },
+    { value: 200, label: '200' },
+    { value: 250, label: '250' },
   ],
 };
 
@@ -228,6 +250,8 @@ export const TURTLE_TELEPORT_Y_PARAM_DEF: ActionParamDef = {
   defaultValue: 0,
   unit: 'px',
   options: [
+    { value: -250, label: '-250' },
+    { value: -200, label: '-200' },
     { value: -150, label: '-150' },
     { value: -100, label: '-100' },
     { value: -50, label: '-50' },
@@ -235,6 +259,8 @@ export const TURTLE_TELEPORT_Y_PARAM_DEF: ActionParamDef = {
     { value: 50, label: '50' },
     { value: 100, label: '100' },
     { value: 150, label: '150' },
+    { value: 200, label: '200' },
+    { value: 250, label: '250' },
   ],
 };
 
@@ -262,7 +288,7 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     name: 'Move Forward',
     category: 'motion',
     paramDefs: [TURTLE_LENGTH_PARAM_DEF],
-    params: { length: 50 },
+    params: { length: DEFAULT_STEP_DISTANCE },
     icon: ({ className, isActive }) => (
       <ArrowUp className={className || `w-7 h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]'}`} />
     ),
@@ -276,7 +302,7 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     name: 'Move Backward',
     category: 'motion',
     paramDefs: [TURTLE_LENGTH_PARAM_DEF],
-    params: { length: 50 },
+    params: { length: DEFAULT_STEP_DISTANCE },
     icon: ({ className, isActive }) => (
       <ArrowDown className={className || `w-7 h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-white stroke-[3]'}`} />
     ),
@@ -543,13 +569,7 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
 
   createInitialState: createInitialTurtleState,
 
-  resetState: (state: TurtleState): TurtleState => ({
-    ...createInitialTurtleState(),
-    pan: state.pan,
-    zoom: state.zoom,
-    fitToView: state.fitToView,
-    showTurtle: state.showTurtle,
-  }),
+  resetState: resetTurtleState,
 
   executeAction: (
     actionType: string,
@@ -676,6 +696,14 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
       nextState: { ...nextState, status: 'RUNNING' },
       status: 'RUNNING',
     };
+  },
+
+  evaluateSensor: (sensor: number | string | any, state: TurtleState): boolean => {
+    const clean = typeof sensor === 'string' && sensor.startsWith('$') ? sensor.slice(1) : sensor;
+    if (clean === 'insideCanvas' || clean === 0x28 || clean === '0x28') {
+      return isTurtleInsideCanvas(state);
+    }
+    return false;
   },
 
   evaluateCompletion: () => 'IDLE',
