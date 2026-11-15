@@ -60,10 +60,11 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <rect x="8" y="3" width="8" height="6" rx="1.5" />
-        <path d="M5 15 L19 15" />
-        <polyline points="15 11 19 15 15 19" />
+        <path d="M3 6 L21 6" />
+        <line x1="12" y1="6" x2="12" y2="11" />
+        <path d="M4 15 L20 15" />
+        <polyline points="8 11 4 15 8 19" />
+        <polyline points="16 11 20 15 16 19" />
       </svg>
     ),
     bgClass: 'bg-sky-600 hover:bg-sky-500',

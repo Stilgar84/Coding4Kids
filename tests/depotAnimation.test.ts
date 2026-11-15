@@ -370,11 +370,11 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
 
   describe('2. Speed Scaling & DepotCanvas SSR Choreography', () => {
     it('scales animation duration cleanly from speed and disables when instant, 0, Lite, or no lastAction', () => {
-      expect(computeDepotAnimDurationMs(400, false, true)).toBe(352);
-      expect(computeDepotAnimDurationMs(100, false, true)).toBe(88);
-      expect(computeDepotAnimDurationMs(25, false, true)).toBe(24);
-      expect(computeDepotAnimDurationMs(1000, false, true)).toBe(360);
-      expect(computeDepotAnimDurationMs(10, false, true)).toBe(24);
+      expect(computeDepotAnimDurationMs(400, false, true)).toBe(1350);
+      expect(computeDepotAnimDurationMs(100, false, true)).toBe(585);
+      expect(computeDepotAnimDurationMs(25, false, true)).toBe(230);
+      expect(computeDepotAnimDurationMs(1000, false, true)).toBe(3375);
+      expect(computeDepotAnimDurationMs(10, false, true)).toBe(230);
 
       expect(computeDepotAnimDurationMs('instant', false, true)).toBe(0);
       expect(computeDepotAnimDurationMs(0, false, true)).toBe(0);
@@ -392,32 +392,32 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       });
       const moved = applyDepotAction('DEPOT_MOVE_TO', s0, { station: 'STACK_2' }).nextState;
       const moveHtml = renderDepot(moved);
-      expect(moveHtml).toContain('data-anim-duration="352"');
+      expect(moveHtml).toContain('data-anim-duration="1350"');
       expect(moveHtml).toContain('data-anim-action="MOVE"');
-      expect(moveHtml).toContain('transition-duration:352ms');
+      expect(moveHtml).toContain('transition-duration:1350ms');
       expect(moveHtml).toContain('cubic-bezier(0.22, 1, 0.36, 1)');
-      expect(moveHtml).toContain('depotWheelSpinRight 352ms');
-      expect(moveHtml).toContain('depotCableSwayRight 352ms');
-      expect(moveHtml).toContain('depotStationArrivePulse 352ms');
+      expect(moveHtml).toContain('depotWheelSpinRight 1350ms');
+      expect(moveHtml).toContain('depotCableSwayRight 1350ms');
+      expect(moveHtml).toContain('depotStationArrivePulse 1350ms');
       expect(moveHtml).not.toContain('data-testid="depot-flying-ring"');
 
       // GRAB from stack
       const stackGrabbed = applyDepotAction('DEPOT_GRAB', s0).nextState;
       const stackGrabHtml = renderDepot(stackGrabbed);
       expect(stackGrabHtml).toContain('data-anim-action="GRAB"');
-      expect(stackGrabHtml).toContain('depotSpringPlunge 352ms');
-      expect(stackGrabHtml).toContain('depotJawsPlunge 352ms');
-      expect(stackGrabHtml).toContain('depotJawLeftGrab 352ms');
+      expect(stackGrabHtml).toContain('depotSpringPlunge 1350ms');
+      expect(stackGrabHtml).toContain('depotJawsPlunge 1350ms');
+      expect(stackGrabHtml).toContain('depotJawLeftGrab 1350ms');
       expect(stackGrabHtml).toContain('data-testid="depot-claw-held-crate"');
-      expect(stackGrabHtml).toContain('depotHeldRingGrabLift 352ms');
+      expect(stackGrabHtml).toContain('depotHeldRingGrabLift 1350ms');
 
       // GRAB from QUEUE (remaining tokens slide left + rollers spin)
       const atQueue = applyDepotAction('DEPOT_MOVE_TO', s0, { station: 'QUEUE' }).nextState;
       const queueGrabbed = applyDepotAction('DEPOT_GRAB', atQueue).nextState;
       const queueGrabHtml = renderDepot(queueGrabbed);
-      expect(queueGrabHtml).toContain('depotHeldRingGrabLiftQueue 352ms');
-      expect(queueGrabHtml).toContain('depotQueueSlideLeft 352ms');
-      expect(queueGrabHtml).toContain('depotRollerSpin 352ms');
+      expect(queueGrabHtml).toContain('depotHeldRingGrabLiftQueue 1350ms');
+      expect(queueGrabHtml).toContain('depotQueueSlideLeft 1350ms');
+      expect(queueGrabHtml).toContain('depotRollerSpin 1350ms');
       expect(queueGrabHtml).toContain('data-testid="depot-queue-crate-0"');
 
       // PLACE onto stack
@@ -425,46 +425,46 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       const stackPlaced = applyDepotAction('DEPOT_PLACE', atStack2).nextState;
       const stackPlaceHtml = renderDepot(stackPlaced);
       expect(stackPlaceHtml).toContain('data-anim-action="PLACE"');
-      expect(stackPlaceHtml).toContain('depotSpringDip 352ms');
-      expect(stackPlaceHtml).toContain('depotJawsDip 352ms');
-      expect(stackPlaceHtml).toContain('depotJawLeftRelease 352ms');
-      expect(stackPlaceHtml).toContain('depotStackRingDrop 352ms');
+      expect(stackPlaceHtml).toContain('depotSpringDip 1350ms');
+      expect(stackPlaceHtml).toContain('depotJawsDip 1350ms');
+      expect(stackPlaceHtml).toContain('depotJawLeftRelease 1350ms');
+      expect(stackPlaceHtml).toContain('depotStackRingDrop 1350ms');
       expect(stackPlaceHtml).toContain('data-testid="depot-stack-2-crate-0"');
 
       // PLACE onto QUEUE
       const queuePlaced = applyDepotAction('DEPOT_PLACE', queueGrabbed).nextState;
       const queuePlaceHtml = renderDepot(queuePlaced);
-      expect(queuePlaceHtml).toContain('depotQueueRingDrop 352ms');
-      expect(queuePlaceHtml).toContain('depotFunnelPulse 352ms');
+      expect(queuePlaceHtml).toContain('depotQueueRingDrop 1350ms');
+      expect(queuePlaceHtml).toContain('depotFunnelPulse 1350ms');
 
       // SEND_OUT (invariant workerStation, sky-chute glow, flying ring + synchronized output slot)
       const sentOut = applyDepotAction('DEPOT_SEND_OUT', atStack2).nextState;
       expect(sentOut.workerStation).toBe('STACK_2');
       const sendHtml = renderDepot(sentOut);
       expect(sendHtml).toContain('data-anim-action="SEND_OUT"');
-      expect(sendHtml).toContain('depotJawsRecoil 352ms');
-      expect(sendHtml).toContain('depotJawLeftFlick 352ms');
-      expect(sendHtml).toContain('depotSkyChutePulse 352ms');
-      expect(sendHtml).toContain('depotSkyChuteStream 352ms');
+      expect(sendHtml).toContain('depotJawsRecoil 1350ms');
+      expect(sendHtml).toContain('depotJawLeftFlick 1350ms');
+      expect(sendHtml).toContain('depotSkyChutePulse 1350ms');
+      expect(sendHtml).toContain('depotSkyChuteStream 1350ms');
       expect(sendHtml).toContain('data-testid="depot-flying-ring"');
       expect(sendHtml).toContain('data-from-station="STACK_2"');
       expect(sendHtml).toContain('data-output-slot="0"');
-      expect(sendHtml).toContain('depotFlyRingX 352ms');
-      expect(sendHtml).toContain('depotFlyRingY 352ms');
-      expect(sendHtml).toContain('depotOutputSlotLand 352ms ease-out both');
+      expect(sendHtml).toContain('depotFlyRingX 1350ms');
+      expect(sendHtml).toContain('depotFlyRingY 1350ms');
+      expect(sendHtml).toContain('depotOutputSlotLand 1350ms ease-out both');
       expect(sendHtml).toContain('data-testid="depot-output-slot-0"');
 
       // COLLISION
       const collided = applyDepotAction('DEPOT_GRAB', createInitialDepotState({ stacks: [[], [], []] })).nextState;
       const collHtml = renderDepot(collided);
       expect(collHtml).toContain('data-anim-action="COLLISION"');
-      expect(collHtml).toContain('depotClawBonkRattle 352ms');
-      expect(collHtml).toContain('depotBadgePop 352ms');
+      expect(collHtml).toContain('depotClawBonkRattle 1350ms');
+      expect(collHtml).toContain('depotBadgePop 1350ms');
       expect(collHtml).toContain('data-testid="depot-failure-badge"');
       expect(collHtml).toContain('data-testid="status-collision"');
     });
 
-    it('scales inline durations for speed=100 (88ms) and speed=25 (24ms)', () => {
+    it('scales inline durations for speed=100 (585ms) and speed=25 (230ms)', () => {
       const s0 = createInitialDepotState({
         stacks: [['RED'], [], []],
         targetOutput: ['RED'],
@@ -474,15 +474,15 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
 
       useAppStore.setState({ speed: 100 });
       const html100 = renderDepot(sent);
-      expect(html100).toContain('data-anim-duration="88"');
-      expect(html100).toContain('depotFlyRingX 88ms');
-      expect(html100).toContain('depotOutputSlotLand 88ms');
+      expect(html100).toContain('data-anim-duration="585"');
+      expect(html100).toContain('depotFlyRingX 585ms');
+      expect(html100).toContain('depotOutputSlotLand 585ms');
 
       useAppStore.setState({ speed: 25 });
       const html25 = renderDepot(sent);
-      expect(html25).toContain('data-anim-duration="24"');
-      expect(html25).toContain('depotFlyRingX 24ms');
-      expect(html25).toContain('depotOutputSlotLand 24ms');
+      expect(html25).toContain('data-anim-duration="230"');
+      expect(html25).toContain('depotFlyRingX 230ms');
+      expect(html25).toContain('depotOutputSlotLand 230ms');
     });
 
     it('omits depot-flying-ring and disables motion at speed="instant" and in Lite (isLowQuality) mode while keeping DOM testids', () => {
@@ -516,7 +516,7 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       }
     });
 
-    it('passes Phase 1 Toy-Crane Workshop audit invariants (clearance, birch bench, pegs, no padlocks, 25% ghosts, activeStationsMask)', () => {
+    it('passes Phase 1 Toy-Crane Workshop audit invariants (clearance, birch bench, pegs, no padlocks, 80% ghosts, activeStationsMask)', () => {
       const stackOnly = createInitialDepotState({
         stacks: [['RED', 'BLUE'], [], []],
         targetStacks: [[], ['BLUE', 'RED'], []],
@@ -531,9 +531,10 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       expect(html).not.toContain('🔒');
       expect(html).not.toContain('depot-scrap-bay');
       expect(html).not.toContain('depot-hud-claw');
-      // 25% dashed ghost blueprints present
+      // High-contrast 80% dashed ghost blueprints present
       expect(html).toContain('data-testid="depot-stack-2-ghost-0"');
-      expect(html).toContain('opacity-25');
+      expect(html).toContain('opacity-80');
+      expect(html).not.toContain('opacity-25');
       // Unused QUEUE and OUT bays hidden by activeStationsMask
       expect(html).not.toContain('data-testid="depot-queue-belt"');
       expect(html).not.toContain('data-testid="depot-output-bay"');
