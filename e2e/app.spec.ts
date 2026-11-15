@@ -36,6 +36,8 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(page.getByTestId('btn-level-1')).toBeVisible();
     await expect(page.getByTestId('btn-level-2')).toBeVisible();
     await expect(page.getByTestId('btn-level-3')).toBeVisible();
+    await expect(page.getByTestId('sim-tab-depot')).toHaveText(/Depot/);
+    await expect(page.getByTestId('sim-tab-depot')).not.toHaveText(/Crate Depot/);
     await page.keyboard.press('Escape');
 
     // Check robot and grid
@@ -779,6 +781,18 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(page.getByTestId('turtle-line-0')).toBeAttached({ timeout: 5000 });
     const infoPill = page.getByTestId('turtle-info-pill');
     await expect(infoPill).toContainText('Y: -50');
+
+    // Toggle Hide/Show Turtle (🐢👁️)
+    const toggleTurtleBtn = page.getByTestId('tool-toggle-turtle');
+    await expect(toggleTurtleBtn).toBeVisible();
+    await expect(toggleTurtleBtn).toHaveText(/🐢/);
+    await toggleTurtleBtn.click();
+    await expect(toggleTurtleBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('toggle-turtle-hidden-slash')).toBeVisible();
+    await expect(page.getByTestId('turtle-robot')).toHaveCount(0);
+    await toggleTurtleBtn.click();
+    await expect(toggleTurtleBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('turtle-robot')).toBeVisible();
   });
 
   test('supports undo via toolbar button and redo via unified menu drawer for code edits', async ({ page }) => {

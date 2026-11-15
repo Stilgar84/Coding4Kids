@@ -78,6 +78,11 @@ import {
 import { useAppStore } from '../src/store/useAppStore';
 import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
 import { GridState, WallEdge, WorkspaceState } from '../src/types';
+import {
+  generateDepotMapThumbnail,
+  renderDepotMapSvg,
+} from '../src/services/mapThumbnailGenerator';
+import { createInitialDepotState } from '../src/simulations/depot/depotPhysics';
 
 function makeMinimalGrid(): GridState {
   return createCurriculumGridState({
@@ -822,5 +827,22 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
       ).toBeLessThan(200);
       expect(wallMs).toBeLessThan(200);
     });
+  });
+
+  it('renderDepotMapSvg delegates to renderDepotWorkshopSvg with sky backdrop, birch bench, and no dark #0f172a backdrop', () => {
+    const depot = createInitialDepotState();
+    const svg = renderDepotMapSvg(depot);
+    expect(svg).toContain('<rect width="180" height="132" rx="12" fill="#edf4fb" />');
+    expect(svg).toContain('fill="#e4be8b"');
+    expect(svg).not.toContain('fill="#0f172a" />');
+    expect(svg).not.toContain('fill="#0f172a">');
+
+    const dataUri = generateDepotMapThumbnail(depot);
+    expect(dataUri.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true);
+    const decoded = decodeURIComponent(dataUri.replace('data:image/svg+xml;charset=utf-8,', ''));
+    expect(decoded).toContain('<rect width="180" height="132" rx="12" fill="#edf4fb" />');
+    expect(decoded).toContain('fill="#e4be8b"');
+    expect(decoded).not.toContain('fill="#0f172a" />');
+    expect(decoded).not.toContain('fill="#0f172a">');
   });
 });

@@ -67,6 +67,8 @@ test.describe('Mobile Phone Compact Vertical Layout', () => {
     await expect(page.getByTestId('drawer-tab-grid')).toBeVisible();
     await expect(page.getByTestId('drawer-tab-turtle')).toBeVisible();
     await expect(page.getByTestId('drawer-tab-beat')).toBeVisible();
+    await expect(page.getByTestId('drawer-tab-depot')).toBeVisible();
+    await expect(page.getByTestId('drawer-tab-depot')).toHaveText(/Depot/);
     await expect(page.getByTestId('drawer-btn-lesson-picker')).toBeVisible();
 
     // Row 4: Sound, Redo, Map toggle, Fullscreen

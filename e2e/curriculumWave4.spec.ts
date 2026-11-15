@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-2.5, 2B), M2 Objects (2.6-2A) & Loop Brackets (3.0-3.3)', () => {
-  test('C8b: steps through buggy starter on 1.4, loads ? scaffold via Hint, and solves 1A anti-bypass checks', async ({
+test.describe('Wave 4: seq (seq.4–seq.A), Browser & Badges, param (param.1–param.8) & Loop Brackets (loop.0–loop.7)', () => {
+  test('C8b: steps through buggy starter on seq.4, loads ? scaffold via Hint, and solves seq.A anti-bypass checks', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/?mode=curriculum&activity=1.4&dev=1');
+    await page.goto('/?mode=curriculum&activity=seq.4&dev=1');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    // 1.4 pre-loads 5-block buggy starter
+    // seq.4 pre-loads 5-block buggy starter
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(5);
 
     // Open Hint modal -> verify Dev Constraint Proofs are Verified, then load Tier 1 ? scaffold
@@ -22,8 +22,8 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
       await page.getByTestId('btn-step').click();
     }
 
-    // Verify 1A dev constraint proofs pass all 5 anti-bypass rules
-    await page.goto('/?mode=curriculum&activity=1A&dev=1');
+    // Verify seq.A dev constraint proofs pass all 5 anti-bypass rules
+    await page.goto('/?mode=curriculum&activity=seq.A&dev=1');
     await page.waitForSelector('[data-testid="grid-canvas"]');
     await page.getByTestId('btn-solution').click();
     await expect(page.getByTestId('constraint-overall-badge')).toContainText('Verified');
@@ -33,43 +33,52 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/?mode=curriculum&activity=1.0');
+    await page.goto('/?mode=curriculum&activity=seq.0');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
     await page.getByTestId('btn-lesson-picker').click();
     await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
 
-    // Module 1 is unlocked; Module 2 & Module 3 start locked until unlocked
-    await expect(page.getByTestId('btn-activity-1.1')).toBeEnabled();
-    await expect(page.getByTestId('module-locked-module-2')).toBeVisible();
-    await expect(page.getByTestId('btn-activity-2.1')).toBeDisabled();
+    // seq is unlocked; param, loop & func start locked until unlocked
+    await expect(page.getByTestId('btn-activity-seq.1')).toBeEnabled();
+    await expect(page.getByTestId('module-locked-param')).toBeVisible();
+    await expect(page.getByTestId('btn-activity-param.1')).toBeDisabled();
 
-    // Toggle 1-tap Unlock All -> Module 2 & Module 3 become interactive immediately
+    // Toggle 1-tap Unlock All -> param, loop & func become interactive immediately
     await page.getByTestId('btn-toggle-unlock-all').click();
-    await expect(page.getByTestId('btn-activity-2.1')).toBeEnabled();
-    await expect(page.getByTestId('btn-activity-3.1')).toBeEnabled();
+    await expect(page.getByTestId('btn-activity-param.1')).toBeEnabled();
+    await expect(page.getByTestId('btn-activity-loop.1')).toBeEnabled();
+    await expect(page.getByTestId('btn-activity-func.1')).toBeEnabled();
 
     // Open BadgeCollectionModal via header Badges button and dismiss with Escape
     await page.getByTestId('btn-open-badges').click();
     await expect(page.getByTestId('badge-collection-modal')).toBeVisible();
-    await expect(page.getByTestId('badge-capstone-chip-1A')).toBeVisible();
+    await expect(page.getByTestId('badge-capstone-chip-seq.A')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('badge-collection-modal')).toHaveCount(0);
   });
 
-  test('C13 & C15: solves 2.1 with repeat badges, runs 2.5 Beat Tier 2 notes/rows, and steps 2.6 object demo tabs', async ({
+  test('C13 & C15: tests param.1 repeat badges, runs param.5 Beat Tier 2 notes/rows, and steps param.7 object demo tabs into param.8', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // 2.5 Beat Tier 2 starter + playable variations
-    await page.goto('/?mode=curriculum&activity=2.5');
+    // param.1 Repeat Badges Corridor (5-slot tray with repeat number badges enabled)
+    await page.goto('/?mode=curriculum&activity=param.1');
+    await page.waitForSelector('[data-testid="grid-canvas"]');
+    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 5');
+    await page.getByTestId('palette-move-fwd').click();
+    await page.getByTestId('palette-number-5').click();
+    await expect(page.locator('[data-testid^="badge-repeat-MOVE_FWD"]')).toHaveText('5');
+
+    // param.5 Beat Tier 2 starter + playable variations
+    await page.goto('/?mode=curriculum&activity=param.5');
     await page.waitForSelector('[data-testid="beat-canvas"]');
     await expect(page.getByTestId('variation-cards-panel')).toBeVisible();
     await page.getByTestId('btn-step').click();
 
-    // 2.6 Interactive World Items 3-tab Explanation Demo
-    await page.goto('/?mode=curriculum&activity=2.6');
+    // param.7 Interactive World Items 3-tab Explanation Demo
+    await page.goto('/?mode=curriculum&activity=param.7');
     await page.waitForSelector('[data-testid="grid-canvas"]');
     await expect(page.getByTestId('explanation-demo-bar')).toBeVisible();
     await expect(page.getByTestId('demo-tab-1')).toBeVisible();
@@ -78,18 +87,19 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await page.getByTestId('demo-tab-3').click();
     await page.getByTestId('btn-step').click();
 
-    // Tab [2] hasn't been viewed yet, so first Next click moves to unviewed Tab [2], then second Next advances to 2.7
+    // Tab [2] hasn't been viewed yet, so first Next click moves to unviewed Tab [2], then second Next advances to param.8 (5 × 5)
     await page.getByTestId('btn-explanation-continue').click();
     await expect(page.getByTestId('demo-tab-2')).toHaveAttribute('aria-selected', 'true');
     await page.getByTestId('btn-explanation-continue').click();
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('param.8');
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('5 × 5');
   });
 
-  test('C16: renders live loop iteration spotlight in 3.0 and solid color-coded nested loop brackets in 3.3', async ({
+  test('C16: renders live loop iteration spotlight in loop.0 and solid color-coded nested loop brackets in loop.7', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/?mode=curriculum&activity=3.0');
+    await page.goto('/?mode=curriculum&activity=loop.0');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
     // Switch to Tab [2] (Loop ×4) and step into the loop to see live 1/4 iteration badge
@@ -99,11 +109,11 @@ test.describe('Wave 4: M1 Robot (1.4-1A), Browser & Badges, M2 Params/Beat (2.1-
     await page.getByTestId('btn-step').click();
     await expect(page.getByTestId('loop-iteration-badge')).toContainText('1/4');
 
-    // Open 3.3 Star Loops and load Variation 3 (Spiked Sun Rays nested Loop ×6 { Loop ×2 })
-    await page.goto('/?mode=curriculum&activity=3.3');
+    // Open loop.7 Nested Loop Rosettes and load Variation 3 (Ring of 5 Stars nested Loop ×5 { Loop ×5 })
+    await page.goto('/?mode=curriculum&activity=loop.7');
     await page.waitForSelector('[data-testid="variation-cards-panel"]');
     const loadButtons = page.locator('[data-testid^="btn-load-variation-"]');
-    await expect(loadButtons).toHaveCount(4);
+    await expect(loadButtons).toHaveCount(3);
     await loadButtons.nth(2).click();
 
     // Verify both depth-1 and depth-2 loop bracket rails render as solid lines without marker symbols

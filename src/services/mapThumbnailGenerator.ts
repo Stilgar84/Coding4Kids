@@ -8,9 +8,9 @@ import {
 import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
 import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
-import { DEPOT_CRATE_COLORS, DepotState } from '../simulations/depot/types';
+import { DepotState } from '../simulations/depot/types';
 import { ITEM_COLORS, SwitchyardState } from '../simulations/switchyard/types';
-import { stationToIndex } from '../simulations/depot/depotPhysics';
+import { renderDepotWorkshopSvg } from '../simulations/depot/depotThumbnail';
 
 const CELL_SIZE = 40;
 
@@ -532,49 +532,7 @@ export function generateTurtleMapThumbnail(turtleState: TurtleState): string {
 }
 
 export function renderDepotMapSvg(depot: DepotState): string {
-  const w = 180;
-  const h = 132;
-  const parts: string[] = [];
-  parts.push(`<rect width="${w}" height="${h}" rx="12" fill="#0f172a" />`);
-  parts.push(`<line x1="16" y1="20" x2="128" y2="20" stroke="#475569" stroke-width="4" stroke-linecap="round" />`);
-
-  const craneIdx = stationToIndex(depot?.workerStation ?? 'STACK_1');
-  const bayXs = [22, 62, 102];
-  const craneX = bayXs[craneIdx] + 14;
-  parts.push(`<rect x="${craneX - 8}" y="12" width="16" height="10" rx="3" fill="#fbbf24" />`);
-  parts.push(`<line x1="${craneX}" y1="22" x2="${craneX}" y2="30" stroke="#94a3b8" stroke-width="2" />`);
-  if (depot?.heldCrate) {
-    const heldHex = DEPOT_CRATE_COLORS[depot.heldCrate]?.hex ?? '#ef4444';
-    parts.push(`<rect x="${craneX - 10}" y="29" width="20" height="12" rx="3" fill="${heldHex}" stroke="#ffffff" stroke-width="1.5" />`);
-  }
-
-  for (let b = 0; b < 3; b++) {
-    const bx = bayXs[b];
-    parts.push(`<path d="M ${bx} 46 V 114 H ${bx + 28} V 46" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="3 2" />`);
-    const stack = depot?.stacks?.[b] ?? [];
-    for (let s = 0; s < stack.length && s < 4; s++) {
-      const crateHex = DEPOT_CRATE_COLORS[stack[s]]?.hex ?? '#ef4444';
-      const cy = 110 - (s + 1) * 14;
-      const isTop = s === stack.length - 1;
-      parts.push(
-        `<rect x="${bx + 4}" y="${cy}" width="20" height="12" rx="3" fill="${crateHex}" fill-opacity="${
-          isTop ? '1' : '0.45'
-        }" stroke="${isTop ? '#ffffff' : '#94a3b8'}" stroke-width="${isTop ? '1.5' : '0.8'}" />`
-      );
-    }
-  }
-
-  // Output bay
-  parts.push(`<rect x="138" y="28" width="28" height="88" rx="6" fill="#020617" stroke="#334155" stroke-width="1.5" />`);
-  parts.push(`<circle cx="152" cy="38" r="5" fill="#10b981" />`);
-  const out = depot?.output ?? [];
-  for (let i = 0; i < out.length && i < 4; i++) {
-    const cHex = DEPOT_CRATE_COLORS[out[i]]?.hex ?? '#ef4444';
-    const oy = 50 + i * 15;
-    parts.push(`<rect x="143" y="${oy}" width="18" height="11" rx="2.5" fill="${cHex}" stroke="#ffffff" stroke-width="1" />`);
-  }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
+  return renderDepotWorkshopSvg(depot);
 }
 
 /**
