@@ -644,8 +644,9 @@ export const useAppStore = create<AppState>((set, get) => {
         (currentRuntime.status as string) === 'SUCCESS';
       const prevScope = get().activeScope;
       const prevBeatIndex = beatState.beatIndex;
+      const tickOpts = getActiveTickOptions();
 
-      const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv, getActiveTickOptions());
+      const res = tickInterpreter(currentRuntime, workspace, beatState, simEnv, tickOpts);
       const nextBeat = res.nextGrid as BeatState;
 
       if (nextBeat.beatIndex !== prevBeatIndex && !nextBeat.isMuted) {
@@ -694,7 +695,14 @@ export const useAppStore = create<AppState>((set, get) => {
           const rawDur = currentBlock.params?.duration;
           const durUnits =
             rawDur !== undefined
-              ? evaluateValue(rawDur, currentRuntime.variables, 1, simEnv, beatState)
+              ? evaluateValue(
+                  rawDur,
+                  currentRuntime.variables,
+                  1,
+                  simEnv,
+                  beatState,
+                  tickOpts.sceneInput ?? currentRuntime.sceneInput
+                )
               : 1;
           delayMs = Math.max(0, durUnits * globalSpeedMs);
         } else {
@@ -1091,13 +1099,21 @@ export const useAppStore = create<AppState>((set, get) => {
         continue;
       }
 
+      const turtleTickOpts = getActiveTickOptions();
       const rawRepeats = currentBlock.repeatCount !== undefined
-        ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1)
+        ? evaluateValue(
+            currentBlock.repeatCount,
+            runtime.variables,
+            1,
+            simEnv,
+            turtleState,
+            turtleTickOpts.sceneInput ?? runtime.sceneInput
+          )
         : 1;
       const totalRepeats = Math.round(rawRepeats);
 
       if (totalRepeats <= 0) {
-        const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
+        const res = tickInterpreter(runtime, workspace, turtleState, simEnv, turtleTickOpts);
         runtime = res.nextRuntime;
         turtleState = res.nextGrid as TurtleState;
 
@@ -1179,7 +1195,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const penColor = turtleState.penColor;
       const penWidth = turtleState.penWidth;
 
-      const res = tickInterpreter(runtime, workspace, turtleState, simEnv, getActiveTickOptions());
+      const res = tickInterpreter(runtime, workspace, turtleState, simEnv, turtleTickOpts);
       const toPose = { ...(res.nextGrid as TurtleState).robot };
 
       const prevScope = get().activeScope;
@@ -1192,7 +1208,14 @@ export const useAppStore = create<AppState>((set, get) => {
             typeof v === 'string' &&
             (/^[a-z]$/.test(v.trim()) || v.trim().startsWith('$'))
           ) {
-            resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, turtleState);
+            resolvedParams[k] = evaluateValue(
+              v,
+              runtime.variables,
+              0,
+              simEnv,
+              turtleState,
+              turtleTickOpts.sceneInput ?? runtime.sceneInput
+            );
           } else {
             resolvedParams[k] = v;
           }

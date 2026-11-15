@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   CURRICULUM_ACTIVITIES,
   ConditionExpr,
@@ -668,6 +668,11 @@ describe('Wave 2A: Phase 2 Shared Platform Foundation', () => {
       expect(inputMarkup).toContain('data-testid="cond-input-op-eq"');
       expect(inputMarkup).toContain('data-testid="cond-input-op-neq"');
       expect(inputMarkup).toContain('data-testid="cond-input-opt-amber"');
+      // UI Guidelines touch targets (>= 36x36px mobile, >= 44x44px tablet/desktop)
+      expect(colorMarkup).toContain('min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px]');
+      expect(colorMarkup).toContain('w-9 h-9 md:w-11 md:h-11');
+      expect(inputMarkup).toContain('min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px]');
+      expect(inputMarkup).toContain('w-9 h-9 md:w-11 md:h-11');
     });
 
     it('renders <SceneInputBarView> in numeric & color modes, and setSceneInput resets cleanly + reruns', () => {
@@ -683,6 +688,7 @@ describe('Wave 2A: Phase 2 Shared Platform Foundation', () => {
       expect(intMarkup).toContain('data-testid="scene-input-opt-1"');
       expect(intMarkup).toContain('data-testid="scene-input-opt-2"');
       expect(intMarkup).toContain('data-selected="true"');
+      expect(intMarkup).toContain('min-w-[36px] min-h-[36px] h-9 md:min-w-[44px] md:min-h-[44px] md:h-11');
 
       const colorMarkup = renderToStaticMarkup(
         React.createElement(SceneInputBarView, {
@@ -692,6 +698,7 @@ describe('Wave 2A: Phase 2 Shared Platform Foundation', () => {
         })
       );
       expect(colorMarkup).toContain('data-testid="scene-input-opt-amber"');
+      expect(colorMarkup).toContain('w-9 h-9 md:w-11 md:h-11');
 
       const inputAct = makeSyntheticGridActivity({
         id: 'branch.scene.1',
@@ -749,6 +756,145 @@ describe('Wave 2A: Phase 2 Shared Platform Foundation', () => {
       } finally {
         const idx = CURRICULUM_ACTIVITIES.indexOf(inputAct);
         if (idx >= 0) CURRICULUM_ACTIVITIES.splice(idx, 1);
+      }
+    });
+
+    it('forwards active sceneInput to evaluateValue during non-instant Beat WAIT_BEAT & Turtle FORWARD playback', () => {
+      const beatInputAct: CurriculumActivity = {
+        id: 'branch.beat.playback',
+        version: 1,
+        moduleId: 'branch',
+        format: 'creative',
+        simId: 'beat',
+        icon: '🎹',
+        title: 'Beat Playback $input',
+        subtitle: 'WAIT_BEAT $input delay',
+        goalText: '',
+        initialSpeed: 400,
+        inputConfig: { mode: 'int', options: [1, 2], previewInput: 2 },
+        palette: { allowedSimBlocks: ['WAIT_BEAT', 'LIGHT_PIXEL'], allowedControlBlocks: [] },
+        beat: { width: 4, height: 4 },
+      };
+      const turtleInputAct: CurriculumActivity = {
+        id: 'branch.turtle.playback',
+        version: 1,
+        moduleId: 'branch',
+        format: 'creative',
+        simId: 'turtle',
+        icon: '🐢',
+        title: 'Turtle Playback $input',
+        subtitle: 'FORWARD $input animation + repeatCount',
+        goalText: '',
+        initialSpeed: 400,
+        inputConfig: { mode: 'int', options: [0, 3], previewInput: 3 },
+        palette: { allowedSimBlocks: ['FORWARD'], allowedControlBlocks: [] },
+        turtle: { x: 0, y: 0, heading: 0, penDown: true, penColor: 'red', penWidth: 2 },
+      };
+
+      CURRICULUM_ACTIVITIES.push(beatInputAct, turtleInputAct);
+      vi.useFakeTimers();
+      try {
+        const store = useAppStore.getState();
+
+        // 1. Beat WAIT_BEAT with duration: '$input' (sceneInput = 2 -> 800ms at 400ms 1x)
+        store.setCurriculumActivity('branch.beat.playback', 1);
+        store.setSpeed(400);
+        useAppStore.setState({
+          workspace: {
+            MAIN: [
+              { id: 'wb_1', type: 'WAIT_BEAT', params: { duration: '$input' } },
+              { id: 'lp_1', type: 'LIGHT_PIXEL', params: { x: 1, y: 1 } },
+            ],
+            F1: [],
+            F2: [],
+            F3: [],
+          },
+        });
+        store.play();
+        expect(useAppStore.getState().sceneInput).toBe(2);
+        expect(useAppStore.getState().beatState.leds[0][0]).toBeNull();
+
+        // At 400ms (1x fallback duration) LED must still be unlit; at 800ms ($input = 2) it lights up
+        vi.advanceTimersByTime(400);
+        expect(useAppStore.getState().beatState.leds[0][0]).toBeNull();
+        vi.advanceTimersByTime(400);
+        expect(useAppStore.getState().beatState.leds[0][0]).not.toBeNull();
+        store.pause();
+
+        // 2. Turtle FORWARD with repeatCount: '$input' and length: '$input' (sceneInput = 3)
+        const rafCallbacks: FrameRequestCallback[] = [];
+        vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+          rafCallbacks.push(cb);
+          return rafCallbacks.length;
+        });
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        store.setCurriculumActivity('branch.turtle.playback', 1);
+        store.setSpeed(400);
+        useAppStore.setState({
+          workspace: {
+            MAIN: [
+              {
+                id: 'fw_1',
+                type: 'FORWARD',
+                repeatCount: '$input',
+                params: { length: '$input' },
+              },
+            ],
+            F1: [],
+            F2: [],
+            F3: [],
+          },
+        });
+        store.play();
+        const tState = useAppStore.getState().turtleState;
+        const rt = useAppStore.getState().runtime;
+        expect(useAppStore.getState().sceneInput).toBe(3);
+        expect(rt?.callStack[0]?.subTickLeft).toBe(2);
+        expect(rt?.activeRepeatProgress?.total).toBe(3);
+        expect(tState.activeAnimation).not.toBeNull();
+        expect(tState.activeAnimation?.duration).toBeGreaterThan(0);
+        const animDist = Math.hypot(
+          (tState.activeAnimation?.toPose.x ?? 0) - (tState.activeAnimation?.fromPose.x ?? 0),
+          (tState.activeAnimation?.toPose.y ?? 0) - (tState.activeAnimation?.fromPose.y ?? 0)
+        );
+        expect(animDist).toBeCloseTo(3);
+        expect(rafCallbacks.length).toBeGreaterThanOrEqual(1);
+        store.pause();
+
+        // Also verify repeatCount: '$input' uses sceneInput = 0 (skipping block instead of fallback 1)
+        const prevRafs = rafCallbacks.length;
+        store.setSceneInput(0);
+        store.pause();
+        useAppStore.setState({
+          workspace: {
+            MAIN: [
+              {
+                id: 'fw_zero',
+                type: 'FORWARD',
+                repeatCount: '$input',
+                params: { length: 50 },
+              },
+            ],
+            F1: [],
+            F2: [],
+            F3: [],
+          },
+        });
+        store.play();
+        expect(useAppStore.getState().sceneInput).toBe(0);
+        expect(useAppStore.getState().turtleState.activeAnimation).toBeNull();
+        expect(useAppStore.getState().turtleState.paths).toHaveLength(0);
+        expect(rafCallbacks.length).toBe(prevRafs);
+        store.pause();
+      } finally {
+        useAppStore.getState().pause();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+        const bIdx = CURRICULUM_ACTIVITIES.indexOf(beatInputAct);
+        if (bIdx >= 0) CURRICULUM_ACTIVITIES.splice(bIdx, 1);
+        const tIdx = CURRICULUM_ACTIVITIES.indexOf(turtleInputAct);
+        if (tIdx >= 0) CURRICULUM_ACTIVITIES.splice(tIdx, 1);
       }
     });
   });

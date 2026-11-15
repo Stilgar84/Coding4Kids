@@ -291,7 +291,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 data-testid="cond-slot-left"
                 onClick={() => setActiveSlot('left')}
                 aria-pressed={effectiveSlot === 'left'}
-                className={`px-1.5 py-0.5 rounded text-xs transition-all ${
+                className={`inline-flex items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 py-1 rounded-lg text-xs transition-all ${
                   effectiveSlot === 'left'
                     ? 'bg-cyan-500/25 border border-cyan-400 text-white'
                     : 'text-slate-300 hover:text-white'
@@ -308,7 +308,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 data-testid="cond-slot-right"
                 onClick={() => setActiveSlot('right')}
                 aria-pressed={effectiveSlot === 'right'}
-                className={`px-1.5 py-0.5 rounded text-xs transition-all ${
+                className={`inline-flex items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 py-1 rounded-lg text-xs transition-all ${
                   effectiveSlot === 'right'
                     ? 'bg-cyan-500/25 border border-cyan-400 text-white'
                     : 'text-slate-300 hover:text-white'
@@ -333,7 +333,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 onClick={handleToggleNot}
                 title="Toggle NOT (!)"
                 aria-label="Toggle NOT (!)"
-                className={`min-w-[30px] h-[28px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
+                className={`min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
                   isActiveNegated
                     ? 'bg-rose-500/25 border-rose-400 text-rose-200 ring-2 ring-rose-400/40'
                     : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -349,7 +349,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 onClick={() => handleSelectJoinMode('single')}
                 title="Use single condition"
                 aria-label="Use single condition"
-                className="min-w-[28px] h-[28px] px-1.5 rounded-lg border bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500 text-[11px] font-mono font-bold transition-all active:scale-95"
+                className="min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500 text-xs font-mono font-bold transition-all active:scale-95"
               >
                 1
               </button>
@@ -362,7 +362,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 onClick={() => handleSelectJoinMode('and')}
                 title="Combine with AND (&)"
                 aria-label="Combine with AND"
-                className={`min-w-[30px] h-[28px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
+                className={`min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
                   currentCond.kind === 'and'
                     ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
                     : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -379,7 +379,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 onClick={() => handleSelectJoinMode('or')}
                 title="Combine with OR (||)"
                 aria-label="Combine with OR"
-                className={`min-w-[30px] h-[28px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
+                className={`min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border text-xs font-mono font-black transition-all active:scale-95 ${
                   currentCond.kind === 'or'
                     ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
                     : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -412,7 +412,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
               aria-pressed={isSelected}
               onClick={() => handleSelectSensor(sensorId)}
               title={sensorId}
-              className={`flex-shrink-0 flex items-center justify-center min-w-[36px] h-[34px] px-2 rounded-lg border transition-all active:scale-95 ${
+              className={`flex-shrink-0 flex items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border transition-all active:scale-95 ${
                 isSelected
                   ? 'bg-cyan-500/25 border-cyan-400 ring-2 ring-cyan-400/40 shadow-sm'
                   : 'bg-slate-900/90 hover:bg-slate-800/90 border-slate-700/80 hover:border-slate-500'
@@ -451,7 +451,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                     wrapNot({ kind: 'sensor', sensor: activeAtom.sensor, param: name }, isActiveNegated)
                   )
                 }
-                className={`flex-shrink-0 w-7 h-7 rounded-full border-2 transition-all active:scale-95 ${
+                className={`flex-shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-full border-2 transition-all active:scale-95 ${
                   isSelected
                     ? 'border-amber-300 ring-2 ring-amber-400/60 scale-110'
                     : 'border-slate-600 hover:border-white/70'
@@ -481,7 +481,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                     wrapNot({ kind: 'sensor', sensor: 'itemIcon', param: id }, isActiveNegated)
                   )
                 }
-                className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg border text-base transition-all active:scale-95 ${
+                className={`flex-shrink-0 flex items-center justify-center w-9 h-9 md:w-11 md:h-11 rounded-lg border text-base transition-all active:scale-95 ${
                   isSelected
                     ? 'bg-amber-500/20 border-amber-400 ring-2 ring-amber-400/40'
                     : 'bg-slate-900 border-slate-700 hover:border-slate-500'
@@ -519,7 +519,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                       )
                     )
                   }
-                  className={`flex-shrink-0 flex items-center justify-center min-w-[34px] h-7 px-1.5 rounded-lg border text-xs font-black font-mono transition-all active:scale-95 ${
+                  className={`flex-shrink-0 flex items-center justify-center min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border text-xs font-black font-mono transition-all active:scale-95 ${
                     isSelected
                       ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
                       : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500'
@@ -548,7 +548,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 wrapNot({ ...activeAtom, op: '=' }, isActiveNegated)
               )
             }
-            className={`flex-shrink-0 min-w-[28px] h-7 px-1.5 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
+            className={`flex-shrink-0 min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
               activeAtom.op === '='
                 ? 'bg-cyan-500/25 border-cyan-400 text-cyan-100 ring-2 ring-cyan-400/40'
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -566,7 +566,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                 wrapNot({ ...activeAtom, op: '!=' }, isActiveNegated)
               )
             }
-            className={`flex-shrink-0 min-w-[28px] h-7 px-1.5 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
+            className={`flex-shrink-0 min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
               activeAtom.op === '!='
                 ? 'bg-rose-500/25 border-rose-400 text-rose-100 ring-2 ring-rose-400/40'
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -594,7 +594,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                       wrapNot({ ...activeAtom, right: targetVal }, isActiveNegated)
                     )
                   }
-                  className={`flex-shrink-0 w-7 h-7 rounded-full border-2 transition-all active:scale-95 ${
+                  className={`flex-shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-full border-2 transition-all active:scale-95 ${
                     isSelected
                       ? 'border-amber-300 ring-2 ring-amber-400/60 scale-110'
                       : 'border-slate-600 hover:border-white/70'
@@ -616,7 +616,7 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
                     wrapNot({ ...activeAtom, right: numVal }, isActiveNegated)
                   )
                 }
-                className={`flex-shrink-0 min-w-[30px] h-7 px-2 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
+                className={`flex-shrink-0 min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2.5 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
                   isSelected
                     ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
                     : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500'

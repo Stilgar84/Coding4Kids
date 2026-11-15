@@ -76,7 +76,7 @@ export const SceneInputBarView: React.FC<SceneInputBarViewProps> = ({
                 aria-label={`Scene ${normOpt}`}
                 title={normOpt}
                 onClick={() => onChange(emitted)}
-                className={`w-7 h-7 md:w-8 md:h-8 rounded-full border-2 transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${
+                className={`w-9 h-9 md:w-11 md:h-11 rounded-full border-2 transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${
                   isSelected
                     ? 'border-white ring-2 ring-amber-400 scale-110 shadow-md'
                     : 'border-slate-600 hover:border-slate-300 opacity-85 hover:opacity-100'
@@ -97,7 +97,7 @@ export const SceneInputBarView: React.FC<SceneInputBarViewProps> = ({
               aria-pressed={isSelected}
               aria-label={`Scene ${numOpt}`}
               onClick={() => onChange(numOpt)}
-              className={`min-w-[34px] h-7 md:min-w-[38px] md:h-8 px-2.5 rounded-xl border-2 font-mono font-black text-xs md:text-sm transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${
+              className={`min-w-[36px] min-h-[36px] h-9 md:min-w-[44px] md:min-h-[44px] md:h-11 px-2.5 rounded-xl border-2 font-mono font-black text-xs md:text-sm transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${
                 isSelected
                   ? 'bg-amber-500 text-slate-950 border-amber-200 ring-2 ring-amber-400/50 shadow-md'
                   : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-600'
