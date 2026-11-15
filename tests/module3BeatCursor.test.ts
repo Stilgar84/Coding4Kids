@@ -127,46 +127,56 @@ describe('Loops (loop): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) & Less
       expect(afterReset.beatIndex).toBe(0);
     });
 
-    it('wraps cleanly across all 4 edges (EAST, WEST, SOUTH, NORTH) on the 1..8 x 1..8 LED matrix', () => {
-      // EAST wrap: (8, 3) -> (1, 3)
+    it('soft-clamps cleanly across all 4 edges (EAST, WEST, SOUTH, NORTH) on the 1..8 x 1..8 LED matrix with edgeBonk telemetry', () => {
+      // EAST edge clamp: (8, 3) stays at (8, 3) with edgeBonk
       const eastEdge: BeatState = {
         ...createInitialBeatState(true),
         activeColor: '#f43f5e',
         cursor: { x: 8, y: 3, dir: 'EAST', visible: true },
       };
-      const wrappedEast = beatSimulationEnvironment.executeAction('CURSOR_STEP', eastEdge).nextState;
-      expect(wrappedEast.cursor).toEqual({ x: 1, y: 3, dir: 'EAST', visible: true });
-      expect(wrappedEast.leds[2][0]).toBe('#f43f5e');
+      const clampedEastRes = beatSimulationEnvironment.executeAction('CURSOR_STEP', eastEdge);
+      expect(clampedEastRes.status).toBe('RUNNING');
+      expect(clampedEastRes.isSuccess).not.toBe(true);
+      expect(clampedEastRes.nextState.cursor).toEqual({ x: 8, y: 3, dir: 'EAST', visible: true });
+      expect(clampedEastRes.nextState.edgeBonk).toBe(true);
+      expect(clampedEastRes.nextState.edgeBonkPulse).toBe(1);
+      expect(clampedEastRes.nextState.leds[2][7]).toBe('#f43f5e');
 
-      // WEST wrap: (1, 5) -> (8, 5)
+      // WEST edge clamp: (1, 5) stays at (1, 5) with edgeBonk
       const westEdge: BeatState = {
         ...createInitialBeatState(true),
         activeColor: '#fbbf24',
         cursor: { x: 1, y: 5, dir: 'WEST', visible: true },
       };
-      const wrappedWest = beatSimulationEnvironment.executeAction('CURSOR_STEP', westEdge).nextState;
-      expect(wrappedWest.cursor).toEqual({ x: 8, y: 5, dir: 'WEST', visible: true });
-      expect(wrappedWest.leds[4][7]).toBe('#fbbf24');
+      const clampedWestRes = beatSimulationEnvironment.executeAction('CURSOR_STEP', westEdge);
+      expect(clampedWestRes.status).toBe('RUNNING');
+      expect(clampedWestRes.nextState.cursor).toEqual({ x: 1, y: 5, dir: 'WEST', visible: true });
+      expect(clampedWestRes.nextState.edgeBonk).toBe(true);
+      expect(clampedWestRes.nextState.leds[4][0]).toBe('#fbbf24');
 
-      // SOUTH wrap: (4, 8) -> (4, 1)
+      // SOUTH edge clamp: (4, 8) stays at (4, 8) with edgeBonk
       const southEdge: BeatState = {
         ...createInitialBeatState(true),
         activeColor: '#10b981',
         cursor: { x: 4, y: 8, dir: 'SOUTH', visible: true },
       };
-      const wrappedSouth = beatSimulationEnvironment.executeAction('CURSOR_STEP', southEdge).nextState;
-      expect(wrappedSouth.cursor).toEqual({ x: 4, y: 1, dir: 'SOUTH', visible: true });
-      expect(wrappedSouth.leds[0][3]).toBe('#10b981');
+      const clampedSouthRes = beatSimulationEnvironment.executeAction('CURSOR_STEP', southEdge);
+      expect(clampedSouthRes.status).toBe('RUNNING');
+      expect(clampedSouthRes.nextState.cursor).toEqual({ x: 4, y: 8, dir: 'SOUTH', visible: true });
+      expect(clampedSouthRes.nextState.edgeBonk).toBe(true);
+      expect(clampedSouthRes.nextState.leds[7][3]).toBe('#10b981');
 
-      // NORTH wrap: (6, 1) -> (6, 8)
+      // NORTH edge clamp: (6, 1) stays at (6, 1) with edgeBonk
       const northEdge: BeatState = {
         ...createInitialBeatState(true),
         activeColor: '#a855f7',
         cursor: { x: 6, y: 1, dir: 'NORTH', visible: true },
       };
-      const wrappedNorth = beatSimulationEnvironment.executeAction('CURSOR_STEP', northEdge).nextState;
-      expect(wrappedNorth.cursor).toEqual({ x: 6, y: 8, dir: 'NORTH', visible: true });
-      expect(wrappedNorth.leds[7][5]).toBe('#a855f7');
+      const clampedNorthRes = beatSimulationEnvironment.executeAction('CURSOR_STEP', northEdge);
+      expect(clampedNorthRes.status).toBe('RUNNING');
+      expect(clampedNorthRes.nextState.cursor).toEqual({ x: 6, y: 1, dir: 'NORTH', visible: true });
+      expect(clampedNorthRes.nextState.edgeBonk).toBe(true);
+      expect(clampedNorthRes.nextState.leds[0][5]).toBe('#a855f7');
     });
 
     it('rotates CURSOR_TURN 90 degrees RIGHT and LEFT across all 4 cardinal directions without lighting LEDs', () => {
@@ -615,6 +625,91 @@ describe('Loops (loop): Beat LED Cursor Blocks (CURSOR_STEP, CURSOR_TURN) & Less
       expect(useAppStore.getState().beatState.cursor.visible).toBe(false);
 
       beatVariationPreviewPlayer.stop();
+    });
+  });
+
+  describe('6. Phase 2: Directional cursorAtEdge, Soft Edge-Clamp + edgeBonk & BeatCanvas Reset/Shimmer', () => {
+    it('evaluates cursorAtEdge true ONLY when on outer border AND facing outward across custom/default grids', () => {
+      const base = createInitialBeatState(true);
+      const evalEdge = (x: number, y: number, dir: Direction, width = 8, height = 8) =>
+        beatSimulationEnvironment.evaluateSensor('cursorAtEdge', {
+          ...base,
+          width,
+          height,
+          cursor: { x, y, dir, visible: true },
+        });
+
+      // Corners facing outward vs parallel/inward
+      expect(evalEdge(1, 1, 'WEST')).toBe(true);
+      expect(evalEdge(1, 1, 'NORTH')).toBe(true);
+      expect(evalEdge(1, 1, 'EAST')).toBe(false);
+      expect(evalEdge(1, 1, 'SOUTH')).toBe(false);
+
+      expect(evalEdge(8, 8, 'EAST')).toBe(true);
+      expect(evalEdge(8, 8, 'SOUTH')).toBe(true);
+      expect(evalEdge(8, 8, 'WEST')).toBe(false);
+      expect(evalEdge(8, 8, 'NORTH')).toBe(false);
+
+      // Mid-border cells
+      expect(evalEdge(4, 1, 'NORTH')).toBe(true);
+      expect(evalEdge(4, 1, 'EAST')).toBe(false);
+      expect(evalEdge(4, 8, 'SOUTH')).toBe(true);
+      expect(evalEdge(4, 8, 'NORTH')).toBe(false);
+      expect(evalEdge(1, 5, 'WEST')).toBe(true);
+      expect(evalEdge(1, 5, 'SOUTH')).toBe(false);
+      expect(evalEdge(8, 5, 'EAST')).toBe(true);
+      expect(evalEdge(8, 5, 'WEST')).toBe(false);
+
+      // Interior cells never trigger cursorAtEdge regardless of heading
+      for (const dir of ['NORTH', 'EAST', 'SOUTH', 'WEST'] as const) {
+        expect(evalEdge(4, 4, dir)).toBe(false);
+      }
+
+      // Custom grid width/height bounds
+      expect(evalEdge(5, 3, 'EAST', 5, 4)).toBe(true);
+      expect(evalEdge(5, 3, 'SOUTH', 5, 4)).toBe(false);
+      expect(evalEdge(5, 4, 'SOUTH', 5, 4)).toBe(true);
+    });
+
+    it('terminates WHILE (NOT cursorAtEdge) loops cleanly at border and resets edgeBonk + cursor visibility', () => {
+      const ws = makeBeatWorkspace([
+        createCurriculumBlock('SET_LED_COLOR', undefined, { color: '#38bdf8' }, 'c1'),
+        createCurriculumBlock(
+          'WHILE',
+          undefined,
+          { condition: { kind: 'not', operand: { kind: 'sensor', sensor: 'cursorAtEdge' } } },
+          'w1'
+        ),
+        createCurriculumBlock('CURSOR_STEP', undefined, undefined, 's1'),
+        createCurriculumBlock('END_WHILE', undefined, undefined, 'we1'),
+      ]);
+
+      const res = runHeadlessSimulation(ws, 'beat', createInitialBeatState(true));
+      expect(res.status).toBe('IDLE');
+      expect(res.finalState.cursor).toEqual({ x: 8, y: 1, dir: 'EAST', visible: true });
+      expect(res.finalState.edgeBonk).toBe(false);
+      expect(res.finalState.leds[0].slice(1)).toEqual(new Array(7).fill('#38bdf8'));
+
+      // Stepping into edge once triggers edgeBonk shimmer without collision, then reset clears everything
+      const bonked = beatSimulationEnvironment.executeAction('CURSOR_STEP', res.finalState).nextState;
+      expect(bonked.status).toBe('RUNNING');
+      expect(bonked.cursor).toEqual({ x: 8, y: 1, dir: 'EAST', visible: true });
+      expect(bonked.edgeBonk).toBe(true);
+      expect(bonked.edgeBonkPulse).toBeGreaterThanOrEqual(1);
+
+      const bonkedHtml = renderToStaticMarkup(React.createElement(BeatCanvas, { state: bonked }));
+      expect(bonkedHtml).toContain('data-testid="beat-cursor-reticle"');
+      expect(bonkedHtml).toContain('data-testid="beat-edge-bonk-shimmer"');
+      expect(bonkedHtml).toContain('data-edge-bonk="true"');
+
+      const reset = resetBeatState(bonked);
+      expect(reset.edgeBonk).toBe(false);
+      expect(reset.edgeBonkPulse).toBe(0);
+      expect(reset.cursor.visible).toBe(false);
+
+      const resetHtml = renderToStaticMarkup(React.createElement(BeatCanvas, { state: reset }));
+      expect(resetHtml).not.toContain('data-testid="beat-cursor-reticle"');
+      expect(resetHtml).not.toContain('data-testid="beat-edge-bonk-shimmer"');
     });
   });
 });

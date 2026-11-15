@@ -13,6 +13,18 @@ import {
 } from '../simulations/grid/components/WorldItemsLayer';
 import { BeaconAndDialLayer } from '../simulations/grid/components/BeaconAndDialLayer';
 import { SimulationTopLeftHud } from './SimulationTopLeftHud';
+import { resolveActiveCurriculumActivity } from '../utils/curriculumStagePolicy';
+import {
+  SensorBeamGridOverlay,
+  extractConditionSensors,
+  resolveActiveConditionalBlock,
+} from '../simulations/grid/components/SensorAndBranchSpotlight';
+import {
+  evaluateGridSensor,
+  hasAheadBridgedPlank,
+  resolveBeaconColorHex,
+  resolveTileColorIdx,
+} from '../simulations/grid/sensors';
 import {
   DIR_DELTAS,
   hasInteractiveWorldElements,
@@ -456,11 +468,15 @@ const GridStaticBoardLayer = React.memo<GridStaticBoardLayerProps>(
   }
 );
 
-export const GridCanvas: React.FC = () => {
+export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid }) => {
   const {
     appMode,
-    grid,
+    storeGrid,
     runtime,
+    workspace,
+    activeActivityId,
+    activeActivityVersion,
+    activeDemoTabIndex,
     toggleWall,
     addWall,
     resizeBoard,
@@ -475,8 +491,12 @@ export const GridCanvas: React.FC = () => {
     hasMultiVariant,
   } = useAppStoreSelector((s) => ({
     appMode: s.appMode,
-    grid: s.grid,
+    storeGrid: s.grid,
     runtime: s.runtime,
+    workspace: s.workspace,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
     toggleWall: s.toggleWall,
     addWall: s.addWall,
     resizeBoard: s.resizeBoard,
@@ -490,9 +510,69 @@ export const GridCanvas: React.FC = () => {
     isLowQuality: isLowQualityActive(s),
     hasMultiVariant: s.variantRuns.length > 1,
   }));
+  const grid = propGrid || storeGrid;
 
   const isReadOnly = appMode === 'curriculum';
   const isInstant = speed === 'instant' || (speed as any) === 0;
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const hasDemoSensorBeamSpotlight = Boolean(
+    appMode === 'curriculum' &&
+      activeActivity?.format === 'explanation' &&
+      activeActivity.demoTabs?.length &&
+      activeActivity.demoTabs[
+        Math.min(Math.max(0, activeDemoTabIndex), activeActivity.demoTabs.length - 1)
+      ]?.spotlights?.includes('sensor-beam')
+  );
+  const cueCondBlock = resolveActiveConditionalBlock(runtime, workspace);
+  const activeCondRefs = cueCondBlock
+    ? extractConditionSensors(
+        cueCondBlock.params?.condition,
+        cueCondBlock.params?.sensor as string | undefined,
+        cueCondBlock.params?.param as string | undefined
+      )
+    : [];
+  const allWorkspaceSensorRefs = (['MAIN', 'F1', 'F2', 'F3'] as const).flatMap((sc) =>
+    (workspace?.[sc] ?? []).flatMap((b) =>
+      b.type === 'IF' || b.type === 'ELSE_IF' || b.type === 'WHILE'
+        ? extractConditionSensors(
+            b.params?.condition,
+            b.params?.sensor as string | undefined,
+            b.params?.param as string | undefined
+          )
+        : []
+    )
+  );
+  const robotSensors = activeCondRefs.length > 0 ? activeCondRefs : allWorkspaceSensorRefs;
+  const hasSensorAhead = robotSensors.some(
+    (r) => r.sensor === 'pathAhead' || r.sensor === 'unvisitedAhead'
+  );
+  const hasSensorLeft = robotSensors.some((r) => r.sensor === 'pathLeft');
+  const hasSensorRight = robotSensors.some((r) => r.sensor === 'pathRight');
+  const hasSensorItemHere = robotSensors.some((r) => r.sensor === 'itemHere');
+  const tileColorSensorRef = robotSensors.find((r) => r.sensor === 'tileColor');
+  const aheadOpen = hasSensorAhead ? evaluateGridSensor('pathAhead', grid) : false;
+  const leftOpen = hasSensorLeft ? evaluateGridSensor('pathLeft', grid) : false;
+  const rightOpen = hasSensorRight ? evaluateGridSensor('pathRight', grid) : false;
+  const hasFloorItemAtRobot = (grid.worldItems ?? []).some(
+    (it) => it.x === grid.robot.x && it.y === grid.robot.y
+  );
+  const showAheadPlankScanBeam =
+    hasSensorItemHere && !hasFloorItemAtRobot && hasAheadBridgedPlank(grid);
+  const tileColorTargetHex = tileColorSensorRef
+    ? resolveBeaconColorHex(resolveTileColorIdx('tileColor', tileColorSensorRef.param)) ?? '#38bdf8'
+    : null;
+  const tileColorMatched = tileColorSensorRef
+    ? evaluateGridSensor('tileColor', grid, tileColorSensorRef.param)
+    : false;
+  const robotBeaconHere = tileColorSensorRef
+    ? (grid.beaconTiles ?? []).find(
+        (b) => b.x === grid.robot.x && b.y === grid.robot.y
+      )
+    : undefined;
 
   // Track short-lived robot micro-feedback animations (plank 1-ahead lift, hands-full wiggle, wrong-key X, reverse dust)
   const EMPTY_MICRO_FX = {
@@ -1229,6 +1309,170 @@ export const GridCanvas: React.FC = () => {
                 fill="#0284c7"
                 className={`opacity-30 ${isInstant || isLowQuality ? '' : 'animate-pulse'}`}
               />
+              {/* Beacon color+shape match ring for tileColor sensor */}
+              {tileColorSensorRef && tileColorTargetHex && (
+                <g
+                  data-testid="robot-tile-color-ring"
+                  data-matched={tileColorMatched ? 'true' : 'false'}
+                  data-beacon-shape={robotBeaconHere?.shape ?? 'none'}
+                >
+                  <circle
+                    r={28}
+                    fill="none"
+                    stroke={tileColorTargetHex}
+                    strokeWidth={tileColorMatched ? 3.2 : 2}
+                    strokeDasharray={tileColorMatched ? undefined : '4 3'}
+                    opacity={tileColorMatched ? 0.95 : 0.6}
+                  />
+                  {robotBeaconHere && (
+                    <circle
+                      r={24}
+                      fill={tileColorMatched ? tileColorTargetHex : 'none'}
+                      fillOpacity={tileColorMatched ? 0.16 : 0}
+                      stroke="#ffffff"
+                      strokeWidth={1}
+                      strokeOpacity={tileColorMatched ? 0.75 : 0.3}
+                    />
+                  )}
+                </g>
+              )}
+              {/* Directional Scan Visor & Ears (pathAhead / pathLeft / pathRight) */}
+              {hasSensorAhead && (
+                <g
+                  data-testid="robot-sensor-visor-ahead"
+                  data-open={aheadOpen ? 'true' : 'false'}
+                >
+                  <path
+                    d="M -13 -24 Q 0 -31 13 -24"
+                    fill="none"
+                    stroke={aheadOpen ? '#10b981' : '#ef4444'}
+                    strokeWidth={3.2}
+                    strokeLinecap="round"
+                  />
+                  <g transform="translate(0, -32)">
+                    <g transform={`rotate(${-getAngle(robot.dir)})`}>
+                      <circle
+                        r={6.5}
+                        fill={aheadOpen ? '#059669' : '#dc2626'}
+                        stroke="#ffffff"
+                        strokeWidth={1.4}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#ffffff"
+                        fontSize={8.5}
+                        fontWeight={900}
+                      >
+                        {aheadOpen ? '✓' : '✕'}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              )}
+              {hasSensorLeft && (
+                <g
+                  data-testid="robot-sensor-ear-left"
+                  data-open={leftOpen ? 'true' : 'false'}
+                >
+                  <path
+                    d="M -24 -11 Q -31 0 -24 11"
+                    fill="none"
+                    stroke={leftOpen ? '#10b981' : '#ef4444'}
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  <g transform="translate(-31, 0)">
+                    <g transform={`rotate(${-getAngle(robot.dir)})`}>
+                      <circle
+                        r={6}
+                        fill={leftOpen ? '#059669' : '#dc2626'}
+                        stroke="#ffffff"
+                        strokeWidth={1.3}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#ffffff"
+                        fontSize={8}
+                        fontWeight={900}
+                      >
+                        {leftOpen ? '✓' : '✕'}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              )}
+              {hasSensorRight && (
+                <g
+                  data-testid="robot-sensor-ear-right"
+                  data-open={rightOpen ? 'true' : 'false'}
+                >
+                  <path
+                    d="M 24 -11 Q 31 0 24 11"
+                    fill="none"
+                    stroke={rightOpen ? '#10b981' : '#ef4444'}
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  <g transform="translate(31, 0)">
+                    <g transform={`rotate(${-getAngle(robot.dir)})`}>
+                      <circle
+                        r={6}
+                        fill={rightOpen ? '#059669' : '#dc2626'}
+                        stroke="#ffffff"
+                        strokeWidth={1.3}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#ffffff"
+                        fontSize={8}
+                        fontWeight={900}
+                      >
+                        {rightOpen ? '✓' : '✕'}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              )}
+              {/* 1-Ahead Bridged Plank Sparkle Scan Beam on `itemHere` */}
+              {showAheadPlankScanBeam && (
+                <g data-testid="robot-plank-scan-beam">
+                  <line
+                    x1={0}
+                    y1={-22}
+                    x2={0}
+                    y2={-CELL_SIZE}
+                    stroke="#fbbf24"
+                    strokeWidth={3.5}
+                    strokeDasharray="4 3"
+                    strokeLinecap="round"
+                    className={isInstant || isLowQuality ? undefined : 'animate-pulse'}
+                  />
+                  <circle
+                    cx={0}
+                    cy={-CELL_SIZE}
+                    r={CELL_SIZE * 0.34}
+                    fill="none"
+                    stroke="#facc15"
+                    strokeWidth={2}
+                    strokeDasharray="4 2"
+                  />
+                  <g transform={`translate(14, ${-CELL_SIZE + 14})`}>
+                    <g transform={`rotate(${-getAngle(robot.dir)})`}>
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={12}
+                        fill="#fde047"
+                      >
+                        ✦
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              )}
               {/* 1-ahead plank retrieval telescopic arm reach animation */}
               {microFx.plankLift && !isInstant && !isLowQuality && (
                 <g data-testid="robot-plank-lift-fx">
@@ -1321,6 +1565,14 @@ export const GridCanvas: React.FC = () => {
               />
             }
           />
+          {cueCondBlock && !hasDemoSensorBeamSpotlight && (
+            <SensorBeamGridOverlay
+              grid={grid}
+              cellSize={CELL_SIZE}
+              runtime={runtime}
+              workspace={workspace}
+            />
+          )}
         </svg>
             </div>
           </div>

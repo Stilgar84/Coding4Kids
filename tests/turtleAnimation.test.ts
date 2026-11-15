@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  createInitialTurtleState,
+  resetTurtleState,
+} from '../src/simulations/turtle/turtleEnvironment';
+import {
   BASE_LINEAR_SPEED,
   BASE_ANGULAR_SPEED,
   MIN_TURTLE_ZOOM,
@@ -686,6 +690,28 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       unsub();
       notifyTurtleCameraPinned(true);
       expect(events).toEqual([true, false]);
+    });
+
+    it('renders 600x480 turtle-canvas-bounds frame when active activity allows insideCanvas or sets showCanvasBounds, and supports reset', () => {
+      const customBoundsState = createInitialTurtleState({ halfWidth: 200, halfHeight: 150 }, true);
+      const customHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: customBoundsState })
+      );
+      expect(customHtml).toContain('data-testid="turtle-canvas-bounds"');
+      expect(customHtml).toContain('x="-200"');
+      expect(customHtml).toContain('y="-150"');
+      expect(customHtml).toContain('width="400"');
+      expect(customHtml).toContain('height="300"');
+
+      const resetState = resetTurtleState({
+        ...customBoundsState,
+        robot: { ...customBoundsState.robot, x: 50, y: -40, heading: 90 },
+      });
+      expect(resetState.showCanvasBounds).toBe(true);
+      expect(resetState.canvasBounds).toEqual({ halfWidth: 200, halfHeight: 150 });
+      expect(resetState.robot.x).toBe(0);
+      expect(resetState.robot.y).toBe(0);
+      expect(resetState.robot.heading).toBe(0);
     });
   });
 });

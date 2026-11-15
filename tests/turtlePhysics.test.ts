@@ -419,4 +419,43 @@ describe('Turtle Physics & Kinematics', () => {
     const svgHidden = renderTurtleMapSvg({ ...state, showTurtle: false });
     expect(svgHidden).not.toContain('data-testid="thumbnail-turtle-robot"');
   });
+
+  it('enforces 1e-6 epsilon on 600x480 insideCanvas bounds and renders turtle-canvas-bounds dashed frame only when enabled', () => {
+    expect(DEFAULT_STEP_DISTANCE).toBe(100);
+    expect(DEFAULT_TURTLE_CANVAS_BOUNDS).toEqual({ halfWidth: 300, halfHeight: 240 });
+
+    const base = createInitialTurtleState();
+    // Sandbox state without canvasBounds or showCanvasBounds omits the safe-frame rect
+    const hiddenHtml = renderToStaticMarkup(React.createElement(TurtleCanvas, { state: base }));
+    expect(hiddenHtml).not.toContain('data-testid="turtle-canvas-bounds"');
+
+    // Exact border and within 1e-6 epsilon remain inside; beyond 1e-6 is outside
+    const insideCorner = { ...base, robot: { ...base.robot, x: 300, y: -240 } };
+    const insideEps = { ...base, robot: { ...base.robot, x: -300 - 5e-7, y: 240 + 5e-7 } };
+    const outsideX = { ...base, robot: { ...base.robot, x: 300 + 2e-6, y: 0 } };
+    const outsideY = { ...base, robot: { ...base.robot, x: 0, y: -240 - 2e-6 } };
+    expect(turtleSimulationEnvironment.evaluateSensor?.('insideCanvas', insideCorner)).toBe(true);
+    expect(turtleSimulationEnvironment.evaluateSensor?.('insideCanvas', insideEps)).toBe(true);
+    expect(turtleSimulationEnvironment.evaluateSensor?.('insideCanvas', outsideX)).toBe(false);
+    expect(turtleSimulationEnvironment.evaluateSensor?.('insideCanvas', outsideY)).toBe(false);
+
+    // showCanvasBounds=true renders 600x480 safe frame and survives resetTurtleState
+    const bounded = createInitialTurtleState(undefined, true);
+    expect(bounded.showCanvasBounds).toBe(true);
+    const boundedAfterReset = resetTurtleState({
+      ...bounded,
+      robot: { ...bounded.robot, x: 100, y: 50 },
+    });
+    expect(boundedAfterReset.showCanvasBounds).toBe(true);
+
+    const boundedHtml = renderToStaticMarkup(
+      React.createElement(TurtleCanvas, { state: boundedAfterReset })
+    );
+    expect(boundedHtml).toContain('data-testid="turtle-canvas-bounds"');
+    expect(boundedHtml).toContain('x="-300"');
+    expect(boundedHtml).toContain('y="-240"');
+    expect(boundedHtml).toContain('width="600"');
+    expect(boundedHtml).toContain('height="480"');
+    expect(boundedHtml).toContain('stroke-dasharray="6 4"');
+  });
 });

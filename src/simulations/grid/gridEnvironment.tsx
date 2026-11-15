@@ -1,5 +1,10 @@
 import React from 'react';
-import { SimulationEnvironment, SimPaletteItem, SimActionResult } from '../../engine/simulation/types';
+import {
+  SimulationEnvironment,
+  SimulationRendererProps,
+  SimPaletteItem,
+  SimActionResult,
+} from '../../engine/simulation/types';
 import { GridState, Direction } from '../../types';
 import {
   areGoalSwitchesSatisfied,
@@ -203,6 +208,21 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
 
     const res = executeRobotAction(actionType as RobotGridActionType, state);
 
+    const prevVisited = (state as GridState & { visitedCells?: { x: number; y: number }[] })
+      .visitedCells;
+    let nextVisited: { x: number; y: number }[] | undefined;
+    if (prevVisited !== undefined) {
+      nextVisited = prevVisited.map((c) => ({ ...c }));
+      const seedX = state.robot.initialX;
+      const seedY = state.robot.initialY;
+      if (!nextVisited.some((c) => c.x === seedX && c.y === seedY)) {
+        nextVisited.unshift({ x: seedX, y: seedY });
+      }
+      if (!res.isCollision && !nextVisited.some((c) => c.x === res.newX && c.y === res.newY)) {
+        nextVisited.push({ x: res.newX, y: res.newY });
+      }
+    }
+
     const nextState: GridState = {
       ...state,
       robot: {
@@ -219,6 +239,7 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       },
       flags: res.flags,
       trace: res.trace,
+      ...(nextVisited !== undefined ? { visitedCells: nextVisited } : {}),
       ...(res.bridgedWaterCells !== undefined ? { bridgedWaterCells: res.bridgedWaterCells } : {}),
       ...(res.lockedGates !== undefined ? { lockedGates: res.lockedGates } : {}),
       ...(capturedInitialGates !== undefined ? { initialLockedGates: capturedInitialGates } : {}),
@@ -279,7 +300,7 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       : 'IDLE';
   },
 
-  Renderer: GridCanvas,
+  Renderer: ({ state }: SimulationRendererProps<GridState>) => <GridCanvas state={state} />,
 
   ToolsComponent: GridToolbarTools,
 };

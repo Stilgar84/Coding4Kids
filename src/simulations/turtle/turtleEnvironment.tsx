@@ -53,7 +53,10 @@ export function getEffectiveTurtlePaletteItems(allowActionParams = true): SimPal
   }));
 }
 
-export function createInitialTurtleState(canvasBounds?: TurtleCanvasBounds): TurtleState {
+export function createInitialTurtleState(
+  canvasBounds?: TurtleCanvasBounds,
+  showCanvasBounds?: boolean
+): TurtleState {
   return {
     robot: {
       x: 0,
@@ -73,12 +76,13 @@ export function createInitialTurtleState(canvasBounds?: TurtleCanvasBounds): Tur
     instantMode: false,
     showTurtle: true,
     ...(canvasBounds ? { canvasBounds: { ...canvasBounds } } : {}),
+    ...(showCanvasBounds !== undefined ? { showCanvasBounds } : {}),
   };
 }
 
 export function resetTurtleState(state: TurtleState): TurtleState {
   return {
-    ...createInitialTurtleState(state.canvasBounds),
+    ...createInitialTurtleState(state.canvasBounds, state.showCanvasBounds),
     pan: state.pan,
     zoom: state.zoom,
     fitToView: state.fitToView,

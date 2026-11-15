@@ -228,6 +228,7 @@ export function resetGridInteractiveState(grid: GridState): GridState {
     (grid.dialTiles && grid.dialTiles.length > 0);
 
   if (!hasWorld) {
+    const trackedVisited = (grid as GridState & { visitedCells?: CellCoord[] }).visitedCells;
     return {
       ...grid,
       robot: {
@@ -238,6 +239,9 @@ export function resetGridInteractiveState(grid: GridState): GridState {
       },
       flags: grid.flags.map((f) => ({ ...f, collected: false })),
       trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
+      ...(trackedVisited !== undefined
+        ? { visitedCells: [{ x: grid.robot.initialX, y: grid.robot.initialY }] }
+        : {}),
       status: 'IDLE',
     };
   }
@@ -293,6 +297,9 @@ export function resetGridInteractiveState(grid: GridState): GridState {
       : {}),
     lastInteractionFeedback: null,
     trace: [{ x: grid.robot.initialX, y: grid.robot.initialY }],
+    ...((grid as GridState & { visitedCells?: CellCoord[] }).visitedCells !== undefined
+      ? { visitedCells: [{ x: grid.robot.initialX, y: grid.robot.initialY }] }
+      : {}),
     status: 'IDLE',
   };
 }

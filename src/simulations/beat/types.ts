@@ -71,6 +71,10 @@ export interface BeatCursorState {
 export interface BeatState {
   /** 8x8 RGB LED grid indexed as leds[row][col] (0..7 each); null = off, hex string = lit */
   leds: (string | null)[][];
+  /** Optional matrix width override for edge/cursor bounds checks (defaults to BEAT_GRID_SIZE = 8) */
+  width?: number;
+  /** Optional matrix height override for edge/cursor bounds checks (defaults to BEAT_GRID_SIZE = 8) */
+  height?: number;
   /** Current active LED color (persists across SET_LED_COLOR calls; defaults to Cyan) */
   activeColor: string;
   /** True once SET_LED_COLOR has explicitly set a custom color during the run */
@@ -83,6 +87,10 @@ export interface BeatState {
   lastTriggeredEvent: BeatTriggerEvent | null;
   /** Coordinate-free LED cursor state (starts at (1, 1) facing EAST, ready for Commit 17) */
   cursor: BeatCursorState;
+  /** True when the latest CURSOR_STEP soft-clamped on an outer boundary instead of moving */
+  edgeBonk?: boolean;
+  /** Monotonically incrementing pulse counter whenever edgeBonk triggers for UI shimmer re-trigger */
+  edgeBonkPulse?: number;
   /** Whether Beat audio synthesis is muted */
   isMuted: boolean;
   /** Delay multiplier for non-sound, non-wait blocks (0 = instant, 1 = 1x global speed) */
