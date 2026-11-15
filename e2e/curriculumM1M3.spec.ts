@@ -85,7 +85,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.getByTestId('btn-step').click(); // MOVE_FWD 1/2
     await page.getByTestId('btn-step').click(); // MOVE_FWD 2/2
     await page.getByTestId('btn-step').click(); // reaches PLACEHOLDER -> pauses & announces!
-    await expect(page.getByTestId('mode-status-announcer')).toContainText('placeholder');
+    await expect(page.getByTestId('mode-status-announcer')).toContainText('Paused on ? block.');
 
     // Reset and replace both ? turn placeholders with TURN_RIGHT ×2
     await page.getByTestId('btn-reset').click();
