@@ -145,6 +145,7 @@ import {
   createProfile,
   deleteProfile,
   ensureProfilesInitialized,
+  getModuleIdVariants,
   getProfileDisplayName,
   getProfileLessonWorkspaces,
   getProfileProgress,
@@ -1457,13 +1458,42 @@ export const useAppStore = create<AppState>((set, get) => {
   const areAllVariantsSucceeded = (runs: VariantRunSnapshot[]): boolean =>
     runs.length <= 1 || runs.every((v) => v.status === 'SUCCESS');
 
-  let bootMode: AppMode = 'sandbox';
-  let bootActivity = defaultActivity;
+  const bootProfilesState = ensureProfilesInitialized();
+  const bootActiveProfileId = bootProfilesState.activeProfileId;
+  const bootCurriculumAutosaves = getProfileLessonWorkspaces(bootActiveProfileId);
+  const bootSandboxAutosaves = getProfileSandboxWorkspaces(bootActiveProfileId);
+
+  const buildCompletedMap = (profileId: string): Record<string, boolean> => {
+    const prog = getProfileProgress(profileId);
+    const map: Record<string, boolean> = {};
+    for (const k of Object.keys(prog.completedLessons)) {
+      map[k] = true;
+    }
+    return map;
+  };
+
+  const bootProgress = getProfileProgress(bootActiveProfileId);
+  const bootCompletedMap = buildCompletedMap(bootActiveProfileId);
+
+  let bootMode: AppMode = 'curriculum';
+  let bootActivity =
+    CURRICULUM_ACTIVITIES.find(
+      (a) =>
+        !bootCompletedMap[a.id] &&
+        (Boolean(bootProgress.unlockAllModules) ||
+          a.moduleId === 'seq' ||
+          a.moduleId === 'module-1' ||
+          a.moduleId === CURRICULUM_MODULES[0]?.id ||
+          getModuleIdVariants(a.moduleId).some((id) => bootProgress.unlockedModules.includes(id)))
+    ) ?? defaultActivity;
+
   if (typeof window !== 'undefined' && window.location?.search) {
     try {
       const params = new URLSearchParams(window.location.search);
       const modeParam = params.get('mode')?.toLowerCase();
-      if (modeParam === 'curriculum' || modeParam === 'learn') {
+      if (modeParam === 'sandbox' || modeParam === 'freeplay') {
+        bootMode = 'sandbox';
+      } else if (modeParam === 'curriculum' || modeParam === 'learn') {
         bootMode = 'curriculum';
       }
       const activityParam = params.get('activity');
@@ -1478,26 +1508,28 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   }
 
+  const bootGridDef =
+    bootActivity?.grid ?? bootActivity?.gridVariants?.[0] ?? bootActivity?.demoTabs?.[0]?.gridState;
   const initialGrid =
-    bootMode === 'curriculum' && bootActivity?.grid
-      ? createCurriculumGridState(bootActivity.grid)
+    bootMode === 'curriculum' && bootGridDef
+      ? createCurriculumGridState(bootGridDef)
       : createGridFromPreset(initialPreset);
 
-  const bootProfilesState = ensureProfilesInitialized();
-  const bootActiveProfileId = bootProfilesState.activeProfileId;
-  const bootCurriculumAutosaves = getProfileLessonWorkspaces(bootActiveProfileId);
-  const bootSandboxAutosaves = getProfileSandboxWorkspaces(bootActiveProfileId);
   const bootSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' =
-    bootMode === 'curriculum' ? resolveCurriculumSimId(bootActivity?.simId) : 'grid';
+    bootMode === 'curriculum'
+      ? resolveCurriculumSimId(
+          bootActivity?.format === 'explanation' && bootActivity?.demoTabs?.[0]?.simId
+            ? bootActivity.demoTabs[0].simId
+            : bootActivity?.simId
+        )
+      : 'grid';
 
-  const buildCompletedMap = (profileId: string): Record<string, boolean> => {
-    const prog = getProfileProgress(profileId);
-    const map: Record<string, boolean> = {};
-    for (const k of Object.keys(prog.completedLessons)) {
-      map[k] = true;
-    }
-    return map;
-  };
+  const bootDepotDef =
+    bootActivity?.depot ?? bootActivity?.depotVariants?.[0] ?? bootActivity?.demoTabs?.[0]?.depotState;
+  const bootSwitchyardDef =
+    bootActivity?.switchyard ??
+    bootActivity?.switchyardVariants?.[0] ??
+    bootActivity?.demoTabs?.[0]?.switchyardState;
 
   const initialWorkspace =
     bootMode === 'curriculum'
@@ -1505,10 +1537,24 @@ export const useAppStore = create<AppState>((set, get) => {
         ? cloneWorkspace(bootCurriculumAutosaves[bootActivity.id])
         : bootActivity?.starterWorkspace
         ? cloneWorkspaceWithFreshIds(bootActivity.starterWorkspace)
+        : bootActivity?.demoTabs?.[0]?.workspace
+        ? cloneWorkspaceWithFreshIds(bootActivity.demoTabs[0].workspace)
         : createEmptyWorkspace()
       : bootSandboxAutosaves[bootSimId]
       ? cloneWorkspace(bootSandboxAutosaves[bootSimId])
       : createEmptyWorkspace();
+
+  const bootAllowedScopes: ScopeType[] =
+    bootMode === 'curriculum' &&
+    bootActivity?.palette.allowedScopes &&
+    bootActivity.palette.allowedScopes.length > 0
+      ? bootActivity.palette.allowedScopes
+      : ['MAIN'];
+  const bootInitialScope: ScopeType = bootAllowedScopes.includes('MAIN')
+    ? 'MAIN'
+    : bootAllowedScopes[0];
+  const bootOpenFuncBar =
+    bootMode === 'curriculum' && bootAllowedScopes.some((sc) => sc !== 'MAIN');
 
   const persistActiveWorkspace = (
     ws: WorkspaceState,
@@ -1918,7 +1964,7 @@ export const useAppStore = create<AppState>((set, get) => {
     completedActivities: buildCompletedMap(bootActiveProfileId),
 
     appMode: bootMode,
-    activeActivityId: bootActivity?.id || '1.1',
+    activeActivityId: bootActivity?.id || 'seq.0',
     activeActivityVersion: bootActivity?.version || 1,
     activeDemoTabIndex: 0,
     demoTabIndexByActivity: {},
@@ -1948,16 +1994,16 @@ export const useAppStore = create<AppState>((set, get) => {
     turtleState: createInitialTurtleState(),
     beatState: createInitialBeatState(beatSynth.isMuted()),
     depotState:
-      bootMode === 'curriculum' && bootActivity?.depot
-        ? createInitialDepotState(bootActivity.depot)
+      bootMode === 'curriculum' && bootDepotDef
+        ? createInitialDepotState(bootDepotDef)
         : createInitialDepotState(),
     switchyardState:
-      bootMode === 'curriculum' && bootActivity?.switchyard
-        ? createInitialSwitchyardState(bootActivity.switchyard as any)
+      bootMode === 'curriculum' && bootSwitchyardDef
+        ? createInitialSwitchyardState(bootSwitchyardDef as any)
         : createInitialSwitchyardState(),
     workspace: initialWorkspace,
     savedWorkspaces: bootSandboxAutosaves,
-    activeScope: 'MAIN',
+    activeScope: bootInitialScope,
     selectedBlockId: null,
     runtime: null,
     isPlaying: false,
@@ -1973,9 +2019,12 @@ export const useAppStore = create<AppState>((set, get) => {
     victoryEarnedBadges: [],
     isSubpaletteCollapsed: false,
     isMapHidden: false,
-    isFunctionBarOpen: false,
+    isFunctionBarOpen: bootOpenFuncBar,
     isMobileMenuOpen: false,
-    isLoopPlayback: bootMode === 'curriculum' ? Boolean(bootActivity?.defaultLoopPlayback) : false,
+    isLoopPlayback:
+      bootMode === 'curriculum'
+        ? Boolean(bootActivity?.defaultLoopPlayback ?? bootActivity?.beatRules?.isLoopingDefault)
+        : false,
     wasRestoredAfterUpdate: false,
     performanceMode: loadPersistedPerformanceMode(),
     isAutoLowQuality: false,

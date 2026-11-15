@@ -27,6 +27,12 @@ import { useAppStore } from '../src/store/useAppStore';
 import '../src/simulations/grid/gridEnvironment';
 import '../src/simulations/turtle/turtleEnvironment';
 
+const INITIAL_BOOT_STATE = {
+  appMode: useAppStore.getState().appMode,
+  activeActivityId: useAppStore.getState().activeActivityId,
+  editorTool: useAppStore.getState().editorTool,
+};
+
 describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlayLayer', () => {
   beforeEach(() => {
     clearPendingUpdateState();
@@ -212,6 +218,12 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
   });
 
   describe('Mode Switching, Read-Only Enforcement & Open Copy in Sandbox', () => {
+    it('boots in Learn mode (curriculum) on the initial activity with map editing disabled', () => {
+      expect(INITIAL_BOOT_STATE.appMode).toBe('curriculum');
+      expect(INITIAL_BOOT_STATE.activeActivityId).toBe('seq.0');
+      expect(INITIAL_BOOT_STATE.editorTool).toBe('NONE');
+    });
+
     it('preserves Sandbox map/workspace across Sandbox ↔ Learn mode switches and per-activity workspaces across seq.1–seq.3', () => {
       const store = useAppStore.getState();
 

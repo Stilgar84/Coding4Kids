@@ -21,7 +21,7 @@ async function selectSimWorld(page: Page, sim: 'grid' | 'turtle' | 'beat') {
 
 test.describe('Robot Emulator E2E Suite', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?mode=sandbox');
     await page.waitForSelector('[data-testid="grid-canvas"]');
   });
 

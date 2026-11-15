@@ -404,6 +404,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
 
     // Switch to Sandbox Depot via LessonPickerModal
     await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('picker-mode-sandbox').click();
     await page.getByTestId('sim-tab-depot').click();
     await expect(page.getByTestId('depot-canvas')).toBeVisible();
 

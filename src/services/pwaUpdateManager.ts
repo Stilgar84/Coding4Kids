@@ -2,13 +2,17 @@ import { create } from 'zustand';
 import type { RegisterSWOptions } from 'vite-plugin-pwa/types';
 import { useAppStore } from '../store/useAppStore';
 
-/** Check for PWA updates every 3 hours */
+/** Check for PWA updates every 3 hours while idle in foreground */
 export const DEFAULT_UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
+
+/** Minimum 5-minute cooldown between update checks (e.g. on visibilitychange / tablet unlock) */
+export const MIN_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 export type RegisterSWFn = (options?: RegisterSWOptions) => (reloadPage?: boolean) => Promise<void>;
 
 export interface InitPwaUpdateManagerOptions {
   checkIntervalMs?: number;
+  minCheckIntervalMs?: number;
   registerSWFn?: RegisterSWFn;
   fetchFn?: typeof fetch;
   reloadFn?: () => void;
@@ -37,6 +41,7 @@ let updateSWCallback: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let activeRegistration: ServiceWorkerRegistration | undefined;
 let activeSwUrl: string | undefined;
 let fetchImpl: typeof fetch | undefined;
+let inFlightCheckPromise: Promise<boolean> | null = null;
 let reloadImpl: () => void = () => {
   if (typeof window !== 'undefined') {
     window.location.reload();
@@ -47,44 +52,62 @@ let nowImpl: () => number = () => Date.now();
 /**
  * Performs an explicit network check for a new Service Worker version,
  * bypassing browser HTTP caches for `sw.js`.
+ * Deduplicates concurrent callers so simultaneous wake events only trigger one check.
  */
 export async function checkForAppUpdate(): Promise<boolean> {
-  if (!activeRegistration) return false;
-  if (activeRegistration.installing) return false;
+  if (inFlightCheckPromise) {
+    return inFlightCheckPromise;
+  }
+
+  const registration = activeRegistration;
+  if (!registration) return false;
+  if (registration.installing) return false;
   if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) {
     return false;
   }
 
-  try {
-    const fetcher = fetchImpl ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : undefined);
-    if (activeSwUrl && fetcher) {
-      const resp = await fetcher(activeSwUrl, {
-        cache: 'no-store',
-        headers: {
+  let settled = false;
+  const pending = (async () => {
+    try {
+      const fetcher = fetchImpl ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : undefined);
+      if (activeSwUrl && fetcher) {
+        const resp = await fetcher(activeSwUrl, {
           cache: 'no-store',
-          'cache-control': 'no-cache',
-        },
-      });
-      if (resp?.status !== 200) {
-        return false;
+          headers: {
+            cache: 'no-store',
+            'cache-control': 'no-cache',
+          },
+        });
+        if (resp?.status !== 200) {
+          return false;
+        }
       }
+
+      await registration.update();
+      usePwaUpdateStore.setState({ lastCheckedAt: nowImpl() });
+
+      // If an update is waiting (including one previously snoozed via "Later"), propose it again
+      if (registration.waiting) {
+        usePwaUpdateStore.setState({
+          needRefresh: true,
+          isPromptDismissed: false,
+        });
+      }
+
+      return true;
+    } catch {
+      return false;
+    } finally {
+      settled = true;
+      inFlightCheckPromise = null;
     }
+  })();
 
-    await activeRegistration.update();
-    usePwaUpdateStore.setState({ lastCheckedAt: nowImpl() });
-
-    // If an update is waiting (including one previously snoozed via "Later"), propose it again
-    if (activeRegistration.waiting) {
-      usePwaUpdateStore.setState({
-        needRefresh: true,
-        isPromptDismissed: false,
-      });
-    }
-
-    return true;
-  } catch {
-    return false;
+  if (!settled) {
+    inFlightCheckPromise = pending;
   }
+
+  return pending;
 }
 
 /**
@@ -155,6 +178,8 @@ export async function initPwaUpdateManager(options: InitPwaUpdateManagerOptions 
   isInitialized = true;
 
   const intervalMs = options.checkIntervalMs ?? DEFAULT_UPDATE_CHECK_INTERVAL_MS;
+  const minCheckIntervalMs =
+    options.minCheckIntervalMs ?? Math.min(intervalMs, MIN_UPDATE_CHECK_INTERVAL_MS);
   fetchImpl = options.fetchFn;
   if (options.reloadFn) reloadImpl = options.reloadFn;
   if (options.nowFn) nowImpl = options.nowFn;
@@ -176,7 +201,7 @@ export async function initPwaUpdateManager(options: InitPwaUpdateManagerOptions 
 
   const checkIfStale = () => {
     const { lastCheckedAt } = usePwaUpdateStore.getState();
-    if (lastCheckedAt === null || nowImpl() - lastCheckedAt >= intervalMs) {
+    if (lastCheckedAt === null || nowImpl() - lastCheckedAt >= minCheckIntervalMs) {
       void checkForAppUpdate();
     }
   };
@@ -188,7 +213,9 @@ export async function initPwaUpdateManager(options: InitPwaUpdateManagerOptions 
   };
 
   const handleOnline = () => {
-    checkIfStale();
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      checkIfStale();
+    }
   };
 
   const handleSimulateUpdate = () => {
@@ -212,7 +239,9 @@ export async function initPwaUpdateManager(options: InitPwaUpdateManagerOptions 
     onRegisteredSW(swUrl, registration) {
       activeSwUrl = swUrl;
       activeRegistration = registration;
-      usePwaUpdateStore.setState({ lastCheckedAt: nowImpl() });
+      if (registration) {
+        usePwaUpdateStore.setState({ lastCheckedAt: nowImpl() });
+      }
 
       if (registration?.waiting) {
         usePwaUpdateStore.setState({
@@ -224,7 +253,7 @@ export async function initPwaUpdateManager(options: InitPwaUpdateManagerOptions 
       if (registration && intervalMs > 0) {
         if (intervalId) clearInterval(intervalId);
         intervalId = setInterval(() => {
-          void checkForAppUpdate();
+          checkIfStale();
         }, intervalMs);
       }
     },
@@ -264,6 +293,7 @@ export function resetPwaUpdateManagerForTests(): void {
   activeRegistration = undefined;
   activeSwUrl = undefined;
   fetchImpl = undefined;
+  inFlightCheckPromise = null;
   reloadImpl = () => {
     if (typeof window !== 'undefined') {
       window.location.reload();

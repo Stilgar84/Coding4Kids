@@ -744,7 +744,14 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
     expect(html).toContain('data-testid="switchyard-dock-DOCK_C"');
     expect(html).toContain('🚂 ×2 left!');
 
-    const toolbarHtml = renderToStaticMarkup(React.createElement(SwitchyardToolbarTools));
+    const prevAppMode = useAppStore.getState().appMode;
+    let toolbarHtml = '';
+    try {
+      useAppStore.setState({ appMode: 'sandbox' });
+      toolbarHtml = renderToStaticMarkup(React.createElement(SwitchyardToolbarTools));
+    } finally {
+      useAppStore.setState({ appMode: prevAppMode });
+    }
     expect(toolbarHtml).toContain('data-testid="switchyard-toolbar-tools"');
     expect(toolbarHtml).toContain('min-w-[36px] min-h-[36px]');
 

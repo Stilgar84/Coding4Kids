@@ -16,6 +16,7 @@ import { BlockItem } from '../src/components/BlockItem';
 describe('Action Parameters & Subpalette System', () => {
   beforeEach(() => {
     const store = useAppStore.getState();
+    store.setAppMode('sandbox');
     store.clearWorkspace();
     store.setSelectedBlockId(null);
     store.setSimEnvironment('turtle');

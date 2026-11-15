@@ -4,6 +4,7 @@ import { useAppStore } from '../src/store/useAppStore';
 describe('Compact Mobile Layout State & Store Actions', () => {
   beforeEach(() => {
     const store = useAppStore.getState();
+    store.setAppMode('sandbox');
     store.clearWorkspace();
     store.setMapHidden(false);
     store.setFunctionBarOpen(false);

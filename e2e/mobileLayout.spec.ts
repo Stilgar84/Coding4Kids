@@ -8,8 +8,28 @@ test.describe('Mobile Phone Compact Vertical Layout', () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    await page.goto('/?mode=sandbox');
+    await page.waitForSelector('[data-testid="grid-canvas"]');
+  });
+
+  test('starts in Learn mode by default on mobile without header overflow', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-testid="grid-canvas"]');
+
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('seq.0');
+    await expect(page.getByTestId('explanation-demo-bar')).toBeVisible();
+    await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
+
+    for (const width of [360, 375]) {
+      await page.setViewportSize({ width, height: 667 });
+      const metrics = await page.locator('header').evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        height: el.getBoundingClientRect().height,
+      }));
+      expect(metrics.scrollWidth, `Header overflow at ${width}px`).toBeLessThanOrEqual(metrics.clientWidth);
+      expect(metrics.height, `Header wrapped at ${width}px`).toBeLessThanOrEqual(68);
+    }
   });
 
   test('renders unified single-row top bar across 360px, 375px, 820px, and 1280px with zero overflow', async ({ page }) => {

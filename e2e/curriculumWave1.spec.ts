@@ -5,10 +5,12 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await page.goto('/');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    // Starts in Sandbox mode by default with editable tools & resize handles
-    await expect(page.getByTestId('tool-wall')).toBeVisible();
-    await expect(page.getByTestId('resize-handle-right')).toBeVisible();
-    await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
+    // Starts in Learn mode (seq.0) by default with read-only map and no map editor tools
+    await expect(page.getByTestId('btn-lesson-picker')).toContainText('seq.0');
+    await expect(page.getByTestId('explanation-demo-bar')).toBeVisible();
+    await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
+    await expect(page.getByTestId('tool-wall')).toHaveCount(0);
+    await expect(page.getByTestId('resize-handle-right')).toHaveCount(0);
 
     // GridOverlayLayer slots are mounted inside GridCanvas SVG
     await expect(page.getByTestId('grid-slot-world-items')).toBeAttached();
@@ -16,7 +18,17 @@ test.describe('Wave 1 / Commit 1: Curriculum (Learn) vs Free-Play (Sandbox) Mode
     await expect(page.getByTestId('grid-slot-ghost-preview')).toBeAttached();
     await expect(page.getByTestId('grid-slot-demo-spotlights')).toBeAttached();
 
-    // Open LessonPickerModal -> switch to Learn mode -> select Activity seq.1 (4 × 4)
+    // Switch to Sandbox via LessonPickerModal -> verifies editable tools & resize handles appear
+    await page.getByTestId('btn-lesson-picker').click();
+    await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
+    await page.getByTestId('picker-mode-sandbox').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('lesson-picker-modal')).toHaveCount(0);
+    await expect(page.getByTestId('tool-wall')).toBeVisible();
+    await expect(page.getByTestId('resize-handle-right')).toBeVisible();
+    await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
+
+    // Open LessonPickerModal -> switch back to Learn mode -> select Activity seq.1 (4 × 4)
     await page.getByTestId('btn-lesson-picker').click();
     await expect(page.getByTestId('lesson-picker-modal')).toBeVisible();
     await page.getByTestId('picker-mode-curriculum').click();

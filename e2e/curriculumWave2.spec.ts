@@ -158,6 +158,7 @@ test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholder
 
     // Switch to Beat & Light environment via LessonPickerModal
     await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('picker-mode-sandbox').click();
     await page.getByTestId('sim-tab-beat').click();
     await expect(page.getByTestId('beat-canvas')).toBeVisible();
     await expect(page.getByTestId('beat-led-grid')).toBeVisible();

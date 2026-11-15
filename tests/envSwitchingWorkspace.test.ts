@@ -5,6 +5,7 @@ describe('Environment Switching Workspace Memory System', () => {
   beforeEach(() => {
     // Reset store to a clean state
     const store = useAppStore.getState();
+    store.setAppMode('sandbox');
     store.reset();
     store.clearWorkspace();
     useAppStore.setState({

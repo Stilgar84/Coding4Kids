@@ -112,7 +112,7 @@ test.describe('Wave 3: Lesson Save Slots, Constraint Solver, Demo Runner (seq.0)
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/');
+    await page.goto('/?mode=sandbox');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
     // Level 1 starts at (0,2) facing EAST -> Goal at (4,2).

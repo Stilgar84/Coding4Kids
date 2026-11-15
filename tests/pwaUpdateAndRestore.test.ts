@@ -10,6 +10,7 @@ import {
 } from '../src/services/pwaStateRestoreService';
 import {
   DEFAULT_UPDATE_CHECK_INTERVAL_MS,
+  MIN_UPDATE_CHECK_INTERVAL_MS,
   initPwaUpdateManager,
   checkForAppUpdate,
   applyAppUpdate,
@@ -227,8 +228,9 @@ describe('PWA Installability Assets, Periodic Update Check & State Restoration',
   });
 
   describe('3. Periodic PWA Update Manager', () => {
-    it('uses a 3-hour default check interval', () => {
+    it('uses a 3-hour default check interval and 5-minute minimum check cooldown', () => {
       expect(DEFAULT_UPDATE_CHECK_INTERVAL_MS).toBe(3 * 60 * 60 * 1000);
+      expect(MIN_UPDATE_CHECK_INTERVAL_MS).toBe(5 * 60 * 1000);
     });
 
     it('checks for updates every few hours with cache: no-store and proposes update when waiting', async () => {
@@ -355,6 +357,153 @@ describe('PWA Installability Assets, Periodic Update Check & State Restoration',
       expect(await checkForAppUpdate()).toBe(false);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    describe('Foreground / Tablet Unlock Update Checks (visibilitychange)', () => {
+      let mockDoc: EventTarget & { visibilityState: 'visible' | 'hidden' };
+      let mockWin: EventTarget;
+      let mockNav: { onLine: boolean };
+
+      beforeEach(() => {
+        mockDoc = Object.assign(new EventTarget(), {
+          visibilityState: 'visible' as 'visible' | 'hidden',
+        });
+        mockWin = new EventTarget();
+        mockNav = { onLine: true };
+        vi.stubGlobal('document', mockDoc);
+        vi.stubGlobal('window', mockWin);
+        vi.stubGlobal('navigator', mockNav);
+      });
+
+      afterEach(() => {
+        resetPwaUpdateManagerForTests();
+        vi.unstubAllGlobals();
+      });
+
+      it('checks for updates on visibilitychange to visible after 5-minute cooldown and throttles earlier resumes', async () => {
+        let currentNow = 10_000_000;
+        let capturedOptions: any = null;
+        const updateMock = vi.fn().mockResolvedValue(undefined);
+        const mockRegistration: any = {
+          installing: null,
+          waiting: null,
+          update: updateMock,
+        };
+        const fetchMock = vi.fn().mockResolvedValue({ status: 200 });
+
+        await initPwaUpdateManager({
+          nowFn: () => currentNow,
+          fetchFn: fetchMock as any,
+          registerSWFn: (opts) => {
+            capturedOptions = opts;
+            opts?.onRegisteredSW?.('/Coding4Kids/sw.js', mockRegistration);
+            return vi.fn().mockResolvedValue(undefined);
+          },
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(updateMock).not.toHaveBeenCalled();
+
+        // Transitioning to hidden never triggers a check, even after > 5 minutes
+        currentNow += MIN_UPDATE_CHECK_INTERVAL_MS + 60_000;
+        mockDoc.visibilityState = 'hidden';
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await Promise.resolve();
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        // Reset clock back to < 5 minutes from registration and resume -> throttled
+        currentNow = 10_000_000 + MIN_UPDATE_CHECK_INTERVAL_MS - 1;
+        mockDoc.visibilityState = 'visible';
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await Promise.resolve();
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(updateMock).not.toHaveBeenCalled();
+
+        // Advance past 5-minute cooldown and resume -> triggers network check + SW update
+        currentNow = 10_000_000 + MIN_UPDATE_CHECK_INTERVAL_MS;
+        mockRegistration.waiting = { postMessage: vi.fn() };
+        capturedOptions.onNeedRefresh?.();
+        dismissUpdatePrompt();
+        expect(usePwaUpdateStore.getState().isPromptDismissed).toBe(true);
+
+        mockDoc.visibilityState = 'visible';
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await vi.waitFor(() => {
+          expect(updateMock).toHaveBeenCalledTimes(1);
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/Coding4Kids/sw.js',
+          expect.objectContaining({ cache: 'no-store' })
+        );
+        expect(usePwaUpdateStore.getState().lastCheckedAt).toBe(currentNow);
+        expect(usePwaUpdateStore.getState().needRefresh).toBe(true);
+        expect(usePwaUpdateStore.getState().isPromptDismissed).toBe(false);
+
+        // Another resume 2 minutes later is throttled
+        currentNow += 2 * 60 * 1000;
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await Promise.resolve();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(updateMock).toHaveBeenCalledTimes(1);
+
+        // Resume 5 minutes after the last check runs again
+        currentNow += 3 * 60 * 1000;
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await vi.waitFor(() => {
+          expect(updateMock).toHaveBeenCalledTimes(2);
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+
+      it('deduplicates simultaneous visibilitychange + online checks and retries on online if unlocked offline', async () => {
+        let currentNow = 20_000_000;
+        const updateMock = vi.fn().mockResolvedValue(undefined);
+        const mockRegistration: any = {
+          installing: null,
+          waiting: null,
+          update: updateMock,
+        };
+
+        let resolveFetch!: (val: { status: number }) => void;
+        const fetchMock = vi.fn().mockImplementation(
+          () =>
+            new Promise<{ status: number }>((resolve) => {
+              resolveFetch = resolve;
+            })
+        );
+
+        await initPwaUpdateManager({
+          nowFn: () => currentNow,
+          fetchFn: fetchMock as any,
+          registerSWFn: (opts) => {
+            opts?.onRegisteredSW?.('/Coding4Kids/sw.js', mockRegistration);
+            return vi.fn().mockResolvedValue(undefined);
+          },
+        });
+
+        // Advance past 5-minute cooldown while offline -> visibilitychange is skipped cleanly
+        currentNow += MIN_UPDATE_CHECK_INTERVAL_MS;
+        mockNav.onLine = false;
+        mockDoc.visibilityState = 'visible';
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+        await Promise.resolve();
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        // Wi-Fi reconnects while visible -> deferred check runs once
+        mockNav.onLine = true;
+        mockWin.dispatchEvent(new Event('online'));
+        // Concurrent visibilitychange while fetch is still pending must not start a 2nd fetch
+        mockDoc.dispatchEvent(new Event('visibilitychange'));
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        resolveFetch({ status: 200 });
+
+        await vi.waitFor(() => {
+          expect(updateMock).toHaveBeenCalledTimes(1);
+        });
+      });
     });
   });
 });
