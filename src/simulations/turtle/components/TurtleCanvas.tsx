@@ -5,6 +5,7 @@ import {
   subscribeTurtleCameraPinned,
 } from '../types';
 import {
+  DEFAULT_TURTLE_CANVAS_BOUNDS,
   MIN_TURTLE_ZOOM,
   MAX_TURTLE_ZOOM,
   combineTurtleBoundsWithPose,
@@ -15,6 +16,7 @@ import {
 } from '../physics';
 import { SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
+import { resolveActiveCurriculumActivity } from '../../../utils/curriculumStagePolicy';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
 import { Infinity as InfinityIcon } from 'lucide-react';
 
@@ -408,6 +410,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     isLoopPlayback,
     toggleLoopPlayback,
     toggleTurtleVisible,
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
   } = useAppStoreSelector((s) => ({
     turtleState: s.turtleState,
     updateTurtleViewport: s.updateTurtleViewport,
@@ -416,8 +421,29 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     isLoopPlayback: s.isLoopPlayback,
     toggleLoopPlayback: s.toggleLoopPlayback,
     toggleTurtleVisible: s.toggleTurtleVisible,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
   }));
   const state = propState || turtleState;
+  const activeActivity = resolveActiveCurriculumActivity(
+    appMode,
+    activeActivityId,
+    activeActivityVersion
+  );
+  const hasInsideCanvasSensor = Boolean(
+    activeActivity?.palette?.allowedSensors?.includes('insideCanvas')
+  );
+  const showSafeFrame = Boolean(
+    state.canvasBounds ||
+      state.showCanvasBounds ||
+      activeActivity?.turtle?.showCanvasBounds ||
+      hasInsideCanvasSensor
+  );
+  const safeFrameBounds =
+    state.canvasBounds ??
+    activeActivity?.turtle?.canvasBounds ??
+    DEFAULT_TURTLE_CANVAS_BOUNDS;
   const isInstant = speed === 'instant' || (speed as any) === 0 || state.instantMode;
   const rawMaskId = useId();
   const maskIdPrefix = `turtle-erase-mask-${rawMaskId.replace(/[^a-zA-Z0-9_-]/g, '') || '0'}`;
@@ -834,19 +860,21 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
 
         {/* Viewport Transform Group */}
         <g transform={`translate(${centerX}, ${centerY}) scale(${safeZoom})`}>
-          {/* Optional Nominal Paper Bounds Frame */}
-          {state.canvasBounds && (
+          {/* Optional Nominal 600x480 Paper Bounds Safe-Frame */}
+          {showSafeFrame && (
             <rect
               data-testid="turtle-canvas-bounds"
-              x={-state.canvasBounds.halfWidth}
-              y={-state.canvasBounds.halfHeight}
-              width={state.canvasBounds.halfWidth * 2}
-              height={state.canvasBounds.halfHeight * 2}
+              data-bounds-width={safeFrameBounds.halfWidth * 2}
+              data-bounds-height={safeFrameBounds.halfHeight * 2}
+              x={-safeFrameBounds.halfWidth}
+              y={-safeFrameBounds.halfHeight}
+              width={safeFrameBounds.halfWidth * 2}
+              height={safeFrameBounds.halfHeight * 2}
               fill="none"
-              stroke="#cbd5e1"
-              strokeWidth={1 / safeZoom}
+              stroke="#94a3b8"
+              strokeWidth={1.25 / safeZoom}
               strokeDasharray={`${6 / safeZoom} ${4 / safeZoom}`}
-              opacity={0.75}
+              opacity={0.72}
               pointerEvents="none"
             />
           )}

@@ -8,6 +8,7 @@ import {
 } from '../../types';
 import {
   AntiBypassRule,
+  ConditionExpr,
   CurriculumActivity,
   CurriculumGridDefinition,
   PaletteConfig,
@@ -225,6 +226,12 @@ export function buildSolverInitialGridState(
     'worldItems',
     'items',
     'bridgedWater',
+    'beaconTiles',
+    'dialTiles',
+    'visitedCells',
+    'strictInteractionCollision',
+    'requireAllItemsCollected',
+    'requireEmptyBackpackAtGoal',
   ]) {
     if (rawDef[extraKey] !== undefined && rawBase[extraKey] === undefined) {
       rawBase[extraKey] = deepCloneValue(rawDef[extraKey]);
@@ -633,6 +640,7 @@ function executeWorkspaceOnEnv(
   let runtime = createInitialInterpreterState();
   let state = initialGrid;
   let steps = 0;
+  let terminated = false;
 
   while (steps < maxSteps) {
     // Identify whether this tick executes a domain action sub-tick
@@ -675,14 +683,20 @@ function executeWorkspaceOnEnv(
     steps++;
 
     if (res.done) {
+      terminated = true;
       break;
     }
   }
 
   const rawStatus = state.status || runtime.status;
   const status: SimulationStatus =
-    rawStatus === 'SUCCESS' || rawStatus === 'COLLISION' || rawStatus === 'PAUSED'
+    rawStatus === 'SUCCESS' ||
+    rawStatus === 'COLLISION' ||
+    rawStatus === 'PAUSED' ||
+    rawStatus === 'STEP_LIMIT'
       ? rawStatus
+      : !terminated
+      ? 'STEP_LIMIT'
       : 'IDLE';
 
   return {
@@ -731,6 +745,42 @@ function validateWorkspaceAgainstSlotCap(
   return null;
 }
 
+function collectConditionRefs(
+  expr: ConditionExpr | undefined,
+  sensors: Set<string>,
+  valueSensors: Set<string>,
+  combinators: Set<string>
+): void {
+  if (!expr || typeof expr !== 'object') return;
+  switch (expr.kind) {
+    case 'sensor':
+      if (expr.sensor) sensors.add(expr.sensor);
+      break;
+    case 'not':
+      combinators.add('NOT');
+      collectConditionRefs(expr.operand, sensors, valueSensors, combinators);
+      break;
+    case 'and':
+      combinators.add('AND');
+      collectConditionRefs(expr.left, sensors, valueSensors, combinators);
+      collectConditionRefs(expr.right, sensors, valueSensors, combinators);
+      break;
+    case 'or':
+      combinators.add('OR');
+      collectConditionRefs(expr.left, sensors, valueSensors, combinators);
+      collectConditionRefs(expr.right, sensors, valueSensors, combinators);
+      break;
+    case 'cmp':
+      if (typeof expr.left === 'string' && expr.left.startsWith('$')) {
+        valueSensors.add(expr.left);
+      }
+      if (typeof expr.right === 'string' && expr.right.startsWith('$')) {
+        valueSensors.add(expr.right);
+      }
+      break;
+  }
+}
+
 function validateWorkspaceAgainstPalette(
   workspace: WorkspaceState,
   palette: PaletteConfig,
@@ -753,6 +803,12 @@ function validateWorkspaceAgainstPalette(
   const allowRepeatBadges = palette.allowRepeatBadges === true;
   const allowVariables = palette.allowVariables === true;
   const allowActionParams = palette.allowActionParams !== false;
+  const allowedSensorSet =
+    palette.allowedSensors !== undefined ? new Set(palette.allowedSensors) : null;
+  const allowedCombinatorSet =
+    palette.allowedCombinators !== undefined ? new Set(palette.allowedCombinators) : null;
+  const allowedValueSensorSet =
+    palette.allowedValueSensors !== undefined ? new Set(palette.allowedValueSensors) : null;
 
   for (const scope of ALL_SCOPES) {
     const blocks = workspace[scope] || [];
@@ -780,6 +836,47 @@ function validateWorkspaceAgainstPalette(
         if (!allowedControlTypes.has(block.type)) {
           violations.push(`Control block '${block.type}' is not permitted by palette.allowedControlBlocks`);
         }
+        if (
+          (block.type === 'IF' || block.type === 'ELSE_IF' || block.type === 'WHILE') &&
+          block.params?.condition
+        ) {
+          const sensors = new Set<string>();
+          const valueSensors = new Set<string>();
+          const combinators = new Set<string>();
+          collectConditionRefs(
+            block.params.condition as ConditionExpr,
+            sensors,
+            valueSensors,
+            combinators
+          );
+          if (allowedSensorSet) {
+            for (const s of sensors) {
+              if (!allowedSensorSet.has(s)) {
+                violations.push(
+                  `Sensor '${s}' on '${block.type}' is not permitted by palette.allowedSensors`
+                );
+              }
+            }
+          }
+          if (allowedCombinatorSet) {
+            for (const c of combinators) {
+              if (!allowedCombinatorSet.has(c as 'NOT' | 'AND' | 'OR')) {
+                violations.push(
+                  `Combinator '${c}' on '${block.type}' is not permitted by palette.allowedCombinators`
+                );
+              }
+            }
+          }
+          if (allowedValueSensorSet) {
+            for (const vs of valueSensors) {
+              if (!allowedValueSensorSet.has(vs)) {
+                violations.push(
+                  `Value sensor '${vs}' on '${block.type}' is not permitted by palette.allowedValueSensors`
+                );
+              }
+            }
+          }
+        }
       } else if (!allowedSimTypes.has(block.type)) {
         violations.push(`Action block '${block.type}' is not permitted by palette.allowedSimBlocks`);
       }
@@ -799,13 +896,21 @@ function validateWorkspaceAgainstPalette(
             );
           }
         } else if (block.type === 'LOOP_START') {
-          if (block.repeatCount < 2 || block.repeatCount > 9) {
+          const loopParamCfg = palette.allowedBlockParams?.LOOP_START as
+            | { min?: number; max?: number }
+            | string[]
+            | undefined;
+          const minLoop =
+            loopParamCfg && !Array.isArray(loopParamCfg) && typeof loopParamCfg.min === 'number'
+              ? loopParamCfg.min
+              : 2;
+          const maxLoop =
+            loopParamCfg && !Array.isArray(loopParamCfg) && typeof loopParamCfg.max === 'number'
+              ? loopParamCfg.max
+              : 9;
+          if (block.repeatCount < minLoop || block.repeatCount > maxLoop) {
             violations.push(
-              `LOOP_START repeatCount ${block.repeatCount} is outside allowed badge range 2..9`
-            );
-          } else if (block.repeatCount > 2 && !allowRepeatBadges) {
-            violations.push(
-              `LOOP_START uses repeatCount ${block.repeatCount} (> 2) while palette.allowRepeatBadges is false`
+              `LOOP_START repeatCount ${block.repeatCount} is outside allowed badge range ${minLoop}..${maxLoop}`
             );
           }
         } else if (block.repeatCount !== 1) {
@@ -995,8 +1100,22 @@ function buildCandidateActions(
     (rule?.maxLoopNestingDepthPerScope?.MAIN === undefined ||
       rule.maxLoopNestingDepthPerScope.MAIN > 0);
 
-  const loopCounts =
-    palette.allowRepeatBadges === true ? [2, 3, 4, 5, 6, 7, 8, 9] : [2];
+  const loopParamCfg = palette.allowedBlockParams?.LOOP_START as
+    | { min?: number; max?: number }
+    | string[]
+    | undefined;
+  const minLoop =
+    loopParamCfg && !Array.isArray(loopParamCfg) && typeof loopParamCfg.min === 'number'
+      ? Math.max(2, loopParamCfg.min)
+      : 2;
+  const maxLoop =
+    loopParamCfg && !Array.isArray(loopParamCfg) && typeof loopParamCfg.max === 'number'
+      ? Math.min(9, loopParamCfg.max)
+      : 9;
+  const loopCounts: number[] = [];
+  for (let lc = minLoop; lc <= maxLoop; lc++) {
+    loopCounts.push(lc);
+  }
 
   const maxMoveRepeat = Math.min(
     9,
@@ -1121,13 +1240,13 @@ export function checkScaffoldWorkspace(
     };
   }
 
-  // Validate non-placeholder blocks in scaffoldWorkspace against palette (except loop balance if '?' is a loop block)
-  const hasLoopPlaceholder = placeholderSlots.some((p) => {
+  // Validate non-placeholder blocks in scaffoldWorkspace against palette (except loop/conditional balance if '?' stands in for structure)
+  const hasStructuralPlaceholder = placeholderSlots.some((p) => {
     const h = getPlaceholderHintCategory(p.block);
-    return h === 'loop' || h === 'any';
+    return h === 'loop' || h === 'conditional' || h === 'any';
   });
 
-  if (!hasLoopPlaceholder) {
+  if (!hasStructuralPlaceholder) {
     const fixedViolations = validateWorkspaceAgainstPalette(
       scaffold,
       activity.palette,
@@ -1145,9 +1264,8 @@ export function checkScaffoldWorkspace(
     }
   }
 
-  const initialGrid = buildSolverInitialGridState(
-    (variants[0].grid ?? activity.grid)!,
-    simEnv
+  const variantInitialGrids = variants.map((v) =>
+    buildSolverInitialGridState((v.grid ?? activity.grid)!, simEnv)
   );
   const paletteCategoryByType = new Map<string, string | undefined>();
   for (const item of simEnv.paletteItems) {
@@ -1190,8 +1308,12 @@ export function checkScaffoldWorkspace(
         simEnv,
         false
       );
-      const exec = executeWorkspaceOnEnv(activity.referenceSolution, initialGrid, simEnv);
-      if (violations.length === 0 && exec.status === 'SUCCESS') {
+      const passesAllVariants =
+        violations.length === 0 &&
+        variantInitialGrids.every(
+          (initG) => executeWorkspaceOnEnv(activity.referenceSolution!, initG, simEnv).status === 'SUCCESS'
+        );
+      if (passesAllVariants) {
         return {
           applicable: true,
           passed: true,
@@ -1209,10 +1331,26 @@ export function checkScaffoldWorkspace(
     activity.palette,
     simEnv
   );
+  const allowedControlSet = new Set(activity.palette.allowedControlBlocks ?? []);
 
   const candidateBlocksPerSlot: CodeBlock[][] = placeholderSlots.map((slot, slotIdx) => {
     const hint = getPlaceholderHintCategory(slot.block);
     const options: CodeBlock[] = [];
+
+    const alignedRefBlk = activity.referenceSolution?.[slot.scope]?.[slot.index];
+    if (
+      alignedRefBlk &&
+      doesBlockMatchHintCategory(
+        alignedRefBlk.type,
+        paletteCategoryByType.get(alignedRefBlk.type),
+        hint
+      )
+    ) {
+      options.push({
+        ...deepCloneValue(alignedRefBlk),
+        id: `scaf_fill_${slotIdx}_ref`,
+      });
+    }
 
     for (const act of actions) {
       const cat = paletteCategoryByType.get(act.actionType);
@@ -1237,6 +1375,18 @@ export function checkScaffoldWorkspace(
         id: `scaf_fill_${slotIdx}_LOOP_END`,
         type: 'LOOP_END',
       });
+    }
+
+    for (const condBlkType of ['ELSE', 'END_IF', 'END_WHILE'] as const) {
+      if (
+        allowedControlSet.has(condBlkType) &&
+        doesBlockMatchHintCategory(condBlkType, 'conditional', hint)
+      ) {
+        options.push({
+          id: `scaf_fill_${slotIdx}_${condBlkType}`,
+          type: condBlkType,
+        });
+      }
     }
 
     return options;
@@ -1270,8 +1420,10 @@ export function checkScaffoldWorkspace(
         false
       );
       if (violations.length > 0) return false;
-      const exec = executeWorkspaceOnEnv(working, initialGrid, simEnv);
-      if (exec.status === 'SUCCESS') {
+      const passesAllVariants = variantInitialGrids.every(
+        (initG) => executeWorkspaceOnEnv(working, initG, simEnv).status === 'SUCCESS'
+      );
+      if (passesAllVariants) {
         foundCompletion = {
           MAIN: working.MAIN.map((b) => ({ ...b })),
           F1: working.F1.map((b) => ({ ...b })),
@@ -3694,8 +3846,10 @@ export function verifyActivityRule(
   // Multi-variant product BFS
   if (variants.length > 1) {
     const gridVariants = variants.map((v) => (v.grid ?? activity.grid)!);
-    const evaluators = gridVariants.map((g) => {
-      const initG = buildSolverInitialGridState(g, simEnv);
+    const productInitialGrids = gridVariants.map((g) =>
+      buildSolverInitialGridState(g, simEnv)
+    );
+    const evaluators = productInitialGrids.map((initG) => {
       const ev = new GridTransitionEvaluator(
         initG,
         canonicalizeGridState(initG, initG),
@@ -3705,72 +3859,328 @@ export function verifyActivityRule(
       return ev;
     });
 
+    const maxProductGridDim = Math.max(
+      ...gridVariants.map((g) => Math.max(g.width, g.height))
+    );
+    const productHasZeroNonGoalFlags =
+      !rule.maxActionExecutions &&
+      gridVariants.every((g) => (g.flags ?? []).every((f) => f.isGoal === true));
+    const productHasOnlyCrateItems =
+      !rule.maxActionExecutions &&
+      gridVariants.every((g) => {
+        const rg = g as unknown as Record<string, unknown>;
+        const rr = g.robot as unknown as Record<string, unknown>;
+        const ic = rr.carriedItem as Record<string, unknown> | null | undefined;
+        return (
+          rg.items === undefined &&
+          (g.worldItems?.length ?? 0) > 0 &&
+          g.worldItems!.every((it) => it.type === 'crate') &&
+          (ic === undefined || ic === null || ic.type === 'crate')
+        );
+      });
+    const productHasWaterCells = gridVariants.some(
+      (g, idx) =>
+        (g.waterCells?.length ?? 0) > 0 ||
+        (productInitialGrids[idx].waterCells?.length ?? 0) > 0
+    );
+    const productRedundancyCtx: RedundancyContext = {
+      canUseRepeatBadges,
+      maxGridDim: maxProductGridDim,
+      noExecTracker: !rule.maxActionExecutions,
+      hasZeroNonGoalFlags: productHasZeroNonGoalFlags,
+      hasOnlyCrateItems: productHasOnlyCrateItems,
+      hasWaterCells: productHasWaterCells,
+    };
+    const hasTurnLeft = actions.some((a) => a.actionType === 'TURN_LEFT');
+    const hasTurnRight = actions.some((a) => a.actionType === 'TURN_RIGHT');
+
     const initIds = evaluators.map((ev) => ev.initialStateId);
     interface GridProductBfsNode {
       stateIds: number[];
       depth: number;
       parentIdx: number;
       viaSpec: CandidateActionSpec | null;
+      turnStreak: number;
     }
 
     const queue: GridProductBfsNode[] = [
-      { stateIds: initIds, depth: 0, parentIdx: -1, viaSpec: null },
+      { stateIds: initIds, depth: 0, parentIdx: -1, viaSpec: null, turnStreak: 0 },
     ];
     const visited = new Set<string>([initIds.join(':')]);
     let head = 0;
     const maxBfsDepth = slotLimit ?? 10;
+    const productStateCap = 25000;
+    const productDeadlineMs = startMs + 135;
     let minWinningBlocks: number | null = null;
-    let winningSpecs: CandidateActionSpec[] | null = null;
+    let winningAstNodes: AstNode[] | null = null;
+    let productTruncated = false;
 
-    while (head < queue.length) {
-      const cur = queue[head++];
-      if (cur.depth >= maxBfsDepth) continue;
-
-      for (const spec of actions) {
-        let allSuccess = true;
-        let collision = false;
-        const nextIds: number[] = [];
-
-        for (let j = 0; j < evaluators.length; j++) {
-          const trans = evaluators[j].executeBlockById(cur.stateIds[j], spec);
-          if (trans.statusCode === 2) {
-            // Collision on variant j -> EARLY JOINT PRUNING
-            collision = true;
-            break;
-          }
-          if (!evaluators[j].isTerminalSuccessById(trans.nextStateId)) {
-            allSuccess = false;
-          }
-          nextIds.push(trans.nextStateId);
+    const verifyMultiVariantCandidate = (astNodes: readonly AstNode[]): WorkspaceState | null => {
+      const candidateWs = astToWorkspace(astNodes);
+      for (let idx = 0; idx < productInitialGrids.length; idx++) {
+        const exec = executeWorkspaceOnEnv(candidateWs, productInitialGrids[idx], simEnv);
+        if (exec.status !== 'SUCCESS') {
+          return null;
         }
-
-        if (collision) continue;
-
-        if (allSuccess) {
-          minWinningBlocks = cur.depth + 1;
-          const chain: CandidateActionSpec[] = [spec];
-          let p: GridProductBfsNode = cur;
-          while (p && p.viaSpec) {
-            chain.unshift(p.viaSpec);
-            p = p.parentIdx >= 0 ? queue[p.parentIdx] : (null as any);
-          }
-          winningSpecs = chain;
-          break;
-        }
-
-        const nextKey = nextIds.join(':');
-        if (!visited.has(nextKey)) {
-          visited.add(nextKey);
-          queue.push({
-            stateIds: nextIds,
-            depth: cur.depth + 1,
-            parentIdx: head - 1,
-            viaSpec: spec,
-          });
+        if (rule.maxActionExecutions) {
+          const withinCaps = Object.entries(rule.maxActionExecutions).every(
+            ([actType, maxCap]) => (exec.actionExecutions[actType] ?? 0) <= maxCap
+          );
+          if (!withinCaps) return null;
         }
       }
+      return candidateWs;
+    };
 
-      if (minWinningBlocks !== null) break;
+    const buildChainForNode = (nodeIdx: number): CandidateActionSpec[] => {
+      const chain: CandidateActionSpec[] = [];
+      let walk = nodeIdx;
+      while (walk >= 0) {
+        const node = queue[walk];
+        if (node.viaSpec) chain.unshift(node.viaSpec);
+        walk = node.parentIdx;
+      }
+      return chain;
+    };
+
+    if (!rule.pureSingleLoopOnly) {
+      while (head < queue.length) {
+        if ((head & 63) === 0 && (visited.size >= productStateCap || nowMs() >= productDeadlineMs)) {
+          productTruncated = true;
+          break;
+        }
+        const cur = queue[head++];
+        if (cur.depth >= maxBfsDepth) continue;
+
+        for (const spec of actions) {
+          if (cur.viaSpec && isRedundantAdjacentActionPair(cur.viaSpec, spec, productRedundancyCtx)) {
+            continue;
+          }
+          if (
+            !canUseRepeatBadges &&
+            isTurnAction(spec.actionType) &&
+            cur.viaSpec?.actionType === spec.actionType
+          ) {
+            const hasOpp = spec.actionType === 'TURN_LEFT' ? hasTurnRight : hasTurnLeft;
+            if (cur.turnStreak >= (hasOpp ? 2 : 3)) {
+              continue;
+            }
+          }
+          if (cur.depth + 1 === maxBfsDepth && isTurnAction(spec.actionType)) {
+            continue;
+          }
+
+          let allSuccess = true;
+          let collision = false;
+          let anyChanged = false;
+          const nextIds: number[] = new Array(evaluators.length);
+
+          for (let j = 0; j < evaluators.length; j++) {
+            const trans = evaluators[j].executeBlockById(cur.stateIds[j], spec);
+            if (trans.statusCode === 2) {
+              // Collision on variant j -> EARLY JOINT PRUNING
+              collision = true;
+              break;
+            }
+            if (trans.nextStateId !== cur.stateIds[j]) {
+              anyChanged = true;
+            }
+            if (!evaluators[j].isTerminalSuccessById(trans.nextStateId)) {
+              allSuccess = false;
+            }
+            nextIds[j] = trans.nextStateId;
+          }
+
+          if (collision || !anyChanged) continue;
+
+          if (allSuccess) {
+            const chain = [...buildChainForNode(head - 1), spec];
+            const astNodes: AstNode[] = chain.map((s) => ({
+              kind: 'action',
+              spec: s,
+              slotCost: 1,
+            }));
+            if (verifyMultiVariantCandidate(astNodes)) {
+              minWinningBlocks = chain.length;
+              winningAstNodes = astNodes;
+              break;
+            }
+            continue;
+          }
+
+          const nextKey = nextIds.join(':');
+          if (!visited.has(nextKey)) {
+            visited.add(nextKey);
+            const nextStreak =
+              !canUseRepeatBadges &&
+              isTurnAction(spec.actionType) &&
+              cur.viaSpec?.actionType === spec.actionType
+                ? cur.turnStreak + 1
+                : isTurnAction(spec.actionType)
+                ? 1
+                : 0;
+            queue.push({
+              stateIds: nextIds,
+              depth: cur.depth + 1,
+              parentIdx: head - 1,
+              viaSpec: spec,
+              turnStreak: nextStreak,
+            });
+          }
+        }
+
+        if (minWinningBlocks !== null) break;
+      }
+    }
+
+    // Multi-variant bounded 1-loop check (catches fixed LOOP_START..LOOP_END bypasses when loopsAllowed is true)
+    if (
+      minWinningBlocks === null &&
+      loopsAllowed &&
+      maxBfsDepth >= 3 &&
+      nowMs() < productDeadlineMs
+    ) {
+      const maxBodyLen = Math.min(5, maxBfsDepth - 2);
+      const bodyPool: CandidateActionSpec[][] = [];
+      const genBodies = (curBody: CandidateActionSpec[], hasNonTurn: boolean, targetLen: number): void => {
+        if (bodyPool.length >= 250 || nowMs() >= productDeadlineMs) return;
+        if (curBody.length === targetLen) {
+          if (hasNonTurn) bodyPool.push([...curBody]);
+          return;
+        }
+        const prevSpec = curBody.length > 0 ? curBody[curBody.length - 1] : null;
+        for (const spec of actions) {
+          if (prevSpec && isRedundantAdjacentActionPair(prevSpec, spec, productRedundancyCtx)) {
+            continue;
+          }
+          curBody.push(spec);
+          genBodies(curBody, hasNonTurn || !isTurnAction(spec.actionType), targetLen);
+          curBody.pop();
+        }
+      };
+      for (let bl = 1; bl <= maxBodyLen; bl++) {
+        genBodies([], false, bl);
+      }
+
+      const loopCountSet = new Set(loopCounts);
+      const maxIter = loopCounts.length > 0 ? loopCounts[loopCounts.length - 1] : 2;
+      const prefixNodes = rule.pureSingleLoopOnly
+        ? [queue[0]]
+        : queue.filter((n) => n.depth <= maxBfsDepth - 3).slice(0, 1200);
+
+      const findShortSuffix = (
+        postIds: number[],
+        maxRem: number,
+        lastSpec: CandidateActionSpec | null
+      ): CandidateActionSpec[] | null => {
+        if (maxRem <= 0) return null;
+        for (const s1 of actions) {
+          if (lastSpec && isRedundantAdjacentActionPair(lastSpec, s1, productRedundancyCtx)) {
+            continue;
+          }
+          if (maxRem === 1 && isTurnAction(s1.actionType)) continue;
+          let col1 = false;
+          let ok1 = true;
+          const ids1: number[] = new Array(evaluators.length);
+          for (let j = 0; j < evaluators.length; j++) {
+            const tr = evaluators[j].executeBlockById(postIds[j], s1);
+            if (tr.statusCode === 2) {
+              col1 = true;
+              break;
+            }
+            if (!evaluators[j].isTerminalSuccessById(tr.nextStateId)) ok1 = false;
+            ids1[j] = tr.nextStateId;
+          }
+          if (col1) continue;
+          if (ok1) return [s1];
+          if (maxRem >= 2) {
+            const rest = findShortSuffix(ids1, maxRem - 1, s1);
+            if (rest) return [s1, ...rest];
+          }
+        }
+        return null;
+      };
+
+      for (let pIdx = 0; pIdx < prefixNodes.length; pIdx++) {
+        if ((pIdx & 15) === 0 && nowMs() >= productDeadlineMs) {
+          productTruncated = true;
+          break;
+        }
+        const pNode = prefixNodes[pIdx];
+        const prefixChain = pNode.parentIdx === -1 && !pNode.viaSpec
+          ? []
+          : (() => {
+              const idxInQ = queue.indexOf(pNode);
+              return idxInQ >= 0 ? buildChainForNode(idxInQ) : [];
+            })();
+
+        for (const body of bodyPool) {
+          const loopSlotCost = pNode.depth + 2 + body.length;
+          if (loopSlotCost > maxBfsDepth) continue;
+          if (nowMs() >= productDeadlineMs) {
+            productTruncated = true;
+            break;
+          }
+
+          let curIds = [...pNode.stateIds];
+          let iterCollided = false;
+          for (let iter = 1; iter <= maxIter; iter++) {
+            for (const bSpec of body) {
+              for (let j = 0; j < evaluators.length; j++) {
+                const tr = evaluators[j].executeBlockById(curIds[j], bSpec);
+                if (tr.statusCode === 2) {
+                  iterCollided = true;
+                  break;
+                }
+                curIds[j] = tr.nextStateId;
+              }
+              if (iterCollided) break;
+            }
+            if (iterCollided) break;
+            if (!loopCountSet.has(iter)) continue;
+
+            const loopNode: AstNode = {
+              kind: 'loop',
+              count: iter,
+              body: body.map((s) => ({ kind: 'action', spec: s, slotCost: 1 })),
+              slotCost: 2 + body.length,
+            };
+            const allOkAtLoopEnd = curIds.every((sid, j) =>
+              evaluators[j].isTerminalSuccessById(sid)
+            );
+            if (allOkAtLoopEnd) {
+              const candidateNodes: AstNode[] = [
+                ...prefixChain.map((s): AstNode => ({ kind: 'action', spec: s, slotCost: 1 })),
+                loopNode,
+              ];
+              if (verifyMultiVariantCandidate(candidateNodes)) {
+                minWinningBlocks = loopSlotCost;
+                winningAstNodes = candidateNodes;
+                break;
+              }
+            } else if (!rule.pureSingleLoopOnly) {
+              const remSlots = Math.min(2, maxBfsDepth - loopSlotCost);
+              if (remSlots > 0) {
+                const suffix = findShortSuffix(curIds, remSlots, body[body.length - 1]);
+                if (suffix) {
+                  const candidateNodes: AstNode[] = [
+                    ...prefixChain.map((s): AstNode => ({ kind: 'action', spec: s, slotCost: 1 })),
+                    loopNode,
+                    ...suffix.map((s): AstNode => ({ kind: 'action', spec: s, slotCost: 1 })),
+                  ];
+                  if (verifyMultiVariantCandidate(candidateNodes)) {
+                    minWinningBlocks = loopSlotCost + suffix.length;
+                    winningAstNodes = candidateNodes;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          if (minWinningBlocks !== null) break;
+        }
+        if (minWinningBlocks !== null || productTruncated) break;
+      }
     }
 
     totalExplored += visited.size;
@@ -3778,14 +4188,9 @@ export function verifyActivityRule(
     if (
       minWinningBlocks !== null &&
       (slotLimit === undefined || minWinningBlocks <= slotLimit) &&
-      winningSpecs
+      winningAstNodes
     ) {
-      const astNodes: AstNode[] = winningSpecs.map((s) => ({
-        kind: 'action',
-        spec: s,
-        slotCost: 1,
-      }));
-      const counterexample = astToWorkspace(astNodes);
+      const counterexample = astToWorkspace(winningAstNodes);
       return {
         ruleId,
         description: rule.description,
@@ -3807,9 +4212,31 @@ export function verifyActivityRule(
         slotLimit,
         rule.maxActionExecutions
       );
+      let v0MinBlocks = v0Bfs.minWinningBlocks;
       if (
-        v0Bfs.minWinningBlocks === null ||
-        (slotLimit !== undefined && v0Bfs.minWinningBlocks > slotLimit)
+        (v0MinBlocks === null || (slotLimit !== undefined && v0MinBlocks > slotLimit)) &&
+        loopsAllowed &&
+        slotLimit !== undefined
+      ) {
+        const v0Loop = solveStructuralLoopSearch(
+          evaluators[0],
+          gridVariants[0],
+          actions,
+          canUseRepeatBadges,
+          loopCounts,
+          slotLimit,
+          rule.maxLoopNestingDepth ?? 2,
+          false,
+          rule.maxActionExecutions
+        );
+        totalExplored += v0Loop.exploredStates;
+        if (v0Loop.minWinningBlocks !== null && v0Loop.minWinningBlocks <= slotLimit) {
+          v0MinBlocks = v0Loop.minWinningBlocks;
+        }
+      }
+      if (
+        v0MinBlocks === null ||
+        (slotLimit !== undefined && v0MinBlocks > slotLimit)
       ) {
         return {
           ruleId,
@@ -3830,7 +4257,7 @@ export function verifyActivityRule(
         elapsedMs: nowMs() - startMs,
         exploredStates: totalExplored,
         minWinningBlocks: null,
-        diagnostic: `Multi-variant product verified: 0 solutions solve all ${evaluators.length} variants within ${slotLimit} slots, while single-variant bypass exists on Variant 1 (${v0Bfs.minWinningBlocks} blocks)`,
+        diagnostic: `Multi-variant product verified: 0 solutions solve all ${evaluators.length} variants within ${slotLimit} slots, while single-variant bypass exists on Variant 1 (${v0MinBlocks} blocks)`,
       };
     }
 
@@ -3842,7 +4269,9 @@ export function verifyActivityRule(
       elapsedMs: nowMs() - startMs,
       exploredStates: totalExplored,
       minWinningBlocks: null,
-      diagnostic: `0 solutions solve all ${evaluators.length} variants within ${slotLimit ?? 10} slots`,
+      diagnostic: productTruncated
+        ? `0 solutions found within product search budget (${visited.size} states across ${evaluators.length} variants, <= ${slotLimit ?? 10} slots)`
+        : `0 solutions solve all ${evaluators.length} variants within ${slotLimit ?? 10} slots`,
     };
   }
 

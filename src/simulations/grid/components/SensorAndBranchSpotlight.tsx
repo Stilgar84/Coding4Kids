@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight, CornerDownRight, ArrowDown } from 'lucide-react';
+import type { ConditionExpr } from '../../../data/curriculum/types';
 import {
   CodeBlock,
   Direction,
@@ -7,14 +8,78 @@ import {
   InterpreterRuntimeState,
   WorkspaceState,
 } from '../../../types';
+import { evaluateConditionExpr } from '../../../engine/serialization/conditionSerializer';
 import { useAppStoreSelector } from '../../../store/useAppStore';
+import {
+  cellAhead,
+  cellLeft,
+  cellRight,
+  evaluateGridSensor,
+  hasAheadBridgedPlank,
+  resolveBeaconColorHex,
+  resolveTileColorIdx,
+} from '../sensors';
 import { GRID_CELL_SIZE } from './GridOverlayLayer';
 
 // ─── Helpers for Grid Sensor Target Coordinate ──────────────────────────────
 
+export interface ExtractedSensorRef {
+  sensor: string;
+  param?: string;
+}
+
+export function extractConditionSensors(
+  condition?: ConditionExpr | { kind?: string; sensor?: string; param?: string } | null,
+  fallbackSensor?: string,
+  fallbackParam?: string
+): ExtractedSensorRef[] {
+  const seen = new Set<string>();
+  const refs: ExtractedSensorRef[] = [];
+
+  const pushUnique = (sensor?: string, param?: string) => {
+    if (!sensor || sensor === '$input') return;
+    const key = `${sensor}:${param ?? ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    refs.push(param !== undefined ? { sensor, param } : { sensor });
+  };
+
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    const obj = node as Record<string, unknown>;
+    if (obj.kind === 'sensor' && typeof obj.sensor === 'string') {
+      pushUnique(obj.sensor, typeof obj.param === 'string' ? obj.param : undefined);
+      return;
+    }
+    if (obj.kind === 'not') {
+      walk(obj.operand);
+      return;
+    }
+    if (obj.kind === 'and' || obj.kind === 'or') {
+      walk(obj.left);
+      walk(obj.right);
+    }
+  };
+
+  if (condition && typeof condition === 'object') {
+    walk(condition);
+    if (refs.length === 0 && typeof (condition as { sensor?: unknown }).sensor === 'string') {
+      const c = condition as { sensor: string; param?: string };
+      pushUnique(c.sensor, c.param);
+    }
+  }
+
+  if (refs.length === 0 && fallbackSensor) {
+    pushUnique(fallbackSensor, fallbackParam);
+  }
+
+  return refs;
+}
+
 export function getScannedCellCoord(
   robot: { x: number; y: number; dir: Direction },
-  sensorType?: string
+  sensorType?: string,
+  grid?: GridState
 ): { x: number; y: number } {
   const { x, y, dir } = robot;
   switch (sensorType) {
@@ -43,7 +108,15 @@ export function getScannedCellCoord(
         case 'WEST':  return { x, y: y - 1 };
       }
     }
-    case 'itemHere':
+    case 'itemHere': {
+      if (grid) {
+        const hasFloorItem = (grid.worldItems ?? []).some((it) => it.x === x && it.y === y);
+        if (!hasFloorItem && hasAheadBridgedPlank(grid)) {
+          return cellAhead(grid);
+        }
+      }
+      return { x, y };
+    }
     case 'tileColor':
     case 'carryingItem':
     case 'atGoal':
@@ -59,6 +132,48 @@ export interface SensorBeamGridOverlayProps {
   cellSize?: number;
   runtime?: InterpreterRuntimeState | null;
   workspace?: WorkspaceState;
+}
+
+const COND_BLOCK_TYPES = new Set(['IF', 'ELSE_IF', 'WHILE']);
+
+export function resolveActiveConditionalBlock(
+  runtime?: InterpreterRuntimeState | null,
+  workspace?: WorkspaceState
+): CodeBlock | null {
+  const currentScope = runtime?.activeScope ?? 'MAIN';
+  const scopeBlocks: CodeBlock[] = workspace?.[currentScope] ?? [];
+
+  const activeBlock = runtime?.activeBlockId
+    ? scopeBlocks.find((b) => b.id === runtime.activeBlockId) ?? null
+    : null;
+  if (activeBlock && COND_BLOCK_TYPES.has(activeBlock.type)) {
+    return activeBlock;
+  }
+
+  const topFrame =
+    runtime?.callStack && runtime.callStack.length > 0
+      ? runtime.callStack[runtime.callStack.length - 1]
+      : null;
+  if (topFrame) {
+    const frameBlocks = workspace?.[topFrame.scope] ?? [];
+    const pendingBlock = frameBlocks[topFrame.pc] ?? null;
+    if (pendingBlock && COND_BLOCK_TYPES.has(pendingBlock.type)) {
+      return pendingBlock;
+    }
+  }
+
+  if (runtime === null || runtime === undefined) {
+    const firstBlock = scopeBlocks[0] ?? null;
+    if (firstBlock && COND_BLOCK_TYPES.has(firstBlock.type)) {
+      return firstBlock;
+    }
+    for (const sc of ['MAIN', 'F1', 'F2', 'F3'] as const) {
+      const found = (workspace?.[sc] ?? []).find((b) => COND_BLOCK_TYPES.has(b.type));
+      if (found) return found;
+    }
+  }
+
+  return null;
 }
 
 export const SensorBeamGridOverlay: React.FC<SensorBeamGridOverlayProps> = ({
@@ -79,51 +194,82 @@ export const SensorBeamGridOverlay: React.FC<SensorBeamGridOverlayProps> = ({
       ? scopeBlocks[runtime.callStack[runtime.callStack.length - 1].pc]
       : scopeBlocks[0];
 
-  const cueBlock = activeBlock ?? pendingBlock;
+  const cueBlock = resolveActiveConditionalBlock(runtime, workspace) ?? activeBlock ?? pendingBlock;
   const condition = cueBlock?.params?.condition as
+    | ConditionExpr
     | { kind?: string; sensor?: string; param?: string }
     | undefined;
-  const sensorType = condition?.sensor ?? (cueBlock?.params?.sensor as string | undefined) ?? 'itemHere';
+  const sensorRefs = extractConditionSensors(
+    condition,
+    (cueBlock?.params?.sensor as string | undefined) ?? 'itemHere',
+    cueBlock?.params?.param as string | undefined
+  );
+  const primaryRef = sensorRefs[0] ?? { sensor: 'itemHere' };
+  const sensorType = primaryRef.sensor;
 
-  // Evaluate sensor result on grid
+  // Evaluate exact sensor / compound ConditionExpr result via Grid sensors (single source of truth)
   let sensorResult: boolean | null = null;
-  if (cueBlock?.type === 'IF' || cueBlock?.type === 'WHILE' || cueBlock?.type === 'ELSE_IF') {
-    if (sensorType === 'itemHere') {
-      sensorResult = (grid.worldItems ?? []).some((it) => it.x === robot.x && it.y === robot.y);
-    } else if (sensorType === 'pathAhead') {
-      const target = getScannedCellCoord(robot, 'pathAhead');
-      sensorResult =
-        target.x >= 0 &&
-        target.x < grid.width &&
-        target.y >= 0 &&
-        target.y < grid.height &&
-        !(grid.barriers ?? []).some(
-          (b) =>
-            (b.orientation === 'H' &&
-              ((b.x === robot.x && b.y === Math.min(robot.y, target.y) + 1 && robot.x === target.x) ||
-                (b.x === robot.x && b.y === robot.y && target.y < robot.y))) ||
-            (b.orientation === 'V' &&
-              ((b.y === robot.y && b.x === Math.min(robot.x, target.x) + 1 && robot.y === target.y) ||
-                (b.y === robot.y && b.x === robot.x && target.x < robot.x)))
-        );
-    } else if (sensorType === 'atGoal') {
-      sensorResult = (grid.flags ?? []).some((f) => f.isGoal && f.x === robot.x && f.y === robot.y);
-    } else if (sensorType === 'carryingItem') {
-      sensorResult = Boolean(robot.carriedItem);
+  if (cueBlock && COND_BLOCK_TYPES.has(cueBlock.type)) {
+    const evalSensorFn = (s: string, st: GridState, p?: string) => evaluateGridSensor(s, st, p);
+    if (condition && typeof condition === 'object' && 'kind' in condition && condition.kind) {
+      sensorResult = evaluateConditionExpr(condition as ConditionExpr, grid, evalSensorFn, {
+        variables: runtime?.variables,
+        sceneInput: runtime?.sceneInput,
+      });
+    } else {
+      sensorResult = evaluateGridSensor(sensorType, grid, primaryRef.param);
     }
   }
 
-  const scannedCoord = getScannedCellCoord(robot, sensorType);
-  const targetX = scannedCoord.x * cellSize + cellSize / 2;
-  const targetY = scannedCoord.y * cellSize + cellSize / 2;
   const robotX = robot.x * cellSize + cellSize / 2;
   const robotY = robot.y * cellSize + cellSize / 2;
-
+  const scannedCoord = getScannedCellCoord(robot, sensorType, grid);
+  const targetX = scannedCoord.x * cellSize + cellSize / 2;
+  const targetY = scannedCoord.y * cellSize + cellSize / 2;
   const isAhead = scannedCoord.x !== robot.x || scannedCoord.y !== robot.y;
+
+  const tileColorRef = sensorRefs.find((r) => r.sensor === 'tileColor');
+  const tileColorMatch = tileColorRef
+    ? evaluateGridSensor('tileColor', grid, tileColorRef.param)
+    : false;
+  const tileColorIdx = tileColorRef ? resolveTileColorIdx('tileColor', tileColorRef.param) : 0;
+  const tileColorHex = resolveBeaconColorHex(tileColorIdx) ?? '#38bdf8';
+  const currentBeacon = (grid.beaconTiles ?? []).find(
+    (b) => b.x === robot.x && b.y === robot.y
+  );
+
+  const hasFloorItemAtRobot = (grid.worldItems ?? []).some(
+    (it) => it.x === robot.x && it.y === robot.y
+  );
+  const scanningAheadPlank =
+    sensorRefs.some((r) => r.sensor === 'itemHere') &&
+    !hasFloorItemAtRobot &&
+    hasAheadBridgedPlank(grid);
+  const aheadPlankCoord = scanningAheadPlank ? cellAhead(grid) : null;
+
+  // Primary beam color reflects directional truth or target color cleanly
+  const primarySingleEval = evaluateGridSensor(sensorType, grid, primaryRef.param);
+  const primaryBeamColor =
+    sensorType === 'tileColor'
+      ? tileColorHex
+      : primarySingleEval
+      ? '#10b981'
+      : '#ef4444';
+
+  const secondaryDirections = sensorRefs.filter(
+    (r, idx) =>
+      idx > 0 &&
+      (r.sensor === 'pathAhead' ||
+        r.sensor === 'pathLeft' ||
+        r.sensor === 'pathRight' ||
+        r.sensor === 'unvisitedAhead')
+  );
 
   return (
     <g
       data-testid="sensor-beam-spotlight"
+      data-sensor-type={sensorType}
+      data-sensor-result={sensorResult === null ? 'none' : sensorResult ? 'true' : 'false'}
       className="pointer-events-none select-none transition-all duration-200"
     >
       <defs>
@@ -137,18 +283,18 @@ export const SensorBeamGridOverlay: React.FC<SensorBeamGridOverlayProps> = ({
         </filter>
       </defs>
 
-      {/* Sensor Beam Line / Cone if ahead */}
-      {isAhead && (
+      {/* Sensor Beam Line / Cone for directional or 1-ahead Plank scan */}
+      {isAhead && !scanningAheadPlank && (
         <>
           <line
             x1={robotX}
             y1={robotY}
             x2={targetX}
             y2={targetY}
-            stroke="#38bdf8"
+            stroke={primaryBeamColor}
             strokeWidth={4}
             strokeDasharray="4 3"
-            opacity={0.8}
+            opacity={0.85}
             className="animate-pulse"
           />
           <circle
@@ -156,15 +302,126 @@ export const SensorBeamGridOverlay: React.FC<SensorBeamGridOverlayProps> = ({
             cy={targetY}
             r={cellSize * 0.42}
             fill="url(#sensor-beam-glow)"
-            stroke="#38bdf8"
-            strokeWidth={2}
+            stroke={primaryBeamColor}
+            strokeWidth={2.2}
             strokeDasharray="3 3"
           />
         </>
       )}
 
-      {/* Illuminating halo on scanned cell */}
-      {!isAhead && (
+      {/* Additional directional scan beams in compound AND / OR conditions */}
+      {secondaryDirections.map((ref) => {
+        const coord =
+          ref.sensor === 'pathLeft'
+            ? cellLeft(grid)
+            : ref.sensor === 'pathRight'
+            ? cellRight(grid)
+            : cellAhead(grid);
+        const sx = coord.x * cellSize + cellSize / 2;
+        const sy = coord.y * cellSize + cellSize / 2;
+        const ok = evaluateGridSensor(ref.sensor, grid, ref.param);
+        const col = ok ? '#10b981' : '#ef4444';
+        return (
+          <g key={`${ref.sensor}-${coord.x}-${coord.y}`}>
+            <line
+              x1={robotX}
+              y1={robotY}
+              x2={sx}
+              y2={sy}
+              stroke={col}
+              strokeWidth={3}
+              strokeDasharray="4 3"
+              opacity={0.78}
+            />
+            <circle
+              cx={sx}
+              cy={sy}
+              r={cellSize * 0.34}
+              fill="none"
+              stroke={col}
+              strokeWidth={2}
+              strokeDasharray="3 3"
+            />
+          </g>
+        );
+      })}
+
+      {/* 1-Ahead Bridged Plank Sparkle Scan Beam on `itemHere` */}
+      {scanningAheadPlank && aheadPlankCoord && (
+        <g data-testid="sensor-plank-ahead-beam">
+          {(() => {
+            const px = aheadPlankCoord.x * cellSize + cellSize / 2;
+            const py = aheadPlankCoord.y * cellSize + cellSize / 2;
+            return (
+              <>
+                <line
+                  x1={robotX}
+                  y1={robotY}
+                  x2={px}
+                  y2={py}
+                  stroke="#fbbf24"
+                  strokeWidth={4.5}
+                  strokeDasharray="5 3"
+                  opacity={0.9}
+                  className="animate-pulse"
+                />
+                <circle
+                  cx={px}
+                  cy={py}
+                  r={cellSize * 0.4}
+                  fill="none"
+                  stroke="#facc15"
+                  strokeWidth={2.5}
+                  strokeDasharray="4 2"
+                />
+                <text
+                  x={px - cellSize * 0.25}
+                  y={py - cellSize * 0.22}
+                  fontSize={12}
+                  fill="#fde047"
+                >
+                  ✦
+                </text>
+              </>
+            );
+          })()}
+        </g>
+      )}
+
+      {/* Beacon Color + Shape Match Ring (`tileColor`) */}
+      {tileColorRef && (
+        <g
+          data-testid="sensor-tile-color-ring"
+          data-matched={tileColorMatch ? 'true' : 'false'}
+          data-beacon-shape={currentBeacon?.shape ?? 'none'}
+        >
+          <circle
+            cx={robotX}
+            cy={robotY}
+            r={cellSize * 0.45}
+            fill="none"
+            stroke={tileColorHex}
+            strokeWidth={tileColorMatch ? 3.5 : 2}
+            strokeDasharray={tileColorMatch ? undefined : '4 3'}
+            opacity={tileColorMatch ? 0.95 : 0.65}
+          />
+          {currentBeacon && (
+            <circle
+              cx={robotX}
+              cy={robotY}
+              r={cellSize * 0.36}
+              fill={tileColorMatch ? tileColorHex : 'none'}
+              fillOpacity={tileColorMatch ? 0.16 : 0}
+              stroke="#ffffff"
+              strokeWidth={1.2}
+              strokeOpacity={tileColorMatch ? 0.75 : 0.35}
+            />
+          )}
+        </g>
+      )}
+
+      {/* Illuminating halo on local-cell scanned condition (when not tileColor / ahead) */}
+      {!isAhead && !tileColorRef && (
         <circle
           cx={robotX}
           cy={robotY}

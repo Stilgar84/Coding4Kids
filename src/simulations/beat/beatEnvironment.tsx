@@ -51,6 +51,8 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
       dir: 'EAST',
       visible: false,
     },
+    edgeBonk: false,
+    edgeBonkPulse: 0,
     isMuted,
     stepDelayMultiplier: 1,
     status: 'IDLE',
@@ -58,7 +60,12 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
 }
 
 export function resetBeatState(state?: BeatState): BeatState {
-  return createInitialBeatState(Boolean(state?.isMuted));
+  const initial = createInitialBeatState(Boolean(state?.isMuted));
+  return {
+    ...initial,
+    ...(typeof state?.width === 'number' ? { width: state.width } : {}),
+    ...(typeof state?.height === 'number' ? { height: state.height } : {}),
+  };
 }
 
 export const BEAT_PITCH_PARAM_DEF: ActionParamDef = {
@@ -719,35 +726,115 @@ export const BEAT_PALETTE_ITEMS: SimPaletteItem[] = [
 
 const CARDINAL_DIRS: readonly BeatState['cursor']['dir'][] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
 
-function stepBeatCursor(cursor: BeatState['cursor']): BeatState['cursor'] {
-  const baseX = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.x || 1)));
-  const baseY = Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(cursor?.y || 1)));
+function resolveBeatDimensions(state?: BeatState): { width: number; height: number } {
+  const width =
+    typeof state?.width === 'number' && Number.isFinite(state.width) && state.width > 0
+      ? Math.round(state.width)
+      : BEAT_GRID_SIZE;
+  const height =
+    typeof state?.height === 'number' && Number.isFinite(state.height) && state.height > 0
+      ? Math.round(state.height)
+      : BEAT_GRID_SIZE;
+  return { width, height };
+}
+
+/**
+ * Evaluates Beat & Light boolean sensors (Phase 2: `cursorAtEdge` / 0x2A).
+ * Returns true iff cursor is on an outer border AND facing outward.
+ */
+export function evaluateBeatSensor(
+  sensor: unknown,
+  state: BeatState
+): boolean {
+  const rawType =
+    typeof sensor === 'string'
+      ? sensor
+      : typeof sensor === 'number'
+      ? sensor
+      : sensor && typeof sensor === 'object'
+      ? (sensor as { sensor?: string; type?: string }).sensor ??
+        (sensor as { sensor?: string; type?: string }).type
+      : undefined;
+  const cleanType =
+    typeof rawType === 'string' && rawType.startsWith('$') ? rawType.slice(1) : rawType;
+
+  if (cleanType === 'cursorAtEdge' || cleanType === 0x2a || cleanType === '0x2a') {
+    const cursor = state?.cursor;
+    if (!cursor) return false;
+    const { width, height } = resolveBeatDimensions(state);
+    // Preserve directional outward facing whenever cursor.dir is defined;
+    // gracefully fall back to border membership only if a legacy test omits cursor.dir.
+    if (!cursor.dir) {
+      return cursor.x <= 1 || cursor.x >= width || cursor.y <= 1 || cursor.y >= height;
+    }
+    return (
+      (cursor.dir === 'WEST' && cursor.x <= 1) ||
+      (cursor.dir === 'EAST' && cursor.x >= width) ||
+      (cursor.dir === 'NORTH' && cursor.y <= 1) ||
+      (cursor.dir === 'SOUTH' && cursor.y >= height)
+    );
+  }
+
+  return false;
+}
+
+function stepBeatCursor(
+  cursor: BeatState['cursor'],
+  width: number = BEAT_GRID_SIZE,
+  height: number = BEAT_GRID_SIZE
+): { cursor: BeatState['cursor']; edgeBonk: boolean } {
+  const baseX = Math.max(1, Math.min(width, Math.round(cursor?.x || 1)));
+  const baseY = Math.max(1, Math.min(height, Math.round(cursor?.y || 1)));
   const dir: BeatState['cursor']['dir'] = CARDINAL_DIRS.includes(cursor?.dir)
     ? cursor.dir
     : 'EAST';
 
   let nextX = baseX;
   let nextY = baseY;
+  let edgeBonk = false;
   switch (dir) {
     case 'EAST':
-      nextX = (baseX % BEAT_GRID_SIZE) + 1;
+      if (baseX < width) {
+        nextX = baseX + 1;
+      } else {
+        nextX = width;
+        edgeBonk = true;
+      }
       break;
     case 'WEST':
-      nextX = ((baseX + BEAT_GRID_SIZE - 2) % BEAT_GRID_SIZE) + 1;
+      if (baseX > 1) {
+        nextX = baseX - 1;
+      } else {
+        nextX = 1;
+        edgeBonk = true;
+      }
       break;
     case 'SOUTH':
-      nextY = (baseY % BEAT_GRID_SIZE) + 1;
+      if (baseY < height) {
+        nextY = baseY + 1;
+      } else {
+        nextY = height;
+        edgeBonk = true;
+      }
       break;
     case 'NORTH':
-      nextY = ((baseY + BEAT_GRID_SIZE - 2) % BEAT_GRID_SIZE) + 1;
+      if (baseY > 1) {
+        nextY = baseY - 1;
+      } else {
+        nextY = 1;
+        edgeBonk = true;
+      }
       break;
   }
 
   return {
-    x: nextX,
-    y: nextY,
-    dir,
-    visible: true,
+    cursor: {
+      x: nextX,
+      y: nextY,
+      dir,
+      visible: true,
+    },
+    edgeBonk,
   };
 }
 
@@ -821,6 +908,8 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
     let nextActiveColor = state.activeColor || DEFAULT_BEAT_LED_COLOR;
     let nextIsColorCustomized = Boolean(state.isColorCustomized);
     let nextCursor = state.cursor || { x: 1, y: 1, dir: 'EAST' as const, visible: false };
+    let nextEdgeBonk = false;
+    let nextEdgeBonkPulse = state.edgeBonkPulse ?? 0;
     let nextStepDelayMultiplier =
       typeof state.stepDelayMultiplier === 'number' && Number.isFinite(state.stepDelayMultiplier)
         ? state.stepDelayMultiplier
@@ -1011,7 +1100,13 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'CURSOR_STEP': {
-        nextCursor = stepBeatCursor(nextCursor);
+        const { width, height } = resolveBeatDimensions(state);
+        const stepped = stepBeatCursor(nextCursor, width, height);
+        nextCursor = stepped.cursor;
+        nextEdgeBonk = stepped.edgeBonk;
+        if (stepped.edgeBonk) {
+          nextEdgeBonkPulse += 1;
+        }
         nextLeds = cloneLedGrid(state.leds);
         nextLeds[nextCursor.y - 1][nextCursor.x - 1] = resolvePaintLedCell(nextActiveColor);
         lastTriggeredEvent = {
@@ -1048,6 +1143,8 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       stepCount: nextStepCount,
       lastTriggeredEvent,
       cursor: nextCursor,
+      edgeBonk: nextEdgeBonk,
+      edgeBonkPulse: nextEdgeBonkPulse,
       stepDelayMultiplier: nextStepDelayMultiplier,
       status: 'RUNNING',
     };
@@ -1056,6 +1153,10 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       nextState,
       status: 'RUNNING',
     };
+  },
+
+  evaluateSensor: (sensor: unknown, state: BeatState): boolean => {
+    return evaluateBeatSensor(sensor, state);
   },
 
   evaluateCompletion: () => 'IDLE',

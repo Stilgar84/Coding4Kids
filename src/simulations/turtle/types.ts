@@ -89,6 +89,8 @@ export interface TurtleState {
   fitToView: boolean;
   computedBounds: TurtleBounds;
   canvasBounds?: TurtleCanvasBounds;
+  /** Shows the dashed nominal 600x480 safe-frame boundary even if canvasBounds uses default dimensions */
+  showCanvasBounds?: boolean;
   activeAnimation?: TurtleActiveAnimation | null;
   instantMode: boolean;
   showTurtle: boolean;

@@ -628,6 +628,15 @@ export function createCurriculumGridState(
       status: 'IDLE',
       showTrace: true,
       fitToView,
+      ...(def.strictInteractionCollision !== undefined
+        ? { strictInteractionCollision: def.strictInteractionCollision }
+        : {}),
+      ...(def.requireAllItemsCollected !== undefined
+        ? { requireAllItemsCollected: def.requireAllItemsCollected }
+        : {}),
+      ...(def.requireEmptyBackpackAtGoal !== undefined
+        ? { requireEmptyBackpackAtGoal: def.requireEmptyBackpackAtGoal }
+        : {}),
     };
   }
 
@@ -673,6 +682,7 @@ export function createCurriculumGridState(
     status: 'IDLE',
     showTrace: true,
     fitToView,
+    strictInteractionCollision: def.strictInteractionCollision,
     requireAllItemsCollected: def.requireAllItemsCollected,
     requireEmptyBackpackAtGoal: def.requireEmptyBackpackAtGoal,
   };

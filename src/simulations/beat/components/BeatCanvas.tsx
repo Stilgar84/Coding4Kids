@@ -159,12 +159,24 @@ interface BeatLedCellProps {
   ledColor: string | null;
   isCursorHere: boolean;
   cursorDir: Direction;
+  isEdgeBonk: boolean;
+  edgeBonkPulse: number;
   isLowQuality: boolean;
 }
 
 const BeatLedCell = React.memo<BeatLedCellProps>(
-  ({ col, row, ledColor, isCursorHere, cursorDir, isLowQuality }) => {
+  ({ col, row, ledColor, isCursorHere, cursorDir, isEdgeBonk, edgeBonkPulse, isLowQuality }) => {
     const isLit = Boolean(ledColor) && !isBeatLedOffHex(ledColor);
+    const bonkBorderStyle: React.CSSProperties | undefined =
+      isCursorHere && isEdgeBonk
+        ? cursorDir === 'WEST'
+          ? { borderLeftColor: '#fb7185', boxShadow: 'inset 3px 0 10px rgba(251, 113, 133, 0.75)' }
+          : cursorDir === 'EAST'
+          ? { borderRightColor: '#fb7185', boxShadow: 'inset -3px 0 10px rgba(251, 113, 133, 0.75)' }
+          : cursorDir === 'NORTH'
+          ? { borderTopColor: '#fb7185', boxShadow: 'inset 0 3px 10px rgba(251, 113, 133, 0.75)' }
+          : { borderBottomColor: '#fb7185', boxShadow: 'inset 0 -3px 10px rgba(251, 113, 133, 0.75)' }
+        : undefined;
 
     return (
       <div
@@ -209,14 +221,30 @@ const BeatLedCell = React.memo<BeatLedCellProps>(
             data-cursor-x={col + 1}
             data-cursor-y={row + 1}
             data-cursor-dir={cursorDir}
+            data-edge-bonk={isEdgeBonk ? 'true' : 'false'}
             role="img"
             aria-label={`LED Cursor at column ${col + 1}, row ${row + 1}, facing ${cursorDir.toLowerCase()}`}
-            className={`pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ring-white flex items-center justify-center z-10 ${
+            className={`pointer-events-none absolute -inset-0.5 rounded-md sm:rounded-lg ring-2 ${
+              isEdgeBonk ? 'ring-amber-300' : 'ring-white'
+            } flex items-center justify-center z-10 ${
               isLowQuality
                 ? ''
+                : isEdgeBonk
+                ? 'shadow-[0_0_0_1.5px_rgba(2,6,23,0.92),0_0_14px_rgba(251,191,36,0.9)]'
                 : 'shadow-[0_0_0_1.5px_rgba(2,6,23,0.92),0_0_10px_rgba(255,255,255,0.8)]'
             }`}
           >
+            {isEdgeBonk && (
+              <span
+                key={`bonk-${edgeBonkPulse}`}
+                data-testid="beat-edge-bonk-shimmer"
+                aria-hidden="true"
+                style={bonkBorderStyle}
+                className={`pointer-events-none absolute inset-0 rounded-md sm:rounded-lg border-2 border-amber-300/80 ${
+                  isLowQuality ? '' : 'animate-pulse'
+                }`}
+              />
+            )}
             <svg
               viewBox="0 0 16 16"
               aria-hidden="true"
@@ -492,11 +520,12 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
           {/* 8x8 Rounded Silicone LED Pad Matrix */}
           <div
             data-testid="beat-led-grid"
+            data-edge-bonk={state.edgeBonk ? 'true' : 'false'}
             role="img"
             aria-label="8 by 8 RGB LED Matrix"
-            className={`w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border border-slate-800 ${
-              isLowQuality ? '' : 'shadow-inner'
-            }`}
+            className={`w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border ${
+              state.edgeBonk ? 'border-amber-400/80' : 'border-slate-800'
+            } ${isLowQuality ? '' : 'shadow-inner'}`}
           >
             {Array.from({ length: BEAT_GRID_SIZE }, (_, row) =>
               Array.from({ length: BEAT_GRID_SIZE }, (__, col) => {
@@ -514,6 +543,8 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
                     ledColor={ledColor}
                     isCursorHere={isCursorHere}
                     cursorDir={state.cursor?.dir || 'EAST'}
+                    isEdgeBonk={Boolean(state.edgeBonk)}
+                    edgeBonkPulse={state.edgeBonkPulse ?? 0}
                     isLowQuality={isLowQuality}
                   />
                 );

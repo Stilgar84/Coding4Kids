@@ -2,6 +2,14 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  CurriculumActivity,
+  createCurriculumBlock,
+} from '../src/data/curriculum/types';
+import { createInitialInterpreterState, tickInterpreter } from '../src/engine/interpreter';
+import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
+import { SensorBeamGridOverlay } from '../src/simulations/grid/components/SensorAndBranchSpotlight';
+import { evaluateGridSensor as evalSensorDirect, unvisitedAhead } from '../src/simulations/grid/sensors';
+import {
   GridState,
   WorkspaceState,
   BeaconTile,
@@ -471,6 +479,514 @@ describe('Commit 22: Grid envVersion=3, Sensors, Dials, Beacons & Stack Depots',
       expect(svg).toContain('data-thumb-beacon="1-1"');
       expect(svg).toContain('data-thumb-dial="2-2"');
       expect(svg).toContain('data-thumb-stack="0-1"');
+    });
+  });
+
+  describe('Phase 2: 1-ahead Plank itemHere, unvisitedAhead, tileColor aliases, Sensor HUD & Multi-Variant Solver (< 200ms)', () => {
+    it('returns itemHere=true for 1-ahead walkable bridged Plank with PICK_UP parity and false across walls/closed gates/open water', () => {
+      const bridgedAhead = makeBaseGrid({
+        width: 4,
+        height: 2,
+        robot: { x: 0, y: 0, dir: 'EAST', initialX: 0, initialY: 0, initialDir: 'EAST' },
+        waterCells: [{ x: 1, y: 0 }],
+        bridgedWaterCells: [{ x: 1, y: 0 }],
+        worldItems: [],
+      });
+      expect(evalSensorDirect('itemHere', bridgedAhead)).toBe(true);
+      expect(evalSensorDirect({ type: 'itemHere' }, bridgedAhead)).toBe(true);
+
+      // Reclaiming the 1-ahead plank succeeds via PICK_UP and clears bridgedWaterCells
+      const pickRes = gridSimulationEnvironment.executeAction('PICK_UP', bridgedAhead);
+      expect(pickRes.status).toBe('RUNNING');
+      expect(pickRes.nextState.robot.carriedItem?.type).toBe('plank');
+      expect(pickRes.nextState.bridgedWaterCells).toEqual([]);
+      expect(evalSensorDirect('itemHere', pickRes.nextState)).toBe(false);
+
+      // Open (unbridged) water 1 cell ahead does NOT count as itemHere
+      const openWater = makeBaseGrid({
+        width: 4,
+        height: 2,
+        robot: { x: 0, y: 0, dir: 'EAST', initialX: 0, initialY: 0, initialDir: 'EAST' },
+        waterCells: [{ x: 1, y: 0 }],
+        bridgedWaterCells: [],
+      });
+      expect(evalSensorDirect('itemHere', openWater)).toBe(false);
+
+      // Wall between robot and bridged water blocks both itemHere and PICK_UP
+      const walledPlank = {
+        ...bridgedAhead,
+        barriers: [{ orientation: 'V' as const, x: 1, y: 0 }],
+      };
+      expect(evalSensorDirect('itemHere', walledPlank)).toBe(false);
+      expect(
+        gridSimulationEnvironment.executeAction('PICK_UP', {
+          ...walledPlank,
+          strictInteractionCollision: true,
+        }).status
+      ).toBe('COLLISION');
+
+      // Closed gate on the ahead cell blocks itemHere
+      const gatedPlank = {
+        ...bridgedAhead,
+        lockedGates: [{ id: 'g1', x: 1, y: 0, shape: 'circle' as const, color: 'amber' as const, open: false }],
+      };
+      expect(evalSensorDirect('itemHere', gatedPlank)).toBe(false);
+    });
+
+    it('tracks unvisitedAhead using visitedCells seeded from initialX/initialY and resolves tileColor aliases', () => {
+      const initGrid = resetGridInteractiveState(
+        makeBaseGrid({
+          width: 4,
+          height: 2,
+          robot: { x: 0, y: 0, dir: 'EAST', initialX: 0, initialY: 0, initialDir: 'EAST' },
+          visitedCells: [],
+        })
+      );
+      expect(initGrid.visitedCells).toEqual([{ x: 0, y: 0 }]);
+      expect(unvisitedAhead(initGrid)).toBe(true);
+      expect(evalSensorDirect('unvisitedAhead', initGrid)).toBe(true);
+
+      const moved1 = gridSimulationEnvironment.executeAction('MOVE_FWD', initGrid).nextState;
+      expect(moved1.visitedCells).toEqual([
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ]);
+
+      // Turn around facing back toward already-visited (0,0)
+      const turnedRight = gridSimulationEnvironment.executeAction('TURN_RIGHT', moved1).nextState;
+      const facingBack = gridSimulationEnvironment.executeAction('TURN_RIGHT', turnedRight).nextState;
+      expect(facingBack.robot.dir).toBe('WEST');
+      expect(unvisitedAhead(facingBack)).toBe(false);
+      expect(evalSensorDirect('unvisitedAhead', facingBack)).toBe(false);
+
+      const reset = resetGridInteractiveState(facingBack);
+      expect(reset.visitedCells).toEqual([{ x: 0, y: 0 }]);
+      expect(unvisitedAhead(reset)).toBe(true);
+
+      // tileColor handles color names, rose/sky/emerald/yellow aliases, numeric strings, and colorIdx
+      const beaconGrid = makeBaseGrid({
+        width: 5,
+        height: 1,
+        robot: { x: 0, y: 0, dir: 'EAST', initialX: 0, initialY: 0, initialDir: 'EAST' },
+        beaconTiles: [
+          { x: 0, y: 0, color: 'yellow', shape: 'diamond' },
+          { x: 1, y: 0, color: 'red', shape: 'circle' },
+          { x: 2, y: 0, color: 'blue', shape: 'triangle' },
+          { x: 3, y: 0, color: 'green', shape: 'square' },
+        ],
+      });
+      expect(evalSensorDirect('tileColor', beaconGrid, 'yellow')).toBe(true);
+      expect(evalSensorDirect('tileColor', beaconGrid, 'amber')).toBe(true);
+      expect(evalSensorDirect('tileColor', beaconGrid, '4')).toBe(true);
+      expect(evalSensorDirect({ type: 'tileColor', colorIdx: 4 }, beaconGrid)).toBe(true);
+      expect(evalSensorDirect('tileColor', beaconGrid, 'red')).toBe(false);
+
+      const onRed = { ...beaconGrid, robot: { ...beaconGrid.robot, x: 1 } };
+      expect(evalSensorDirect('tileColor', onRed, 'red')).toBe(true);
+      expect(evalSensorDirect('tileColor', onRed, 'rose')).toBe(true);
+      expect(evalSensorDirect('tileColor', onRed, '1')).toBe(true);
+
+      const onBlue = { ...beaconGrid, robot: { ...beaconGrid.robot, x: 2 } };
+      expect(evalSensorDirect('tileColor', onBlue, 'sky')).toBe(true);
+      expect(evalSensorDirect('tileColor', onBlue, 'blue')).toBe(true);
+
+      const onGreen = { ...beaconGrid, robot: { ...beaconGrid.robot, x: 3 } };
+      expect(evalSensorDirect('tileColor', onGreen, 'emerald')).toBe(true);
+      expect(evalSensorDirect('tileColor', onGreen, 'green')).toBe(true);
+    });
+
+    it('renders directional scan visor/ears, 1-ahead Plank scan beam, tileColor match ring, and zero Goal padlocks', () => {
+      const scanGrid = makeBaseGrid({
+        width: 4,
+        height: 3,
+        robot: { x: 1, y: 1, dir: 'EAST', initialX: 1, initialY: 1, initialDir: 'EAST' },
+        barriers: [{ orientation: 'V', x: 2, y: 1 }],
+        waterCells: [{ x: 2, y: 1 }],
+        bridgedWaterCells: [{ x: 2, y: 1 }],
+        beaconTiles: [{ x: 1, y: 1, color: 'blue', shape: 'triangle' }],
+        flags: [
+          { id: 'f1', x: 1, y: 0, isGoal: false, order: 1, collected: false },
+          { id: 'goal', x: 3, y: 1, isGoal: true, order: 2, collected: false },
+        ],
+      });
+
+      const condBlock = createCurriculumBlock(
+        'WHILE',
+        undefined,
+        {
+          condition: {
+            kind: 'and',
+            left: {
+              kind: 'and',
+              left: { kind: 'sensor', sensor: 'pathAhead' },
+              right: { kind: 'sensor', sensor: 'pathLeft' },
+            },
+            right: {
+              kind: 'or',
+              left: { kind: 'sensor', sensor: 'pathRight' },
+              right: { kind: 'sensor', sensor: 'tileColor', param: 'blue' },
+            },
+          },
+        },
+        'while_scan_1'
+      );
+      const workspace: WorkspaceState = {
+        MAIN: [condBlock, createCurriculumBlock('MOVE_FWD', undefined, undefined, 'm1'), createCurriculumBlock('END_WHILE', undefined, undefined, 'ew1')],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      useAppStore.setState({
+        appMode: 'sandbox',
+        workspace,
+        interpreterRuntime: { ...createInitialInterpreterState(), activeBlockId: condBlock.id },
+      });
+
+      const gridHtml = renderToStaticMarkup(React.createElement(GridCanvas, { state: scanGrid }));
+      expect(gridHtml).toContain('data-testid="robot-sensor-visor-ahead"');
+      expect(gridHtml).toContain('data-open="false"');
+      expect(gridHtml).toContain('data-sensor-result="false"');
+      expect(gridHtml).toContain('data-testid="robot-sensor-ear-left"');
+      expect(gridHtml).toContain('data-testid="robot-sensor-ear-right"');
+      expect(gridHtml).toContain('data-testid="robot-tile-color-ring"');
+      // Zero padlocks on Grid waypoints / Goal flags in Phase 2
+      expect(gridHtml).not.toContain('data-testid="flag-padlock"');
+
+      // 1-ahead bridged Plank scan beam renders when barrier does not block and itemHere is active
+      const plankBeamGrid = { ...scanGrid, barriers: [] };
+      const itemBlock = createCurriculumBlock(
+        'IF',
+        undefined,
+        { condition: { kind: 'sensor', sensor: 'itemHere' } },
+        'if_plank_ahead'
+      );
+      const itemWs: WorkspaceState = {
+        MAIN: [itemBlock, createCurriculumBlock('PICK_UP', undefined, undefined, 'p1'), createCurriculumBlock('END_IF', undefined, undefined, 'ei1')],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      useAppStore.setState({
+        workspace: itemWs,
+        interpreterRuntime: { ...createInitialInterpreterState(), activeBlockId: itemBlock.id },
+      });
+      const plankHtml = renderToStaticMarkup(React.createElement(GridCanvas, { state: plankBeamGrid }));
+      expect(plankHtml).toContain('data-testid="robot-plank-scan-beam"');
+      expect(plankHtml).toContain('data-testid="sensor-plank-ahead-beam"');
+
+      const overlayHtml = renderToStaticMarkup(
+        React.createElement(
+          'svg',
+          null,
+          React.createElement(SensorBeamGridOverlay, {
+            grid: plankBeamGrid,
+            workspace: itemWs,
+            runtime: { ...createInitialInterpreterState(), activeBlockId: itemBlock.id },
+            tileSize: 64,
+            offsetX: 0,
+            offsetY: 0,
+          })
+        )
+      );
+      expect(overlayHtml).toContain('data-testid="sensor-plank-ahead-beam"');
+    });
+
+    it('verifies end-of-program Goal semantics and multi-variant constraints (< 200ms) for branch.7a, while.0, while.1, and while.A', () => {
+      const wallsForCorridor = (width: number, height: number, path: Array<{ x: number; y: number }>) => {
+        const open = new Set<string>();
+        for (let i = 0; i + 1 < path.length; i++) {
+          const a = path[i];
+          const b = path[i + 1];
+          open.add(a.x === b.x ? `H:${a.x},${Math.max(a.y, b.y)}` : `V:${Math.max(a.x, b.x)},${a.y}`);
+        }
+        const barriers: GridState['barriers'] = [];
+        for (let y = 1; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            if (!open.has(`H:${x},${y}`)) barriers.push({ orientation: 'H', x, y });
+          }
+        }
+        for (let y = 0; y < height; y++) {
+          for (let x = 1; x < width; x++) {
+            if (!open.has(`V:${x},${y}`)) barriers.push({ orientation: 'V', x, y });
+          }
+        }
+        return barriers;
+      };
+
+      // 1. branch.7a: requireAllItemsCollected: false (Amber decoy keys) + strictInteractionCollision: true
+      const branch7aVariant = (keyXs: number[]) => ({
+        width: 6,
+        height: 1,
+        robot: { x: 0, y: 0, dir: 'EAST' as const },
+        barriers: [],
+        lockedGates: [{ id: 'g', x: 4, y: 0, shape: 'circle' as const, color: 'amber' as const, open: false }],
+        worldItems: keyXs.map((x, idx) => ({
+          id: `k${idx}`,
+          type: 'key' as const,
+          x,
+          y: 0,
+          shape: 'circle' as const,
+          color: 'amber' as const,
+        })),
+        flags: [{ id: 'goal', x: 5, y: 0, isGoal: true, order: 1, collected: false }],
+        requireAllItemsCollected: false,
+        requireEmptyBackpackAtGoal: false,
+        strictInteractionCollision: true,
+      });
+      const branch7aRef: WorkspaceState = {
+        MAIN: [
+          createCurriculumBlock('LOOP_START', 3, undefined, 'b7a_ls'),
+          createCurriculumBlock('MOVE_FWD', undefined, undefined, 'b7a_m1'),
+          createCurriculumBlock(
+            'IF',
+            undefined,
+            {
+              condition: {
+                kind: 'and',
+                left: { kind: 'sensor', sensor: 'itemHere' },
+                right: { kind: 'not', operand: { kind: 'sensor', sensor: 'carryingItem' } },
+              },
+            },
+            'b7a_if'
+          ),
+          createCurriculumBlock('PICK_UP', undefined, undefined, 'b7a_pu'),
+          createCurriculumBlock('END_IF', undefined, undefined, 'b7a_ei'),
+          createCurriculumBlock('LOOP_END', undefined, undefined, 'b7a_le'),
+          createCurriculumBlock('USE_DROP', undefined, undefined, 'b7a_ud'),
+          createCurriculumBlock('MOVE_FWD', undefined, undefined, 'b7a_m2'),
+          createCurriculumBlock('MOVE_FWD', undefined, undefined, 'b7a_m3'),
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      const branch7aAct: CurriculumActivity = {
+        id: 'branch.7a-test',
+        module: 'branch',
+        lessonNumber: 7.1,
+        title: 'Decoy Key Vault',
+        simId: 'grid',
+        tier: 3,
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD', 'PICK_UP', 'USE_DROP'],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'IF', 'END_IF'],
+          allowedSensors: ['itemHere', 'carryingItem'],
+          allowedCombinators: ['NOT', 'AND'],
+          allowRepeatBadges: false,
+        },
+        slotCap: { perScope: { MAIN: 10 }, maxTotal: 10 },
+        grid: branch7aVariant([3]),
+        gridVariants: [
+          { ...branch7aVariant([3]), label: 'V1' },
+          { ...branch7aVariant([1, 2]), label: 'V2' },
+          { ...branch7aVariant([1, 2, 3]), label: 'V3' },
+        ],
+        referenceSolution: branch7aRef,
+        antiBypassRules: [
+          { id: 'need-if', description: 'Cannot collect keys safely without IF', forbidBlocks: ['IF'], singleVariantBypassMustExist: true },
+        ],
+      };
+      const rep7a = verifyActivityConstraints(branch7aAct);
+      expect(rep7a.passed).toBe(true);
+      expect(rep7a.elapsedMs).toBeLessThan(200);
+
+      // 2. while.0 & while.1: variable straight corridors + unequal L-tunnels where LOOP_START fails
+      const mkCorridor = (len: number) => {
+        const path: Array<{ x: number; y: number }> = [];
+        for (let x = 0; x <= len; x++) path.push({ x, y: 0 });
+        return {
+          width: len + 1,
+          height: 1,
+          robot: { x: 0, y: 0, dir: 'EAST' as const },
+          barriers: wallsForCorridor(len + 1, 1, path),
+          flags: [{ id: 'g', x: len, y: 0, isGoal: true, order: 1, collected: false }],
+        };
+      };
+      const while0Act: CurriculumActivity = {
+        id: 'while.0-test',
+        module: 'while',
+        lessonNumber: 0,
+        title: 'Variable Hallway',
+        simId: 'grid',
+        tier: 3,
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD'],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'WHILE', 'END_WHILE'],
+          allowedSensors: ['pathAhead'],
+          allowRepeatBadges: false,
+        },
+        slotCap: { perScope: { MAIN: 4 }, maxTotal: 4 },
+        grid: mkCorridor(2),
+        gridVariants: [
+          { ...mkCorridor(2), label: 'C1' },
+          { ...mkCorridor(4), label: 'C2' },
+          { ...mkCorridor(3), label: 'C3' },
+          { ...mkCorridor(5), label: 'C4' },
+        ],
+        referenceSolution: {
+          MAIN: [
+            createCurriculumBlock('WHILE', undefined, { condition: { kind: 'sensor', sensor: 'pathAhead' } }, 'w0'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'w0m'),
+            createCurriculumBlock('END_WHILE', undefined, undefined, 'w0e'),
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+        antiBypassRules: [
+          { id: 'forbid-while', description: 'Variable hallways fail fixed repeats', forbidBlocks: ['WHILE'], singleVariantBypassMustExist: true },
+        ],
+      };
+      const repW0 = verifyActivityConstraints(while0Act);
+      expect(repW0.passed).toBe(true);
+      expect(repW0.elapsedMs).toBeLessThan(200);
+
+      const mkL = (l1: number, l2: number) => {
+        const w = l1 + 1;
+        const h = l2 + 1;
+        const path: Array<{ x: number; y: number }> = [];
+        for (let x = 0; x <= l1; x++) path.push({ x, y: 0 });
+        for (let y = 1; y <= l2; y++) path.push({ x: l1, y });
+        return {
+          width: w,
+          height: h,
+          robot: { x: 0, y: 0, dir: 'EAST' as const },
+          barriers: wallsForCorridor(w, h, path),
+          flags: [{ id: 'g', x: l1, y: l2, isGoal: true, order: 1, collected: false }],
+        };
+      };
+      const while1Act: CurriculumActivity = {
+        id: 'while.1-test',
+        module: 'while',
+        lessonNumber: 1,
+        title: 'L-Tunnels',
+        simId: 'grid',
+        tier: 3,
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD', 'TURN_RIGHT'],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'WHILE', 'END_WHILE'],
+          allowedSensors: ['pathAhead'],
+          allowRepeatBadges: false,
+        },
+        slotCap: { perScope: { MAIN: 7 }, maxTotal: 7 },
+        grid: mkL(2, 3),
+        gridVariants: [
+          { ...mkL(2, 3), label: 'L1' },
+          { ...mkL(5, 2), label: 'L2' },
+          { ...mkL(3, 5), label: 'L3' },
+          { ...mkL(6, 4), label: 'L4' },
+        ],
+        referenceSolution: {
+          MAIN: [
+            createCurriculumBlock('WHILE', undefined, { condition: { kind: 'sensor', sensor: 'pathAhead' } }, 'w1'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'm1'),
+            createCurriculumBlock('END_WHILE', undefined, undefined, 'ew1'),
+            createCurriculumBlock('TURN_RIGHT', undefined, undefined, 'tr1'),
+            createCurriculumBlock('WHILE', undefined, { condition: { kind: 'sensor', sensor: 'pathAhead' } }, 'w2'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'm2'),
+            createCurriculumBlock('END_WHILE', undefined, undefined, 'ew2'),
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+        antiBypassRules: [
+          { id: 'forbid-while', description: 'Fixed repeats/loops fail unequal L-tunnels', forbidBlocks: ['WHILE'], singleVariantBypassMustExist: true },
+        ],
+      };
+      const repW1 = verifyActivityConstraints(while1Act);
+      expect(repW1.passed).toBe(true);
+      expect(repW1.elapsedMs).toBeLessThan(200);
+
+      // 3. while.A: 4 spanning-tree mazes solved by 11-block Right-Hand Wall Follower (< 200ms)
+      const maze1 = {
+        width: 5,
+        height: 5,
+        robot: { x: 0, y: 0, dir: 'EAST' as const },
+        barriers: wallsForCorridor(5, 5, [
+          { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 2 },
+        ]),
+        flags: [{ id: 'g', x: 3, y: 2, isGoal: true, order: 1, collected: false }],
+      };
+      const maze2 = {
+        width: 5,
+        height: 5,
+        robot: { x: 0, y: 0, dir: 'EAST' as const },
+        barriers: wallsForCorridor(5, 5, [
+          { x: 0, y: 0 }, { x: 0, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 },
+          { x: 2, y: 3 }, { x: 2, y: 4 }, { x: 3, y: 4 }, { x: 4, y: 4 },
+        ]),
+        flags: [{ id: 'g', x: 4, y: 4, isGoal: true, order: 1, collected: false }],
+      };
+      const maze3 = {
+        width: 6,
+        height: 6,
+        robot: { x: 0, y: 0, dir: 'EAST' as const },
+        barriers: wallsForCorridor(6, 6, [
+          { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 },
+          { x: 3, y: 2 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }, { x: 5, y: 2 }, { x: 5, y: 3 },
+        ]),
+        flags: [{ id: 'g', x: 5, y: 3, isGoal: true, order: 1, collected: false }],
+      };
+      const maze4 = {
+        width: 6,
+        height: 6,
+        robot: { x: 0, y: 0, dir: 'EAST' as const },
+        barriers: wallsForCorridor(6, 6, [
+          { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }, { x: 5, y: 0 },
+          { x: 5, y: 1 }, { x: 5, y: 2 }, { x: 5, y: 3 }, { x: 5, y: 4 }, { x: 5, y: 5 },
+          { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }, { x: 1, y: 5 }, { x: 0, y: 5 },
+          { x: 0, y: 4 }, { x: 0, y: 3 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 },
+        ]),
+        flags: [{ id: 'g', x: 3, y: 3, isGoal: true, order: 1, collected: false }],
+      };
+      const whileAAct: CurriculumActivity = {
+        id: 'while.A-test',
+        module: 'while',
+        lessonNumber: 9,
+        title: 'Maze Rover',
+        simId: 'grid',
+        tier: 3,
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD', 'TURN_LEFT', 'TURN_RIGHT'],
+          allowedControlBlocks: ['WHILE', 'END_WHILE', 'IF', 'ELSE_IF', 'ELSE', 'END_IF'],
+          allowedSensors: ['atGoal', 'pathRight', 'pathAhead', 'pathLeft'],
+          allowedCombinators: ['NOT'],
+          allowRepeatBadges: false,
+        },
+        slotCap: { perScope: { MAIN: 12 }, maxTotal: 12 },
+        grid: maze1,
+        gridVariants: [
+          { ...maze1, label: 'M1' },
+          { ...maze2, label: 'M2' },
+          { ...maze3, label: 'M3' },
+          { ...maze4, label: 'M4' },
+        ],
+        referenceSolution: {
+          MAIN: [
+            createCurriculumBlock('WHILE', undefined, { condition: { kind: 'not', operand: { kind: 'sensor', sensor: 'atGoal' } } }, 'wa_w'),
+            createCurriculumBlock('IF', undefined, { condition: { kind: 'sensor', sensor: 'pathRight' } }, 'wa_if'),
+            createCurriculumBlock('TURN_RIGHT', undefined, undefined, 'wa_tr'),
+            createCurriculumBlock('ELSE_IF', undefined, { condition: { kind: 'sensor', sensor: 'pathAhead' } }, 'wa_ei1'),
+            createCurriculumBlock('ELSE', undefined, undefined, 'wa_el'),
+            createCurriculumBlock('TURN_LEFT', undefined, undefined, 'wa_tl'),
+            createCurriculumBlock('END_IF', undefined, undefined, 'wa_end_if'),
+            createCurriculumBlock('IF', undefined, { condition: { kind: 'sensor', sensor: 'pathAhead' } }, 'wa_if2'),
+            createCurriculumBlock('MOVE_FWD', undefined, undefined, 'wa_mf'),
+            createCurriculumBlock('END_IF', undefined, undefined, 'wa_end_if2'),
+            createCurriculumBlock('END_WHILE', undefined, undefined, 'wa_ew'),
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+        antiBypassRules: [
+          { id: 'forbid-while', description: 'Multi-variant mazes defeat open-loop sequences <= 12 slots', forbidBlocks: ['WHILE'], singleVariantBypassMustExist: true },
+        ],
+      };
+      const repWA = verifyActivityConstraints(whileAAct);
+      expect(repWA.passed).toBe(true);
+      expect(repWA.elapsedMs).toBeLessThan(200);
     });
   });
 });
