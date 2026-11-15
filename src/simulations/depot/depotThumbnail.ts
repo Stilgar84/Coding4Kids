@@ -178,30 +178,42 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
       `<rect x="${center - 1.5}" y="52" width="3" height="56" rx="1.5" fill="#d4a373" fill-opacity="0.7" />`
     );
 
-    // 25% dashed target ghost rings (for empty target slots)
+    // Dashed target ghost rings/blocks (for empty target slots)
     const ringW = Math.max(10, bayW - 6);
     const ringX = center - ringW / 2;
+    const targetStackVals = depot.targetStackValues?.[b];
     for (let g = stack.length; g < targetStack.length && g < 5; g++) {
       const gy = 104 - (g + 1) * 10;
       const gHex = ringColorHex(targetStack[g]);
+      const gVal = targetStackVals?.[g];
+      const rx = gVal !== undefined && !depot.enforceHanoiRule ? '2' : '3.75';
       parts.push(
-        `<rect x="${ringX}" y="${gy}" width="${ringW}" height="7.5" rx="3.75" fill="${gHex}" fill-opacity="0.16" stroke="${gHex}" stroke-opacity="0.55" stroke-width="1" stroke-dasharray="2.5 1.5" />`
+        `<rect x="${ringX}" y="${gy}" width="${ringW}" height="7.5" rx="${rx}" fill="${gHex}" fill-opacity="0.16" stroke="${gHex}" stroke-opacity="0.55" stroke-width="1" stroke-dasharray="2.5 1.5" />`
       );
     }
 
-    // Live glossy color rings
+    // Live glossy color rings / numbered toy blocks
+    const stackVals = depot.stackValues?.[b];
     for (let s = 0; s < stack.length && s < 5; s++) {
       const cy = 104 - (s + 1) * 10;
       const hex = ringColorHex(stack[s]);
       const isTop = s === stack.length - 1;
+      const val = stackVals?.[s];
+      const rx = val !== undefined && !depot.enforceHanoiRule ? '2' : '4';
       parts.push(
-        `<rect x="${ringX}" y="${cy}" width="${ringW}" height="8" rx="4" fill="${hex}" fill-opacity="${
+        `<rect x="${ringX}" y="${cy}" width="${ringW}" height="8" rx="${rx}" fill="${hex}" fill-opacity="${
           isTop ? '1' : '0.72'
         }" stroke="${isTop ? '#0284c7' : ringStrokeHex(stack[s])}" stroke-width="${isTop ? '1.2' : '0.7'}" />`
       );
-      parts.push(
-        `<rect x="${center - 2.5}" y="${cy + 2.5}" width="5" height="3" rx="1.5" fill="#0f172a" fill-opacity="0.22" />`
-      );
+      if (val !== undefined) {
+        parts.push(
+          `<text x="${center}" y="${cy + 6}" text-anchor="middle" font-family="sans-serif" font-size="6" font-weight="900" fill="#ffffff">${val}</text>`
+        );
+      } else {
+        parts.push(
+          `<rect x="${center - 2.5}" y="${cy + 2.5}" width="5" height="3" rx="1.5" fill="#0f172a" fill-opacity="0.22" />`
+        );
+      }
     }
 
     // Diagonal acrylic glare sheen
