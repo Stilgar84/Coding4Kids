@@ -57,6 +57,25 @@ export interface TurtleBounds {
   maxY: number;
 }
 
+export interface TurtleCanvasBounds {
+  halfWidth: number;
+  halfHeight: number;
+}
+
+export type TurtleCameraPinListener = (pinned: boolean) => void;
+const turtleCameraPinListeners = new Set<TurtleCameraPinListener>();
+
+export function notifyTurtleCameraPinned(pinned: boolean): void {
+  turtleCameraPinListeners.forEach((listener) => listener(pinned));
+}
+
+export function subscribeTurtleCameraPinned(listener: TurtleCameraPinListener): () => void {
+  turtleCameraPinListeners.add(listener);
+  return () => {
+    turtleCameraPinListeners.delete(listener);
+  };
+}
+
 export interface TurtleState {
   robot: TurtlePose;
   penDown: boolean;
@@ -69,6 +88,7 @@ export interface TurtleState {
   zoom: number;
   fitToView: boolean;
   computedBounds: TurtleBounds;
+  canvasBounds?: TurtleCanvasBounds;
   activeAnimation?: TurtleActiveAnimation | null;
   instantMode: boolean;
   showTurtle: boolean;

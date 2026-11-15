@@ -1,14 +1,166 @@
 import { SimulationSpeed } from '../../types';
-import { TurtleState, TurtleBounds, TurtlePathItem, TurtlePose, TurtleActiveAnimation } from './types';
+import {
+  TurtleState,
+  TurtleBounds,
+  TurtleCanvasBounds,
+  TurtlePathItem,
+  TurtlePose,
+  TurtleActiveAnimation,
+} from './types';
 
-export const DEFAULT_STEP_DISTANCE = 50;
+export const DEFAULT_STEP_DISTANCE = 100;
 export const DEFAULT_ARC_RADIUS = 50;
 export const DEFAULT_ARC_ANGLE = 90;
+
+export const MIN_TURTLE_ZOOM = 0.02;
+export const MAX_TURTLE_ZOOM = 8;
+
+export const DEFAULT_TURTLE_CANVAS_BOUNDS: TurtleCanvasBounds = {
+  halfWidth: 300,
+  halfHeight: 240,
+};
+export const TURTLE_CANVAS_BOUNDS_EPSILON = 1e-6;
 
 export const BASE_LINEAR_SPEED = 200; // px/s at 1x
 export const BASE_ANGULAR_SPEED = 360; // deg/s at 1x
 export const BASE_TELEPORT_DURATION_MS = 320; // ms at 1x
 export const BASE_WAIT_DURATION_MS = 400; // 1 beat/unit = 400ms at 1x
+
+/**
+ * Evaluates whether the turtle's current (x, y) pose falls inside nominal paper bounds
+ * (honoring optional `state.canvasBounds` or defaulting to 600×480 around origin).
+ */
+export function isTurtleInsideCanvas(state: TurtleState): boolean {
+  const bounds = state.canvasBounds ?? DEFAULT_TURTLE_CANVAS_BOUNDS;
+  return (
+    Math.abs(state.robot.x) <= bounds.halfWidth + TURTLE_CANVAS_BOUNDS_EPSILON &&
+    Math.abs(state.robot.y) <= bounds.halfHeight + TURTLE_CANVAS_BOUNDS_EPSILON
+  );
+}
+
+/**
+ * Computes adaptive world grid spacing so zoomed-out views avoid dense aliasing
+ * while keeping 100px steps aligned to 2 × 50px grid intersections at standard zoom.
+ */
+export function getTurtleGridStep(zoom: number): number {
+  const safeZoom = Math.max(MIN_TURTLE_ZOOM, zoom);
+  if (safeZoom < 0.05) return 1000;
+  if (safeZoom < 0.25) return 250;
+  return 50;
+}
+
+/**
+ * Computes visible world-space bounds from container dimensions, pan, and zoom.
+ */
+export function getVisibleTurtleWorldBounds(
+  containerWidth: number,
+  containerHeight: number,
+  panX: number,
+  panY: number,
+  zoom: number,
+  marginScreenPx: number = 80
+): TurtleBounds {
+  const safeZoom = Math.max(MIN_TURTLE_ZOOM, zoom);
+  const safeWidth = Math.max(100, containerWidth);
+  const safeHeight = Math.max(100, containerHeight);
+  const centerX = safeWidth / 2 + panX;
+  const centerY = safeHeight / 2 + panY;
+  const marginWorld = marginScreenPx / safeZoom;
+  return {
+    minX: (0 - centerX) / safeZoom - marginWorld,
+    maxX: (safeWidth - centerX) / safeZoom + marginWorld,
+    minY: (0 - centerY) / safeZoom - marginWorld,
+    maxY: (safeHeight - centerY) / safeZoom + marginWorld,
+  };
+}
+
+/**
+ * Returns the union of committed drawing bounds and an active turtle pose margin.
+ */
+export function combineTurtleBoundsWithPose(
+  computedBounds: TurtleBounds,
+  robotPose: TurtlePose,
+  poseMargin: number = 40
+): TurtleBounds {
+  return {
+    minX: Math.min(computedBounds.minX, robotPose.x - poseMargin),
+    minY: Math.min(computedBounds.minY, robotPose.y - poseMargin),
+    maxX: Math.max(computedBounds.maxX, robotPose.x + poseMargin),
+    maxY: Math.max(computedBounds.maxY, robotPose.y + poseMargin),
+  };
+}
+
+export interface AutoFitOverflowResult {
+  zoom: number;
+  pan: { x: number; y: number };
+}
+
+/**
+ * Computes a smooth zoom-out and centered pan when drawing bounds overflow ~85%
+ * of the visible viewport; returns null when already contained or unchanged.
+ */
+export function computeAutoFitOverflowViewport(
+  combinedBounds: TurtleBounds,
+  containerWidth: number,
+  containerHeight: number,
+  currentZoom: number,
+  currentPan: { x: number; y: number }
+): AutoFitOverflowResult | null {
+  if (containerWidth <= 0 || containerHeight <= 0) return null;
+
+  const safeCurrentZoom = Math.min(MAX_TURTLE_ZOOM, Math.max(MIN_TURTLE_ZOOM, currentZoom));
+  const fillRatio = 0.85;
+  const padX = (containerWidth * (1 - fillRatio)) / 2;
+  const padY = (containerHeight * (1 - fillRatio)) / 2;
+
+  const centerX = containerWidth / 2 + currentPan.x;
+  const centerY = containerHeight / 2 + currentPan.y;
+
+  const screenMinX = centerX + combinedBounds.minX * safeCurrentZoom;
+  const screenMaxX = centerX + combinedBounds.maxX * safeCurrentZoom;
+  const screenMinY = centerY + combinedBounds.minY * safeCurrentZoom;
+  const screenMaxY = centerY + combinedBounds.maxY * safeCurrentZoom;
+
+  const tolerancePx = 1;
+  const overflows =
+    screenMinX < padX - tolerancePx ||
+    screenMaxX > containerWidth - padX + tolerancePx ||
+    screenMinY < padY - tolerancePx ||
+    screenMaxY > containerHeight - padY + tolerancePx;
+
+  if (!overflows) return null;
+
+  const boundsWidth = Math.max(100, combinedBounds.maxX - combinedBounds.minX);
+  const boundsHeight = Math.max(100, combinedBounds.maxY - combinedBounds.minY);
+  const targetWidth = Math.max(40, containerWidth * fillRatio);
+  const targetHeight = Math.max(40, containerHeight * fillRatio);
+
+  const fitZoom = Math.min(targetWidth / boundsWidth, targetHeight / boundsHeight);
+  const nextZoom = Number(
+    Math.max(MIN_TURTLE_ZOOM, Math.min(safeCurrentZoom, fitZoom)).toFixed(4)
+  );
+
+  const boundsCenterX = (combinedBounds.minX + combinedBounds.maxX) / 2;
+  const boundsCenterY = (combinedBounds.minY + combinedBounds.maxY) / 2;
+  const nextPan = {
+    x: Number((-boundsCenterX * nextZoom).toFixed(2)),
+    y: Number((-boundsCenterY * nextZoom).toFixed(2)),
+  };
+
+  const zoomChanged = Math.abs(nextZoom - currentZoom) > 0.0005;
+  const panChanged =
+    Math.abs(nextPan.x - currentPan.x) > 0.5 ||
+    Math.abs(nextPan.y - currentPan.y) > 0.5;
+
+  if (!zoomChanged && !panChanged) {
+    return null;
+  }
+
+  return {
+    zoom: nextZoom,
+    pan: nextPan,
+  };
+}
 
 export function normalizeHeading(degrees: number): number {
   let h = degrees % 360;

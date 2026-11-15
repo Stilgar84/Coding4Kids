@@ -1,6 +1,18 @@
 import React, { useRef, useState, useEffect, useId } from 'react';
-import { TurtleActiveAnimation, TurtleState } from '../types';
-import { getArcSvgPath } from '../physics';
+import {
+  TurtleActiveAnimation,
+  TurtleState,
+  subscribeTurtleCameraPinned,
+} from '../types';
+import {
+  MIN_TURTLE_ZOOM,
+  MAX_TURTLE_ZOOM,
+  combineTurtleBoundsWithPose,
+  computeAutoFitOverflowViewport,
+  getArcSvgPath,
+  getTurtleGridStep,
+  getVisibleTurtleWorldBounds,
+} from '../physics';
 import { SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
@@ -498,6 +510,111 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     return () => observer.disconnect();
   }, []);
 
+  const userPinnedCameraRef = useRef(false);
+  const autoFittedByCanvasRef = useRef(false);
+  const hasRunActivityRef = useRef(false);
+
+  useEffect(() => {
+    return subscribeTurtleCameraPinned((pinned) => {
+      userPinnedCameraRef.current = pinned;
+      if (!pinned) {
+        autoFittedByCanvasRef.current = false;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const isInitialOrigin =
+      state.paths.length === 0 &&
+      !state.activeAnimation &&
+      Math.abs(state.robot.x) < 1e-6 &&
+      Math.abs(state.robot.y) < 1e-6;
+
+    if (!isInitialOrigin) {
+      hasRunActivityRef.current = true;
+      return;
+    }
+
+    if (hasRunActivityRef.current && state.status !== 'RUNNING') {
+      hasRunActivityRef.current = false;
+      const shouldRestoreCamera = autoFittedByCanvasRef.current && !userPinnedCameraRef.current;
+      userPinnedCameraRef.current = false;
+      autoFittedByCanvasRef.current = false;
+      if (
+        shouldRestoreCamera &&
+        (Math.abs(state.zoom - 1) > 1e-4 ||
+          Math.abs(state.pan.x) > 0.5 ||
+          Math.abs(state.pan.y) > 0.5)
+      ) {
+        updateTurtleViewport({ pan: { x: 0, y: 0 }, zoom: 1, fitToView: false });
+      }
+    }
+  }, [
+    state.paths.length,
+    state.activeAnimation,
+    state.robot.x,
+    state.robot.y,
+    state.status,
+    state.zoom,
+    state.pan.x,
+    state.pan.y,
+    updateTurtleViewport,
+  ]);
+
+  useEffect(() => {
+    if (
+      state.fitToView ||
+      userPinnedCameraRef.current ||
+      containerSize.width <= 0 ||
+      containerSize.height <= 0
+    ) {
+      return;
+    }
+    const activePose = state.activeAnimation ? state.activeAnimation.currentPose : state.robot;
+    const hasContent =
+      state.paths.length > 0 ||
+      Boolean(state.activeAnimation) ||
+      Math.abs(activePose.x) > 1e-6 ||
+      Math.abs(activePose.y) > 1e-6;
+    if (!hasContent) return;
+
+    const combinedBounds = combineTurtleBoundsWithPose(state.computedBounds, activePose);
+    const nextViewport = computeAutoFitOverflowViewport(
+      combinedBounds,
+      containerSize.width,
+      containerSize.height,
+      state.zoom,
+      state.pan
+    );
+    if (!nextViewport) return;
+
+    const zoomChanged = Math.abs(nextViewport.zoom - state.zoom) > 0.0005;
+    const panChanged =
+      Math.abs(nextViewport.pan.x - state.pan.x) > 0.5 ||
+      Math.abs(nextViewport.pan.y - state.pan.y) > 0.5;
+    if (zoomChanged || panChanged) {
+      autoFittedByCanvasRef.current = true;
+      updateTurtleViewport({
+        zoom: nextViewport.zoom,
+        pan: nextViewport.pan,
+        fitToView: false,
+      });
+    }
+  }, [
+    state.fitToView,
+    state.paths.length,
+    state.computedBounds,
+    state.activeAnimation,
+    state.robot.x,
+    state.robot.y,
+    state.zoom,
+    state.pan.x,
+    state.pan.y,
+    containerSize.width,
+    containerSize.height,
+    updateTurtleViewport,
+  ]);
+
   // Compute transform
   // When fitToView is active, scale automatically fits computedBounds into container
   let effectiveZoom = state.zoom;
@@ -508,9 +625,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     const bounds = state.computedBounds;
     const boundsWidth = Math.max(100, bounds.maxX - bounds.minX);
     const boundsHeight = Math.max(100, bounds.maxY - bounds.minY);
-    const scaleX = (containerSize.width - 64) / boundsWidth;
-    const scaleY = (containerSize.height - 64) / boundsHeight;
-    effectiveZoom = Math.min(scaleX, scaleY, 2.5);
+    const scaleX = Math.max(16, containerSize.width - 64) / boundsWidth;
+    const scaleY = Math.max(16, containerSize.height - 64) / boundsHeight;
+    effectiveZoom = Math.max(MIN_TURTLE_ZOOM, Math.min(scaleX, scaleY, 2.5));
 
     const boundsCenterX = (bounds.minX + bounds.maxX) / 2;
     const boundsCenterY = (bounds.minY + bounds.maxY) / 2;
@@ -570,7 +687,11 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         const centerY = (t1.clientY + t2.clientY) / 2;
 
         const scaleChange = dist / pinchStartRef.current.dist;
-        const nextZoom = Math.min(5, Math.max(0.2, pinchStartRef.current.zoom * scaleChange));
+        const nextZoom = Math.min(
+          MAX_TURTLE_ZOOM,
+          Math.max(MIN_TURTLE_ZOOM, pinchStartRef.current.zoom * scaleChange)
+        );
+        userPinnedCameraRef.current = true;
 
         const dx = centerX - pinchStartRef.current.centerX;
         const dy = centerY - pinchStartRef.current.centerY;
@@ -621,6 +742,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     if (dx === 0 && dy === 0) return;
+    userPinnedCameraRef.current = true;
     updateTurtleViewport({
       pan: {
         x: dragStartRef.current.panX + dx,
@@ -640,7 +762,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    const nextZoom = Math.min(5, Math.max(0.2, effectiveZoom * zoomFactor));
+    const nextZoom = Math.min(MAX_TURTLE_ZOOM, Math.max(MIN_TURTLE_ZOOM, effectiveZoom * zoomFactor));
+    userPinnedCameraRef.current = true;
     updateTurtleViewport({
       zoom: nextZoom,
       ...(state.fitToView ? { pan: { x: effectivePanX, y: effectivePanY } } : {}),
@@ -648,6 +771,16 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     });
   };
 
+  const safeZoom = Math.max(MIN_TURTLE_ZOOM, effectiveZoom);
+  const gridStep = getTurtleGridStep(safeZoom);
+  const visibleWorldBounds = getVisibleTurtleWorldBounds(
+    containerSize.width,
+    containerSize.height,
+    effectivePanX,
+    effectivePanY,
+    safeZoom,
+    120
+  );
   const centerX = containerSize.width / 2 + effectivePanX;
   const centerY = containerSize.height / 2 + effectivePanY;
 
@@ -675,8 +808,21 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         className="w-full h-full overflow-visible block"
       >
         <defs>
-          <pattern id="turtle-grid" width="50" height="50" patternUnits="userSpaceOnUse">
-            <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#e2e8f0" strokeWidth="1" strokeOpacity="0.8" />
+          <pattern
+            id="turtle-grid"
+            data-grid-step={gridStep}
+            width={gridStep}
+            height={gridStep}
+            patternUnits="userSpaceOnUse"
+            patternTransform={`translate(${centerX}, ${centerY}) scale(${safeZoom})`}
+          >
+            <path
+              d={`M ${gridStep} 0 L 0 0 0 ${gridStep}`}
+              fill="none"
+              stroke="#e2e8f0"
+              strokeWidth={1 / safeZoom}
+              strokeOpacity="0.8"
+            />
           </pattern>
           {fadingAirTrails.length > 0 && !isLowQuality && (
             <style>{`@keyframes turtleAirTrailFade { from { opacity: 0.85; } to { opacity: 0; } }`}</style>
@@ -687,11 +833,48 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         <rect width="100%" height="100%" fill="url(#turtle-grid)" />
 
         {/* Viewport Transform Group */}
-        <g transform={`translate(${centerX}, ${centerY}) scale(${effectiveZoom})`}>
-          {/* Coordinate Crosshairs at (0, 0) */}
-          <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
-          <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
-          <circle cx="0" cy="0" r="3" fill="#94a3b8" opacity="0.8" />
+        <g transform={`translate(${centerX}, ${centerY}) scale(${safeZoom})`}>
+          {/* Optional Nominal Paper Bounds Frame */}
+          {state.canvasBounds && (
+            <rect
+              data-testid="turtle-canvas-bounds"
+              x={-state.canvasBounds.halfWidth}
+              y={-state.canvasBounds.halfHeight}
+              width={state.canvasBounds.halfWidth * 2}
+              height={state.canvasBounds.halfHeight * 2}
+              fill="none"
+              stroke="#cbd5e1"
+              strokeWidth={1 / safeZoom}
+              strokeDasharray={`${6 / safeZoom} ${4 / safeZoom}`}
+              opacity={0.75}
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Coordinate Crosshairs at (0, 0) spanning visible viewport */}
+          <line
+            data-testid="turtle-axis-x"
+            x1={visibleWorldBounds.minX}
+            y1={0}
+            x2={visibleWorldBounds.maxX}
+            y2={0}
+            stroke="#cbd5e1"
+            strokeWidth={1 / safeZoom}
+            strokeDasharray={`${4 / safeZoom} ${4 / safeZoom}`}
+            opacity="0.6"
+          />
+          <line
+            data-testid="turtle-axis-y"
+            x1={0}
+            y1={visibleWorldBounds.minY}
+            x2={0}
+            y2={visibleWorldBounds.maxY}
+            stroke="#cbd5e1"
+            strokeWidth={1 / safeZoom}
+            strokeDasharray={`${4 / safeZoom} ${4 / safeZoom}`}
+            opacity="0.6"
+          />
+          <circle cx="0" cy="0" r={3 / safeZoom} fill="#94a3b8" opacity="0.8" />
 
           {/* Composited Ink Layer: Committed Paths + Active Pen-Down Stroke (#ffffff erases prior ink cleanly) */}
           <TurtleInkLayer
@@ -759,8 +942,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
                 y2={activeAnim.currentPose.y}
                 fill="none"
                 stroke="#94a3b8"
-                strokeWidth={2}
-                strokeDasharray="4 4"
+                strokeWidth={2 / safeZoom}
+                strokeDasharray={`${4 / safeZoom} ${4 / safeZoom}`}
                 strokeLinecap="round"
                 opacity={0.85}
               />
@@ -780,20 +963,20 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
                 })}
                 fill="none"
                 stroke="#94a3b8"
-                strokeWidth={2}
-                strokeDasharray="4 4"
+                strokeWidth={2 / safeZoom}
+                strokeDasharray={`${4 / safeZoom} ${4 / safeZoom}`}
                 strokeLinecap="round"
                 opacity={0.85}
               />
             ) : null
           )}
 
-          {/* Robot Turtle Avatar */}
+          {/* Robot Turtle Avatar (zoom-independent block-sized ~28x32px footprint) */}
           {state.showTurtle !== false && (
             <g
               data-testid="turtle-robot"
               data-pen-down={isPenDown ? 'true' : 'false'}
-              transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading}) scale(${teleportScale})`}
+              transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading}) scale(${teleportScale / safeZoom})`}
               opacity={teleportOpacity}
             >
               {/* Soft ground shadow when PEN_UP lifted */}
@@ -802,9 +985,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
                   data-testid="turtle-lift-shadow"
                   cx="0"
                   cy="0"
-                  rx="19"
-                  ry="18"
-                  transform={`rotate(${-robotPose.heading}) translate(3, 6)`}
+                  rx="13"
+                  ry="12.5"
+                  transform={`rotate(${-robotPose.heading}) translate(2, 4)`}
                   fill="#0f172a"
                   opacity="0.22"
                 />
@@ -816,58 +999,58 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
               >
                 {/* Pulsing selection aura (disabled in Instant or Lite mode) */}
                 <circle
-                  r={22}
+                  r={16}
                   fill="#38bdf8"
                   opacity="0.15"
                   className={isInstant || isLowQuality ? '' : 'animate-pulse'}
                 />
 
                 {/* Turtle Shell / Body */}
-                <circle r={18} fill="#0284c7" stroke="#38bdf8" strokeWidth={2.5} className="shadow-lg" />
+                <circle r={12} fill="#0284c7" stroke="#38bdf8" strokeWidth={1.8} className="shadow-lg" />
 
                 {/* Front Head */}
-                <ellipse cx="0" cy="-19" rx="6" ry="8" fill="#38bdf8" />
+                <ellipse cx="0" cy="-13" rx="4.2" ry="5.5" fill="#38bdf8" />
 
                 {/* Flipper Legs */}
-                <ellipse cx="-16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(-30 -16 -10)" />
-                <ellipse cx="16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(30 16 -10)" />
-                <ellipse cx="-15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(-40 -15 12)" />
-                <ellipse cx="15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(40 15 12)" />
+                <ellipse cx="-11" cy="-7" rx="2.8" ry="4.8" fill="#0369a1" transform="rotate(-30 -11 -7)" />
+                <ellipse cx="11" cy="-7" rx="2.8" ry="4.8" fill="#0369a1" transform="rotate(30 11 -7)" />
+                <ellipse cx="-10" cy="8.5" rx="2.5" ry="4.2" fill="#0369a1" transform="rotate(-40 -10 8.5)" />
+                <ellipse cx="10" cy="8.5" rx="2.5" ry="4.2" fill="#0369a1" transform="rotate(40 10 8.5)" />
 
                 {/* Turtle Shell Pattern */}
-                <circle r={11} fill="#0369a1" stroke="#0ea5e9" strokeWidth="1.5" />
-                <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#0284c7" />
+                <circle r={7.5} fill="#0369a1" stroke="#0ea5e9" strokeWidth="1.1" />
+                <polygon points="0,-5.5 4.8,-2.8 4.8,2.8 0,5.5 -4.8,2.8 -4.8,-2.8" fill="#0284c7" />
 
                 {/* Eyes */}
-                <circle cx="-3" cy="-21" r="1.5" fill="#0f172a" />
-                <circle cx="3" cy="-21" r="1.5" fill="#0f172a" />
+                <circle cx="-2" cy="-14.5" r="1.1" fill="#0f172a" />
+                <circle cx="2" cy="-14.5" r="1.1" fill="#0f172a" />
 
                 {/* Active Pen Nib Cue: Solid Ink Dot (PEN_DOWN) vs Hollow Lifted Nib (PEN_UP) */}
                 {isPenDown ? (
                   <circle
                     data-testid="turtle-pen-nib"
                     data-pen-state="down"
-                    r={5.5}
+                    r={4}
                     fill={state.penColor}
                     stroke={isWhiteInkColor(state.penColor) ? '#94a3b8' : '#ffffff'}
-                    strokeWidth={1.5}
+                    strokeWidth={1.2}
                     className="shadow-md"
                   />
                 ) : (
                   <g data-testid="turtle-pen-nib" data-pen-state="up">
                     <circle
-                      r={5}
+                      r={3.8}
                       fill="none"
                       stroke="#ffffff"
-                      strokeWidth={1.75}
-                      strokeDasharray="2.5 2"
+                      strokeWidth={1.4}
+                      strokeDasharray="2 1.6"
                       opacity={0.95}
                     />
                     <circle
-                      r={2.5}
+                      r={1.9}
                       fill="none"
                       stroke={isWhiteInkColor(state.penColor) ? '#94a3b8' : state.penColor}
-                      strokeWidth={1.25}
+                      strokeWidth={1}
                     />
                   </g>
                 )}

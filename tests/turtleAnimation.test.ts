@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   BASE_LINEAR_SPEED,
   BASE_ANGULAR_SPEED,
+  MIN_TURTLE_ZOOM,
+  MAX_TURTLE_ZOOM,
   getSpeedMultiplier,
   calculateLinearDuration,
   calculateArcDuration,
@@ -15,9 +17,18 @@ import {
   createTurtleAnimation,
   interpolateAnimationPose,
   isTurtleMotionAction,
+  getTurtleGridStep,
+  getVisibleTurtleWorldBounds,
+  combineTurtleBoundsWithPose,
+  computeAutoFitOverflowViewport,
 } from '../src/simulations/turtle/physics';
 import { useAppStore } from '../src/store/useAppStore';
-import { TurtlePose } from '../src/simulations/turtle/types';
+import {
+  TurtlePose,
+  TurtleState,
+  subscribeTurtleCameraPinned,
+  notifyTurtleCameraPinned,
+} from '../src/simulations/turtle/types';
 import {
   TurtleCanvas,
   CompletedAirTrail,
@@ -234,7 +245,7 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
 
     it('steps a forward motion with active animation and does not pre-draw the path', () => {
       const store = useAppStore.getState();
-      store.addBlock('MAIN', 'FORWARD'); // 50px line, 250ms at 1x
+      store.addBlock('MAIN', 'FORWARD'); // 100px line, 500ms at 1x
 
       store.step();
 
@@ -243,35 +254,35 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       expect(state1.activeAnimation).toBeDefined();
       expect(state1.activeAnimation?.type).toBe('LINE');
       expect(state1.activeAnimation?.progress).toBe(0);
-      expect(state1.activeAnimation?.duration).toBeCloseTo(250);
+      expect(state1.activeAnimation?.duration).toBeCloseTo(500);
 
       // Crucial: paths must NOT contain the incomplete line yet!
       expect(state1.paths).toHaveLength(0);
 
-      // Advance frame halfway (125ms out of 250ms)
+      // Advance frame halfway (250ms out of 500ms)
       expect(rafCallbacks.length).toBeGreaterThan(0);
       const cb = rafCallbacks.pop()!;
       const startTime = state1.activeAnimation!.startTime;
-      cb(startTime + 125);
+      cb(startTime + 250);
 
       const state2 = useAppStore.getState().turtleState;
       expect(state2.activeAnimation).toBeDefined();
       expect(state2.activeAnimation?.progress).toBeCloseTo(0.5);
-      expect(state2.activeAnimation?.currentPose.y).toBeCloseTo(-25);
+      expect(state2.activeAnimation?.currentPose.y).toBeCloseTo(-50);
       // Path still not committed to completed paths
       expect(state2.paths).toHaveLength(0);
 
-      // Advance frame to completion (250ms)
+      // Advance frame to completion (500ms)
       expect(rafCallbacks.length).toBeGreaterThan(0);
       const cb2 = rafCallbacks.pop()!;
-      cb2(startTime + 250);
+      cb2(startTime + 500);
 
       // Now the step has halted, path committed, activeAnimation cleared
       const state3 = useAppStore.getState().turtleState;
       expect(state3.activeAnimation).toBeNull();
       expect(state3.paths).toHaveLength(1);
       expect(state3.paths[0].type).toBe('LINE');
-      expect(state3.robot.y).toBeCloseTo(-50);
+      expect(state3.robot.y).toBeCloseTo(-100);
       expect(useAppStore.getState().isPlaying).toBe(false);
     });
 
@@ -298,15 +309,15 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
 
     it('supports pause and resume mid-animation without position jumping', () => {
       const store = useAppStore.getState();
-      store.addBlock('MAIN', 'FORWARD'); // 50px line, 250ms
+      store.addBlock('MAIN', 'FORWARD'); // 100px line, 500ms
 
       store.play();
 
       const startTime = useAppStore.getState().turtleState.activeAnimation!.startTime;
 
-      // Tick to 40% progress (100ms)
+      // Tick to 40% progress (200ms of 500ms)
       const cb = rafCallbacks.pop()!;
-      cb(startTime + 100);
+      cb(startTime + 200);
 
       expect(useAppStore.getState().turtleState.activeAnimation?.progress).toBeCloseTo(0.4);
 
@@ -320,29 +331,29 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       store.play();
       expect(useAppStore.getState().isPlaying).toBe(true);
 
-      // Tick another 75ms from the resumed time -> should advance from 0.4 without jumping to 0
+      // Tick another 150ms from the resumed time -> should advance from 0.4 without jumping to 0
       const resumedAnim = useAppStore.getState().turtleState.activeAnimation!;
       const cb2 = rafCallbacks.pop()!;
-      cb2(resumedAnim.startTime + 175);
+      cb2(resumedAnim.startTime + 350);
 
       expect(useAppStore.getState().turtleState.activeAnimation?.progress).toBeCloseTo(0.7);
     });
 
     it('dynamically scales animation duration when speed setting is switched during motion', () => {
       const store = useAppStore.getState();
-      store.addBlock('MAIN', 'FORWARD'); // 50px line: 250ms at 1x (400)
+      store.addBlock('MAIN', 'FORWARD'); // 100px line: 500ms at 1x (400)
 
       store.play();
 
       const origDuration = useAppStore.getState().turtleState.activeAnimation!.duration;
-      expect(origDuration).toBeCloseTo(250);
+      expect(origDuration).toBeCloseTo(500);
 
       // Switch to 4x speed (100)
       store.setSpeed(100);
 
       const scaledDuration = useAppStore.getState().turtleState.activeAnimation!.duration;
-      // Duration should be scaled down by 4x -> 62.5ms
-      expect(scaledDuration).toBeCloseTo(62.5);
+      // Duration should be scaled down by 4x -> 125ms
+      expect(scaledDuration).toBeCloseTo(125);
     });
 
     it('instant mode executes immediately without creating active animation', () => {
@@ -573,6 +584,108 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       expect(resetTransition.emittedTrail).toBeNull();
       expect(resetTransition.nextSnapshot).toBeNull();
       expect(emittedTrails).toHaveLength(2);
+    });
+  });
+
+  describe('4. Practically Infinite Canvas, Adaptive Grid, autoFitOverflow & Zoom-Independent Turtle', () => {
+    it('supports widened [0.02, 8] zoom range and smooth adaptive #turtle-grid steps (50 -> 250 -> 1000)', () => {
+      expect(MIN_TURTLE_ZOOM).toBe(0.02);
+      expect(MAX_TURTLE_ZOOM).toBe(8);
+
+      // Toolbar zoom-out math reaches 0.02 without stalling (vs 2-decimal rounding)
+      let z = 0.05;
+      for (let i = 0; i < 6; i++) {
+        z = Math.max(MIN_TURTLE_ZOOM, Number((z * 0.8).toFixed(4)));
+      }
+      expect(z).toBe(0.02);
+
+      // Grid steps smoothly at thresholds 0.25 and 0.05
+      expect(getTurtleGridStep(1)).toBe(50);
+      expect(getTurtleGridStep(0.25)).toBe(50);
+      expect(getTurtleGridStep(0.24)).toBe(250);
+      expect(getTurtleGridStep(0.05)).toBe(250);
+      expect(getTurtleGridStep(0.049)).toBe(1000);
+      expect(getTurtleGridStep(0.02)).toBe(1000);
+
+      // Visible world bounds scale with zoom instead of fixed +/-10000 lines
+      const visible = getVisibleTurtleWorldBounds(800, 600, 0, 0, 0.02, 80);
+      expect(visible.minX).toBeCloseTo(-24000);
+      expect(visible.maxX).toBeCloseTo(24000);
+      expect(visible.minY).toBeCloseTo(-19000);
+      expect(visible.maxY).toBeCloseTo(19000);
+    });
+
+    it('autoFitOverflow leaves small drawings at 1x, zooms out for overflow within [0.02, 8], and stabilizes without loops', () => {
+      // Fits comfortably inside 85% of 800x600 at 1x -> returns null
+      const small = combineTurtleBoundsWithPose(
+        { minX: -100, minY: -100, maxX: 100, maxY: 100 },
+        { x: 0, y: -100, heading: 0 }
+      );
+      expect(computeAutoFitOverflowViewport(small, 800, 600, 1, { x: 0, y: 0 })).toBeNull();
+
+      // Overflowing 85% of 800x600 -> zooms out and centers
+      const large = combineTurtleBoundsWithPose(
+        { minX: -600, minY: -500, maxX: 600, maxY: 500 },
+        { x: 900, y: 0, heading: 90 }
+      );
+      const next = computeAutoFitOverflowViewport(large, 800, 600, 1, { x: 0, y: 0 });
+      expect(next).not.toBeNull();
+      expect(next!.zoom).toBeLessThan(1);
+      expect(next!.zoom).toBeGreaterThanOrEqual(MIN_TURTLE_ZOOM);
+      // Re-evaluating at the computed viewport is a no-op (prevents infinite effect loops)
+      expect(computeAutoFitOverflowViewport(large, 800, 600, next!.zoom, next!.pan)).toBeNull();
+
+      // Extreme bounds clamp at MIN_TURTLE_ZOOM = 0.02 and also stabilize
+      const huge = { minX: -50000, minY: -50000, maxX: 50000, maxY: 50000 };
+      const clamped = computeAutoFitOverflowViewport(huge, 800, 600, 1, { x: 0, y: 0 });
+      expect(clamped).not.toBeNull();
+      expect(clamped!.zoom).toBe(0.02);
+      expect(computeAutoFitOverflowViewport(huge, 800, 600, clamped!.zoom, clamped!.pan)).toBeNull();
+    });
+
+    it('renders zoom-independent block-sized turtle SVG, adaptive grid, viewport crosshairs, and optional canvasBounds', () => {
+      const baseState: TurtleState = {
+        ...useAppStore.getState().turtleState,
+        robot: { x: 100, y: -200, heading: 90 },
+        zoom: 1,
+        pan: { x: 0, y: 0 },
+        canvasBounds: { halfWidth: 300, halfHeight: 240 },
+      };
+
+      const html1x = renderToStaticMarkup(React.createElement(TurtleCanvas, { state: baseState }));
+      expect(html1x).toContain('data-grid-step="50"');
+      expect(html1x).toContain('patternTransform="translate(300, 300) scale(1)"');
+      expect(html1x).toContain('data-testid="turtle-canvas-bounds"');
+      expect(html1x).toContain('data-testid="turtle-axis-x"');
+      expect(html1x).not.toContain('x1="-10000"');
+      // Compact block-sized turtle geometry + inverse zoom scale(1) at 1x
+      expect(html1x).toContain('transform="translate(100, -200) rotate(90) scale(1)"');
+      expect(html1x).toContain('<circle r="12" fill="#0284c7"');
+      expect(html1x).toContain('<circle r="16" fill="#38bdf8"');
+      expect(html1x).toContain('<ellipse cx="0" cy="-13" rx="4.2" ry="5.5"');
+
+      // At 0.1x zoom: 250px grid, inverse zoom scale(10) keeps turtle block-sized
+      const html01x = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: { ...baseState, zoom: 0.1 } })
+      );
+      expect(html01x).toContain('data-grid-step="250"');
+      expect(html01x).toContain('transform="translate(100, -200) rotate(90) scale(10)"');
+
+      // At 0.02x zoom: 1000px grid, inverse zoom scale(50) keeps turtle block-sized
+      const html002x = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: { ...baseState, zoom: 0.02 } })
+      );
+      expect(html002x).toContain('data-grid-step="1000"');
+      expect(html002x).toContain('transform="translate(100, -200) rotate(90) scale(50)"');
+
+      // Camera pin notification pub/sub clears cleanly on unsubscribe
+      const events: boolean[] = [];
+      const unsub = subscribeTurtleCameraPinned((pinned) => events.push(pinned));
+      notifyTurtleCameraPinned(true);
+      notifyTurtleCameraPinned(false);
+      unsub();
+      notifyTurtleCameraPinned(true);
+      expect(events).toEqual([true, false]);
     });
   });
 });
