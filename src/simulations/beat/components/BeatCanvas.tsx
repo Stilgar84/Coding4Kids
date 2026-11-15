@@ -13,7 +13,7 @@ export interface BeatCanvasProps {
   runtimeStatus?: SimulationStatus;
   runtimeVariables?: Record<string, any> | null;
   activeBlockId?: string | null;
-  activeScope?: ScopeType | null;
+  activeScope?: ScopeType;
 }
 
 interface CueVisualStyle {
