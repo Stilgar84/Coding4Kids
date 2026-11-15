@@ -7,6 +7,7 @@ import {
   DEPOT_CRATE_COLORS,
   DEPOT_STACK_STATIONS,
   DEPOT_STATION_BITS,
+  DepotActionTransition,
   DepotState,
 } from '../types';
 import {
@@ -19,6 +20,9 @@ import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculu
 import { DepotStationId } from '../types';
 import { WorkspaceState } from '../../../types';
 
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
 interface DepotCanvasProps {
   state: DepotState;
   runtimeStatus?: SimulationStatus;
@@ -27,17 +31,20 @@ interface DepotCanvasProps {
 }
 
 /** Lighter specular & rim palette for all 10 uniform glossy Toy-Crane workshop rings. */
-const RING_STYLES: Record<CrateColor, { top: string; mid: string; bottom: string; rim: string }> = {
-  BLACK: { top: '#475569', mid: '#0f172a', bottom: '#020617', rim: '#94a3b8' },
-  RED: { top: '#fca5a5', mid: '#ef4444', bottom: '#b91c1c', rim: '#fee2e2' },
-  BLUE: { top: '#93c5fd', mid: '#3b82f6', bottom: '#1d4ed8', rim: '#dbeafe' },
-  GREEN: { top: '#6ee7b7', mid: '#10b981', bottom: '#047857', rim: '#d1fae5' },
-  AMBER: { top: '#fde68a', mid: '#f59e0b', bottom: '#b45309', rim: '#fef3c7' },
-  PURPLE: { top: '#c4b5fd', mid: '#8b5cf6', bottom: '#5b21b6', rim: '#ede9fe' },
-  PINK: { top: '#f9a8d4', mid: '#ec4899', bottom: '#9d174d', rim: '#fce7f3' },
-  CYAN: { top: '#67e8f9', mid: '#06b6d4', bottom: '#0e7490', rim: '#cffafe' },
-  ORANGE: { top: '#fdba74', mid: '#f97316', bottom: '#c2410c', rim: '#ffedd5' },
-  WHITE: { top: '#ffffff', mid: '#f1f5f9', bottom: '#94a3b8', rim: '#cbd5e1' },
+const RING_STYLES: Record<
+  CrateColor,
+  { top: string; mid: string; bottom: string; dark: string; rim: string }
+> = {
+  BLACK: { top: '#475569', mid: '#0f172a', bottom: '#020617', dark: '#020617', rim: '#94a3b8' },
+  RED: { top: '#fca5a5', mid: '#ef4444', bottom: '#b91c1c', dark: '#991b1b', rim: '#fee2e2' },
+  BLUE: { top: '#93c5fd', mid: '#3b82f6', bottom: '#1d4ed8', dark: '#1e40af', rim: '#dbeafe' },
+  GREEN: { top: '#6ee7b7', mid: '#10b981', bottom: '#047857', dark: '#065f46', rim: '#d1fae5' },
+  AMBER: { top: '#fde68a', mid: '#f59e0b', bottom: '#b45309', dark: '#92400e', rim: '#fef3c7' },
+  PURPLE: { top: '#c4b5fd', mid: '#8b5cf6', bottom: '#5b21b6', dark: '#5b21b6', rim: '#ede9fe' },
+  PINK: { top: '#f9a8d4', mid: '#ec4899', bottom: '#9d174d', dark: '#9d174d', rim: '#fce7f3' },
+  CYAN: { top: '#67e8f9', mid: '#06b6d4', bottom: '#0e7490', dark: '#155e75', rim: '#cffafe' },
+  ORANGE: { top: '#fdba74', mid: '#f97316', bottom: '#c2410c', dark: '#9a3412', rim: '#ffedd5' },
+  WHITE: { top: '#ffffff', mid: '#f1f5f9', bottom: '#94a3b8', dark: '#475569', rim: '#cbd5e1' },
 };
 
 const RingToken: React.FC<{
@@ -65,19 +72,23 @@ const RingToken: React.FC<{
     : 'w-14 h-6 sm:w-16 sm:h-7';
 
   if (isGhost) {
+    const ghostFill =
+      canonical === 'WHITE' ? 'rgba(203, 213, 225, 0.55)' : `${palette.mid}40`;
     return (
       <div
-        className={`${sizeClass} relative rounded-full border-2 border-dashed flex items-center justify-center select-none pointer-events-none opacity-25 transition-all`}
+        className={`${sizeClass} relative rounded-full border-2 border-dashed flex items-center justify-center select-none pointer-events-none opacity-80 transition-all`}
         style={{
-          borderColor: palette.mid,
-          backgroundColor: `${palette.mid}1c`,
+          borderColor: palette.dark,
+          background: ghostFill,
         }}
         aria-label={`Target ${meta.label}`}
       >
         <span
           aria-hidden="true"
-          className="w-3.5 h-2 rounded-full border border-dashed bg-white/50"
-          style={{ borderColor: palette.mid }}
+          className="w-3.5 h-2 rounded-full border-2 border-dashed border-white/85 bg-white/75"
+          style={{
+            boxShadow: `0 0 0 1px ${palette.dark}55`,
+          }}
         />
       </div>
     );
@@ -237,18 +248,78 @@ function extractActiveSensorHints(
 }
 
 /**
- * Computes speed-scaled choreography duration (clamped [24, 360] ms, or 0 when disabled).
+ * Computes speed-scaled choreography duration (~90% of step interval, or 0 when disabled).
  */
 export function computeDepotAnimDurationMs(
   speed: SimulationSpeed | number,
   isLowQuality: boolean,
   hasLastAction: boolean
 ): number {
-  if (isLowQuality || speed === 'instant' || speed === 0 || !hasLastAction) {
+  if (!hasLastAction || isLowQuality || speed === 'instant') {
     return 0;
   }
-  const speedMs = typeof speed === 'number' && Number.isFinite(speed) && speed > 0 ? speed : 400;
-  return Math.round(Math.min(360, Math.max(24, speedMs * 0.88)));
+  const speedMs = typeof speed === 'number' && Number.isFinite(speed) ? speed : 400;
+  if (speedMs <= 0) {
+    return 0;
+  }
+  if (speedMs <= 25) {
+    return 230;
+  }
+  if (speedMs <= 100) {
+    return 585;
+  }
+  return Math.round(speedMs * 3.375);
+}
+
+/**
+ * Computes station-specific SSR fallback vertical/horizontal travel offsets (in px)
+ * between the resting gripper jaws and the target station slot/cradle.
+ */
+export function computeDepotStationTravelPx(
+  action: DepotActionTransition | undefined
+): { grabDistPx: number; placeDistPx: number; placeDxPx: number } {
+  if (!action) {
+    return { grabDistPx: 172, placeDistPx: 172, placeDxPx: 0 };
+  }
+  const slotIdx = action.stackSlotIndex ?? 0;
+  const stackDist = Math.max(96, 182 - slotIdx * 22);
+
+  let grabDistPx = 172;
+  if (action.type === 'GRAB') {
+    if (action.fromStation === 'INPUT') {
+      grabDistPx = 178;
+    } else if (action.fromStation === 'QUEUE') {
+      grabDistPx = 166;
+    } else {
+      grabDistPx = stackDist;
+    }
+  }
+
+  let placeDistPx = 172;
+  let placeDxPx = 0;
+  if (action.type === 'PLACE') {
+    if (action.toStation === 'QUEUE') {
+      placeDistPx = 166;
+      const qIdx = action.queueIndex ?? 0;
+      placeDxPx = Math.min(48, -24 + qIdx * 24);
+    } else {
+      placeDistPx = stackDist;
+      placeDxPx = 0;
+    }
+  }
+
+  return { grabDistPx, placeDistPx, placeDxPx };
+}
+
+function computeGrabSpringVars(grabDistPx: number) {
+  const s = (ratio: number) => (1 + (grabDistPx * ratio) / 20).toFixed(3);
+  return {
+    s14: s(0.42),
+    s28: s(0.84),
+    sMax: s(1),
+    s64: s(0.64),
+    s82: s(0.2),
+  };
 }
 
 const DEPOT_ANIMATION_CSS = `
@@ -286,69 +357,97 @@ const DEPOT_ANIMATION_CSS = `
   100% { opacity: 0; transform: scale(1); }
 }
 @keyframes depotSpringPlunge {
-  0%, 100% { transform: scaleY(1); }
-  40%, 54% { transform: scaleY(2.5); }
+  0% { transform: scaleY(1); }
+  14% { transform: scaleY(var(--depot-grab-spring-14, 4.65)); }
+  28% { transform: scaleY(var(--depot-grab-spring-28, 8.3)); }
+  38%, 48% { transform: scaleY(var(--depot-grab-spring-max, 9.7)); }
+  64% { transform: scaleY(var(--depot-grab-spring-64, 6.57)); }
+  82% { transform: scaleY(var(--depot-grab-spring-82, 2.74)); }
+  100% { transform: scaleY(1); }
 }
 @keyframes depotJawsPlunge {
-  0%, 100% { transform: translateY(0); }
-  40%, 54% { transform: translateY(30px); }
+  0% { transform: translateY(0); }
+  14% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.42)); }
+  28% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.84)); }
+  38%, 48% { transform: translateY(var(--depot-grab-dist, 174px)); }
+  64% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.64)); }
+  82% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.2)); }
+  100% { transform: translateY(0); }
 }
 @keyframes depotJawLeftGrab {
   0% { transform: rotate(0deg); }
-  36% { transform: rotate(14deg); }
-  52%, 100% { transform: rotate(0deg); }
+  24%, 34% { transform: rotate(20deg); }
+  46%, 100% { transform: rotate(0deg); }
 }
 @keyframes depotJawRightGrab {
   0% { transform: rotate(0deg); }
-  36% { transform: rotate(-14deg); }
-  52%, 100% { transform: rotate(0deg); }
+  24%, 34% { transform: rotate(-20deg); }
+  46%, 100% { transform: rotate(0deg); }
 }
 @keyframes depotHeldRingGrabLift {
-  0% { transform: translateY(48px) scale(0.94); opacity: 0.9; }
-  40% { transform: translateY(18px) scale(0.97); opacity: 1; }
-  54% { transform: translateY(8px) scale(1.04); opacity: 1; }
+  0% { transform: translateY(var(--depot-grab-dist, 174px)) scale(0.96); opacity: 1; }
+  14% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.58)) scale(0.97); opacity: 1; }
+  28% { transform: translateY(calc(var(--depot-grab-dist, 174px) * 0.16)) scale(0.99); opacity: 1; }
+  38% { transform: translateY(0) scale(1.04); opacity: 1; }
+  48% { transform: translateY(0) scale(1); opacity: 1; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 @keyframes depotHeldRingGrabLiftQueue {
-  0% { transform: translateY(58px) scale(0.92); opacity: 0.9; }
-  40% { transform: translateY(28px) scale(0.96); opacity: 1; }
-  54% { transform: translateY(12px) scale(1.04); opacity: 1; }
+  0% { transform: translateY(var(--depot-grab-dist, 170px)) scale(0.94); opacity: 1; }
+  14% { transform: translateY(calc(var(--depot-grab-dist, 170px) * 0.58)) scale(0.96); opacity: 1; }
+  28% { transform: translateY(calc(var(--depot-grab-dist, 170px) * 0.16)) scale(0.98); opacity: 1; }
+  38% { transform: translateY(0) scale(1.04); opacity: 1; }
+  48% { transform: translateY(0) scale(1); opacity: 1; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 @keyframes depotSpringDip {
-  0%, 100% { transform: scaleY(1); }
-  42%, 56% { transform: scaleY(2.2); }
+  0% { transform: scaleY(1); }
+  24% { transform: scaleY(3.4); }
+  44% { transform: scaleY(2.6); }
+  66% { transform: scaleY(1.9); }
+  82% { transform: scaleY(1.3); }
+  100% { transform: scaleY(1); }
 }
 @keyframes depotJawsDip {
-  0%, 100% { transform: translateY(0); }
-  42%, 56% { transform: translateY(24px); }
+  0% { transform: translateY(0); }
+  24% { transform: translateY(48px); }
+  44% { transform: translateY(32px); }
+  66% { transform: translateY(18px); }
+  82% { transform: translateY(6px); }
+  100% { transform: translateY(0); }
 }
 @keyframes depotJawLeftRelease {
-  0% { transform: rotate(0deg); }
-  42% { transform: rotate(18deg); }
-  66% { transform: rotate(12deg); }
+  0%, 16% { transform: rotate(0deg); }
+  30%, 54% { transform: rotate(22deg); }
   100% { transform: rotate(0deg); }
 }
 @keyframes depotJawRightRelease {
-  0% { transform: rotate(0deg); }
-  42% { transform: rotate(-18deg); }
-  66% { transform: rotate(-12deg); }
+  0%, 16% { transform: rotate(0deg); }
+  30%, 54% { transform: rotate(-22deg); }
   100% { transform: rotate(0deg); }
 }
+@keyframes depotPlaceRingTravel {
+  0% { transform: translate(0px, 0px) scale(1); opacity: 1; }
+  24% { transform: translate(0px, 0px) scale(1.02); opacity: 1; }
+  44% { transform: translate(calc(var(--depot-place-x, 0px) * 0.35), calc(var(--depot-place-dist, 174px) * 0.36 - 32px)) scale(1.01); opacity: 1; }
+  66% { transform: translate(calc(var(--depot-place-x, 0px) * 0.8), calc(var(--depot-place-dist, 174px) * 0.74 - 18px)) scale(1); opacity: 1; }
+  82% { transform: translate(var(--depot-place-x, 0px), calc(var(--depot-place-dist, 174px) - 6px)) scale(var(--depot-place-end-scale, 1)); opacity: 1; }
+  86%, 100% { transform: translate(var(--depot-place-x, 0px), calc(var(--depot-place-dist, 174px) - 6px)) scale(var(--depot-place-end-scale, 1)); opacity: 0; }
+}
 @keyframes depotStackRingDrop {
-  0% { transform: translateY(var(--depot-drop-y, -84px)) scale(1.04); opacity: 0.95; }
-  24% { transform: translateY(var(--depot-drop-y, -84px)) scale(1.02); opacity: 1; }
-  86% { transform: translateY(2px) scale(1); opacity: 1; }
-  100% { transform: translateY(0) scale(1); opacity: 1; }
+  0%, 80% { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  85% { opacity: 1; transform: translateY(2px) scale(1.03); }
+  93% { opacity: 1; transform: translateY(-1px) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes depotQueueRingDrop {
-  0% { transform: translate(14px, -62px) scale(1.08); opacity: 0.95; }
-  26% { transform: translate(10px, -44px) scale(1.05); opacity: 1; }
-  86% { transform: translate(0, 2px) scale(1); opacity: 1; }
-  100% { transform: translate(0, 0) scale(1); opacity: 1; }
+  0%, 80% { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  85% { opacity: 1; transform: translateY(2px) scale(1.03); }
+  93% { opacity: 1; transform: translateY(-1px) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes depotQueueSlideLeft {
-  0% { transform: translateX(calc(100% + 6px)); }
+  0%, 36% { transform: translateX(calc(100% + 6px)); }
   100% { transform: translateX(0); }
 }
 @keyframes depotRollerSpin {
@@ -391,11 +490,11 @@ const DEPOT_ANIMATION_CSS = `
   84%, 100% { left: var(--depot-fly-end-x); }
 }
 @keyframes depotFlyRingY {
-  0% { top: 64px; opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-  36% { top: 10px; opacity: 1; transform: translate(-50%, -50%) scale(1.06) rotate(-8deg); }
-  70% { top: calc(100% - 134px); opacity: 1; transform: translate(-50%, -50%) scale(0.94) rotate(5deg); }
+  0% { top: var(--depot-fly-start-y, 64px); opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  34% { top: 10px; opacity: 1; transform: translate(-50%, -50%) scale(1.06) rotate(-8deg); }
+  68% { top: calc(var(--depot-fly-end-y, calc(100% - 52px)) - 76px); opacity: 1; transform: translate(-50%, -50%) scale(0.94) rotate(5deg); }
   84% { top: var(--depot-fly-end-y, calc(100% - 52px)); opacity: 1; transform: translate(-50%, -50%) scale(0.86) rotate(0deg); }
-  94%, 100% { top: var(--depot-fly-end-y, calc(100% - 52px)); opacity: 0; transform: translate(-50%, -50%) scale(0.84) rotate(0deg); }
+  90%, 100% { top: var(--depot-fly-end-y, calc(100% - 52px)); opacity: 0; transform: translate(-50%, -50%) scale(0.84) rotate(0deg); }
 }
 @keyframes depotOutputSlotLand {
   0%, 82% { opacity: 0; transform: scale(0.68) translateY(-10px); }
@@ -420,7 +519,7 @@ const DEPOT_ANIMATION_CSS = `
   50% { transform: scale(1.14); opacity: 0.45; }
 }
 @keyframes depotInputSlideDown {
-  0% { transform: translateY(calc(-100% - 4px)); }
+  0%, 36% { transform: translateY(calc(-100% - 4px)); }
   100% { transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -507,6 +606,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   const shouldAnimate =
     !isLowQuality && speed !== 'instant' && (speed as any) !== 0 && Boolean(action);
   const animDurationMs = computeDepotAnimDurationMs(speed, isLowQuality, Boolean(action));
+  const stepKey = action ? `${action.stepId ?? state.stepCount}-${state.stepCount}` : 'idle';
 
   const isAnimMove = shouldAnimate && action?.type === 'MOVE';
   const isAnimGrab = shouldAnimate && action?.type === 'GRAB';
@@ -530,6 +630,140 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     (effectiveStatus === 'COLLISION' || state.status === 'COLLISION') &&
     state.lastFailureReason === 'INPUT_READ_ONLY';
 
+  const { grabDistPx, placeDistPx, placeDxPx } = React.useMemo(
+    () => computeDepotStationTravelPx(action),
+    [action]
+  );
+  const grabSpringVars = React.useMemo(
+    () => computeGrabSpringVars(grabDistPx),
+    [grabDistPx]
+  );
+
+  const stageRef = React.useRef<HTMLDivElement>(null);
+  const trolleyRef = React.useRef<HTMLDivElement>(null);
+  const flyingRingRef = React.useRef<HTMLDivElement>(null);
+
+  useIsomorphicLayoutEffect(() => {
+    const stageEl = stageRef.current;
+    const trolleyEl = trolleyRef.current;
+    if (!stageEl || !trolleyEl || !shouldAnimate || !action) return;
+
+    const stageRect = stageEl.getBoundingClientRect();
+    const trolleyRect = trolleyEl.getBoundingClientRect();
+    if (stageRect.height <= 20 || trolleyRect.width <= 0) return;
+
+    // Resting held-ring center sits ~45px below the un-animated trolley housing bottom.
+    const jawsRestY = trolleyRect.bottom + 45;
+    const craneCenterX = trolleyRect.left + trolleyRect.width / 2;
+
+    if (action.type === 'GRAB') {
+      let targetY: number | null = null;
+      if (action.fromStation === 'INPUT') {
+        const stationEl = stageEl.querySelector<HTMLElement>('[data-testid="depot-input-station"]');
+        if (stationEl) {
+          targetY = stationEl.getBoundingClientRect().bottom - 24;
+        }
+      } else if (action.fromStation === 'QUEUE') {
+        const beltEl = stageEl.querySelector<HTMLElement>('[data-depot-queue-belt="true"]');
+        if (beltEl) {
+          const r = beltEl.getBoundingClientRect();
+          targetY = r.top + r.height / 2;
+        }
+      } else {
+        const slotIdx = action.stackSlotIndex ?? 0;
+        const slotEl = stageEl.querySelector<HTMLElement>(
+          `[data-depot-slot="${action.fromStation}-${slotIdx}"]`
+        );
+        if (slotEl) {
+          const r = slotEl.getBoundingClientRect();
+          targetY = r.top + r.height / 2;
+        } else {
+          const slot0 = stageEl.querySelector<HTMLElement>(`[data-depot-slot="${action.fromStation}-0"]`);
+          const slot1 = stageEl.querySelector<HTMLElement>(`[data-depot-slot="${action.fromStation}-1"]`);
+          if (slot0 && slot1) {
+            const r0 = slot0.getBoundingClientRect();
+            const r1 = slot1.getBoundingClientRect();
+            const stepY = Math.max(24, r0.top - r1.top);
+            targetY = r0.top + r0.height / 2 - slotIdx * stepY;
+          }
+        }
+      }
+
+      if (targetY !== null) {
+        const dy = Math.max(96, Math.round(targetY - jawsRestY));
+        const vars = computeGrabSpringVars(dy);
+        stageEl.style.setProperty('--depot-grab-dist', `${dy}px`);
+        stageEl.style.setProperty('--depot-grab-spring-14', vars.s14);
+        stageEl.style.setProperty('--depot-grab-spring-28', vars.s28);
+        stageEl.style.setProperty('--depot-grab-spring-max', vars.sMax);
+        stageEl.style.setProperty('--depot-grab-spring-64', vars.s64);
+        stageEl.style.setProperty('--depot-grab-spring-82', vars.s82);
+      }
+    } else if (action.type === 'PLACE') {
+      let targetY: number | null = null;
+      let targetDx = 0;
+      if (action.toStation === 'QUEUE' && action.queueIndex !== undefined) {
+        const itemEl = stageEl.querySelector<HTMLElement>(
+          `[data-testid="depot-queue-crate-${action.queueIndex}"]`
+        );
+        const beltEl = stageEl.querySelector<HTMLElement>('[data-depot-queue-belt="true"]');
+        if (itemEl) {
+          const r = itemEl.getBoundingClientRect();
+          targetY = r.top + r.height / 2;
+          let cx = r.left + r.width / 2;
+          if (beltEl) {
+            const br = beltEl.getBoundingClientRect();
+            cx = Math.min(Math.max(cx, br.left + 26), br.right - 26);
+          }
+          targetDx = Math.round(cx - craneCenterX);
+        }
+      } else if (action.stackIndex !== undefined && action.stackSlotIndex !== undefined) {
+        const crateEl = stageEl.querySelector<HTMLElement>(
+          `[data-testid="depot-stack-${action.stackIndex + 1}-crate-${action.stackSlotIndex}"]`
+        );
+        if (crateEl) {
+          const r = crateEl.getBoundingClientRect();
+          targetY = r.top + r.height / 2;
+        }
+      }
+      if (targetY !== null) {
+        const dy = Math.max(96, Math.round(targetY - jawsRestY));
+        stageEl.style.setProperty('--depot-place-dist', `${dy}px`);
+        stageEl.style.setProperty('--depot-place-x', `${targetDx}px`);
+      }
+    } else if (action.type === 'SEND_OUT' && action.outputSlotIndex !== undefined) {
+      const flyEl = flyingRingRef.current;
+      const outEl = stageEl.querySelector<HTMLElement>(
+        `[data-testid="depot-output-slot-${action.outputSlotIndex}"]`
+      );
+      if (flyEl && outEl) {
+        const outRect = outEl.getBoundingClientRect();
+        const startX = Math.round(craneCenterX - stageRect.left);
+        const startY = Math.round(jawsRestY - stageRect.top);
+        const endX = Math.round(outRect.left + outRect.width / 2 - stageRect.left);
+        const endY = Math.round(outRect.top + outRect.height / 2 - stageRect.top);
+        flyEl.style.setProperty('--depot-fly-start-x', `${startX}px`);
+        flyEl.style.setProperty('--depot-fly-start-y', `${startY}px`);
+        flyEl.style.setProperty('--depot-fly-end-x', `${endX}px`);
+        flyEl.style.setProperty('--depot-fly-end-y', `${endY}px`);
+      }
+    }
+  }, [shouldAnimate, stepKey, action, craneLeftPct, activeMask, showOut]);
+
+  const stageTravelStyle = shouldAnimate
+    ? ({
+        '--depot-grab-dist': `${grabDistPx}px`,
+        '--depot-grab-spring-14': grabSpringVars.s14,
+        '--depot-grab-spring-28': grabSpringVars.s28,
+        '--depot-grab-spring-max': grabSpringVars.sMax,
+        '--depot-grab-spring-64': grabSpringVars.s64,
+        '--depot-grab-spring-82': grabSpringVars.s82,
+        '--depot-place-dist': `${placeDistPx}px`,
+        '--depot-place-x': `${placeDxPx}px`,
+        '--depot-place-end-scale': action?.toStation === 'QUEUE' ? '0.88' : '1',
+      } as React.CSSProperties)
+    : undefined;
+
   const rigAnimationStyle: React.CSSProperties | undefined =
     isAnimMove && moveDir !== 0
       ? {
@@ -546,25 +780,25 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   const springAnimationStyle: React.CSSProperties | undefined = isAnimGrab
     ? {
         transformOrigin: 'top center',
-        animation: `depotSpringPlunge ${animDurationMs}ms ease-in-out both`,
+        animation: `depotSpringPlunge ${animDurationMs}ms linear both`,
       }
     : isAnimPlace
       ? {
           transformOrigin: 'top center',
-          animation: `depotSpringDip ${animDurationMs}ms ease-in-out both`,
+          animation: `depotSpringDip ${animDurationMs}ms linear both`,
         }
       : undefined;
 
   const jawsContainerAnimationStyle: React.CSSProperties | undefined = isAnimGrab
-    ? { animation: `depotJawsPlunge ${animDurationMs}ms ease-in-out both` }
+    ? { animation: `depotJawsPlunge ${animDurationMs}ms linear both` }
     : isAnimPlace
-      ? { animation: `depotJawsDip ${animDurationMs}ms ease-in-out both` }
+      ? { animation: `depotJawsDip ${animDurationMs}ms linear both` }
       : isAnimSendOut
         ? { animation: `depotJawsRecoil ${animDurationMs}ms ease-out both` }
         : undefined;
 
   const leftJawAnimStyle: React.CSSProperties | undefined = isAnimGrab
-    ? { transformOrigin: '27px 5px', animation: `depotJawLeftGrab ${animDurationMs}ms ease-in-out both` }
+    ? { transformOrigin: '27px 5px', animation: `depotJawLeftGrab ${animDurationMs}ms linear both` }
     : isAnimPlace
       ? { transformOrigin: '27px 5px', animation: `depotJawLeftRelease ${animDurationMs}ms ease-in-out both` }
       : isAnimSendOut
@@ -572,7 +806,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
         : undefined;
 
   const rightJawAnimStyle: React.CSSProperties | undefined = isAnimGrab
-    ? { transformOrigin: '37px 5px', animation: `depotJawRightGrab ${animDurationMs}ms ease-in-out both` }
+    ? { transformOrigin: '37px 5px', animation: `depotJawRightGrab ${animDurationMs}ms linear both` }
     : isAnimPlace
       ? { transformOrigin: '37px 5px', animation: `depotJawRightRelease ${animDurationMs}ms ease-in-out both` }
       : isAnimSendOut
@@ -654,11 +888,16 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
 
       {/* Main Workshop Stage */}
       <div className="relative z-10 flex-1 min-h-0 flex items-stretch px-3 sm:px-5 pb-0 pt-1">
-        <div className="depot-stage relative flex-1 min-w-0 flex items-stretch gap-3">
+        <div
+          ref={stageRef}
+          className="depot-stage relative flex-1 min-w-0 flex items-stretch gap-3"
+          style={stageTravelStyle}
+        >
           {/* In-flight sky-chute ring overlay for SEND_OUT (omitted when !shouldAnimate) */}
           {isOutFlyAnim && action?.color && (
             <div
-              key={`fly-${action.stepId}`}
+              ref={flyingRingRef}
+              key={`fly-${stepKey}`}
               data-testid="depot-flying-ring"
               data-from-station={action.fromStation}
               data-crane-left-pct={craneLeftPct.toFixed(3)}
@@ -667,7 +906,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
               className="pointer-events-none absolute z-30"
               style={
                 {
-                  '--depot-fly-start-x': `calc((100% - var(--depot-out-w) - 12px) * ${(craneLeftPct / 100).toFixed(4)})`,
+                  '--depot-fly-start-x': `calc((100% - var(--depot-out-w) - 12px) * ${(fromLeftPct / 100).toFixed(4)})`,
+                  '--depot-fly-start-y': '64px',
                   '--depot-fly-end-x': 'calc(100% - var(--depot-out-w) / 2)',
                   '--depot-fly-end-y': `calc(100% - ${48 + Math.min(action.outputSlotIndex ?? 0, 4) * 26}px)`,
                   animation: `depotFlyRingX ${animDurationMs}ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both, depotFlyRingY ${animDurationMs}ms ease-in-out both`,
@@ -708,7 +948,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
               {/* Animated Trolley + Spring Cable + Articulated Mechanical Claw */}
               <div
                 data-testid="depot-worker-crane"
-                className="absolute top-0 -translate-x-1/2 flex flex-col items-center z-20"
+                className="absolute top-0 -translate-x-1/2 flex flex-col items-center z-30"
                 style={{
                   left: `${craneLeftPct}%`,
                   transitionProperty: 'left',
@@ -724,7 +964,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       className="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-300 shadow flex items-center justify-center"
                     >
                       <span
-                        key={isAnimMove && moveDir !== 0 ? `wheel-${wIdx}-${action?.stepId}` : `wheel-${wIdx}-idle`}
+                        key={isAnimMove && moveDir !== 0 ? `wheel-${wIdx}-${stepKey}` : `wheel-${wIdx}-idle`}
                         className="w-1.5 h-[1.5px] rounded-full bg-slate-200"
                         style={
                           isAnimMove && moveDir !== 0
@@ -739,13 +979,16 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                     </span>
                   ))}
                 </div>
-                <div className="w-11 h-5 rounded-lg bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-md flex items-center justify-center relative">
+                <div
+                  ref={trolleyRef}
+                  className="w-11 h-5 rounded-lg bg-gradient-to-b from-sky-400 to-sky-600 border-2 border-white shadow-md flex items-center justify-center relative"
+                >
                   <span className="w-2 h-2 rounded-full bg-amber-300 ring-2 ring-sky-900/20" />
                 </div>
 
                 {/* Keyed Cable + Jaws + Held Crate Rig for per-step choreography */}
                 <div
-                  key={shouldAnimate && action ? `rig-${action.type}-${action.stepId}` : 'rig-static'}
+                  key={shouldAnimate && action ? `rig-${action.type}-${stepKey}` : 'rig-static'}
                   className="flex flex-col items-center"
                   style={rigAnimationStyle}
                 >
@@ -761,12 +1004,13 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       d="M10 0 L10 3 L6 5.5 L14 8 L6 10.5 L14 13 L10 15.5 L10 20"
                       stroke="currentColor"
                       strokeWidth="2.2"
+                      vectorEffect="non-scaling-stroke"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   </svg>
 
-                  {/* Articulated Pincer Jaws + Full-Size Held Ring */}
+                  {/* Articulated Pincer Jaws + Full-Size Held / In-Flight Ring */}
                   <div
                     className="relative flex flex-col items-center"
                     style={jawsContainerAnimationStyle}
@@ -799,7 +1043,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
 
                     {state.heldCrate ? (
                       <div
-                        key={isAnimGrab ? `held-${action?.stepId}` : 'held-steady'}
+                        key={isAnimGrab ? `held-${stepKey}` : 'held-steady'}
                         data-testid="depot-claw-held-crate"
                         className="relative z-10"
                         style={
@@ -809,7 +1053,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                                   action?.fromStation === 'QUEUE' || action?.fromStation === 'INPUT'
                                     ? 'depotHeldRingGrabLiftQueue'
                                     : 'depotHeldRingGrabLift'
-                                } ${animDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                } ${animDurationMs}ms linear both`,
                               }
                             : undefined
                         }
@@ -817,6 +1061,22 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                         <RingToken
                           color={state.heldCrate}
                           damaged={state.heldDamaged}
+                          isTop
+                        />
+                      </div>
+                    ) : isAnimPlace && action?.color ? (
+                      <div
+                        key={`inflight-place-${stepKey}`}
+                        data-testid="depot-inflight-place-ring"
+                        data-to-station={action.toStation}
+                        className="relative z-10 pointer-events-none"
+                        style={{
+                          animation: `depotPlaceRingTravel ${animDurationMs}ms linear both`,
+                        }}
+                      >
+                        <RingToken
+                          color={action.color}
+                          damaged={action.damaged}
                           isTop
                         />
                       </div>
@@ -885,7 +1145,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                   >
                     {isInputArriveAnim && (
                       <div
-                        key={`in-arrive-${action?.stepId}`}
+                        key={`in-arrive-${stepKey}`}
                         aria-hidden="true"
                         className="pointer-events-none absolute inset-0 rounded-t-2xl ring-2 ring-amber-400/85 z-30"
                         style={{
@@ -946,7 +1206,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                           <div
                             key={
                               isInputGrabAnim
-                                ? `in-shift-${action?.stepId}-${iIdx}`
+                                ? `in-shift-${stepKey}-${iIdx}`
                                 : `in-item-${iIdx}`
                             }
                             data-testid={`depot-input-crate-${iIdx}`}
@@ -1058,7 +1318,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                     >
                       {isArriveTarget && (
                         <div
-                          key={`arrive-${action?.stepId}`}
+                          key={`arrive-${stepKey}`}
                           aria-hidden="true"
                           className="pointer-events-none absolute inset-0 rounded-t-2xl ring-2 ring-sky-400/85 z-30"
                           style={{
@@ -1092,7 +1352,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                         className="absolute bottom-0 top-3 left-1/2 -translate-x-1/2 w-2 rounded-t-full bg-gradient-to-r from-[#d4a373]/75 via-[#f1cfa0]/85 to-[#bc8a5f]/75 border-x border-amber-700/20 pointer-events-none"
                       />
 
-                      {/* Stacked Rings + 25% Dashed Ghost Blueprints */}
+                      {/* Stacked Rings + High-Contrast Dashed Ghost Blueprints */}
                       {Array.from({ length: maxSlots }).map((_, slotIdx) => {
                         const liveColor = stack[slotIdx];
                         const ghostColor = targetStack?.[slotIdx];
@@ -1111,6 +1371,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                         return (
                           <div
                             key={slotIdx}
+                            data-depot-slot={`${stationId}-${slotIdx}`}
                             className="relative w-full flex items-center justify-center min-h-[24px] z-10"
                           >
                             {isTop && (
@@ -1130,18 +1391,14 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                                 <div
                                   key={
                                     isNewlyPlacedHere
-                                      ? `stack-place-${action?.stepId}`
+                                      ? `stack-place-${stepKey}`
                                       : `stack-slot-${slotIdx}`
                                   }
                                   style={
                                     isNewlyPlacedHere
-                                      ? ({
-                                          '--depot-drop-y': `-${Math.max(
-                                            54,
-                                            (maxSlots - slotIdx) * 28 + 26
-                                          )}px`,
-                                          animation: `depotStackRingDrop ${animDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
-                                        } as React.CSSProperties)
+                                      ? {
+                                          animation: `depotStackRingDrop ${animDurationMs}ms ease-out both`,
+                                        }
                                       : undefined
                                   }
                                 >
@@ -1233,7 +1490,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                   >
                     {isQueueArriveAnim && (
                       <div
-                        key={`q-arrive-${action?.stepId}`}
+                        key={`q-arrive-${stepKey}`}
                         aria-hidden="true"
                         className="pointer-events-none absolute inset-0 rounded-t-2xl ring-2 ring-emerald-400/85 z-30"
                         style={{
@@ -1261,7 +1518,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                         ▲
                       </span>
                       <span
-                        key={isQueueGrabAnim ? `q-arrows-${action?.stepId}` : 'q-arrows-idle'}
+                        key={isQueueGrabAnim ? `q-arrows-${stepKey}` : 'q-arrows-idle'}
                         className="tracking-widest text-slate-400"
                         style={
                           isQueueGrabAnim
@@ -1274,7 +1531,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                         ◀ ◀ ◀
                       </span>
                       <span
-                        key={isQueuePlaceAnim ? `q-funnel-${action?.stepId}` : 'q-funnel-idle'}
+                        key={isQueuePlaceAnim ? `q-funnel-${stepKey}` : 'q-funnel-idle'}
                         className="px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-300"
                         style={
                           isQueuePlaceAnim
@@ -1290,6 +1547,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
 
                     {/* Items on Conveyor Belt (index 0 = left front pickup cradle) */}
                     <div
+                      data-depot-queue-belt="true"
                       className={`min-h-[38px] flex items-center gap-1.5 px-1.5 py-1 rounded-lg bg-slate-200/75 border border-slate-300 ${
                         state.queue.length <= 4 ? 'overflow-visible' : 'overflow-x-auto'
                       }`}
@@ -1309,7 +1567,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                             <div
                               key={
                                 isQueueGrabAnim
-                                  ? `q-shift-${action?.stepId}-${qIdx}`
+                                  ? `q-shift-${stepKey}-${qIdx}`
                                   : `q-item-${qIdx}`
                               }
                               data-testid={`depot-queue-crate-${qIdx}`}
@@ -1329,13 +1587,13 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                               <div
                                 key={
                                   isNewlyPlacedInQueue
-                                    ? `q-drop-${action?.stepId}`
+                                    ? `q-drop-${stepKey}`
                                     : `q-token-${qIdx}`
                                 }
                                 style={
                                   isNewlyPlacedInQueue
                                     ? {
-                                        animation: `depotQueueRingDrop ${animDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                        animation: `depotQueueRingDrop ${animDurationMs}ms ease-out both`,
                                       }
                                     : undefined
                                 }
@@ -1368,7 +1626,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       {[0, 1, 2].map((rIdx) => (
                         <React.Fragment key={rIdx}>
                           <span
-                            key={isQueueGrabAnim ? `roller-${rIdx}-${action?.stepId}` : `roller-${rIdx}`}
+                            key={isQueueGrabAnim ? `roller-${rIdx}-${stepKey}` : `roller-${rIdx}`}
                             className="inline-block leading-none"
                             style={
                               isQueueGrabAnim
@@ -1407,7 +1665,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
             <div className="w-[108px] sm:w-[144px] flex-shrink-0 flex flex-col justify-end relative">
               {/* Curved Overhead Translucent Sky-Chute SVG feeding OUT Tray */}
               <svg
-                key={isOutFlyAnim ? `skychute-${action?.stepId}` : 'skychute-idle'}
+                key={isOutFlyAnim ? `skychute-${stepKey}` : 'skychute-idle'}
                 aria-hidden="true"
                 className="w-full h-24 sm:h-28 overflow-visible pointer-events-none"
                 viewBox="0 0 120 100"
@@ -1469,7 +1727,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       >
                         {delivered ? (
                           <div
-                            key={isLandingHere ? `out-land-${action?.stepId}` : `out-slot-${slotIdx}`}
+                            key={isLandingHere ? `out-land-${stepKey}` : `out-slot-${slotIdx}`}
                             style={
                               isLandingHere
                                 ? {

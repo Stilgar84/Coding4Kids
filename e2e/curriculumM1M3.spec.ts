@@ -426,7 +426,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.getByTestId('palette-depot-grab').click();
     await page.getByTestId('palette-depot-send-out').click();
 
-    // Switch from 1x to 4x speed (100ms/step, 88ms choreography animation duration)
+    // Switch from 1x to 4x speed (585ms choreography animation duration)
     await page.getByTestId('btn-speed').click();
 
     await expect(page.getByTestId('depot-flying-ring')).toHaveCount(0);
@@ -435,7 +435,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     // Step 1: DEPOT_MOVE_TO(STACK_2) moves crane smoothly to STACK_2
     await page.getByTestId('btn-step').click();
     expect(await getCraneLeftPct()).toBeCloseTo((1.5 / 4.5) * 100, 1);
-    expect(await getCraneTransitionMs()).toBe(88);
+    expect(await getCraneTransitionMs()).toBe(585);
 
     // Step 2: DEPOT_GRAB picks up GREEN ring from STACK_2
     await page.getByTestId('btn-step').click();
@@ -474,7 +474,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
 
     await page.getByTestId('btn-play').click();
     await expect(page.getByTestId('depot-output-slot-0').locator('[data-damaged]')).toHaveCount(1, {
-      timeout: 5000,
+      timeout: 8000,
     });
     await expect(page.getByTestId('depot-flying-ring')).toHaveAttribute('data-from-station', 'STACK_3');
     expect(await getCraneLeftPct()).toBeCloseTo((2.5 / 4.5) * 100, 1);
