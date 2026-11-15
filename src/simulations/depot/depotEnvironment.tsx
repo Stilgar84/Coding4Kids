@@ -6,13 +6,12 @@ import {
   SimulationEnvironment,
 } from '../../engine/simulation/types';
 import { registerSimulation } from '../../engine/simulation/registry';
-import { DepotState, DEPOT_CRATE_COLORS } from './types';
+import { DepotState } from './types';
 import {
   applyDepotAction,
   createInitialDepotState,
   evaluateDepotCompletion,
   evaluateDepotSensor,
-  normalizeCrateColor,
   resetDepotState,
 } from './depotPhysics';
 import { DepotCanvas } from './components/DepotCanvas';
@@ -28,6 +27,7 @@ export const DEPOT_STATION_PARAM_DEF: ActionParamDef = {
     { value: 'STACK_2', label: '2' },
     { value: 'STACK_3', label: '3' },
     { value: 'QUEUE',   label: 'Q' },
+    { value: 'INPUT',   label: 'IN' },
   ],
 };
 
@@ -38,7 +38,6 @@ export const DEPOT_GATE_PARAM_DEF: ActionParamDef = {
   defaultValue: 'OUT',
   options: [
     { value: 'OUT',    label: 'OUT'    },
-    { value: 'SCRAP',  label: 'SCRAP'  },
     { value: 'ACCEPT', label: 'ACCEPT' },
     { value: 'REJECT', label: 'REJECT' },
   ],
@@ -146,7 +145,7 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
     name: 'Send to Gate',
     category: 'action',
     paramDefs: [DEPOT_GATE_PARAM_DEF],
-    params: { gate: 'SCRAP' },
+    params: { gate: 'OUT' },
     icon: ({ isActive }) => (
       <svg
         className={`w-6 h-6 md:w-7 md:h-7 ${isActive ? 'stroke-slate-950' : 'stroke-white'}`}
@@ -156,17 +155,16 @@ export const DEPOT_PALETTE_ITEMS: SimPaletteItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {/* Crate */}
-        <rect x="3" y="8" width="8" height="8" rx="1.5" />
-        {/* Arrow with scrap symbol */}
-        <path d="M12 12 H17" />
+        {/* Ring */}
+        <circle cx="7" cy="12" r="4" />
+        {/* Arrow into outgoing gate arch */}
+        <path d="M12 12 H18" />
         <polyline points="15 9 18 12 15 15" />
-        {/* Zigzag / scrap indicator */}
-        <path d="M18 8 L21 10 L18 12 L21 14 L18 16" strokeLinecap="round" />
+        <path d="M21 7 V17" />
       </svg>
     ),
-    bgClass: 'bg-rose-600 hover:bg-rose-500',
-    borderClass: 'border-rose-400',
+    bgClass: 'bg-indigo-600 hover:bg-indigo-500',
+    borderClass: 'border-indigo-400',
     supportsRepeat: false,
   },
 ];
@@ -176,10 +174,9 @@ export const DEPOT_SENSORS: SimSensorDef[] = [
   { id: '$stack2', label: 'Stack 2 Height', icon: '2️⃣', shortLabel: 'S2' },
   { id: '$stack3', label: 'Stack 3 Height', icon: '3️⃣', shortLabel: 'S3' },
   { id: '$out', label: 'Output Count', icon: '✅', shortLabel: 'OUT' },
-  // M5 boolean sensors (also handled via evaluateSensor with numeric codes)
+  // Depot v4 boolean sensors (ConditionExpr 0x18..0x1C, active Phase 2 set)
   { id: 'stationEmpty', label: 'Station Empty?', icon: '📭', shortLabel: 'Empty' },
   { id: 'hasItem', label: 'Holding Item?', icon: '🤏', shortLabel: 'Hold' },
-  { id: 'itemDamaged', label: 'Item Damaged?', icon: '⚠️', shortLabel: 'Dmg' },
   { id: '$heldColor', label: 'Held Color', icon: '🎨', shortLabel: 'HCol' },
   { id: '$topColor', label: 'Top/Front Color', icon: '🔝', shortLabel: 'TCol' },
 ];
@@ -226,8 +223,8 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
   },
 
   /**
-   * M5 boolean sensor evaluation for IF/WHILE conditions.
-   * sensorCode: 0x18=stationEmpty, 0x19=hasItem, 0x1A=itemDamaged,
+   * Depot boolean sensor evaluation for IF/ELSE_IF/WHILE conditions.
+   * sensorCode: 0x18=stationEmpty, 0x19=hasItem, 0x1A=itemDamaged (legacy shim),
    *             0x1B=heldColor==, 0x1C=topColor==
    */
   evaluateSensor: (
@@ -245,14 +242,10 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
         : sensorCode;
       if (cleanSensor === 'stationEmpty') {
         code = 0x18;
-        if (typeof params === 'string' || typeof params === 'number') {
-          const sp =
-            typeof params === 'number'
-              ? params
-              : params === 'QUEUE'
-              ? 4
-              : parseInt(params, 10) || 0;
-          resolvedParams = { stationParam: sp };
+        if (typeof params === 'string') {
+          resolvedParams = { station: params };
+        } else if (typeof params === 'number') {
+          resolvedParams = { stationParam: params };
         }
       } else if (cleanSensor === 'hasItem') {
         code = 0x19;
@@ -260,21 +253,17 @@ export const depotSimulationEnvironment: SimulationEnvironment<DepotState> = {
         code = 0x1a;
       } else if (cleanSensor === 'heldColor') {
         code = 0x1b;
-        if (typeof params === 'string' || typeof params === 'number') {
-          const cIdx =
-            typeof params === 'number'
-              ? params
-              : DEPOT_CRATE_COLORS[normalizeCrateColor(params)].code;
-          resolvedParams = { colorIdx: cIdx };
+        if (typeof params === 'string') {
+          resolvedParams = { color: params };
+        } else if (typeof params === 'number') {
+          resolvedParams = { colorIdx: params };
         }
       } else if (cleanSensor === 'topColor') {
         code = 0x1c;
-        if (typeof params === 'string' || typeof params === 'number') {
-          const cIdx =
-            typeof params === 'number'
-              ? params
-              : DEPOT_CRATE_COLORS[normalizeCrateColor(params)].code;
-          resolvedParams = { colorIdx: cIdx };
+        if (typeof params === 'string') {
+          resolvedParams = { color: params };
+        } else if (typeof params === 'number') {
+          resolvedParams = { colorIdx: params };
         }
       } else {
         code = 0;

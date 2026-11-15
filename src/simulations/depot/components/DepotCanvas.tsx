@@ -12,9 +12,12 @@ import {
 import {
   getEffectiveActiveStationsMask,
   normalizeCrateColor,
+  normalizeDepotStation,
   stationToIndex,
 } from '../depotPhysics';
 import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculum';
+import { DepotStationId } from '../types';
+import { WorkspaceState } from '../../../types';
 
 interface DepotCanvasProps {
   state: DepotState;
@@ -23,12 +26,18 @@ interface DepotCanvasProps {
   activeBlockId?: string | null;
 }
 
-/** Lighter specular & rim palette for uniform glossy workshop rings. */
+/** Lighter specular & rim palette for all 10 uniform glossy Toy-Crane workshop rings. */
 const RING_STYLES: Record<CrateColor, { top: string; mid: string; bottom: string; rim: string }> = {
+  BLACK: { top: '#475569', mid: '#0f172a', bottom: '#020617', rim: '#94a3b8' },
   RED: { top: '#fca5a5', mid: '#ef4444', bottom: '#b91c1c', rim: '#fee2e2' },
   BLUE: { top: '#93c5fd', mid: '#3b82f6', bottom: '#1d4ed8', rim: '#dbeafe' },
   GREEN: { top: '#6ee7b7', mid: '#10b981', bottom: '#047857', rim: '#d1fae5' },
   AMBER: { top: '#fde68a', mid: '#f59e0b', bottom: '#b45309', rim: '#fef3c7' },
+  PURPLE: { top: '#c4b5fd', mid: '#8b5cf6', bottom: '#5b21b6', rim: '#ede9fe' },
+  PINK: { top: '#f9a8d4', mid: '#ec4899', bottom: '#9d174d', rim: '#fce7f3' },
+  CYAN: { top: '#67e8f9', mid: '#06b6d4', bottom: '#0e7490', rim: '#cffafe' },
+  ORANGE: { top: '#fdba74', mid: '#f97316', bottom: '#c2410c', rim: '#ffedd5' },
+  WHITE: { top: '#ffffff', mid: '#f1f5f9', bottom: '#94a3b8', rim: '#cbd5e1' },
 };
 
 const RingToken: React.FC<{
@@ -102,7 +111,11 @@ const RingToken: React.FC<{
       {/* Center peg collar hole */}
       <span
         aria-hidden="true"
-        className="w-3.5 h-2 rounded-full bg-slate-900/25 border border-white/40 shadow-inner"
+        className={`w-3.5 h-2 rounded-full border shadow-inner ${
+          canonical === 'WHITE'
+            ? 'bg-slate-400/35 border-slate-500/60'
+            : 'bg-slate-900/25 border-white/40'
+        }`}
       />
       {damaged && (
         <span
@@ -125,18 +138,27 @@ const RingToken: React.FC<{
   );
 };
 
-function computeCraneLeftPercent(
-  station: DepotState['workerStation'],
-  showQueue: boolean
-): number {
-  if (!showQueue) {
+function computeCraneLeftPercent(station: DepotStationId, activeMask: number): number {
+  const zones: { id: DepotStationId; weight: number }[] = [];
+  if ((activeMask & DEPOT_STATION_BITS.INPUT) !== 0) zones.push({ id: 'INPUT', weight: 1 });
+  if ((activeMask & DEPOT_STATION_BITS.STACK_1) !== 0) zones.push({ id: 'STACK_1', weight: 1 });
+  if ((activeMask & DEPOT_STATION_BITS.STACK_2) !== 0) zones.push({ id: 'STACK_2', weight: 1 });
+  if ((activeMask & DEPOT_STATION_BITS.STACK_3) !== 0) zones.push({ id: 'STACK_3', weight: 1 });
+  if ((activeMask & DEPOT_STATION_BITS.QUEUE) !== 0) zones.push({ id: 'QUEUE', weight: 1.5 });
+  if (zones.length === 0) {
     const idx = stationToIndex(station);
     return idx === 0 ? 16.667 : idx === 1 ? 50 : 83.333;
   }
-  // 4 gantry zones with flex weights [1, 1, 1, 1.5] -> total = 4.5
-  if (station === 'QUEUE') return (3.75 / 4.5) * 100;
-  const idx = stationToIndex(station);
-  return ((idx + 0.5) / 4.5) * 100;
+  const totalWeight = zones.reduce((acc, z) => acc + z.weight, 0);
+  let cursor = 0;
+  for (const z of zones) {
+    if (z.id === station) {
+      return ((cursor + z.weight * 0.5) / totalWeight) * 100;
+    }
+    cursor += z.weight;
+  }
+  const idx = Math.min(stationToIndex(station), zones.length - 1);
+  return ((idx + 0.5) / totalWeight) * 100;
 }
 
 function getFailureCueSymbol(reason: DepotState['lastFailureReason']): string {
@@ -144,9 +166,74 @@ function getFailureCueSymbol(reason: DepotState['lastFailureReason']): string {
     case 'CLAW_EMPTY':
     case 'EMPTY_STACK':
       return '∅';
+    case 'INPUT_READ_ONLY':
+    case 'INVALID_STATION':
+      return '⛔';
+    case 'WRONG_OUTPUT_ORDER':
+      return '❌';
     default:
       return '💥';
   }
+}
+
+interface ActiveSensorHints {
+  stationEmptyTarget: string | null;
+  hasItemActive: boolean;
+  heldColorActive: boolean;
+  topColorActive: boolean;
+}
+
+function collectConditionSensorHints(cond: any, out: ActiveSensorHints): void {
+  if (!cond) return;
+  if (typeof cond === 'string') {
+    const s = cond.replace(/^\$/, '');
+    if (s === 'hasItem') out.hasItemActive = true;
+    else if (s === 'heldColor') out.heldColorActive = true;
+    else if (s === 'topColor') out.topColorActive = true;
+    else if (s === 'stationEmpty' && !out.stationEmptyTarget) {
+      out.stationEmptyTarget = 'CURRENT';
+    }
+    return;
+  }
+  if (typeof cond !== 'object') return;
+  if (cond.kind === 'sensor' && typeof cond.sensor === 'string') {
+    const s = cond.sensor.replace(/^\$/, '');
+    if (s === 'stationEmpty') {
+      out.stationEmptyTarget = typeof cond.param === 'string' ? cond.param : 'CURRENT';
+    } else if (s === 'hasItem') {
+      out.hasItemActive = true;
+    } else if (s === 'heldColor') {
+      out.heldColorActive = true;
+    } else if (s === 'topColor') {
+      out.topColorActive = true;
+    }
+    return;
+  }
+  if (cond.operand) collectConditionSensorHints(cond.operand, out);
+  if (cond.inner) collectConditionSensorHints(cond.inner, out);
+  if (cond.left) collectConditionSensorHints(cond.left, out);
+  if (cond.right) collectConditionSensorHints(cond.right, out);
+}
+
+function extractActiveSensorHints(
+  workspace: WorkspaceState | undefined,
+  activeBlockId: string | null | undefined
+): ActiveSensorHints {
+  const hints: ActiveSensorHints = {
+    stationEmptyTarget: null,
+    hasItemActive: false,
+    heldColorActive: false,
+    topColorActive: false,
+  };
+  if (!workspace || !activeBlockId) return hints;
+  for (const scope of ['MAIN', 'F1', 'F2', 'F3'] as const) {
+    const found = workspace[scope]?.find((b) => b.id === activeBlockId);
+    if (found?.params?.condition) {
+      collectConditionSensorHints(found.params.condition, hints);
+      break;
+    }
+  }
+  return hints;
 }
 
 /**
@@ -328,6 +415,14 @@ const DEPOT_ANIMATION_CSS = `
   55% { opacity: 1; transform: scale(1.16); }
   100% { opacity: 1; transform: scale(1); }
 }
+@keyframes depotRadarPulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.9; }
+  50% { transform: scale(1.14); opacity: 0.45; }
+}
+@keyframes depotInputSlideDown {
+  0% { transform: translateY(calc(-100% - 4px)); }
+  100% { transform: translateY(0); }
+}
 @media (prefers-reduced-motion: reduce) {
   [data-testid="depot-canvas"] *,
   [data-testid="depot-canvas"] *::before,
@@ -342,6 +437,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   state: propState,
   runtimeStatus,
   spotlightsOverride,
+  activeBlockId: propActiveBlockId,
 }) => {
   const {
     storeDepotState,
@@ -352,6 +448,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     activeActivityId,
     activeActivityVersion,
     activeDemoTabIndex,
+    workspace,
+    storeActiveBlockId,
   } = useAppStoreSelector((s) => ({
     storeDepotState: s.depotState,
     isLowQuality: isLowQualityActive(s),
@@ -361,6 +459,8 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
     activeDemoTabIndex: s.activeDemoTabIndex,
+    workspace: s.workspace,
+    storeActiveBlockId: s.runtime?.activeBlockId ?? null,
   }));
 
   const spotlights = React.useMemo(() => {
@@ -374,20 +474,34 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
     return act.demoTabs[idx]?.spotlights ?? [];
   }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
 
-  const hasFifoVsLifo = spotlights.includes('fifo-vs-lifo');
-  const hasSensorBeam = spotlights.includes('sensor-beam');
-  const hasStackTopSpotlight = spotlights.includes('depot-stack-top');
-  const hasOutChuteSpotlight = spotlights.includes('depot-out-chute');
+  const effectiveActiveBlockId = propActiveBlockId ?? storeActiveBlockId;
+  const sensorHints = React.useMemo(
+    () => extractActiveSensorHints(workspace, effectiveActiveBlockId),
+    [workspace, effectiveActiveBlockId]
+  );
 
   const state = propState || storeDepotState;
   const effectiveStatus = runtimeStatus ?? state.status;
   const activeMask = getEffectiveActiveStationsMask(state);
+  const showInput = (activeMask & DEPOT_STATION_BITS.INPUT) !== 0;
   const showQueue = (activeMask & DEPOT_STATION_BITS.QUEUE) !== 0;
   const showOut = (activeMask & DEPOT_STATION_BITS.OUT) !== 0;
 
+  const hasFifoVsLifo = spotlights.includes('fifo-vs-lifo');
+  const hasSensorBeam = spotlights.includes('sensor-beam') || sensorHints.topColorActive;
+  const hasClawHalo = sensorHints.hasItemActive || sensorHints.heldColorActive;
+  const hasStackTopSpotlight = spotlights.includes('depot-stack-top');
+  const hasOutChuteSpotlight = spotlights.includes('depot-out-chute');
+  const radarStation: DepotStationId | null = sensorHints.stationEmptyTarget
+    ? sensorHints.stationEmptyTarget.toUpperCase() === 'CURRENT'
+      ? state.workerStation
+      : normalizeDepotStation(sensorHints.stationEmptyTarget)
+    : null;
+
+  const isInputStation = state.workerStation === 'INPUT';
   const isQueueStation = state.workerStation === 'QUEUE';
   const activeStationIdx = stationToIndex(state.workerStation);
-  const craneLeftPct = computeCraneLeftPercent(state.workerStation, showQueue);
+  const craneLeftPct = computeCraneLeftPercent(state.workerStation, activeMask);
 
   const action = state.lastAction;
   const shouldAnimate =
@@ -400,16 +514,21 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
   const isAnimSendOut = shouldAnimate && action?.type === 'SEND_OUT';
   const isAnimCollision = shouldAnimate && action?.type === 'COLLISION';
 
-  const fromLeftPct = action ? computeCraneLeftPercent(action.fromStation, showQueue) : craneLeftPct;
+  const fromLeftPct = action ? computeCraneLeftPercent(action.fromStation, activeMask) : craneLeftPct;
   const moveDeltaPct = craneLeftPct - fromLeftPct;
   const moveDir = moveDeltaPct > 0.1 ? 1 : moveDeltaPct < -0.1 ? -1 : 0;
 
+  const isInputGrabAnim = isAnimGrab && action?.fromStation === 'INPUT';
+  const isInputArriveAnim = isAnimMove && action?.toStation === 'INPUT';
   const isQueueGrabAnim = isAnimGrab && action?.fromStation === 'QUEUE';
   const isQueuePlaceAnim = isAnimPlace && action?.toStation === 'QUEUE';
   const isQueueArriveAnim = isAnimMove && action?.toStation === 'QUEUE';
   const isOutFlyAnim =
     isAnimSendOut && showOut && action?.outputSlotIndex !== undefined && Boolean(action?.color);
   const isSkyChuteActive = hasOutChuteSpotlight || state.output.length > 0 || isOutFlyAnim;
+  const isInputBarrierActive =
+    (effectiveStatus === 'COLLISION' || state.status === 'COLLISION') &&
+    state.lastFailureReason === 'INPUT_READ_ONLY';
 
   const rigAnimationStyle: React.CSSProperties | undefined =
     isAnimMove && moveDir !== 0
@@ -687,7 +806,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                           isAnimGrab
                             ? {
                                 animation: `${
-                                  action?.fromStation === 'QUEUE'
+                                  action?.fromStation === 'QUEUE' || action?.fromStation === 'INPUT'
                                     ? 'depotHeldRingGrabLiftQueue'
                                     : 'depotHeldRingGrabLift'
                                 } ${animDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
@@ -707,6 +826,15 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       </div>
                     )}
 
+                    {/* Claw Sensor Halo for hasItem / heldColor */}
+                    {hasClawHalo && (
+                      <div
+                        data-testid="depot-claw-halo"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -inset-1.5 rounded-full ring-2 ring-amber-400/90 shadow-[0_0_14px_rgba(245,158,11,0.55)] animate-pulse"
+                      />
+                    )}
+
                     {/* Zero-Reading Failure Cue at Claw */}
                     {isCollision && state.lastFailureReason && (
                       <div
@@ -724,11 +852,11 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       </div>
                     )}
 
-                    {/* Optical Sensor Beam Cone (spotlight) */}
+                    {/* Optical Sensor Beam Cone (spotlight / topColor) */}
                     {hasSensorBeam && (
                       <div
                         data-testid="depot-sensor-beam"
-                        className="w-16 h-8 bg-gradient-to-b from-cyan-400/45 via-cyan-300/20 to-transparent clip-path-cone pointer-events-none -mt-1"
+                        className="w-16 h-8 bg-gradient-to-b from-cyan-400/50 via-cyan-300/25 to-transparent clip-path-cone pointer-events-none -mt-1"
                         style={{ clipPath: 'polygon(35% 0%, 65% 0%, 100% 100%, 0% 100%)' }}
                       />
                     )}
@@ -737,8 +865,158 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
               </div>
             </div>
 
-            {/* Crane-Reachable Stations Row (Stacks 1..3 + Optional QUEUE) */}
+            {/* Crane-Reachable Stations Row (Optional INPUT + Stacks 1..3 + Optional QUEUE) */}
             <div className="flex-1 min-h-0 flex items-end gap-2 sm:gap-3 pt-1">
+              {/* Vertical Supply Dispenser Bay (INPUT, grab-only one-way station when INPUT bit active) */}
+              {showInput && (
+                <div
+                  data-testid="depot-input-dispenser"
+                  className="flex-1 min-w-0 h-full flex flex-col items-center justify-end relative"
+                >
+                  <div
+                    data-testid="depot-input-station"
+                    className={`relative w-full max-w-[116px] flex-1 max-h-[210px] min-h-[120px] rounded-t-2xl border-x-2 border-t-2 flex flex-col-reverse items-center justify-start gap-1.5 px-1.5 pt-5 pb-2.5 overflow-visible transition-all ${
+                      isInputBarrierActive
+                        ? 'border-rose-500 bg-rose-50/85 shadow-[0_0_18px_rgba(244,63,94,0.28)]'
+                        : isInputStation
+                          ? 'border-amber-400 bg-amber-50/85 shadow-[0_0_18px_rgba(245,158,11,0.28)]'
+                          : 'border-slate-300/90 bg-white/60 shadow-inner'
+                    }`}
+                  >
+                    {isInputArriveAnim && (
+                      <div
+                        key={`in-arrive-${action?.stepId}`}
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 rounded-t-2xl ring-2 ring-amber-400/85 z-30"
+                        style={{
+                          animation: `depotStationArrivePulse ${animDurationMs}ms ease-out both`,
+                        }}
+                      />
+                    )}
+
+                    {/* Top One-Way Gravity Feed Hopper Header */}
+                    <div
+                      aria-hidden="true"
+                      className="absolute top-0 inset-x-0 h-4 rounded-t-[14px] bg-gradient-to-b from-amber-200/90 to-amber-100/60 border-b border-amber-300/80 flex items-center justify-center text-[10px] font-black text-amber-800"
+                    >
+                      ⬇
+                    </div>
+
+                    {/* One-Way Drop Barrier Cue when placing onto INPUT fails */}
+                    {isInputBarrierActive && (
+                      <div
+                        data-testid="depot-input-barrier"
+                        aria-label="INPUT one-way guard"
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 px-2 py-0.5 rounded-full bg-rose-600 text-white text-xs font-black border-2 border-white shadow-md"
+                        style={
+                          isAnimCollision
+                            ? { animation: `depotBadgePop ${animDurationMs}ms ease-out both` }
+                            : undefined
+                        }
+                      >
+                        ⛔
+                      </div>
+                    )}
+
+                    {/* Station Empty Radar Spotlight */}
+                    {radarStation === 'INPUT' && (
+                      <div
+                        data-testid="depot-radar-spotlight"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-1 rounded-xl border-2 border-dashed border-cyan-500/85 flex items-center justify-center z-30"
+                        style={{ animation: 'depotRadarPulse 1s ease-in-out infinite' }}
+                      >
+                        <span className="px-1.5 py-0.5 rounded-full bg-cyan-500 text-white text-xs font-black shadow">
+                          ∅
+                        </span>
+                      </div>
+                    )}
+
+                    {(state.input ?? []).length === 0 ? (
+                      <div
+                        data-testid="depot-input-empty"
+                        className="w-full my-auto text-center text-sm font-black text-slate-400"
+                      >
+                        ∅
+                      </div>
+                    ) : (
+                      (state.input ?? []).map((item, iIdx) => {
+                        const isFrontCradle = iIdx === 0;
+                        return (
+                          <div
+                            key={
+                              isInputGrabAnim
+                                ? `in-shift-${action?.stepId}-${iIdx}`
+                                : `in-item-${iIdx}`
+                            }
+                            data-testid={`depot-input-crate-${iIdx}`}
+                            className={`relative w-full flex items-center justify-center z-10 ${
+                              isFrontCradle
+                                ? 'rounded-full ring-2 ring-amber-400/75 bg-amber-100/55 py-0.5 px-1'
+                                : ''
+                            }`}
+                            style={
+                              isInputGrabAnim
+                                ? {
+                                    animation: `depotInputSlideDown ${animDurationMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
+                                  }
+                                : undefined
+                            }
+                          >
+                            {isFrontCradle && (
+                              <span
+                                aria-hidden="true"
+                                className="absolute -right-1 top-1/2 -translate-y-1/2 text-[9px] font-black text-amber-600 select-none"
+                              >
+                                ▲
+                              </span>
+                            )}
+                            <RingToken
+                              color={item.color}
+                              damaged={item.damaged}
+                              isTop={isFrontCradle}
+                              isDimmed={!isFrontCradle}
+                              compact
+                            />
+                            {isFrontCradle && hasSensorBeam && isInputStation && (
+                              <div
+                                data-testid="depot-sensor-beam"
+                                className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-4 bg-gradient-to-b from-cyan-400/50 to-transparent pointer-events-none"
+                                style={{
+                                  clipPath: 'polygon(30% 0%, 70% 0%, 100% 100%, 0% 100%)',
+                                }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+
+                    {/* Translucent Acrylic Front Sheen */}
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-t-[14px] overflow-hidden pointer-events-none z-20"
+                      style={{
+                        background:
+                          'linear-gradient(125deg, transparent 22%, rgba(255,255,255,0.42) 26%, rgba(255,255,255,0.08) 31%, transparent 34%, transparent 62%, rgba(255,255,255,0.34) 66%, transparent 72%)',
+                      }}
+                    />
+                  </div>
+
+                  {/* INPUT Pedestal Badge */}
+                  <div
+                    className={`w-full max-w-[116px] flex items-center justify-center gap-1 py-1 px-2 rounded-b-lg border-x border-b font-black text-xs shadow-sm transition-colors ${
+                      isInputStation
+                        ? 'bg-amber-500 text-white border-amber-600'
+                        : 'bg-white/95 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    <span>⬇</span>
+                    <span>IN</span>
+                  </div>
+                </div>
+              )}
+
               {/* LIFO Stack Bays 1..3 */}
               {DEPOT_STACK_STATIONS.map((stationId, idx) => {
                 const bit =
@@ -751,7 +1029,7 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
 
                 const stack = state.stacks[idx];
                 const targetStack = state.targetStacks?.[idx];
-                const isStationActive = !isQueueStation && activeStationIdx === idx;
+                const isStationActive = !isQueueStation && !isInputStation && activeStationIdx === idx;
                 const isArriveTarget = isAnimMove && action?.toStation === stationId;
                 const topIndex = stack.length - 1;
                 const isStackMatched = Boolean(
@@ -787,6 +1065,19 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                             animation: `depotStationArrivePulse ${animDurationMs}ms ease-out both`,
                           }}
                         />
+                      )}
+
+                      {radarStation === stationId && (
+                        <div
+                          data-testid="depot-radar-spotlight"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-1 rounded-xl border-2 border-dashed border-cyan-500/85 flex items-center justify-center z-30"
+                          style={{ animation: 'depotRadarPulse 1s ease-in-out infinite' }}
+                        >
+                          <span className="px-1.5 py-0.5 rounded-full bg-cyan-500 text-white text-xs font-black shadow">
+                            ∅
+                          </span>
+                        </div>
                       )}
 
                       {/* Flared Open Mouth Rim */}
@@ -861,6 +1152,15 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                                     isMatched={slotMatched && isStackMatched}
                                   />
                                 </div>
+                                {isTop && hasSensorBeam && isStationActive && (
+                                  <div
+                                    data-testid="depot-sensor-beam"
+                                    className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-4 bg-gradient-to-b from-cyan-400/50 to-transparent pointer-events-none"
+                                    style={{
+                                      clipPath: 'polygon(30% 0%, 70% 0%, 100% 100%, 0% 100%)',
+                                    }}
+                                  />
+                                )}
                               </div>
                             ) : ghostColor ? (
                               <div data-testid={`depot-stack-${idx + 1}-ghost-${slotIdx}`}>
@@ -942,6 +1242,19 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                       />
                     )}
 
+                    {radarStation === 'QUEUE' && (
+                      <div
+                        data-testid="depot-radar-spotlight"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-1 rounded-xl border-2 border-dashed border-cyan-500/85 flex items-center justify-center z-30"
+                        style={{ animation: 'depotRadarPulse 1s ease-in-out infinite' }}
+                      >
+                        <span className="px-1.5 py-0.5 rounded-full bg-cyan-500 text-white text-xs font-black shadow">
+                          ∅
+                        </span>
+                      </div>
+                    )}
+
                     {/* Belt Direction Header */}
                     <div className="flex items-center justify-between text-[10px] font-black text-emerald-700">
                       <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300">
@@ -1000,7 +1313,11 @@ export const DepotCanvas: React.FC<DepotCanvasProps> = ({
                                   : `q-item-${qIdx}`
                               }
                               data-testid={`depot-queue-crate-${qIdx}`}
-                              className="relative flex-shrink-0"
+                              className={`relative flex-shrink-0 ${
+                                qIdx === 0
+                                  ? 'rounded-full ring-2 ring-emerald-400/75 bg-emerald-100/50 p-0.5'
+                                  : ''
+                              }`}
                               style={
                                 isQueueGrabAnim
                                   ? {

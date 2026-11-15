@@ -14,9 +14,13 @@ function ringColorHex(color: CrateColor): string {
   return DEPOT_CRATE_COLORS[normalizeCrateColor(color)].hex;
 }
 
+function ringStrokeHex(color: CrateColor, fallback = '#ffffff'): string {
+  return normalizeCrateColor(color) === 'WHITE' ? '#64748b' : fallback;
+}
+
 /**
  * Renders a bright Light Toy-Crane Workshop SVG thumbnail (`180x132`) for a DepotState.
- * Adapts layout automatically via `activeStationsMask` (`STACK 1..3`, optional `QUEUE`, optional `OUT`).
+ * Adapts layout automatically via `activeStationsMask` (optional `INPUT`, `STACK 1..3`, optional `QUEUE`, optional `OUT`).
  */
 export function renderDepotWorkshopSvg(depot: DepotState): string {
   const w = 180;
@@ -24,6 +28,7 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
   const parts: string[] = [];
 
   const activeMask = getEffectiveActiveStationsMask(depot);
+  const showInput = (activeMask & DEPOT_STATION_BITS.INPUT) !== 0;
   const showQueue = (activeMask & DEPOT_STATION_BITS.QUEUE) !== 0;
   const showOut = (activeMask & DEPOT_STATION_BITS.OUT) !== 0;
 
@@ -35,13 +40,35 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
   // Compute responsive X positions for active stations
   let bayXs: [number, number, number];
   let bayW: number;
+  let inputX = 0;
+  let inputW = 0;
   let queueX = 0;
   let queueW = 0;
   let outX = 0;
   let outW = 0;
   let railEndX = 166;
 
-  if (!showQueue && !showOut) {
+  if (showInput) {
+    outW = showOut ? 26 : 0;
+    outX = showOut ? 144 : 0;
+    const availEnd = showOut ? 136 : 168;
+    const totalW = availEnd - 10;
+    const units = 4 + (showQueue ? 1.4 : 0);
+    const gap = 4;
+    const gapTotal = gap * (showQueue ? 4 : 3);
+    const unitW = Math.floor((totalW - gapTotal) / units);
+    inputX = 10;
+    inputW = unitW;
+    bayW = unitW;
+    bayXs = [
+      inputX + inputW + gap,
+      inputX + (inputW + gap) * 2,
+      inputX + (inputW + gap) * 3,
+    ];
+    queueX = bayXs[2] + bayW + gap;
+    queueW = showQueue ? Math.max(24, availEnd - queueX) : 0;
+    railEndX = showQueue ? queueX + queueW - 2 : bayXs[2] + bayW + 2;
+  } else if (!showQueue && !showOut) {
     bayXs = [22, 74, 126];
     bayW = 32;
     railEndX = 166;
@@ -76,11 +103,14 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
   );
 
   // Trolley carriage, spring wire & held full-size ring
+  const isInputWorker = depot.workerStation === 'INPUT' && showInput;
   const isQueueWorker = depot.workerStation === 'QUEUE' && showQueue;
   const activeStackIdx = stationToIndex(depot.workerStation);
-  const craneCenterX = isQueueWorker
-    ? queueX + queueW / 2
-    : bayXs[activeStackIdx] + bayW / 2;
+  const craneCenterX = isInputWorker
+    ? inputX + inputW / 2
+    : isQueueWorker
+      ? queueX + queueW / 2
+      : bayXs[activeStackIdx] + bayW / 2;
 
   parts.push(
     `<rect x="${craneCenterX - 8}" y="15" width="16" height="8" rx="3" fill="#0284c7" stroke="#ffffff" stroke-width="1" />`
@@ -94,7 +124,39 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
   if (depot.heldCrate) {
     const heldHex = ringColorHex(depot.heldCrate);
     parts.push(
-      `<rect x="${craneCenterX - 9}" y="35" width="18" height="8" rx="4" fill="${heldHex}" stroke="#ffffff" stroke-width="1.2" />`
+      `<rect x="${craneCenterX - 9}" y="35" width="18" height="8" rx="4" fill="${heldHex}" stroke="${ringStrokeHex(depot.heldCrate)}" stroke-width="1.2" />`
+    );
+  }
+
+  // Optional INPUT Vertical Supply Dispenser
+  if (showInput) {
+    const inCenter = inputX + inputW / 2;
+    parts.push(
+      `<rect x="${inputX}" y="46" width="${inputW}" height="62" rx="4" fill="rgba(254,243,199,0.72)" stroke="${
+        isInputWorker ? '#f59e0b' : '#d97706'
+      }" stroke-width="${isInputWorker ? '1.8' : '1.2'}" />`
+    );
+    const inItems = depot.input ?? [];
+    const inRingW = Math.max(12, inputW - 6);
+    const inRingX = inCenter - inRingW / 2;
+    for (let i = 0; i < inItems.length && i < 5; i++) {
+      const iy = 104 - (i + 1) * 10;
+      const iHex = ringColorHex(inItems[i].color);
+      parts.push(
+        `<rect x="${inRingX}" y="${iy}" width="${inRingW}" height="8" rx="4" fill="${iHex}" fill-opacity="${
+          i === 0 ? '1' : '0.72'
+        }" stroke="${ringStrokeHex(inItems[i].color, i === 0 ? '#d97706' : '#ffffff')}" stroke-width="1" />`
+      );
+    }
+    parts.push(
+      `<rect x="${inputX}" y="108" width="${inputW}" height="12" rx="2.5" fill="${
+        isInputWorker ? '#f59e0b' : '#ffffff'
+      }" stroke="#d97706" stroke-width="0.8" />`
+    );
+    parts.push(
+      `<text x="${inCenter}" y="117" text-anchor="middle" font-family="sans-serif" font-size="6.5" font-weight="900" fill="${
+        isInputWorker ? '#ffffff' : '#92400e'
+      }">IN</text>`
     );
   }
 
@@ -102,7 +164,7 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
   for (let b = 0; b < 3; b++) {
     const bx = bayXs[b];
     const center = bx + bayW / 2;
-    const isActive = !isQueueWorker && activeStackIdx === b;
+    const isActive = !isInputWorker && !isQueueWorker && activeStackIdx === b;
     const stack = depot.stacks?.[b] ?? [];
     const targetStack = depot.targetStacks?.[b] ?? [];
 
@@ -117,7 +179,7 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
     );
 
     // 25% dashed target ghost rings (for empty target slots)
-    const ringW = Math.max(16, bayW - 6);
+    const ringW = Math.max(10, bayW - 6);
     const ringX = center - ringW / 2;
     for (let g = stack.length; g < targetStack.length && g < 5; g++) {
       const gy = 104 - (g + 1) * 10;
@@ -135,7 +197,7 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
       parts.push(
         `<rect x="${ringX}" y="${cy}" width="${ringW}" height="8" rx="4" fill="${hex}" fill-opacity="${
           isTop ? '1' : '0.72'
-        }" stroke="${isTop ? '#0284c7' : '#ffffff'}" stroke-width="${isTop ? '1.2' : '0.6'}" />`
+        }" stroke="${isTop ? '#0284c7' : ringStrokeHex(stack[s])}" stroke-width="${isTop ? '1.2' : '0.7'}" />`
       );
       parts.push(
         `<rect x="${center - 2.5}" y="${cy + 2.5}" width="5" height="3" rx="1.5" fill="#0f172a" fill-opacity="0.22" />`
