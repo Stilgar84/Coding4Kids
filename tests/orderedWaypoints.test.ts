@@ -21,6 +21,7 @@ import {
 } from '../src/services/mapThumbnailGenerator';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
 import { createInitialInterpreterState, tickInterpreter } from '../src/engine/interpreter';
+import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
 import { LESSONS } from '../src/data/lessons';
 import { FlagObjective, GridState, WorkspaceState } from '../src/types';
 
@@ -93,8 +94,82 @@ describe('Commit 6: Padlock-Gated Ordered Waypoints (1 -> 2 -> Goal)', () => {
       const moveRes = executeRobotAction('MOVE_FWD', grid);
       expect(moveRes.valid).toBe(true);
       expect(moveRes.isCollision).toBe(false);
+      // Physics helper reports goal-ready on arrival, while simulation env defers SUCCESS to program end
       expect(moveRes.isSuccess).toBe(true);
       expect(moveRes.flags[0].collected).toBe(true);
+
+      const envStep = gridSimulationEnvironment.executeAction('MOVE_FWD', grid);
+      expect(envStep.status).toBe('RUNNING');
+      expect(envStep.isSuccess).toBe(false);
+      expect(envStep.nextState.flags[0].collected).toBe(true);
+      expect(gridSimulationEnvironment.evaluateCompletion(envStep.nextState)).toBe('SUCCESS');
+    });
+
+    it('defers Goal SUCCESS until program end so stepping off Goal continues and ends IDLE (seq.2/func.5/func.A)', () => {
+      const corridor: GridState = {
+        width: 5,
+        height: 1,
+        robot: { x: 0, y: 0, dir: 'EAST', initialX: 0, initialY: 0, initialDir: 'EAST' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 2, y: 0, isGoal: true, order: 1, collected: false }],
+        trace: [{ x: 0, y: 0 }],
+        status: 'IDLE',
+      };
+
+      // Program passes through Goal at (2,0) and ends at (3,0) -> MUST NOT succeed
+      const walkPastRes = runHeadlessSimulation(
+        makeWorkspace([
+          { type: 'MOVE_FWD' },
+          { type: 'MOVE_FWD' },
+          { type: 'MOVE_FWD' },
+        ]),
+        'grid',
+        corridor
+      );
+      expect(walkPastRes.finalState.robot.x).toBe(3);
+      expect(walkPastRes.status).toBe('IDLE');
+
+      // Program passes Goal to (3,0) and steps back onto Goal (2,0) -> MUST succeed at end
+      const walkPastThenBackRes = runHeadlessSimulation(
+        makeWorkspace([
+          { type: 'MOVE_FWD' },
+          { type: 'MOVE_FWD' },
+          { type: 'MOVE_FWD' },
+          { type: 'MOVE_BACK' },
+        ]),
+        'grid',
+        corridor
+      );
+      expect(walkPastThenBackRes.finalState.robot.x).toBe(2);
+      expect(walkPastThenBackRes.status).toBe('SUCCESS');
+    });
+
+    it('treats order === 0 unordered flags as never padlocked and non-blocking, while required before Goal', () => {
+      const mixedFlags: FlagObjective[] = [
+        { id: 'u_1', x: 1, y: 0, isGoal: false, order: 0, collected: false },
+        { id: 'u_2', x: 2, y: 0, isGoal: false, order: 0, collected: false },
+        { id: 'o_1', x: 3, y: 0, isGoal: false, order: 1, collected: false },
+        { id: 'o_2', x: 4, y: 0, isGoal: false, order: 2, collected: false },
+        { id: 'goal', x: 5, y: 0, isGoal: true, order: 3, collected: false },
+      ];
+
+      expect(isFlagPadlocked(mixedFlags[0], mixedFlags)).toBe(false);
+      expect(isFlagPadlocked(mixedFlags[1], mixedFlags)).toBe(false);
+      // order 1 is unlocked even while order === 0 flags are uncollected
+      expect(isFlagPadlocked(mixedFlags[2], mixedFlags)).toBe(false);
+      expect(isFlagPadlocked(mixedFlags[3], mixedFlags)).toBe(true);
+      expect(isFlagPadlocked(mixedFlags[4], mixedFlags)).toBe(true);
+      expect(getNextRequiredWaypointOrder(mixedFlags)).toBe(1);
+
+      // Even after order 1 and 2 are collected, Goal stays locked until order === 0 flags are collected
+      const orderedDone = mixedFlags.map((f) =>
+        f.id === 'o_1' || f.id === 'o_2' ? { ...f, collected: true } : f
+      );
+      expect(getNextRequiredWaypointOrder(orderedDone)).toBeNull();
+      expect(isFlagPadlocked(orderedDone[4], orderedDone)).toBe(true);
+
+      const allDone = orderedDone.map((f) => (!f.isGoal ? { ...f, collected: true } : f));
+      expect(isFlagPadlocked(allDone[4], allDone)).toBe(false);
     });
 
     it('supports arbitrary ascending order numbers and tied order numbers cleanly', () => {
@@ -283,12 +358,38 @@ describe('Commit 6: Padlock-Gated Ordered Waypoints (1 -> 2 -> Goal)', () => {
 
       expect(lockedMarkup).toContain('data-testid="grid-slot-flag-padlocks"');
       expect(lockedMarkup).toContain('data-testid="flag-padlock-overlay"');
-      // Flag 2 and Goal are padlocked; Flag 1 is unlocked!
+      // Flag 2 and Goal are gated with shutter barriers (zero SVG padlock shackle paths or 🔒 emojis!)
       expect(lockedMarkup).toContain('data-testid="padlock-flag-2"');
+      expect(lockedMarkup).toContain('data-shutter-variant="waypoint"');
       expect(lockedMarkup).toContain('data-testid="padlock-goal-2-0"');
+      expect(lockedMarkup).toContain('data-shutter-variant="goal"');
+      expect(lockedMarkup).toContain('data-testid="goal-shutter-progress"');
+      expect(lockedMarkup).toContain('🏁 0/2');
+      expect(lockedMarkup).toContain('data-testid="sequence-chain-1-to-2"');
+      expect(lockedMarkup).toContain('data-testid="sequence-chain-2-to-goal"');
       expect(lockedMarkup).not.toContain('data-testid="padlock-flag-1"');
+      expect(lockedMarkup).not.toContain('M -3.2 -1 V -3.6');
+      expect(lockedMarkup).not.toContain('🔒');
 
-      // When Flag 1 becomes collected, Flag 2 unlocks (with unlock pop animation) while Goal stays locked
+      // When robot steps early onto Flag 2, prerequisite Flag 1 pulses!
+      const earlyStepGrid: GridState = {
+        ...grid,
+        robot: { ...grid.robot, x: 1, y: 0 },
+      };
+      const earlyStepMarkup = renderToStaticMarkup(
+        React.createElement(
+          'svg',
+          null,
+          React.createElement(FlagPadlockOverlay, {
+            grid: earlyStepGrid,
+            cellSize: GRID_CELL_SIZE,
+            isInstant: false,
+          })
+        )
+      );
+      expect(earlyStepMarkup).toContain('data-testid="prerequisite-pulse-flag-1"');
+
+      // When Flag 1 becomes collected, Flag 2 unlocks (with shutter-release burst) while Goal updates to [🏁 1/2]
       const afterFlag1Grid: GridState = {
         ...grid,
         flags: grid.flags.map((f) => (f.id === 'flag_1' ? { ...f, collected: true } : f)),
@@ -311,8 +412,34 @@ describe('Commit 6: Padlock-Gated Ordered Waypoints (1 -> 2 -> Goal)', () => {
       expect(unlockingMarkup).toContain('padlock-unlock-ring');
       expect(unlockingMarkup).toContain('padlock-unlock-pop');
       expect(unlockingMarkup).toContain('data-testid="padlock-goal-2-0"');
+      expect(unlockingMarkup).toContain('🏁 1/2');
+      expect(unlockingMarkup).not.toContain('M -3.2 -2.6 V -4.8');
 
-      // Single-goal map renders zero padlock overlays
+      // Unordered (order === 0) flags omit sequence chain connectors while Goal still shows shutter [🏁 0/2]
+      const unorderedGrid: GridState = {
+        ...grid,
+        flags: [
+          { id: 'u1', x: 1, y: 0, isGoal: false, order: 0, collected: false },
+          { id: 'u2', x: 3, y: 0, isGoal: false, order: 0, collected: false },
+          { id: 'goal_u', x: 4, y: 0, isGoal: true, order: 1, collected: false },
+        ],
+      };
+      const unorderedMarkup = renderToStaticMarkup(
+        React.createElement(
+          'svg',
+          null,
+          React.createElement(FlagPadlockOverlay, {
+            grid: unorderedGrid,
+            cellSize: GRID_CELL_SIZE,
+            isInstant: false,
+          })
+        )
+      );
+      expect(unorderedMarkup).not.toContain('sequence-chain-');
+      expect(unorderedMarkup).toContain('data-testid="padlock-goal-4-0"');
+      expect(unorderedMarkup).toContain('🏁 0/2');
+
+      // Single-goal map renders zero shutter overlays
       const singleGoalGrid: GridState = {
         ...grid,
         flags: [{ id: 'g', x: 2, y: 0, isGoal: true, order: 1, collected: false }],

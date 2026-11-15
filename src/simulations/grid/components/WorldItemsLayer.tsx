@@ -9,7 +9,6 @@ import {
 } from '../../../types';
 import {
   SHAPE_SYMBOLS,
-  hasInteractiveWorldElements,
   isSwitchLinkedToGate,
   isWaterBridged,
   resolveKeyGateColor,
@@ -17,6 +16,33 @@ import {
 } from '../../../engine/physics';
 import { useAppStore } from '../../../store/useAppStore';
 import { GRID_CELL_SIZE } from './GridOverlayLayer';
+
+const WORLD_LAYER_CSS = `
+@keyframes worldSplashRipple {
+  0% { transform: scale(0.55); opacity: 0.95; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+@keyframes worldGateFlash {
+  0% { transform: scale(0.75); opacity: 0.95; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.world-splash-ripple {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: worldSplashRipple 420ms ease-out forwards;
+}
+.world-gate-flash {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: worldGateFlash 420ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .world-splash-ripple,
+  .world-gate-flash {
+    animation-duration: 1ms;
+  }
+}
+`;
 
 export const KEY_GATE_VISUALS: Record<
   KeyGateColor,
@@ -283,7 +309,11 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
   cellSize = GRID_CELL_SIZE,
   isInstant = false,
 }) => {
+  const isLowQuality = useAppStoreSelector(isLowQualityActive);
   const prevGridRef = useRef<GridState | null>(null);
+  const [recentBridgeKeys, setRecentBridgeKeys] = useState<string[]>([]);
+  const [recentUnbridgeKeys, setRecentUnbridgeKeys] = useState<string[]>([]);
+  const [recentUnlockedGateIds, setRecentUnlockedGateIds] = useState<string[]>([]);
 
   useEffect(() => {
     const prevGrid = prevGridRef.current;
@@ -298,7 +328,34 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
             : transition.announcement!,
       }));
     }
-  }, [grid]);
+
+    if (!prevGrid || isInstant || isLowQuality) {
+      return undefined;
+    }
+
+    const prevBridges = prevGrid.bridgedWaterCells ?? [];
+    const nextBridges = grid.bridgedWaterCells ?? [];
+    const unbridged = prevBridges
+      .filter((pb) => !nextBridges.some((nb) => nb.x === pb.x && nb.y === pb.y))
+      .map((c) => `${c.x},${c.y}`);
+    const bridged = transition.newlyBridgedCells.map((c) => `${c.x},${c.y}`);
+    const unlockedIds = transition.newlyUnlockedGateIds;
+
+    if (bridged.length === 0 && unbridged.length === 0 && unlockedIds.length === 0) {
+      return undefined;
+    }
+
+    setRecentBridgeKeys(bridged);
+    setRecentUnbridgeKeys(unbridged);
+    setRecentUnlockedGateIds(unlockedIds);
+
+    const timer = setTimeout(() => {
+      setRecentBridgeKeys([]);
+      setRecentUnbridgeKeys([]);
+      setRecentUnlockedGateIds([]);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [grid, isInstant, isLowQuality]);
 
   const waterCells = grid.waterCells ?? [];
   const bridgedWaterCells = grid.bridgedWaterCells ?? [];
@@ -316,12 +373,19 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
   }
 
   const sf = cellSize / 72;
+  const hasWorldEffects =
+    recentBridgeKeys.length > 0 ||
+    recentUnbridgeKeys.length > 0 ||
+    recentUnlockedGateIds.length > 0;
 
   return (
     <g data-testid="world-items-layer" className="pointer-events-none">
+      {hasWorldEffects && <style>{WORLD_LAYER_CSS}</style>}
       {/* 1. Water Channels & Wooden Plank Bridges */}
       {waterCells.map((w) => {
         const bridged = isWaterBridged(w.x, w.y, bridgedWaterCells);
+        const wKey = `${w.x},${w.y}`;
+        const showBridgeSplash = !isInstant && !isLowQuality && (recentBridgeKeys.includes(wKey) || recentUnbridgeKeys.includes(wKey));
         const x0 = w.x * cellSize;
         const y0 = w.y * cellSize;
         const cx = x0 + cellSize / 2;
@@ -399,9 +463,75 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
                 ))}
               </g>
             )}
+
+            {/* Animated water splash ripple when plank drops or lifts */}
+            {showBridgeSplash && (
+              <g transform={`translate(${cx}, ${cy}) scale(${sf})`}>
+                <circle
+                  r={24}
+                  fill="none"
+                  stroke="#bae6fd"
+                  strokeWidth={2.6}
+                  className="world-splash-ripple"
+                />
+              </g>
+            )}
           </g>
         );
       })}
+
+      {/* 1b. Floor Circuit Trace Lines connecting FloorSwitches to Linked Gates */}
+      {floorSwitches.map((sw) =>
+        lockedGates
+          .filter((gate) => isSwitchLinkedToGate(sw, gate))
+          .map((gate) => {
+            const active = Boolean(sw.active);
+            const sx = sw.x * cellSize + cellSize / 2;
+            const sy = sw.y * cellSize + cellSize / 2;
+            const gx = gate.x * cellSize + cellSize / 2;
+            const gy = gate.y * cellSize + cellSize / 2;
+            const pathD =
+              sx === gx || sy === gy
+                ? `M ${sx} ${sy} L ${gx} ${gy}`
+                : `M ${sx} ${sy} L ${gx} ${sy} L ${gx} ${gy}`;
+
+            return (
+              <g
+                key={`circuit-${sw.id}-${gate.id}`}
+                data-testid={`switch-circuit-trace-${sw.id}-${gate.id}`}
+                data-active={active ? 'true' : 'false'}
+              >
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth={5.5 * sf}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeOpacity={0.65}
+                />
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={active ? '#22d3ee' : '#64748b'}
+                  strokeWidth={(active ? 2.8 : 2) * sf}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray={active ? undefined : `${5 * sf} ${4 * sf}`}
+                  strokeOpacity={active ? 0.95 : 0.72}
+                />
+                {sx !== gx && sy !== gy && (
+                  <circle
+                    cx={gx}
+                    cy={sy}
+                    r={2.5 * sf}
+                    fill={active ? '#34d399' : '#64748b'}
+                  />
+                )}
+              </g>
+            );
+          })
+      )}
 
       {/* 2. Recessed Floor Switches */}
       {floorSwitches.map((sw) => {
@@ -751,132 +881,29 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
           </g>
         );
       })}
+
+      {/* 5. Gate unlock micro-feedback flashes */}
+      {!isInstant &&
+        !isLowQuality &&
+        recentUnlockedGateIds.map((gateId) => {
+          const gate = lockedGates.find((g) => g.id === gateId);
+          if (!gate) return null;
+          const gShape = resolveKeyGateShape(gate.shape);
+          const gVis = KEY_GATE_VISUALS[resolveKeyGateColor(gate.color, gShape)];
+          const gx = gate.x * cellSize + cellSize / 2;
+          const gy = gate.y * cellSize + cellSize / 2;
+          return (
+            <g key={`gate-flash-${gateId}`} transform={`translate(${gx}, ${gy}) scale(${sf})`}>
+              <circle
+                r={26}
+                fill="none"
+                stroke={gVis.stroke}
+                strokeWidth={3}
+                className="world-gate-flash"
+              />
+            </g>
+          );
+        })}
     </g>
-  );
-};
-
-const BACKPACK_SHAKE_CSS = `
-@keyframes backpackHudShake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-4px); }
-  40% { transform: translateX(4px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(3px); }
-}
-.backpack-hud-shake {
-  animation: backpackHudShake 360ms ease-in-out;
-}
-@media (prefers-reduced-motion: reduce) {
-  .backpack-hud-shake {
-    animation-duration: 1ms;
-  }
-}
-`;
-
-/**
- * Compact 1-slot Backpack HUD badge displayed in GridCanvas whenever interactive world elements
- * exist on the map or the robot is carrying an item.
- */
-export const BackpackHud: React.FC<{ grid: GridState; stacked?: boolean }> = ({
-  grid,
-  stacked = false,
-}) => {
-  const isLowQuality = useAppStoreSelector(isLowQualityActive);
-  const carried = grid.robot.carriedItem ?? null;
-  const showHud = Boolean(carried) || hasInteractiveWorldElements(grid);
-  const feedbackSeq = grid.lastInteractionFeedback?.seq ?? 0;
-  const prevSeqRef = useRef<number>(feedbackSeq);
-  const [isShaking, setIsShaking] = useState(false);
-
-  useEffect(() => {
-    if (feedbackSeq > 0 && feedbackSeq !== prevSeqRef.current) {
-      prevSeqRef.current = feedbackSeq;
-      setIsShaking(true);
-      const timer = setTimeout(() => setIsShaking(false), 400);
-      return () => clearTimeout(timer);
-    }
-    prevSeqRef.current = feedbackSeq;
-    return undefined;
-  }, [feedbackSeq]);
-
-  if (!showHud) {
-    return null;
-  }
-
-  const keyShape = carried?.type === 'key' ? resolveKeyGateShape(carried.shape) : undefined;
-  const keyColor =
-    carried?.type === 'key' ? resolveKeyGateColor(carried.color, keyShape) : undefined;
-  const keyVis = keyColor ? KEY_GATE_VISUALS[keyColor] : undefined;
-
-  const carriedCount = grid.robot.carriedCount ?? carried?.count ?? (carried ? 1 : 0);
-  const countSuffix = carriedCount > 1 ? ` ×${carriedCount}` : '';
-  const summaryLabel = carried
-    ? `Backpack carrying ${formatItemLabel(carried)}${countSuffix}`
-    : 'Backpack empty (0 of 1)';
-
-  return (
-    <div
-      data-testid="grid-backpack-hud"
-      data-carrying={carried ? carried.type : 'empty'}
-      data-carrying-shape={keyShape}
-      data-carrying-color={keyColor}
-      data-carried-count={carriedCount}
-      data-feedback-kind={grid.lastInteractionFeedback?.kind}
-      aria-label={summaryLabel}
-      title={grid.lastInteractionFeedback?.message || summaryLabel}
-      className={`${
-        stacked ? '' : 'absolute top-3 left-3 z-20 '
-      }pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-2xl border-2 shadow-lg ${isLowQuality ? '' : 'backdrop-blur-sm '}transition-colors ${
-        isShaking
-          ? 'backpack-hud-shake bg-amber-950/90 border-amber-400 text-amber-100'
-          : carried
-          ? 'bg-slate-900/95 border-sky-400/80 text-slate-100'
-          : 'bg-slate-900/85 border-slate-700 text-slate-400'
-      }`}
-    >
-      {isShaking && <style>{BACKPACK_SHAKE_CSS}</style>}
-      <span className="text-sm leading-none" aria-hidden="true">
-        🎒
-      </span>
-      <div className="flex items-center gap-1.5 text-xs font-extrabold tracking-tight">
-        {carried ? (
-          <>
-            {carried.type === 'key' && keyShape && keyVis && (
-              <span className="inline-flex items-center gap-1">
-                <svg width={18} height={18} viewBox="-14 -14 28 28" aria-hidden="true">
-                  <ShapeEmblemSvg
-                    shape={keyShape}
-                    radius={10}
-                    fill={keyVis.fill}
-                    stroke={keyVis.stroke}
-                    strokeWidth={2}
-                  />
-                </svg>
-                <span style={{ color: keyVis.stroke }}>
-                  Key {SHAPE_SYMBOLS[keyShape]}
-                </span>
-              </span>
-            )}
-            {carried.type === 'plank' && (
-              <span className="inline-flex items-center gap-1 text-amber-300">
-                <span aria-hidden="true">🪵</span>
-                <span>Plank</span>
-              </span>
-            )}
-            {carried.type === 'crate' && (
-              <span className="inline-flex items-center gap-1 text-amber-200">
-                <span aria-hidden="true">📦</span>
-                <span>Crate</span>
-              </span>
-            )}
-            <span className="px-1.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[10px] font-black">
-              {carriedCount > 1 ? `×${carriedCount}` : '1/1'}
-            </span>
-          </>
-        ) : (
-          <span className="text-[11px] font-bold text-slate-400">Empty 0/1</span>
-        )}
-      </div>
-    </div>
   );
 };

@@ -187,7 +187,9 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
   const hasExecutionOrder = spotlights.includes('execution-order');
   const hasEgocentricPov = spotlights.includes('egocentric-pov');
   const hasWorldItem = spotlights.includes('world-item');
-  const hasBackpack = spotlights.includes('backpack');
+  const hasBackpack =
+    spotlights.includes('backpack') ||
+    (spotlights as readonly string[]).includes('shoulder-gripper');
   const hasLoopCounter = spotlights.includes('loop-counter');
   const hasSensorBeam = spotlights.includes('sensor-beam');
 
@@ -267,7 +269,7 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
     runtime?.activeRepeatProgress?.current ??
     0;
 
-  // Forward-compatible backpack state (C14 / C15)
+  // Shoulder gripper carry state (supports key, plank, crate — zero backpack emoji)
   const rawCarried = (robot as unknown as { carriedItem?: unknown }).carriedItem;
   const carriedKind =
     rawCarried && typeof rawCarried === 'object' && 'type' in (rawCarried as object)
@@ -275,16 +277,9 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
       : typeof rawCarried === 'string'
       ? rawCarried
       : null;
-  const carriedIcon =
-    carriedKind === 'key'
-      ? '🔑'
-      : carriedKind === 'plank'
-      ? '🪵'
-      : carriedKind === 'crate'
-      ? '📦'
-      : carriedKind
-      ? '🎒'
-      : '·';
+  const rotRad = (rotationDeg * Math.PI) / 180;
+  const gripDx = Math.round((15 * Math.cos(rotRad) - -16 * Math.sin(rotRad)) * 10) / 10;
+  const gripDy = Math.round((15 * Math.sin(rotRad) + -16 * Math.cos(rotRad)) * 10) / 10;
 
   const worldHighlights = hasWorldItem ? collectWorldItemHighlights(effectiveGrid) : [];
 
@@ -523,34 +518,46 @@ export const DemoSpotlightOverlay: React.FC<DemoSpotlightOverlayProps> = ({
         </g>
       )}
 
-      {/* Forward-Compatible 1-Slot Backpack Spotlight (Wave 4 C15) */}
+      {/* Robot Shoulder Gripper Spotlight (anchored directly over upper-right shoulder clamp) */}
       {hasBackpack && (
         <g
           data-testid="spotlight-backpack"
+          data-spotlight-style="shoulder-gripper"
           data-carried-item={carriedKind ?? 'empty'}
-          transform={`translate(${cx + 26}, ${cy - 26})`}
+          transform={`translate(${cx + gripDx}, ${cy + gripDy})`}
           className="pointer-events-none"
         >
-          <rect
-            x={-13}
-            y={-11}
-            width={26}
-            height={22}
-            rx={7}
-            fill="#1e293b"
-            stroke={carriedKind ? '#fbbf24' : '#64748b'}
-            strokeWidth={2}
-            strokeDasharray={carriedKind ? undefined : '3 2'}
+          <circle
+            r={16}
+            fill="none"
+            stroke={carriedKind ? '#fbbf24' : '#38bdf8'}
+            strokeWidth={2.4}
+            strokeDasharray={carriedKind ? undefined : '4 2.5'}
+            strokeOpacity={0.95}
           />
-          <text
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={11}
-            fontWeight={800}
-            fill="#f8fafc"
-          >
-            {carriedIcon}
-          </text>
+          <circle
+            r={12.5}
+            fill={carriedKind ? '#fbbf24' : '#38bdf8'}
+            fillOpacity={0.14}
+          />
+          {/* Small top-right slot capacity dot (1 = carrying, 0 = empty) */}
+          <g transform="translate(11, -11)">
+            <circle
+              r={5.5}
+              fill="#0f172a"
+              stroke={carriedKind ? '#fbbf24' : '#64748b'}
+              strokeWidth={1.6}
+            />
+            <text
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={7.5}
+              fontWeight={900}
+              fill={carriedKind ? '#fde68a' : '#cbd5e1'}
+            >
+              {carriedKind ? '1' : '0'}
+            </text>
+          </g>
         </g>
       )}
 

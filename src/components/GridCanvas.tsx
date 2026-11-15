@@ -1,16 +1,263 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
-import { WallEdge, Direction } from '../types';
-import { Trophy, Footprints, Maximize2, Minimize2, Lock } from 'lucide-react';
+import { WallEdge, Direction, WorldItem, GridState } from '../types';
+import { Trophy, Footprints, Maximize2, Minimize2, Eye } from 'lucide-react';
 import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
 import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOverlay';
 import { GhostStepOverlay } from '../simulations/grid/components/GhostStepOverlay';
 import { DemoSpotlightOverlay } from '../simulations/grid/components/DemoSpotlightOverlay';
-import { WorldItemsLayer, BackpackHud } from '../simulations/grid/components/WorldItemsLayer';
+import {
+  WorldItemsLayer,
+  KEY_GATE_VISUALS,
+  ShapeEmblemSvg,
+} from '../simulations/grid/components/WorldItemsLayer';
 import { BeaconAndDialLayer } from '../simulations/grid/components/BeaconAndDialLayer';
 import { SimulationTopLeftHud } from './SimulationTopLeftHud';
+import {
+  DIR_DELTAS,
+  hasInteractiveWorldElements,
+  resolveKeyGateColor,
+  resolveKeyGateShape,
+} from '../engine/physics';
 
 const CELL_SIZE = 72; // pixels per cell
+
+const ROBOT_FEEDBACK_CSS = `
+@keyframes robotGripperWiggle {
+  0%, 100% { transform: translate(15px, -16px) rotate(0deg); }
+  22% { transform: translate(11px, -17px) rotate(-14deg); }
+  48% { transform: translate(19px, -15px) rotate(14deg); }
+  74% { transform: translate(13px, -17px) rotate(-8deg); }
+}
+@keyframes robotPlankReachLift {
+  0% { transform: translate(0px, -46px) scale(0.95); opacity: 0.95; }
+  60% { transform: translate(8px, -24px) scale(1.06); opacity: 1; }
+  100% { transform: translate(15px, -16px) scale(1); opacity: 0; }
+}
+@keyframes robotWrongKeyFlash {
+  0% { transform: scale(0.65); opacity: 1; }
+  55% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@keyframes robotReverseDust {
+  0% { transform: scale(0.6); opacity: 0.82; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.robot-gripper-wiggle {
+  animation: robotGripperWiggle 360ms ease-in-out;
+}
+.robot-plank-lift-fx {
+  animation: robotPlankReachLift 420ms ease-out forwards;
+}
+.robot-wrong-key-fx {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: robotWrongKeyFlash 440ms ease-out forwards;
+}
+.robot-reverse-dust-fx {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: robotReverseDust 380ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .robot-gripper-wiggle,
+  .robot-plank-lift-fx,
+  .robot-wrong-key-fx,
+  .robot-reverse-dust-fx {
+    animation-duration: 1ms;
+  }
+}
+`;
+
+export interface RobotShoulderCarryProps {
+  carriedItem: WorldItem | null | undefined;
+  carriedCount: number;
+  robotAngleDeg: number;
+  showEmptyClamp?: boolean;
+  isWiggling?: boolean;
+  isWrongKey?: boolean;
+}
+
+/**
+ * Renders the robot's upper-right shoulder gripper clamp and carried Key/Plank/Crate.
+ * Anchored at `translate(15, -16)` in chassis space and counter-rotated by `-robotAngleDeg`
+ * so the carried item remains 0-deg screen-upright across N/E/S/W headings.
+ */
+export const RobotShoulderCarry: React.FC<RobotShoulderCarryProps> = ({
+  carriedItem,
+  carriedCount,
+  robotAngleDeg,
+  showEmptyClamp = false,
+  isWiggling = false,
+  isWrongKey = false,
+}) => {
+  if (!carriedItem && !showEmptyClamp) {
+    return null;
+  }
+
+  const keyShape = carriedItem?.type === 'key' ? resolveKeyGateShape(carriedItem.shape) : undefined;
+  const keyColor =
+    carriedItem?.type === 'key' ? resolveKeyGateColor(carriedItem.color, keyShape) : undefined;
+  const keyVis = keyColor ? KEY_GATE_VISUALS[keyColor] : undefined;
+
+  return (
+    <g
+      data-testid="robot-shoulder-carry"
+      data-carried-item={carriedItem?.type ?? 'empty'}
+      data-carried-count={carriedItem ? carriedCount : 0}
+      data-upright-deg={-robotAngleDeg}
+      transform="translate(15, -16)"
+      className={isWiggling ? 'robot-gripper-wiggle' : undefined}
+    >
+      {/* Articulated shoulder bracket connecting chassis rim to pincer */}
+      <path
+        d="M -5 5 L 0 0"
+        stroke="#0f172a"
+        strokeWidth={4.5}
+        strokeLinecap="round"
+      />
+      <path
+        d="M -5 5 L 0 0"
+        stroke="#94a3b8"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+
+      {/* Left/Right robotic gripper jaws */}
+      <path
+        d={carriedItem ? 'M -7 -3 Q -10 1 -6 6' : 'M -5 -2 Q -7 1 -4 4'}
+        fill="none"
+        stroke={isWrongKey ? '#ef4444' : '#cbd5e1'}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+      />
+      <path
+        d={carriedItem ? 'M 7 -3 Q 10 1 6 6' : 'M 5 -2 Q 7 1 4 4'}
+        fill="none"
+        stroke={isWrongKey ? '#ef4444' : '#cbd5e1'}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+      />
+
+      {/* Counter-rotated upright item held inside gripper jaws */}
+      {carriedItem && (
+        <g
+          data-testid="robot-shoulder-upright"
+          transform={`rotate(${-robotAngleDeg})`}
+        >
+          {/* 2px dark #0f172a outline cushion */}
+          <circle
+            r={10.5}
+            fill="#0f172a"
+            fillOpacity={0.92}
+            stroke={isWrongKey ? '#ef4444' : '#0f172a'}
+            strokeWidth={2}
+          />
+
+          {carriedItem.type === 'key' && keyShape && keyVis && (
+            <g data-carried-shape={keyShape} data-carried-color={keyColor}>
+              {/* Mini key shaft + teeth */}
+              <line
+                x1={0}
+                y1={-1}
+                x2={6.5}
+                y2={5.5}
+                stroke="#0f172a"
+                strokeWidth={4}
+                strokeLinecap="round"
+              />
+              <line
+                x1={0}
+                y1={-1}
+                x2={6.5}
+                y2={5.5}
+                stroke={keyVis.stroke}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+              <ShapeEmblemSvg
+                shape={keyShape}
+                radius={6.5}
+                fill={keyVis.fill}
+                stroke={keyVis.stroke}
+                strokeWidth={1.8}
+              />
+            </g>
+          )}
+
+          {carriedItem.type === 'plank' && (
+            <g>
+              <rect
+                x={-11}
+                y={-4.5}
+                width={22}
+                height={9}
+                rx={2.5}
+                fill="#d97706"
+                stroke="#0f172a"
+                strokeWidth={2}
+              />
+              <rect
+                x={-9.5}
+                y={-3}
+                width={19}
+                height={6}
+                rx={1.5}
+                fill="#f59e0b"
+                stroke="#fde68a"
+                strokeWidth={0.9}
+              />
+              <circle cx={-6.5} cy={0} r={1} fill="#451a03" />
+              <circle cx={6.5} cy={0} r={1} fill="#451a03" />
+            </g>
+          )}
+
+          {carriedItem.type === 'crate' && (
+            <g>
+              <rect
+                x={-8.5}
+                y={-8.5}
+                width={17}
+                height={17}
+                rx={2.5}
+                fill="#b45309"
+                stroke="#0f172a"
+                strokeWidth={2}
+              />
+              <rect
+                x={-6.8}
+                y={-6.8}
+                width={13.6}
+                height={13.6}
+                rx={1.6}
+                fill="#d97706"
+                stroke="#fde68a"
+                strokeWidth={1}
+              />
+              <line x1={-5.2} y1={-5.2} x2={5.2} y2={5.2} stroke="#78350f" strokeWidth={1.6} strokeLinecap="round" />
+              <line x1={5.2} y1={-5.2} x2={-5.2} y2={5.2} stroke="#78350f" strokeWidth={1.6} strokeLinecap="round" />
+            </g>
+          )}
+
+          {carriedCount > 1 && (
+            <g transform="translate(8, 8)">
+              <rect x={-7} y={-5.5} width={14} height={11} rx={4} fill="#0284c7" stroke="#0f172a" strokeWidth={1.6} />
+              <text
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={7.5}
+                fontWeight={900}
+                fill="#ffffff"
+              >
+                ×{carriedCount}
+              </text>
+            </g>
+          )}
+        </g>
+      )}
+    </g>
+  );
+};
 
 interface GridStaticBoardLayerProps {
   width: number;
@@ -246,6 +493,74 @@ export const GridCanvas: React.FC = () => {
 
   const isReadOnly = appMode === 'curriculum';
   const isInstant = speed === 'instant' || (speed as any) === 0;
+
+  // Track short-lived robot micro-feedback animations (plank 1-ahead lift, hands-full wiggle, wrong-key X, reverse dust)
+  const prevGridRef = useRef<GridState | null>(null);
+  const [microFx, setMicroFx] = useState<{
+    plankLift: boolean;
+    handsFull: boolean;
+    wrongKeyCell: { x: number; y: number } | null;
+    reverseDustCell: { x: number; y: number } | null;
+  }>({
+    plankLift: false,
+    handsFull: false,
+    wrongKeyCell: null,
+    reverseDustCell: null,
+  });
+
+  useEffect(() => {
+    const prev = prevGridRef.current;
+    prevGridRef.current = grid;
+
+    if (!prev || isInstant || isLowQuality) {
+      return undefined;
+    }
+
+    const prevBridged = prev.bridgedWaterCells ?? [];
+    const nextBridged = grid.bridgedWaterCells ?? [];
+    const plankLift =
+      !prev.robot.carriedItem &&
+      grid.robot.carriedItem?.type === 'plank' &&
+      prevBridged.length > nextBridged.length;
+
+    const prevSeq = prev.lastInteractionFeedback?.seq ?? 0;
+    const nextFb = grid.lastInteractionFeedback;
+    const isNewFb = Boolean(nextFb && nextFb.seq !== prevSeq);
+    const handsFull = isNewFb && nextFb?.kind === 'noop-full';
+    const wrongKey = isNewFb && nextFb?.kind === 'wrong-key';
+    const d = DIR_DELTAS[grid.robot.dir];
+    const wrongKeyCell = wrongKey
+      ? { x: grid.robot.x + d.dx, y: grid.robot.y + d.dy }
+      : null;
+
+    const movedBack =
+      grid.trace.length > prev.trace.length &&
+      grid.robot.dir === prev.robot.dir &&
+      grid.robot.x - prev.robot.x === -d.dx &&
+      grid.robot.y - prev.robot.y === -d.dy;
+    const reverseDustCell = movedBack ? { x: prev.robot.x, y: prev.robot.y } : null;
+
+    if (!plankLift && !handsFull && !wrongKeyCell && !reverseDustCell) {
+      return undefined;
+    }
+
+    setMicroFx({
+      plankLift,
+      handsFull,
+      wrongKeyCell,
+      reverseDustCell,
+    });
+
+    const timer = setTimeout(() => {
+      setMicroFx({
+        plankLift: false,
+        handsFull: false,
+        wrongKeyCell: null,
+        reverseDustCell: null,
+      });
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [grid, isInstant, isLowQuality]);
 
   const handleToggleFit = () => {
     setUserZoom(1);
@@ -544,11 +859,8 @@ export const GridCanvas: React.FC = () => {
       data-quality={isLowQuality ? 'low' : 'high'}
       className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none"
     >
-      {/* Top-Left Non-Overlapping HUD Stack: 1-Slot Backpack + Runtime Variables */}
-      <SimulationTopLeftHud
-        topSlot={<BackpackHud grid={grid} stacked />}
-        variables={runtime?.variables}
-      />
+      {/* Top-Left Non-Overlapping HUD Stack: Runtime Variables */}
+      <SimulationTopLeftHud variables={runtime?.variables} />
 
       {/* Simulation status banner if collision or victory (shifted down below MultiRunPipsBar when active) */}
       {status === 'COLLISION' && (
@@ -612,7 +924,7 @@ export const GridCanvas: React.FC = () => {
               title="Read-only lesson map — use Open Copy in Sandbox to edit"
               className="flex items-center justify-center w-6 h-6 bg-slate-800 border-2 border-sky-500/60 rounded-full text-sky-300 shadow-md"
             >
-              <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
               <span className="sr-only">Read-only lesson map</span>
             </div>
           )}
@@ -795,7 +1107,16 @@ export const GridCanvas: React.FC = () => {
                 className={`pointer-events-none ${isInstant || isLowQuality ? '' : 'transition-transform duration-300'}`}
               >
                 {flag.isGoal ? (
-                  <g className={flag.collected ? 'scale-125 opacity-90' : (isInstant || isLowQuality ? '' : 'animate-pulse')}>
+                  <g
+                    className={
+                      flag.collected &&
+                      (status === 'SUCCESS' || (robot.x === flag.x && robot.y === flag.y))
+                        ? 'scale-125 opacity-90'
+                        : isInstant || isLowQuality
+                        ? ''
+                        : 'animate-pulse'
+                    }
+                  >
                     <circle r={22} fill="#eab308" className={isLowQuality ? undefined : 'shadow-lg'} />
                     <circle r={18} fill="#ca8a04" />
                     <foreignObject x={-14} y={-14} width={28} height={28}>
@@ -812,20 +1133,66 @@ export const GridCanvas: React.FC = () => {
                       stroke="#ffffff"
                       strokeWidth={2}
                     />
-                    <text
-                      y={5}
-                      textAnchor="middle"
-                      fill="#ffffff"
-                      fontSize={16}
-                      fontWeight="bold"
-                    >
-                      {flag.order}
-                    </text>
+                    {flag.order > 0 ? (
+                      <text
+                        y={5}
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontSize={16}
+                        fontWeight="bold"
+                      >
+                        {flag.order}
+                      </text>
+                    ) : (
+                      /* Unordered waypoint (order === 0): crisp white pennant instead of digit 0 */
+                      <g fill="#ffffff" stroke="#ffffff" strokeLinejoin="round">
+                        <line x1={-5} y1={-8} x2={-5} y2={8} strokeWidth={2.2} strokeLinecap="round" />
+                        <polygon points="-4,-7 7,-3 -4,1" strokeWidth={1.2} />
+                      </g>
+                    )}
                   </g>
                 )}
               </g>
             );
           })}
+
+          {(microFx.plankLift || microFx.handsFull || microFx.wrongKeyCell || microFx.reverseDustCell) && (
+            <style>{ROBOT_FEEDBACK_CSS}</style>
+          )}
+
+          {/* Reverse tread dust puffs behind previous cell on MOVE_BACK */}
+          {microFx.reverseDustCell && !isInstant && !isLowQuality && (
+            <g
+              data-testid="robot-reverse-dust-fx"
+              transform={`translate(${microFx.reverseDustCell.x * CELL_SIZE + CELL_SIZE / 2}, ${
+                microFx.reverseDustCell.y * CELL_SIZE + CELL_SIZE / 2
+              })`}
+              className="pointer-events-none robot-reverse-dust-fx"
+            >
+              <circle cx={-10} cy={8} r={4.5} fill="#94a3b8" fillOpacity={0.55} />
+              <circle cx={10} cy={8} r={4.5} fill="#94a3b8" fillOpacity={0.55} />
+              <circle cx={0} cy={14} r={3.5} fill="#cbd5e1" fillOpacity={0.45} />
+            </g>
+          )}
+
+          {/* Wrong-key X flash ahead of robot on mismatched key USE_DROP */}
+          {microFx.wrongKeyCell && !isInstant && !isLowQuality && (
+            <g
+              data-testid="robot-wrong-key-fx"
+              transform={`translate(${microFx.wrongKeyCell.x * CELL_SIZE + CELL_SIZE / 2}, ${
+                microFx.wrongKeyCell.y * CELL_SIZE + CELL_SIZE / 2
+              })`}
+              className="pointer-events-none robot-wrong-key-fx"
+            >
+              <circle r={15} fill="#7f1d1d" fillOpacity={0.92} stroke="#fca5a5" strokeWidth={2.5} />
+              <path
+                d="M -6 -6 L 6 6 M 6 -6 L -6 6"
+                stroke="#ffffff"
+                strokeWidth={3}
+                strokeLinecap="round"
+              />
+            </g>
+          )}
 
           {/* Robot Representation */}
           <g
@@ -843,6 +1210,33 @@ export const GridCanvas: React.FC = () => {
                 fill="#0284c7"
                 className={`opacity-30 ${isInstant || isLowQuality ? '' : 'animate-pulse'}`}
               />
+              {/* 1-ahead plank retrieval telescopic arm reach animation */}
+              {microFx.plankLift && !isInstant && !isLowQuality && (
+                <g data-testid="robot-plank-lift-fx">
+                  <line
+                    x1={10}
+                    y1={-12}
+                    x2={4}
+                    y2={-52}
+                    stroke="#38bdf8"
+                    strokeWidth={3}
+                    strokeDasharray="4 3"
+                    strokeLinecap="round"
+                  />
+                  <g className="robot-plank-lift-fx">
+                    <rect
+                      x={-11}
+                      y={-4.5}
+                      width={22}
+                      height={9}
+                      rx={2.5}
+                      fill="#f59e0b"
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                    />
+                  </g>
+                </g>
+              )}
               {/* Robot body base */}
               <circle
                 r={20}
@@ -859,6 +1253,29 @@ export const GridCanvas: React.FC = () => {
               {/* Eyes */}
               <circle cx={-6} cy={3} r={3} fill="#0f172a" />
               <circle cx={6} cy={3} r={3} fill="#0f172a" />
+              {/* Upper-right shoulder gripper clamp (keeps visor, nose cone, and center body unobstructed) */}
+              <RobotShoulderCarry
+                carriedItem={robot.carriedItem}
+                carriedCount={robot.carriedCount ?? (robot.carriedItem ? robot.carriedItem.count ?? 1 : 0)}
+                robotAngleDeg={getAngle(robot.dir)}
+                showEmptyClamp={hasInteractiveWorldElements(grid)}
+                isWiggling={microFx.handsFull}
+                isWrongKey={Boolean(microFx.wrongKeyCell)}
+              />
+              {/* Hands-full bump warning badge when PICK_UP fails while carrying */}
+              {microFx.handsFull && !isInstant && !isLowQuality && (
+                <g data-testid="robot-hands-full-fx" transform="translate(26, -24)">
+                  <g transform={`rotate(${-getAngle(robot.dir)})`}>
+                    <circle r={7} fill="#f59e0b" stroke="#0f172a" strokeWidth={1.8} />
+                    <path
+                      d="M -2.5 -2.5 L 2.5 2.5 M 2.5 -2.5 L -2.5 2.5"
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                    />
+                  </g>
+                </g>
+              )}
             </g>
           </g>
 

@@ -158,12 +158,14 @@ export function isFloorSwitchRequiredForGoal(
 
 /**
  * Recomputes FloorSwitch.active states from crates currently on the floor
+ * OR the robot currently standing on top of a switch tile,
  * and updates any switch-linked LockedGate.unlocked states accordingly.
  */
 export function syncWorldSwitchesAndGates(
   floorSwitches?: readonly FloorSwitch[],
   lockedGates?: readonly LockedGate[],
-  worldItems?: readonly WorldItem[]
+  worldItems?: readonly WorldItem[],
+  robotPos?: CellCoord | null
 ): {
   floorSwitches: FloorSwitch[] | undefined;
   lockedGates: LockedGate[] | undefined;
@@ -173,9 +175,10 @@ export function syncWorldSwitchesAndGates(
         const hasCrate = Boolean(
           worldItems?.some((it) => it.type === 'crate' && it.x === sw.x && it.y === sw.y)
         );
+        const hasRobot = Boolean(robotPos && robotPos.x === sw.x && robotPos.y === sw.y);
         return {
           ...sw,
-          active: hasCrate,
+          active: hasCrate || hasRobot,
         };
       })
     : undefined;
@@ -241,7 +244,10 @@ export function resetGridInteractiveState(grid: GridState): GridState {
 
   const baseItems = cloneWorldItems(grid.initialWorldItems ?? grid.worldItems);
   const baseGates = cloneLockedGates(grid.initialLockedGates ?? grid.lockedGates, true);
-  const synced = syncWorldSwitchesAndGates(grid.floorSwitches, baseGates, baseItems);
+  const synced = syncWorldSwitchesAndGates(grid.floorSwitches, baseGates, baseItems, {
+    x: grid.robot.initialX,
+    y: grid.robot.initialY,
+  });
 
   return {
     ...grid,
@@ -335,8 +341,10 @@ export interface GridGoalRules {
  *
  * Rules:
  * - Already-collected flags (`flag.collected === true`) are never padlocked.
- * - A non-goal numbered flag (`!flag.isGoal`) with `order = k` is padlocked iff
- *   at least one uncollected non-goal flag has `order < k`.
+ * - Unordered non-goal flags (`!flag.isGoal && (!flag.order || flag.order <= 0)`) are never padlocked
+ *   and never block numbered (`order > 0`) waypoints, while still being required before Goal unlocks.
+ * - A non-goal numbered flag (`!flag.isGoal && flag.order > 0`) is padlocked iff
+ *   at least one uncollected ordered non-goal flag (`other.order > 0`) has `other.order < flag.order`.
  * - A goal flag (`flag.isGoal === true`) is padlocked iff at least one
  *   non-goal flag remains uncollected OR at least one goal-required FloorSwitch is inactive
  *   OR requireAllItemsCollected is true and worldItems remains non-empty
@@ -364,21 +372,25 @@ export function isFlagPadlocked(
     return hasUncollectedWaypoint || hasInactiveGoalSwitch || hasUncollectedItems || hasCarriedCargo;
   }
 
+  if (!flag.order || flag.order <= 0) {
+    return false;
+  }
+
   return allFlags.some(
-    (other) => !other.isGoal && !other.collected && other.order < flag.order
+    (other) => !other.isGoal && !other.collected && other.order > 0 && other.order < flag.order
   );
 }
 
 /**
- * Returns the smallest `order` among currently uncollected non-goal flags,
- * or `null` if all non-goal waypoints have already been collected.
+ * Returns the smallest positive `order` (`> 0`) among currently uncollected non-goal flags,
+ * or `null` if no ordered non-goal waypoints remain uncollected.
  */
 export function getNextRequiredWaypointOrder(
   allFlags: readonly FlagObjective[]
 ): number | null {
   let minOrder: number | null = null;
   for (const f of allFlags) {
-    if (!f.isGoal && !f.collected) {
+    if (!f.isGoal && !f.collected && f.order > 0) {
       if (minOrder === null || f.order < minOrder) {
         minOrder = f.order;
       }
@@ -481,11 +493,12 @@ export function executeRobotAction(
   const currentDir = robot.dir;
   const nextFeedbackSeq = (grid.lastInteractionFeedback?.seq ?? 0) + 1;
 
-  // Sync floor switches and gates against current floor items so raw GridState literals work seamlessly
+  // Sync floor switches and gates against current floor items and robot position
   const syncedInitial = syncWorldSwitchesAndGates(
     grid.floorSwitches,
     grid.lockedGates,
-    grid.worldItems
+    grid.worldItems,
+    { x: robot.x, y: robot.y }
   );
   const currentSwitches = syncedInitial.floorSwitches;
   const currentGates = syncedInitial.lockedGates;
@@ -549,6 +562,72 @@ export function executeRobotAction(
     const itemsList = currentItems ?? [];
     const foundIdx = itemsList.findIndex((it) => it.x === robot.x && it.y === robot.y);
     if (foundIdx === -1) {
+      // Check 1 cell ahead in robot.dir for a bridged water cell whose plank can be retrieved
+      const delta = DIR_DELTAS[currentDir];
+      const aheadX = robot.x + delta.dx;
+      const aheadY = robot.y + delta.dy;
+      const aheadInBounds = aheadX >= 0 && aheadX < width && aheadY >= 0 && aheadY < height;
+      const aheadBlockedByWall =
+        aheadInBounds && hasWallBetween(robot.x, robot.y, aheadX, aheadY, barriers);
+      const aheadClosedGate = Boolean(
+        aheadInBounds && currentGates?.some((g) => g.x === aheadX && g.y === aheadY && !g.unlocked)
+      );
+      const aheadBridgedWater =
+        aheadInBounds &&
+        !aheadBlockedByWall &&
+        !aheadClosedGate &&
+        isWaterCell(aheadX, aheadY, grid.waterCells) &&
+        isWaterBridged(aheadX, aheadY, currentBridged);
+
+      if (aheadBridgedWater) {
+        if (currentCarried) {
+          return {
+            valid: false,
+            newX: robot.x,
+            newY: robot.y,
+            newDir: currentDir,
+            flags,
+            trace,
+            isSuccess: false,
+            isCollision: isStrict,
+            ...baseInteractiveFields,
+            interactionFeedback: {
+              kind: 'noop-full',
+              message: 'Gripper is full.',
+              seq: nextFeedbackSeq,
+            },
+          };
+        }
+
+        const remainingBridged = (currentBridged ?? []).filter(
+          (c) => !(c.x === aheadX && c.y === aheadY)
+        );
+        const retrievedPlank: WorldItem = {
+          id: `plank_${aheadX}_${aheadY}`,
+          type: 'plank',
+          x: aheadX,
+          y: aheadY,
+          count: 1,
+        };
+        return {
+          valid: true,
+          newX: robot.x,
+          newY: robot.y,
+          newDir: currentDir,
+          flags,
+          trace,
+          isSuccess: false,
+          isCollision: false,
+          bridgedWaterCells: remainingBridged,
+          lockedGates: currentGates,
+          floorSwitches: currentSwitches,
+          worldItems: currentItems,
+          carriedItem: retrievedPlank,
+          carriedCount: 1,
+          interactionFeedback: null,
+        };
+      }
+
       return {
         valid: false,
         newX: robot.x,
@@ -591,7 +670,8 @@ export function executeRobotAction(
         const syncedAfterPick = syncWorldSwitchesAndGates(
           currentSwitches,
           currentGates,
-          remainingItems
+          remainingItems,
+          { x: robot.x, y: robot.y }
         );
         return {
           valid: true,
@@ -624,7 +704,7 @@ export function executeRobotAction(
         ...baseInteractiveFields,
         interactionFeedback: {
           kind: 'noop-full',
-          message: 'Backpack is full.',
+          message: 'Gripper is full.',
           seq: nextFeedbackSeq,
         },
       };
@@ -638,7 +718,8 @@ export function executeRobotAction(
       const syncedAfterPick = syncWorldSwitchesAndGates(
         currentSwitches,
         currentGates,
-        remainingItems
+        remainingItems,
+        { x: robot.x, y: robot.y }
       );
       return {
         valid: true,
@@ -664,7 +745,8 @@ export function executeRobotAction(
     const syncedAfterPick = syncWorldSwitchesAndGates(
       currentSwitches,
       currentGates,
-      remainingItems
+      remainingItems,
+      { x: robot.x, y: robot.y }
     );
 
     return {
@@ -727,7 +809,8 @@ export function executeRobotAction(
             const syncedAfterUnlock = syncWorldSwitchesAndGates(
               currentSwitches,
               updatedGates,
-              currentItems
+              currentItems,
+              { x: robot.x, y: robot.y }
             );
             const goalEval = evaluateGoalCollection(
               robot.x,
@@ -880,7 +963,8 @@ export function executeRobotAction(
       const syncedAfterDrop = syncWorldSwitchesAndGates(
         currentSwitches,
         currentGates,
-        updatedItems
+        updatedItems,
+        { x: robot.x, y: robot.y }
       );
       const nextCarried = isStack ? { ...currentCarried, count: nextCarriedCount } : null;
       const goalEval = evaluateGoalCollection(
@@ -987,14 +1071,21 @@ export function executeRobotAction(
     };
   }
 
-  // Move is valid! Update trace and sequentially-gated flags (1 -> 2 -> ... -> Goal).
+  // Move is valid! Re-sync floor switches and linked gates for target cell (targetX, targetY)
+  // before evaluating sequentially-gated flags (1 -> 2 -> ... -> Goal).
   // Stepping onto a locked flag or locked goal is safe (not a collision) and leaves it uncollected.
+  const syncedAfterMove = syncWorldSwitchesAndGates(
+    currentSwitches,
+    currentGates,
+    currentItems,
+    { x: targetX, y: targetY }
+  );
   const goalEval = evaluateGoalCollection(
     targetX,
     targetY,
     flags,
-    currentSwitches,
-    currentGates,
+    syncedAfterMove.floorSwitches,
+    syncedAfterMove.lockedGates,
     currentGoalRules
   );
 
@@ -1010,5 +1101,7 @@ export function executeRobotAction(
     isSuccess: goalEval.isSuccess,
     isCollision: false,
     ...baseInteractiveFields,
+    lockedGates: syncedAfterMove.lockedGates,
+    floorSwitches: syncedAfterMove.floorSwitches,
   };
 }

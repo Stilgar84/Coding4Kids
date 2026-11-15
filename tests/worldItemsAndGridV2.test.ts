@@ -5,16 +5,19 @@ import { createCurriculumGridState } from '../src/data/curriculum';
 import {
   isFlagPadlocked,
   resetGridInteractiveState,
+  syncWorldSwitchesAndGates,
 } from '../src/engine/physics';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
 import { renderGridMapSvg } from '../src/services/mapThumbnailGenerator';
 import { GridOverlayLayer } from '../src/simulations/grid/components/GridOverlayLayer';
 import { GridToolbarTools } from '../src/simulations/grid/components/GridToolbarTools';
+import { GridCanvas, RobotShoulderCarry } from '../src/components/GridCanvas';
+import * as WorldItemsModule from '../src/simulations/grid/components/WorldItemsLayer';
 import {
-  BackpackHud,
   WorldItemsLayer,
   detectWorldItemTransition,
 } from '../src/simulations/grid/components/WorldItemsLayer';
+import { DemoSpotlightOverlay } from '../src/simulations/grid/components/DemoSpotlightOverlay';
 import { FlagPadlockOverlay } from '../src/simulations/grid/components/FlagPadlockOverlay';
 import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
 import { getInitialGridState, useAppStore } from '../src/store/useAppStore';
@@ -89,6 +92,85 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
       expect(res.finalState.robot.carriedItem?.type).toBe('plank');
       expect(res.finalState.bridgedWaterCells).toEqual([]);
       expect(res.finalState.lastInteractionFeedback?.kind).toBe('invalid-use');
+    });
+
+    it('retrieves a bridged plank 1 cell ahead into carriedItem and prioritizes current floor tile first (seq.8/seq.B)', () => {
+      // 5x1 corridor: plank at (1,0), water at (2,0) & (4,0), floor pickup priority at (1,0)
+      const map = createCurriculumGridState({
+        width: 6,
+        height: 1,
+        robot: { x: 0, y: 0, dir: 'EAST' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 5, y: 0, isGoal: true, order: 1 }],
+        waterCells: [
+          { x: 2, y: 0 },
+          { x: 4, y: 0 },
+        ],
+        worldItems: [{ id: 'p1', type: 'plank', x: 1, y: 0 }],
+      });
+
+      // Place plank across water (2,0), cross onto (3,0), turn around (WEST), retrieve plank 1 ahead!
+      const bridgedAndCrossed = runHeadlessSimulation(
+        makeWorkspace([
+          'MOVE_FWD',
+          'PICK_UP',
+          'USE_DROP',
+          'MOVE_FWD',
+          'MOVE_FWD',
+          'TURN_LEFT',
+          'TURN_LEFT',
+          'PICK_UP',
+        ]),
+        'grid',
+        map
+      );
+      expect(bridgedAndCrossed.finalState.robot.x).toBe(3);
+      expect(bridgedAndCrossed.finalState.robot.carriedItem?.type).toBe('plank');
+      expect(bridgedAndCrossed.finalState.bridgedWaterCells).toEqual([]);
+
+      // Re-use retrieved plank from (3,0) on second water gap (4,0) and reach Goal!
+      const reusedRes = runHeadlessSimulation(
+        makeWorkspace([
+          'MOVE_FWD',
+          'PICK_UP',
+          'USE_DROP',
+          'MOVE_FWD',
+          'MOVE_FWD',
+          'TURN_LEFT',
+          'TURN_LEFT',
+          'PICK_UP',
+          'TURN_LEFT',
+          'TURN_LEFT',
+          'USE_DROP',
+          'MOVE_FWD',
+          'MOVE_FWD',
+        ]),
+        'grid',
+        map
+      );
+      expect(reusedRes.finalState.status).toBe('SUCCESS');
+      expect(reusedRes.finalState.bridgedWaterCells).toEqual([{ x: 4, y: 0 }]);
+
+      // Floor pickup priority & hands-full check when facing bridged water
+      const floorPriorityMap = createCurriculumGridState({
+        width: 4,
+        height: 1,
+        robot: { x: 1, y: 0, dir: 'EAST' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 3, y: 0, isGoal: true, order: 1 }],
+        waterCells: [{ x: 2, y: 0 }],
+        worldItems: [{ id: 'floor_key', type: 'key', x: 1, y: 0, shape: 'circle', color: 'amber' }],
+      });
+      floorPriorityMap.bridgedWaterCells = [{ x: 2, y: 0 }];
+
+      const priorityPick = gridSimulationEnvironment.executeAction('PICK_UP', floorPriorityMap).nextState;
+      expect(priorityPick.robot.carriedItem?.id).toBe('floor_key');
+      expect(priorityPick.bridgedWaterCells).toEqual([{ x: 2, y: 0 }]);
+
+      // Now carrying floor_key and still facing bridged water (2,0) -> noop-full!
+      const fullRetrieveAttempt = gridSimulationEnvironment.executeAction('PICK_UP', priorityPick).nextState;
+      expect(fullRetrieveAttempt.lastInteractionFeedback?.kind).toBe('noop-full');
+      expect(fullRetrieveAttempt.bridgedWaterCells).toEqual([{ x: 2, y: 0 }]);
     });
   });
 
@@ -190,7 +272,8 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
       expect(solveRes.finalState.status).toBe('SUCCESS');
       expect(solveRes.finalState.floorSwitches?.[0].active).toBe(true);
 
-      // Verify picking crate back up from switch deactivates switch and re-padlocks Goal
+      // Picking crate back up while standing on switch keeps switch active under robot weight;
+      // stepping off (MOVE_BACK) releases the momentary switch and re-padlocks Goal!
       const dropThenPickup = runHeadlessSimulation(
         makeWorkspace(['MOVE_FWD', 'PICK_UP', 'MOVE_FWD', 'USE_DROP']),
         'grid',
@@ -210,19 +293,25 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
         'PICK_UP',
         dropThenPickup.finalState
       ).nextState;
-      expect(afterPickupAgain.floorSwitches?.[0].active).toBe(false);
       expect(afterPickupAgain.robot.carriedItem?.type).toBe('crate');
+      expect(afterPickupAgain.floorSwitches?.[0].active).toBe(true);
+
+      const steppedOffSwitch = gridSimulationEnvironment.executeAction(
+        'MOVE_BACK',
+        afterPickupAgain
+      ).nextState;
+      expect(steppedOffSwitch.floorSwitches?.[0].active).toBe(false);
       expect(
         isFlagPadlocked(
-          afterPickupAgain.flags[0],
-          afterPickupAgain.flags,
-          afterPickupAgain.floorSwitches,
-          afterPickupAgain.lockedGates
+          steppedOffSwitch.flags[0],
+          steppedOffSwitch.flags,
+          steppedOffSwitch.floorSwitches,
+          steppedOffSwitch.lockedGates
         )
       ).toBe(true);
     });
 
-    it('opens a switch-linked gate when crate rests on switch and closes it when crate is picked back up', () => {
+    it('opens a switch-linked gate when crate OR robot sits on switch, and enforces max 1 floor item on USE_DROP', () => {
       const linkedMap = createCurriculumGridState({
         width: 6,
         height: 3,
@@ -245,6 +334,41 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
 
       expect(linkedMap.lockedGates?.[0].unlocked).toBe(false);
 
+      // Stepping robot onto switch (2,1) opens linked gate even without crate, and stepping off closes it!
+      const robotWalkToSwitch = runHeadlessSimulation(
+        makeWorkspace(['MOVE_FWD', 'MOVE_FWD']),
+        'grid',
+        linkedMap
+      ).finalState;
+      expect(robotWalkToSwitch.floorSwitches?.[0].active).toBe(true);
+      expect(robotWalkToSwitch.lockedGates?.[0].unlocked).toBe(true);
+
+      const robotWalkOff = gridSimulationEnvironment.executeAction('MOVE_FWD', robotWalkToSwitch).nextState;
+      expect(robotWalkOff.floorSwitches?.[0].active).toBe(false);
+      expect(robotWalkOff.lockedGates?.[0].unlocked).toBe(false);
+
+      // Initial/direct sync & resetGridInteractiveState when robot spawns directly on switch
+      const spawnOnSwitchMap = createCurriculumGridState({
+        width: 4,
+        height: 1,
+        robot: { x: 1, y: 0, dir: 'EAST' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 3, y: 0, isGoal: true, order: 1 }],
+        floorSwitches: [{ id: 'sw_spawn', x: 1, y: 0, linkedGateId: 'g_spawn' }],
+        lockedGates: [{ id: 'g_spawn', x: 2, y: 0, shape: 'circle', color: 'amber', linkedSwitchId: 'sw_spawn' }],
+      });
+      const directSynced = syncWorldSwitchesAndGates(
+        spawnOnSwitchMap.floorSwitches,
+        spawnOnSwitchMap.lockedGates,
+        spawnOnSwitchMap.worldItems,
+        { x: 1, y: 0 }
+      );
+      expect(directSynced.floorSwitches?.[0].active).toBe(true);
+      expect(directSynced.lockedGates?.[0].unlocked).toBe(true);
+      const resetSpawn = resetGridInteractiveState(spawnOnSwitchMap);
+      expect(resetSpawn.floorSwitches?.[0].active).toBe(true);
+      expect(resetSpawn.lockedGates?.[0].unlocked).toBe(true);
+
       // Pick up crate, move to switch (2,1), drop crate -> gate_1 opens -> cross (4,1) to (5,1) Goal!
       const solveRes = runHeadlessSimulation(
         makeWorkspace([
@@ -262,7 +386,7 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
       expect(solveRes.finalState.lockedGates?.[0].unlocked).toBe(true);
       expect(solveRes.finalState.status).toBe('SUCCESS');
 
-      // Verify picking crate back up closes the linked gate
+      // Picking crate back up while standing on switch keeps gate open until robot steps off
       const droppedState = runHeadlessSimulation(
         makeWorkspace(['MOVE_FWD', 'PICK_UP', 'MOVE_FWD', 'USE_DROP']),
         'grid',
@@ -271,7 +395,30 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
       expect(droppedState.lockedGates?.[0].unlocked).toBe(true);
 
       const pickedBackUp = gridSimulationEnvironment.executeAction('PICK_UP', droppedState).nextState;
-      expect(pickedBackUp.lockedGates?.[0].unlocked).toBe(false);
+      expect(pickedBackUp.lockedGates?.[0].unlocked).toBe(true);
+
+      const steppedOff = gridSimulationEnvironment.executeAction('MOVE_BACK', pickedBackUp).nextState;
+      expect(steppedOff.lockedGates?.[0].unlocked).toBe(false);
+
+      // Max 1 pickup item per floor tile on USE_DROP
+      const occupiedTileMap = createCurriculumGridState({
+        width: 4,
+        height: 1,
+        robot: { x: 0, y: 0, dir: 'EAST' },
+        barriers: [],
+        flags: [{ id: 'goal', x: 3, y: 0, isGoal: true, order: 1 }],
+        worldItems: [
+          { id: 'c1', type: 'crate', x: 1, y: 0 },
+          { id: 'k1', type: 'key', x: 2, y: 0, shape: 'circle', color: 'amber' },
+        ],
+      });
+      const dropBlockedRes = runHeadlessSimulation(
+        makeWorkspace(['MOVE_FWD', 'PICK_UP', 'MOVE_FWD', 'USE_DROP']),
+        'grid',
+        occupiedTileMap
+      );
+      expect(dropBlockedRes.finalState.lastInteractionFeedback?.kind).toBe('occupied');
+      expect(dropBlockedRes.finalState.robot.carriedItem?.id).toBe('c1');
     });
   });
 
@@ -345,8 +492,8 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
     });
   });
 
-  describe('Visual Rendering (SSR), Color-Blind Shape Redundancy & Screen-Reader Announcements', () => {
-    it('renders WorldItemsLayer inside GridOverlayLayer, BackpackHud, FlagPadlockOverlay, and SVG thumbnails with shape+color attributes', () => {
+  describe('Visual Rendering (SSR), Shoulder Gripper Carry, Circuit Traces & Announcements', () => {
+    it('renders WorldItemsLayer circuit traces, shuttered FlagPadlockOverlay, and upper-right shoulder carry without BackpackHud or padlocks', () => {
       const grid: GridState = createCurriculumGridState({
         width: 5,
         height: 4,
@@ -360,9 +507,12 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
         lockedGates: [
           { id: 'g_circle', x: 2, y: 0, shape: 'circle', color: 'amber' },
           { id: 'g_tri', x: 2, y: 1, shape: 'triangle', color: 'emerald' },
-          { id: 'g_dia', x: 2, y: 2, shape: 'diamond', color: 'purple' },
+          { id: 'g_dia', x: 2, y: 2, shape: 'diamond', color: 'purple', linkedSwitchId: 'sw_linked' },
         ],
-        floorSwitches: [{ id: 'sw_goal', x: 3, y: 2 }],
+        floorSwitches: [
+          { id: 'sw_goal', x: 3, y: 2 },
+          { id: 'sw_linked', x: 1, y: 2, linkedGateId: 'g_dia' },
+        ],
         worldItems: [
           { id: 'k_tri', type: 'key', x: 0, y: 1, shape: 'triangle', color: 'emerald' },
           { id: 'p_1', type: 'plank', x: 0, y: 2 },
@@ -411,17 +561,63 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
       expect(svgMarkup).toContain('data-shape="triangle"');
       expect(svgMarkup).toContain('data-shape="diamond"');
       expect(svgMarkup).toContain('data-testid="floor-switch-3-2"');
+      expect(svgMarkup).toContain('data-testid="switch-circuit-trace-sw_linked-g_dia"');
       expect(svgMarkup).toContain('data-testid="world-item-key-0-1"');
       expect(svgMarkup).toContain('data-testid="world-item-plank-0-2"');
       expect(svgMarkup).toContain('data-testid="world-item-crate-0-3"');
-      // Goal is padlocked because sw_goal is inactive!
+      // Goal uses shutter barrier [🏁 0/1] because sw_goal is inactive (zero padlock SVGs!)
       expect(svgMarkup).toContain('data-testid="padlock-goal-4-3"');
+      expect(svgMarkup).toContain('data-testid="goal-shutter-progress"');
+      expect(svgMarkup).toContain('🏁 0/1');
+      expect(svgMarkup).not.toContain('🔒');
 
-      const hudMarkup = renderToStaticMarkup(React.createElement(BackpackHud, { grid }));
-      expect(hudMarkup).toContain('data-testid="grid-backpack-hud"');
-      expect(hudMarkup).toContain('data-carrying="key"');
-      expect(hudMarkup).toContain('data-carrying-shape="diamond"');
-      expect(hudMarkup).toContain('◆');
+      // BackpackHud has been completely retired
+      expect((WorldItemsModule as Record<string, unknown>).BackpackHud).toBeUndefined();
+
+      // Upper-right shoulder carry counter-rotates cleanly across N/E/S/W with 2px #0f172a outline
+      for (const deg of [0, 90, 180, 270]) {
+        const carrySvg = renderToStaticMarkup(
+          React.createElement(
+            'svg',
+            null,
+            React.createElement(RobotShoulderCarry, {
+              carriedItem: grid.robot.carriedItem,
+              carriedCount: 1,
+              robotAngleDeg: deg,
+            })
+          )
+        );
+        expect(carrySvg).toContain('data-testid="robot-shoulder-carry"');
+        expect(carrySvg).toContain('transform="translate(15, -16)"');
+        expect(carrySvg).toContain(`transform="rotate(${-deg})"`);
+        expect(carrySvg).toContain('stroke="#0f172a"');
+        expect(carrySvg).toContain('stroke-width="2"');
+      }
+
+      // GridCanvas omits BackpackHud/🎒 and renders read-only badge without 🔒
+      useAppStore.setState({ appMode: 'curriculum', grid, runtime: null });
+      const fullCanvasHtml = renderToStaticMarkup(React.createElement(GridCanvas));
+      expect(fullCanvasHtml).toContain('data-testid="robot-shoulder-carry"');
+      expect(fullCanvasHtml).toContain('data-testid="grid-readonly-badge"');
+      expect(fullCanvasHtml).not.toContain('data-testid="grid-backpack-hud"');
+      expect(fullCanvasHtml).not.toContain('🎒');
+      expect(fullCanvasHtml).not.toContain('🔒');
+
+      // DemoSpotlightOverlay highlights shoulder gripper without 🎒
+      const spotlightHtml = renderToStaticMarkup(
+        React.createElement(
+          'svg',
+          null,
+          React.createElement(DemoSpotlightOverlay, {
+            grid,
+            cellSize: 72,
+            spotlightsOverride: ['backpack'],
+          })
+        )
+      );
+      expect(spotlightHtml).toContain('data-testid="spotlight-backpack"');
+      expect(spotlightHtml).toContain('data-spotlight-style="shoulder-gripper"');
+      expect(spotlightHtml).not.toContain('🎒');
 
       const thumbSvg = renderGridMapSvg(grid);
       expect(thumbSvg).toContain('data-thumb-water="1-0"');

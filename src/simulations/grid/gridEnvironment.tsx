@@ -226,14 +226,15 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       ...(res.worldItems !== undefined ? { worldItems: res.worldItems } : {}),
       ...(capturedInitialItems !== undefined ? { initialWorldItems: capturedInitialItems } : {}),
       ...(hasWorld ? { lastInteractionFeedback: res.interactionFeedback ?? null } : {}),
-      status: res.isCollision ? 'COLLISION' : res.isSuccess ? 'SUCCESS' : 'RUNNING',
+      // End-of-program Goal evaluation: mid-program Goal pass-through keeps RUNNING so remaining blocks execute.
+      status: res.isCollision ? 'COLLISION' : 'RUNNING',
     };
 
     return {
       nextState,
       status: nextState.status,
       isCollision: res.isCollision,
-      isSuccess: res.isSuccess,
+      isSuccess: false,
     };
   },
 
@@ -253,6 +254,9 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
   },
 
   evaluateCompletion: (state: GridState) => {
+    if (state.status === 'COLLISION') {
+      return 'IDLE';
+    }
     const onGoal = state.flags.some(
       (f) => f.isGoal && f.x === state.robot.x && f.y === state.robot.y
     );
@@ -261,7 +265,8 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
     const synced = syncWorldSwitchesAndGates(
       state.floorSwitches,
       state.lockedGates,
-      state.worldItems
+      state.worldItems,
+      { x: state.robot.x, y: state.robot.y }
     );
     const switchesOk = areGoalSwitchesSatisfied(synced.floorSwitches, synced.lockedGates);
     const allItemsCollectedOk =
