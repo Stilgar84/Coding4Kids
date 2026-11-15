@@ -16,9 +16,22 @@
  * Depot sensors with param (stationEmpty 0x18: stationCode; heldColor 0x1B: colorIdx; topColor 0x1C: colorIdx)
  */
 
-import type { ConditionExpr, ConditionSensorType } from '../../data/curriculum/types';
+import type { ConditionCompareOp, ConditionExpr, ConditionSensorType } from '../../data/curriculum/types';
+import { isVariableName } from '../../types';
 import type { BinaryReader } from './binaryReader';
 import type { BinaryWriter } from './binaryWriter';
+import {
+  ENV_ID_DEPOT,
+  OPERAND_TYPE_DOUBLE,
+  OPERAND_TYPE_NEG_INT,
+  OPERAND_TYPE_POS_INT,
+  OPERAND_TYPE_VAR,
+  colorLiteralNameToIdx,
+  decodeVarOrSensorIndex,
+  encodeVarOrSensorIndex,
+  isColorLiteralString,
+  isSensorRefString,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Tag constants
@@ -52,8 +65,13 @@ export const COND_TAG_NOT              = 0x20; // NOT(inner)
 export const COND_TAG_AND              = 0x21; // AND(left, right)
 export const COND_TAG_OR               = 0x22; // OR(left, right)
 
-// Reserved for M7–M8 typed comparison
-export const COND_TAG_CMP_RESERVED     = 0x30;
+// Turtle & Beat sensors
+export const COND_TAG_INSIDE_CANVAS    = 0x28; // insideCanvas (Turtle)
+export const COND_TAG_CURSOR_AT_EDGE   = 0x2a; // cursorAtEdge (Beat)
+
+// Typed comparison expression
+export const COND_TAG_CMP              = 0x30; // cmpHeader:uint8 + left operand + right operand
+export const COND_TAG_CMP_RESERVED     = COND_TAG_CMP;
 
 // ---------------------------------------------------------------------------
 // Sensor name → tag mapping
@@ -90,14 +108,22 @@ export const SWITCHYARD_SENSOR_TAGS: Record<string, number> = {
 export const DEPOT_SENSOR_TAGS: Record<string, number> = {
   stationEmpty:  COND_TAG_STATION_EMPTY,     // + stationCode param
   hasItem:       COND_TAG_HAS_ITEM,
-  itemDamagedD:  COND_TAG_ITEM_DAMAGED_D,    // disambiguation key
+  itemDamagedD:  COND_TAG_ITEM_DAMAGED_D,    // disambiguation key (Depot v1-v3 legacy)
   heldColor:     COND_TAG_HELD_COLOR,        // + colorIdx param
   topColor:      COND_TAG_TOP_COLOR,         // + colorIdx param
 };
 
+export const TURTLE_SENSOR_TAGS: Record<string, number> = {
+  insideCanvas:  COND_TAG_INSIDE_CANVAS,
+};
+
+export const BEAT_SENSOR_TAGS: Record<string, number> = {
+  cursorAtEdge:  COND_TAG_CURSOR_AT_EDGE,
+};
+
 /**
  * Station codes for stationEmpty:
- *   0 = CURRENT, 1 = STACK_1, 2 = STACK_2, 3 = STACK_3, 4 = QUEUE, 5 = INPUT
+ *   0 = CURRENT, 1 = STACK_1, 2 = STACK_2, 3 = STACK_3, 4 = QUEUE, 5 = INPUT, 6 = PHYSICAL_TAPE (alias TAPE)
  */
 export const STATION_CODES: Record<string, number> = {
   CURRENT: 0,
@@ -106,8 +132,18 @@ export const STATION_CODES: Record<string, number> = {
   STACK_3: 3,
   QUEUE:   4,
   INPUT:   5,
+  PHYSICAL_TAPE: 6,
+  TAPE:    6,
 };
-export const STATION_CODE_NAMES: string[] = ['CURRENT', 'STACK_1', 'STACK_2', 'STACK_3', 'QUEUE', 'INPUT'];
+export const STATION_CODE_NAMES: string[] = [
+  'CURRENT',
+  'STACK_1',
+  'STACK_2',
+  'STACK_3',
+  'QUEUE',
+  'INPUT',
+  'PHYSICAL_TAPE',
+];
 
 /**
  * Icon codes for itemIcon:
@@ -137,12 +173,81 @@ export const PALETTE_COLOR_NAMES: string[] = [
   'white',   // 9
 ];
 
-function colorNameToIdx(name: string): number {
-  const idx = PALETTE_COLOR_NAMES.indexOf(name.toLowerCase());
+export function colorNameToIdx(name: string): number {
+  const literalIdx = colorLiteralNameToIdx(name);
+  if (literalIdx >= 0) return literalIdx;
+  const raw = name.trim().toLowerCase();
+  const mapped = raw === 'yellow' ? 'amber' : raw;
+  const idx = PALETTE_COLOR_NAMES.indexOf(mapped);
   return idx >= 0 ? idx : 0;
 }
 function colorIdxToName(idx: number): string {
   return PALETTE_COLOR_NAMES[idx] ?? 'red';
+}
+
+export interface ConditionCodecContext {
+  envByte?: number;
+  envVersion?: number;
+}
+
+const CMP_OP_TO_CODE: Record<ConditionCompareOp, number> = {
+  '=': 0,
+  '!=': 1,
+  '<': 2,
+  '<=': 3,
+  '>': 4,
+  '>=': 5,
+};
+
+const CMP_CODE_TO_OP: ConditionCompareOp[] = ['=', '!=', '<', '<=', '>', '>='];
+
+export function isVarOrSensorVal(val: unknown): boolean {
+  return (
+    isVariableName(val) ||
+    isSensorRefString(val) ||
+    isColorLiteralString(val) ||
+    (typeof val === 'string' && /^[a-z]$/.test(val))
+  );
+}
+
+export function getOperandType(val: any): number {
+  if (val === undefined || val === null) return OPERAND_TYPE_POS_INT;
+  if (isVarOrSensorVal(val)) {
+    return OPERAND_TYPE_VAR;
+  }
+  const num = typeof val === 'number' ? val : Number(val);
+  if (!Number.isFinite(num)) return OPERAND_TYPE_POS_INT;
+  if (Number.isInteger(num)) {
+    return num >= 0 ? OPERAND_TYPE_POS_INT : OPERAND_TYPE_NEG_INT;
+  }
+  return OPERAND_TYPE_DOUBLE;
+}
+
+export function writeOperandData(writer: BinaryWriter, type: number, val: any): void {
+  if (type === OPERAND_TYPE_VAR) {
+    writer.writeUint8(encodeVarOrSensorIndex(String(val)));
+  } else if (type === OPERAND_TYPE_POS_INT) {
+    const num = typeof val === 'number' ? val : Number(val);
+    writer.writeVLE(Math.max(0, Math.round(num)));
+  } else if (type === OPERAND_TYPE_NEG_INT) {
+    const num = typeof val === 'number' ? val : Number(val);
+    writer.writeVLE(Math.abs(Math.round(num)));
+  } else {
+    const num = typeof val === 'number' ? val : Number(val);
+    writer.writeFloat64(num);
+  }
+}
+
+export function readOperandData(reader: BinaryReader, type: number): any {
+  if (type === OPERAND_TYPE_VAR) {
+    return decodeVarOrSensorIndex(reader.readUint8());
+  } else if (type === OPERAND_TYPE_POS_INT) {
+    return reader.readVLE();
+  } else if (type === OPERAND_TYPE_NEG_INT) {
+    return -reader.readVLE();
+  } else {
+    return reader.readFloat64();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -154,35 +259,49 @@ function colorIdxToName(idx: number): string {
  * Called immediately after writing OP_IF (0x04) or OP_WHILE (0x0A) header bytes,
  * and after writing the ELSE_IF header byte (0x25).
  */
-export function writeConditionExpr(writer: BinaryWriter, expr: ConditionExpr): void {
+export function writeConditionExpr(
+  writer: BinaryWriter,
+  expr: ConditionExpr,
+  ctx?: ConditionCodecContext
+): void {
   if (expr.kind === 'not') {
     writer.writeUint8(COND_TAG_NOT);
-    writeConditionExpr(writer, expr.operand);
+    writeConditionExpr(writer, expr.operand, ctx);
     return;
   }
   if (expr.kind === 'and') {
     writer.writeUint8(COND_TAG_AND);
-    writeConditionExpr(writer, expr.left);
-    writeConditionExpr(writer, expr.right);
+    writeConditionExpr(writer, expr.left, ctx);
+    writeConditionExpr(writer, expr.right, ctx);
     return;
   }
   if (expr.kind === 'or') {
     writer.writeUint8(COND_TAG_OR);
-    writeConditionExpr(writer, expr.left);
-    writeConditionExpr(writer, expr.right);
+    writeConditionExpr(writer, expr.left, ctx);
+    writeConditionExpr(writer, expr.right, ctx);
     return;
   }
   if (expr.kind === 'cmp') {
-    // Reserved tag 0x30 for M7–M8: write tag + placeholder
-    // We don't have a full encoding for cmp yet — write 0x30 and skip gracefully.
-    writer.writeUint8(COND_TAG_CMP_RESERVED);
+    const opCode = CMP_OP_TO_CODE[expr.op] ?? 0;
+    const leftType = getOperandType(expr.left);
+    const rightType = getOperandType(expr.right);
+    const cmpHeader = ((rightType & 3) << 5) | ((leftType & 3) << 3) | (opCode & 7);
+    writer.writeUint8(COND_TAG_CMP);
+    writer.writeUint8(cmpHeader);
+    writeOperandData(writer, leftType, expr.left);
+    writeOperandData(writer, rightType, expr.right);
     return;
   }
   // kind === 'sensor'
-  writeSensorExpr(writer, expr.sensor, expr.param);
+  writeSensorExpr(writer, expr.sensor, expr.param, ctx);
 }
 
-function writeSensorExpr(writer: BinaryWriter, sensor: ConditionSensorType, param?: string): void {
+function writeSensorExpr(
+  writer: BinaryWriter,
+  sensor: ConditionSensorType,
+  param?: string,
+  ctx?: ConditionCodecContext
+): void {
   switch (sensor) {
     // Grid sensors
     case 'pathAhead':
@@ -217,13 +336,13 @@ function writeSensorExpr(writer: BinaryWriter, sensor: ConditionSensorType, para
       writer.writeUint8(COND_TAG_HAS_NEXT_ITEM);
       break;
     case 'itemDamaged': {
-      // Disambiguate: the sensor 'itemDamaged' exists in both Switchyard and Depot.
-      // We use COND_TAG_ITEM_DAMAGED_SY (0x11) as the default for Switchyard context,
-      // and COND_TAG_ITEM_DAMAGED_D (0x1a) for Depot context.
-      // The caller encodes it properly by using the right ConditionSensorType variant.
-      // Here we default to Switchyard tag since 'itemDamaged' as string is shared.
-      // For Depot, callers should use the separate encoding path (see readConditionExpr).
-      writer.writeUint8(COND_TAG_ITEM_DAMAGED_SY);
+      // Disambiguate: `itemDamaged` appears in Switchyard (0x11) and legacy Depot v1-v3 (0x1a).
+      // Use 0x1a only when explicitly serializing in Depot <= v3 context; otherwise 0x11.
+      if (ctx?.envByte === ENV_ID_DEPOT && (ctx.envVersion === undefined || ctx.envVersion <= 3)) {
+        writer.writeUint8(COND_TAG_ITEM_DAMAGED_D);
+      } else {
+        writer.writeUint8(COND_TAG_ITEM_DAMAGED_SY);
+      }
       break;
     }
     case 'itemColor': {
@@ -260,6 +379,13 @@ function writeSensorExpr(writer: BinaryWriter, sensor: ConditionSensorType, para
       writer.writeUint8(colorIdx);
       break;
     }
+    // Turtle & Beat sensors
+    case 'insideCanvas':
+      writer.writeUint8(COND_TAG_INSIDE_CANVAS);
+      break;
+    case 'cursorAtEdge':
+      writer.writeUint8(COND_TAG_CURSOR_AT_EDGE);
+      break;
     default:
       // Unknown sensor — write pathAhead as safe fallback
       writer.writeUint8(COND_TAG_PATH_AHEAD);
@@ -274,26 +400,30 @@ function writeSensorExpr(writer: BinaryWriter, sensor: ConditionSensorType, para
 /**
  * Deserializes a `ConditionExpr` tree from `reader`.
  */
-export function readConditionExpr(reader: BinaryReader): ConditionExpr {
+export function readConditionExpr(reader: BinaryReader, ctx?: ConditionCodecContext): ConditionExpr {
   const tag = reader.readUint8();
-  return decodeConditionExprByTag(reader, tag);
+  return decodeConditionExprByTag(reader, tag, ctx);
 }
 
-function decodeConditionExprByTag(reader: BinaryReader, tag: number): ConditionExpr {
+function decodeConditionExprByTag(
+  reader: BinaryReader,
+  tag: number,
+  ctx?: ConditionCodecContext
+): ConditionExpr {
   switch (tag) {
     // Boolean combinators
     case COND_TAG_NOT: {
-      const operand = readConditionExpr(reader);
+      const operand = readConditionExpr(reader, ctx);
       return { kind: 'not', operand };
     }
     case COND_TAG_AND: {
-      const left = readConditionExpr(reader);
-      const right = readConditionExpr(reader);
+      const left = readConditionExpr(reader, ctx);
+      const right = readConditionExpr(reader, ctx);
       return { kind: 'and', left, right };
     }
     case COND_TAG_OR: {
-      const left = readConditionExpr(reader);
-      const right = readConditionExpr(reader);
+      const left = readConditionExpr(reader, ctx);
+      const right = readConditionExpr(reader, ctx);
       return { kind: 'or', left, right };
     }
     // Grid sensors
@@ -350,10 +480,22 @@ function decodeConditionExprByTag(reader: BinaryReader, tag: number): ConditionE
       const colorIdx = reader.readUint8();
       return { kind: 'sensor', sensor: 'topColor', param: colorIdxToName(colorIdx) };
     }
-    // Reserved M7–M8 comparison tag
-    case COND_TAG_CMP_RESERVED:
-      // Return a minimal safe passthrough (not usable at runtime yet)
-      return { kind: 'sensor', sensor: 'pathAhead' };
+    // Turtle & Beat sensors
+    case COND_TAG_INSIDE_CANVAS:
+      return { kind: 'sensor', sensor: 'insideCanvas' };
+    case COND_TAG_CURSOR_AT_EDGE:
+      return { kind: 'sensor', sensor: 'cursorAtEdge' };
+    // Typed comparison expression
+    case COND_TAG_CMP: {
+      const cmpHeader = reader.readUint8();
+      const opCode = cmpHeader & 0x07;
+      const leftType = (cmpHeader >> 3) & 0x03;
+      const rightType = (cmpHeader >> 5) & 0x03;
+      const op = CMP_CODE_TO_OP[opCode] ?? '=';
+      const left = readOperandData(reader, leftType);
+      const right = readOperandData(reader, rightType);
+      return { kind: 'cmp', op, left, right };
+    }
     default:
       // Unknown tag — safe fallback to pathAhead
       return { kind: 'sensor', sensor: 'pathAhead' };
@@ -364,33 +506,106 @@ function decodeConditionExprByTag(reader: BinaryReader, tag: number): ConditionE
 // evaluateConditionExpr — runtime boolean evaluation
 // ---------------------------------------------------------------------------
 
+export interface ConditionEvalContext<TState = any> {
+  variables?: Record<string, number>;
+  sceneInput?: number | string;
+  readValueSensor?: (sensor: string, state: TState) => number | string | undefined;
+}
+
+type ResolvedCmpOperand =
+  | { kind: 'color'; colorIdx: number }
+  | { kind: 'number'; num: number };
+
+function resolveCmpOperand<TState>(
+  val: string | number,
+  simState: TState,
+  context?: ConditionEvalContext<TState>
+): ResolvedCmpOperand {
+  if (isColorLiteralString(val)) {
+    return { kind: 'color', colorIdx: colorLiteralNameToIdx(val) };
+  }
+  if (val === '$input') {
+    const raw =
+      context?.sceneInput !== undefined
+        ? context.sceneInput
+        : context?.readValueSensor?.('$input', simState);
+    if (typeof raw === 'string' && isColorLiteralString(raw)) {
+      return { kind: 'color', colorIdx: colorLiteralNameToIdx(raw) };
+    }
+    const num = typeof raw === 'number' ? raw : Number(raw ?? 0);
+    return { kind: 'number', num: Number.isFinite(num) ? num : 0 };
+  }
+  if (isSensorRefString(val)) {
+    const raw = context?.readValueSensor
+      ? context.readValueSensor(val, simState)
+      : context?.variables?.[val];
+    const num = typeof raw === 'number' ? raw : Number(raw ?? 0);
+    return { kind: 'number', num: Number.isFinite(num) ? num : 0 };
+  }
+  if (typeof val === 'string' && isVariableName(val)) {
+    const raw = context?.variables?.[val] ?? 0;
+    return { kind: 'number', num: Number.isFinite(raw) ? raw : 0 };
+  }
+  const num = typeof val === 'number' ? val : Number(val);
+  return { kind: 'number', num: Number.isFinite(num) ? num : 0 };
+}
+
+function applyCmpOp(a: number, b: number, op: ConditionCompareOp): boolean {
+  switch (op) {
+    case '=':
+      return a === b;
+    case '!=':
+      return a !== b;
+    case '<':
+      return a < b;
+    case '<=':
+      return a <= b;
+    case '>':
+      return a > b;
+    case '>=':
+      return a >= b;
+    default:
+      return false;
+  }
+}
+
 /**
  * Evaluates a `ConditionExpr` at runtime against the current simulation state.
- * Delegates atomic sensor reads to `evaluateSensor` from the simulation environment.
+ * Delegates atomic sensor reads to `evaluateSensor` from the simulation environment,
+ * and resolves variables, `$input`, and color literals for `cmp` nodes via optional `context`.
  *
  * Returns `true` if the condition holds, `false` otherwise.
  */
 export function evaluateConditionExpr<TState>(
   expr: ConditionExpr,
   simState: TState,
-  evaluateSensor: (sensor: string, state: TState, param?: string) => boolean
+  evaluateSensor: (sensor: string, state: TState, param?: string) => boolean,
+  context?: ConditionEvalContext<TState>
 ): boolean {
   switch (expr.kind) {
     case 'not':
-      return !evaluateConditionExpr(expr.operand, simState, evaluateSensor);
+      return !evaluateConditionExpr(expr.operand, simState, evaluateSensor, context);
     case 'and':
       return (
-        evaluateConditionExpr(expr.left, simState, evaluateSensor) &&
-        evaluateConditionExpr(expr.right, simState, evaluateSensor)
+        evaluateConditionExpr(expr.left, simState, evaluateSensor, context) &&
+        evaluateConditionExpr(expr.right, simState, evaluateSensor, context)
       );
     case 'or':
       return (
-        evaluateConditionExpr(expr.left, simState, evaluateSensor) ||
-        evaluateConditionExpr(expr.right, simState, evaluateSensor)
+        evaluateConditionExpr(expr.left, simState, evaluateSensor, context) ||
+        evaluateConditionExpr(expr.right, simState, evaluateSensor, context)
       );
-    case 'cmp':
-      // Reserved for M7–M8: always false for now
-      return false;
+    case 'cmp': {
+      const left = resolveCmpOperand(expr.left, simState, context);
+      const right = resolveCmpOperand(expr.right, simState, context);
+      if (left.kind === 'color' && right.kind === 'color') {
+        return applyCmpOp(left.colorIdx, right.colorIdx, expr.op);
+      }
+      if (left.kind === 'number' && right.kind === 'number') {
+        return applyCmpOp(left.num, right.num, expr.op);
+      }
+      return expr.op === '!=';
+    }
     case 'sensor':
       return evaluateSensor(expr.sensor, simState, expr.param);
     default:

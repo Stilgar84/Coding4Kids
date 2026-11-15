@@ -86,6 +86,9 @@ export function computeGhostPreviewSteps(
  * Infers the pedagogical PlaceholderHintCategory for a concrete block type.
  */
 export function inferHintCategoryForBlockType(blockType: string): PlaceholderHintCategory {
+  if (blockType.startsWith('$') || blockType.startsWith('SENSOR_')) {
+    return 'sensor';
+  }
   switch (blockType) {
     case 'MOVE_FWD':
     case 'MOVE_BACK':
@@ -100,6 +103,8 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'TURN_LEFT':
     case 'TURN_RIGHT':
     case 'CURSOR_TURN':
+    case 'SWITCH_LEFT':
+    case 'SWITCH_RIGHT':
       return 'turn';
     case 'PICK_UP':
     case 'USE_DROP':
@@ -110,6 +115,9 @@ export function inferHintCategoryForBlockType(blockType: string): PlaceholderHin
     case 'DEPOT_GRAB':
     case 'DEPOT_PLACE':
     case 'DEPOT_SEND_OUT':
+    case 'DEPOT_SEND_GATE':
+    case 'SEND_NEXT':
+    case 'SCRAP_ITEM':
       return 'item';
     case 'LOOP_START':
     case 'LOOP_END':
@@ -150,6 +158,8 @@ export function doesBlockMatchHintCategory(
         blockType === 'TURN_LEFT' ||
         blockType === 'TURN_RIGHT' ||
         blockType === 'CURSOR_TURN' ||
+        blockType === 'SWITCH_LEFT' ||
+        blockType === 'SWITCH_RIGHT' ||
         itemCategory === 'turn'
       );
     case 'motion':
@@ -166,7 +176,9 @@ export function doesBlockMatchHintCategory(
         (itemCategory === 'motion' &&
           blockType !== 'TURN_LEFT' &&
           blockType !== 'TURN_RIGHT' &&
-          blockType !== 'CURSOR_TURN')
+          blockType !== 'CURSOR_TURN' &&
+          blockType !== 'SWITCH_LEFT' &&
+          blockType !== 'SWITCH_RIGHT')
       );
     case 'item':
       return (
@@ -175,6 +187,9 @@ export function doesBlockMatchHintCategory(
         blockType === 'DEPOT_GRAB' ||
         blockType === 'DEPOT_PLACE' ||
         blockType === 'DEPOT_SEND_OUT' ||
+        blockType === 'DEPOT_SEND_GATE' ||
+        blockType === 'SEND_NEXT' ||
+        blockType === 'SCRAP_ITEM' ||
         itemCategory === 'item' ||
         itemCategory === 'pen' ||
         itemCategory === 'sound' ||
@@ -194,11 +209,11 @@ export function doesBlockMatchHintCategory(
         blockType === 'END_WHILE'
       );
     case 'sensor':
-      return itemCategory === 'sensor';
+      return itemCategory === 'sensor' || blockType.startsWith('$') || blockType.startsWith('SENSOR_');
     case 'variable':
-      return blockType === 'VAR_ASSIGN' || blockType === 'VAR_OP';
+      return blockType === 'VAR_ASSIGN' || blockType === 'VAR_OP' || itemCategory === 'variable';
     case 'operator':
-      return blockType === 'VAR_OP';
+      return blockType === 'VAR_OP' || itemCategory === 'operator';
     case 'socket':
       return itemCategory === 'socket';
     default:

@@ -955,25 +955,43 @@ export const DepotGateVisual: React.FC<{ gate: string | unknown; compact?: boole
   compact = true,
 }) => {
   const norm = String(gate ?? 'OUT').trim().toUpperCase();
-  const isScrap = norm === 'SCRAP';
   const isAccept = norm === 'ACCEPT';
   const isReject = norm === 'REJECT';
 
-  const bg = isScrap
-    ? 'bg-rose-500 text-white'
-    : isAccept
+  const bg = isAccept
     ? 'bg-emerald-500 text-slate-950'
     : isReject
     ? 'bg-red-600 text-white'
     : 'bg-violet-500 text-white';
 
-  const label = isScrap ? 'SCRAP' : isAccept ? 'ACCEPT' : isReject ? 'REJECT' : 'OUT';
+  const label = isAccept ? 'ACCEPT' : isReject ? 'REJECT' : 'OUT';
 
   return (
     <span
       className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 font-black uppercase text-[10px] select-none shadow-sm ${bg}`}
     >
       {compact ? label : `GATE: ${label}`}
+    </span>
+  );
+};
+
+export const SwitchyardJunctionVisual: React.FC<{
+  junction: string | unknown;
+  compact?: boolean;
+}> = ({ junction, compact = true }) => {
+  const norm = String(junction ?? 'A').trim().toUpperCase() === 'B' ? 'B' : 'A';
+  const styleClass =
+    norm === 'B'
+      ? 'bg-amber-500 text-slate-950 border-amber-200'
+      : 'bg-sky-500 text-slate-950 border-sky-200';
+  return (
+    <span
+      data-testid="switchyard-junction-visual"
+      className={`inline-flex items-center justify-center rounded border font-mono font-black leading-none select-none shadow-sm ${
+        compact ? 'px-1.5 py-0.5 text-[10px] min-w-[20px] h-[20px]' : 'px-2 py-1 text-xs'
+      } ${styleClass}`}
+    >
+      [{norm}]
     </span>
   );
 };
@@ -1001,6 +1019,15 @@ export const ParamVisual: React.FC<ParamVisualProps> = ({
         {effectiveValue}
       </span>
     );
+  }
+
+  if (
+    paramDef.id === 'junction' ||
+    (paramDef.type as string) === 'switchyard-junction' ||
+    ((actionType === 'SWITCH_LEFT' || actionType === 'SWITCH_RIGHT') &&
+      (effectiveValue === 'A' || effectiveValue === 'B'))
+  ) {
+    return <SwitchyardJunctionVisual junction={effectiveValue} compact={compact} />;
   }
 
   const isRight = actionType === 'TURN_RIGHT' || actionType === 'ARC_RIGHT';

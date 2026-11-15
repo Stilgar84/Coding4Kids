@@ -735,7 +735,7 @@ export const VariationCardsPanel: React.FC = () => {
 
   const handleLoadCard = (card: CreativeVariationCard) => {
     beatVariationPreviewPlayer.stop('silent');
-    loadVariationWorkspace(card.workspace, card.title);
+    loadVariationWorkspace(card.workspace, card.title, card.inputConfig ?? null);
   };
 
   const handlePanelKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {

@@ -9,8 +9,11 @@ import {
 import {
   AppMode,
   CURRICULUM_ACTIVITIES,
+  ConditionExpr,
+  ConditionSensorType,
   CurriculumActivity,
   PaletteConfig,
+  SceneInputConfig,
   SlotCapConfig,
   getActivityAtVersion,
   getActivityLatest,
@@ -77,6 +80,8 @@ export interface StagedPalettePolicy {
   subpaletteOperandVarNames: readonly VariableName[];
   allowActionParams: boolean;
   canUseSubpaletteParams: boolean;
+  allowedSensors?: string[];
+  allowedCombinators?: ('NOT' | 'AND' | 'OR')[];
   allowedValueSensors?: string[];
   allowedVarOps?: BinaryOp[];
 }
@@ -135,6 +140,8 @@ export function computeStagedPalettePolicy(
       subpaletteOperandVarNames: ALL_VARIABLE_NAMES.slice(0, 8),
       allowActionParams: true,
       canUseSubpaletteParams: true,
+      allowedSensors: undefined,
+      allowedCombinators: undefined,
       allowedValueSensors: undefined,
       allowedVarOps: undefined,
     };
@@ -150,6 +157,12 @@ export function computeStagedPalettePolicy(
   const allowedControlTypes = new Set<string>(palette.allowedControlBlocks ?? []);
   if (allowedControlTypes.has('LOOP_START')) {
     allowedControlTypes.add('LOOP_END');
+  }
+  if (allowedControlTypes.has('IF')) {
+    allowedControlTypes.add('END_IF');
+  }
+  if (allowedControlTypes.has('WHILE')) {
+    allowedControlTypes.add('END_WHILE');
   }
 
   const allowedScopes: ScopeType[] =
@@ -192,7 +205,13 @@ export function computeStagedPalettePolicy(
   const hasAllowedVarControlBlock =
     allowedControlTypes.has('VAR_ASSIGN') || allowedControlTypes.has('VAR_OP');
 
-  const canUseSubpaletteParams = hasAnyAllowedSimParams || hasAllowedVarControlBlock;
+  const hasAllowedConditionControlBlock =
+    allowedControlTypes.has('IF') ||
+    allowedControlTypes.has('ELSE_IF') ||
+    allowedControlTypes.has('WHILE');
+
+  const canUseSubpaletteParams =
+    hasAnyAllowedSimParams || hasAllowedVarControlBlock || hasAllowedConditionControlBlock;
 
   return {
     isCurriculum: true,
@@ -209,9 +228,123 @@ export function computeStagedPalettePolicy(
     subpaletteOperandVarNames,
     allowActionParams,
     canUseSubpaletteParams,
+    allowedSensors: palette.allowedSensors,
+    allowedCombinators: palette.allowedCombinators,
     allowedValueSensors: palette.allowedValueSensors,
     allowedVarOps: (palette.allowedVarOps as BinaryOp[]) ?? ['+', '-'],
   };
+}
+
+export const CONTROL_PAIR_CLOSER: Readonly<Record<string, string>> = {
+  LOOP_START: 'LOOP_END',
+  IF: 'END_IF',
+  WHILE: 'END_WHILE',
+};
+
+/**
+ * Returns the closing structural block type for a pair-opener (`LOOP_START` -> `LOOP_END`,
+ * `IF` -> `END_IF`, `WHILE` -> `END_WHILE`), or `null` for single-slot blocks.
+ */
+export function getControlPairCloserType(blockType: string): string | null {
+  return CONTROL_PAIR_CLOSER[blockType] ?? null;
+}
+
+/**
+ * Number of workspace slots consumed when inserting `blockType` (2 for atomic control pairs).
+ */
+export function getRequiredSlotCostForBlockType(blockType: string): number {
+  return blockType in CONTROL_PAIR_CLOSER ? 2 : 1;
+}
+
+/**
+ * True when `budget` has enough free slots in the active scope to insert `blockType` atomically.
+ */
+export function canInsertBlockIntoBudget(
+  budget: SlotBudgetStatus,
+  blockType: string
+): boolean {
+  if (!budget.isCapped || budget.remainingForScope === null) {
+    return true;
+  }
+  return budget.remainingForScope >= getRequiredSlotCostForBlockType(blockType);
+}
+
+export function normalizeColorLiteralParam(color: string | number): string {
+  const raw = String(color).trim().toLowerCase();
+  const stripped = raw.startsWith('color:') ? raw.slice(6) : raw;
+  const mapped = stripped === 'yellow' ? 'amber' : stripped;
+  return `color:${mapped}`;
+}
+
+/**
+ * Resolves a valid initial ConditionExpr for newly inserted `IF` / `ELSE_IF` / `WHILE` blocks
+ * honoring staged `allowedSensors`, active `$input` config, and simulation environment defaults.
+ */
+export function resolveDefaultConditionForContext(
+  simId: string,
+  palette?: PaletteConfig,
+  inputConfig?: SceneInputConfig | null
+): ConditionExpr {
+  const allowed = palette?.allowedSensors;
+  const allowsInput =
+    Boolean(inputConfig && inputConfig.options.length > 0) &&
+    (allowed === undefined || allowed.length === 0 || allowed.includes('$input'));
+
+  if (allowed && allowed.length > 0) {
+    const first = allowed[0];
+    if (first === '$input' && inputConfig && inputConfig.options.length > 0) {
+      const opt = inputConfig.previewInput ?? inputConfig.options[0];
+      return {
+        kind: 'cmp',
+        op: '=',
+        left: '$input',
+        right:
+          inputConfig.mode === 'color' ? normalizeColorLiteralParam(opt) : Number(opt),
+      };
+    }
+    if (
+      first === 'tileColor' ||
+      first === 'itemColor' ||
+      first === 'heldColor' ||
+      first === 'topColor'
+    ) {
+      return { kind: 'sensor', sensor: first, param: 'red' };
+    }
+    if (first === 'itemIcon') {
+      return { kind: 'sensor', sensor: first, param: 'crate' };
+    }
+    if (first === 'stationEmpty') {
+      return { kind: 'sensor', sensor: first, param: 'QUEUE' };
+    }
+    if (first !== '$input') {
+      return { kind: 'sensor', sensor: first as ConditionSensorType };
+    }
+  }
+
+  if (allowsInput && inputConfig) {
+    const opt = inputConfig.previewInput ?? inputConfig.options[0];
+    return {
+      kind: 'cmp',
+      op: '=',
+      left: '$input',
+      right:
+        inputConfig.mode === 'color' ? normalizeColorLiteralParam(opt) : Number(opt),
+    };
+  }
+
+  switch (simId) {
+    case 'switchyard':
+      return { kind: 'sensor', sensor: 'hasNextItem' };
+    case 'depot':
+      return { kind: 'sensor', sensor: 'hasItem' };
+    case 'turtle':
+      return { kind: 'sensor', sensor: 'insideCanvas' };
+    case 'beat':
+      return { kind: 'sensor', sensor: 'cursorAtEdge' };
+    case 'grid':
+    default:
+      return { kind: 'sensor', sensor: 'pathAhead' };
+  }
 }
 
 export interface SlotBudgetStatus {
@@ -332,10 +465,20 @@ export function computeSlotBudget(
 export function formatSlotCapFullAnnouncement(
   budget: SlotBudgetStatus,
   scope: ScopeType,
-  allowedScopes: readonly ScopeType[]
+  allowedScopes: readonly ScopeType[],
+  requiredSlots: number = 1
 ): string {
   const isMultiScope = allowedScopes.length > 1 || allowedScopes.some((s) => s !== 'MAIN');
   const scopeLabel = scope === 'MAIN' ? 'Main' : scope;
+
+  if (
+    requiredSlots > 1 &&
+    budget.remainingForScope !== null &&
+    budget.remainingForScope > 0 &&
+    budget.remainingForScope < requiredSlots
+  ) {
+    return `Need ${requiredSlots} open block slots for this control pair (${budget.remainingForScope} left). Remove a block to add it.`;
+  }
 
   if (budget.isScopeFull && budget.scopeLimit !== undefined && isMultiScope) {
     return `Block tray full in ${scopeLabel} (${budget.scopeUsed} of ${budget.scopeLimit} slots used). Remove a block to add another.`;

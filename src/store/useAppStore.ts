@@ -52,32 +52,48 @@ import {
   resetSwitchyardState,
 } from '../simulations/switchyard/physics';
 import { switchyardSimulationEnvironment } from '../simulations/switchyard/switchyardEnvironment';
-import { getSimEnvironment, registerSimulation } from '../engine/simulation/registry';
+import {
+  getSimEnvironment as rawGetSimEnvironment,
+  registerSimulation,
+} from '../engine/simulation/registry';
 
-// Register environments
-registerSimulation(gridSimulationEnvironment);
-registerSimulation(turtleSimulationEnvironment);
-registerSimulation(beatSimulationEnvironment);
-registerSimulation(depotSimulationEnvironment);
-registerSimulation(switchyardSimulationEnvironment);
+// Register environments (guarded against ESM circular-import evaluation order; runtime actions also ensure registration)
+if (typeof gridSimulationEnvironment !== 'undefined') registerSimulation(gridSimulationEnvironment);
+if (typeof turtleSimulationEnvironment !== 'undefined') registerSimulation(turtleSimulationEnvironment);
+if (typeof beatSimulationEnvironment !== 'undefined') registerSimulation(beatSimulationEnvironment);
+if (typeof depotSimulationEnvironment !== 'undefined') registerSimulation(depotSimulationEnvironment);
+if (typeof switchyardSimulationEnvironment !== 'undefined') registerSimulation(switchyardSimulationEnvironment);
 import {
   createInitialInterpreterState,
   tickInterpreter,
   validateLoopStructure,
   evaluateValue,
+  InterpreterTickOptions,
 } from '../engine/interpreter';
 import {
   isTurtleAnimatedAction,
   createTurtleAnimation,
   interpolateAnimationPose,
 } from '../simulations/turtle/physics';
-import { runHeadlessSimulation, MAX_INSTANT_SIMULATION_STEPS } from '../engine/simulationRunner';
+import {
+  runHeadlessSimulation,
+  MAX_INSTANT_SIMULATION_STEPS,
+  ensureSimEnvironmentsRegistered,
+} from '../engine/simulationRunner';
+
+const getSimEnvironment = <TState = any>(id: string) => {
+  const existing = rawGetSimEnvironment<TState>(id);
+  if (existing) return existing;
+  ensureSimEnvironmentsRegistered();
+  return rawGetSimEnvironment<TState>(id);
+};
 import { LESSONS } from '../data/lessons';
 import {
   AppMode,
   CurriculumActivity,
   CURRICULUM_ACTIVITIES,
   CURRICULUM_MODULES,
+  SceneInputConfig,
   createCurriculumGridState,
   getActivityAtVersion,
   getActivityLatest,
@@ -95,9 +111,13 @@ import {
   computeSlotBudget,
   findNextUnviewedDemoTabIndex,
   formatSlotCapFullAnnouncement,
+  getControlPairCloserType,
   getNextCurriculumActivity,
+  getRequiredSlotCostForBlockType,
   isInstantSpeedDisabled,
+  normalizeColorLiteralParam,
   resolveActiveCurriculumActivity,
+  resolveDefaultConditionForContext,
 } from '../utils/curriculumStagePolicy';
 import {
   exportToString,
@@ -232,7 +252,8 @@ export function computeInstantSimulation(
   turtleState: TurtleState,
   beatState?: BeatState,
   depotState?: DepotState,
-  switchyardState?: SwitchyardState
+  switchyardState?: SwitchyardState,
+  options?: InterpreterTickOptions
 ) {
   const initialState =
     simId === 'grid'
@@ -244,7 +265,7 @@ export function computeInstantSimulation(
       : simId === 'switchyard'
       ? getInitialSwitchyardState(switchyardState)
       : getInitialTurtleState(turtleState);
-  return runHeadlessSimulation(workspace, simId, initialState, MAX_INSTANT_SIMULATION_STEPS);
+  return runHeadlessSimulation(workspace, simId, initialState, MAX_INSTANT_SIMULATION_STEPS, options);
 }
 
 export interface LevelPreset {
@@ -326,6 +347,8 @@ interface AppState {
   lastSlotCapRejectedAt: number | null;
   variantRuns: VariantRunSnapshot[];
   focusedVariantIndex: number;
+  activeVariationInputConfig: SceneInputConfig | null;
+  sceneInput: number | string | undefined;
 
   // Environment selection
   activeSimId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard';
@@ -392,12 +415,17 @@ interface AppState {
   setAppMode: (mode: AppMode) => void;
   setCurriculumActivity: (activityId: string, version?: number) => void;
   setFocusedVariantIndex: (index: number) => void;
+  setSceneInput: (value: number | string) => void;
   selectExplanationDemoTab: (tabIndex: number) => void;
   markActiveDemoTabExplored: () => void;
   completeExplanationAndContinue: () => string | null;
   completeCreativeActivity: (advanceToNext?: boolean) => string | null;
   openCopyInSandbox: () => void;
-  loadVariationWorkspace: (workspace: WorkspaceState, title?: string) => void;
+  loadVariationWorkspace: (
+    workspace: WorkspaceState,
+    title?: string,
+    inputConfigOverride?: SceneInputConfig | null
+  ) => void;
   resetActivityToStarter: () => void;
 
   // Actions
@@ -1486,6 +1514,28 @@ export const useAppStore = create<AppState>((set, get) => {
     }));
   };
 
+  const resolveDefaultSceneInput = (cfg?: SceneInputConfig | null): number | string | undefined => {
+    if (!cfg || !cfg.options || cfg.options.length === 0) return undefined;
+    const raw = cfg.previewInput !== undefined ? cfg.previewInput : cfg.options[0];
+    if (cfg.mode === 'color') {
+      return normalizeColorLiteralParam(raw);
+    }
+    return raw;
+  };
+
+  const resolveActivityInitialInputConfig = (
+    act?: CurriculumActivity,
+    tabIndex: number = 0
+  ): SceneInputConfig | null => {
+    if (!act) return null;
+    if (act.format === 'explanation' && act.demoTabs?.length) {
+      const clampedIdx = Math.min(Math.max(0, tabIndex), act.demoTabs.length - 1);
+      const tabCfg = act.demoTabs[clampedIdx]?.inputConfig;
+      if (tabCfg) return tabCfg;
+    }
+    return act.inputConfig ?? null;
+  };
+
   const getActiveCurriculumActivityObj = (): CurriculumActivity | undefined => {
     const s = get();
     if (s.appMode !== 'curriculum') return undefined;
@@ -1495,9 +1545,26 @@ export const useAppStore = create<AppState>((set, get) => {
     );
   };
 
-  const getActiveTickOptions = () => ({
-    allowRecursion: getActiveCurriculumActivityObj()?.palette.allowRecursion !== false,
-  });
+  const getEffectiveInputConfig = (
+    act: CurriculumActivity | undefined = getActiveCurriculumActivityObj()
+  ): SceneInputConfig | null => {
+    const s = get();
+    if (s.appMode !== 'curriculum' || !act) return null;
+    if (s.activeVariationInputConfig) return s.activeVariationInputConfig;
+    return resolveActivityInitialInputConfig(act, s.activeDemoTabIndex);
+  };
+
+  const getActiveTickOptions = (): InterpreterTickOptions => {
+    const s = get();
+    const act = getActiveCurriculumActivityObj();
+    const effectiveInputConfig = getEffectiveInputConfig(act);
+    const effectiveSceneInput =
+      s.sceneInput !== undefined ? s.sceneInput : resolveDefaultSceneInput(effectiveInputConfig);
+    return {
+      allowRecursion: act?.palette.allowRecursion !== false,
+      ...(effectiveSceneInput !== undefined ? { sceneInput: effectiveSceneInput } : {}),
+    };
+  };
 
   const isExplanationActivity = (): boolean => {
     const act = getActiveCurriculumActivityObj();
@@ -1749,7 +1816,7 @@ export const useAppStore = create<AppState>((set, get) => {
       beatState: resetBeatState(state.beatState),
       depotState: targetDepot,
       switchyardState: targetSwitchyard,
-      isLoopPlayback: Boolean(activity.defaultLoopPlayback),
+      isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
       workspace: freshWorkspace,
       curriculumWorkspaces: nextCurriculumWorkspaces,
       sandboxSnapshot: nextSandboxSnapshot,
@@ -1765,6 +1832,8 @@ export const useAppStore = create<AppState>((set, get) => {
       lastSlotCapRejectedAt: null,
       variantRuns: targetVariantRuns,
       focusedVariantIndex: 0,
+      activeVariationInputConfig: null,
+      sceneInput: resolveDefaultSceneInput(resolveActivityInitialInputConfig(activity, 0)),
       pendingVersionMismatch: null,
       statusAnnouncement:
         announcement ||
@@ -1804,6 +1873,11 @@ export const useAppStore = create<AppState>((set, get) => {
     lastSlotCapRejectedAt: null,
     variantRuns: bootMode === 'curriculum' ? buildVariantRunsForActivity(bootActivity, false) : [],
     focusedVariantIndex: 0,
+    activeVariationInputConfig: null,
+    sceneInput:
+      bootMode === 'curriculum'
+        ? resolveDefaultSceneInput(resolveActivityInitialInputConfig(bootActivity, 0))
+        : undefined,
 
     activeSimId: bootSimId,
     currentLevel: 1,
@@ -2127,7 +2201,7 @@ export const useAppStore = create<AppState>((set, get) => {
           beatState: resetBeatState(state.beatState),
           depotState: targetDepot,
       switchyardState: targetSwitchyard,
-          isLoopPlayback: Boolean(activity.defaultLoopPlayback),
+          isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...nextCurriculumWorkspaces,
@@ -2148,6 +2222,8 @@ export const useAppStore = create<AppState>((set, get) => {
           lastSlotCapRejectedAt: null,
           variantRuns: targetVariantRuns,
           focusedVariantIndex: 0,
+          activeVariationInputConfig: null,
+          sceneInput: resolveDefaultSceneInput(resolveActivityInitialInputConfig(activity, 0)),
         });
       } else {
         const fallbackPreset =
@@ -2172,6 +2248,8 @@ export const useAppStore = create<AppState>((set, get) => {
           pendingVersionMismatch: null,
           variantRuns: [],
           focusedVariantIndex: 0,
+          activeVariationInputConfig: null,
+          sceneInput: undefined,
           grid: createGridFromPreset(fallbackPreset, prevFitToView),
           turtleState: createInitialTurtleState(),
           beatState: resetBeatState(state.beatState),
@@ -2403,6 +2481,10 @@ export const useAppStore = create<AppState>((set, get) => {
         selectedBlockId: null,
         activeScope: 'MAIN',
         runtime: null,
+        activeVariationInputConfig: null,
+        sceneInput: resolveDefaultSceneInput(
+          resolveActivityInitialInputConfig(activity, state.activeDemoTabIndex)
+        ),
         statusAnnouncement: hasChangedFromStarter
           ? `Reset Activity ${activity.id} to starter blocks. Press Undo to restore your previous blocks.`
           : `Activity ${activity.id} reset to starter.`,
@@ -2419,6 +2501,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setAppMode: (mode) => {
+      ensureSimEnvironmentsRegistered();
       const state = get();
       if (mode === state.appMode) return;
 
@@ -2504,7 +2587,7 @@ export const useAppStore = create<AppState>((set, get) => {
           beatState: resetBeatState(state.beatState),
           depotState: targetDepot,
       switchyardState: targetSwitchyard,
-          isLoopPlayback: Boolean(activity.defaultLoopPlayback),
+          isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
           workspace: targetWs,
           curriculumWorkspaces: {
             ...state.curriculumWorkspaces,
@@ -2523,6 +2606,8 @@ export const useAppStore = create<AppState>((set, get) => {
           lastSlotCapRejectedAt: null,
           variantRuns: targetVariantRuns,
           focusedVariantIndex: 0,
+          activeVariationInputConfig: null,
+          sceneInput: resolveDefaultSceneInput(resolveActivityInitialInputConfig(activity, savedTabIdx)),
           statusAnnouncement: `Learn mode: Activity ${activity.id} ${activity.title}. Map is read-only.`,
         });
 
@@ -2599,6 +2684,8 @@ export const useAppStore = create<AppState>((set, get) => {
           lastSlotCapRejectedAt: null,
           variantRuns: [],
           focusedVariantIndex: 0,
+          activeVariationInputConfig: null,
+          sceneInput: undefined,
           statusAnnouncement: 'Sandbox mode: map and blocks are editable.',
         });
 
@@ -2608,6 +2695,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setCurriculumActivity: (activityId, version) => {
+      ensureSimEnvironmentsRegistered();
       const activity =
         version !== undefined
           ? getActivityAtVersion(activityId, version)
@@ -2704,7 +2792,7 @@ export const useAppStore = create<AppState>((set, get) => {
         beatState: resetBeatState(state.beatState),
         depotState: targetDepot,
       switchyardState: targetSwitchyard,
-        isLoopPlayback: Boolean(activity.defaultLoopPlayback),
+        isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
         workspace: targetWs,
         curriculumWorkspaces: nextCurriculumWorkspaces,
         sandboxSnapshot: nextSandboxSnapshot,
@@ -2720,6 +2808,8 @@ export const useAppStore = create<AppState>((set, get) => {
         lastSlotCapRejectedAt: null,
         variantRuns: targetVariantRuns,
         focusedVariantIndex: 0,
+        activeVariationInputConfig: null,
+        sceneInput: resolveDefaultSceneInput(resolveActivityInitialInputConfig(activity, savedTabIdx)),
         statusAnnouncement: `Activity ${activity.id}: ${activity.title}`,
       });
 
@@ -2739,6 +2829,34 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(target.switchyardState ? { switchyardState: target.switchyardState } : {}),
         ...(target.runtime !== undefined ? { runtime: target.runtime } : {}),
       });
+    },
+
+    setSceneInput: (value) => {
+      const prevSpeed = get().speed;
+      const prevWorkspace = get().workspace;
+      const effectiveCfg = getEffectiveInputConfig();
+      const normalizedValue =
+        effectiveCfg?.mode === 'color' ? normalizeColorLiteralParam(value) : value;
+      get().pause();
+      get().reset();
+      set({
+        sceneInput: normalizedValue,
+        runtime: null,
+        statusAnnouncement: `Scene input set to ${normalizedValue}`,
+      });
+      const hasRunnableBlocks = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
+        (sc) => (prevWorkspace[sc]?.length ?? 0) > 0
+      );
+      if (!hasRunnableBlocks) return;
+      const hasControlError = (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
+        (sc) => prevWorkspace[sc]?.length > 0 && validateLoopStructure(prevWorkspace[sc]).hasError
+      );
+      if (hasControlError) return;
+      if (prevSpeed === 'instant' || (prevSpeed as any) === 0) {
+        get().runInstantIfActive({ allowVictoryModal: true });
+      } else {
+        get().play();
+      }
     },
 
     selectExplanationDemoTab: (tabIndex) => {
@@ -2804,6 +2922,8 @@ export const useAppStore = create<AppState>((set, get) => {
         ghostPreview: null,
         slotCapRejectionCount: 0,
         lastSlotCapRejectedAt: null,
+        activeVariationInputConfig: null,
+        sceneInput: resolveDefaultSceneInput(tab.inputConfig ?? activity.inputConfig ?? null),
         statusAnnouncement: `Example ${clampedIndex + 1} of ${activity.demoTabs.length}${
           tab.title ? `: ${tab.title}` : ''
         }. Press Play or Step to watch.`,
@@ -3007,6 +3127,8 @@ export const useAppStore = create<AppState>((set, get) => {
         lastSlotCapRejectedAt: null,
         variantRuns: [],
         focusedVariantIndex: 0,
+        activeVariationInputConfig: null,
+        sceneInput: undefined,
         statusAnnouncement: `Opened editable copy of Activity ${state.activeActivityId} in Sandbox mode.`,
       });
 
@@ -3014,18 +3136,29 @@ export const useAppStore = create<AppState>((set, get) => {
       get().runInstantIfActive();
     },
 
-    loadVariationWorkspace: (variationWorkspace, title) => {
+    loadVariationWorkspace: (variationWorkspace, title, inputConfigOverride) => {
       get().pause();
       recordMutation(title ? `Load variation: ${title}` : 'Load variation');
       get().reset();
 
       const newWorkspace = cloneWorkspaceWithFreshIds(variationWorkspace);
+      const act = getActiveCurriculumActivityObj();
+      const nextInputCfg =
+        inputConfigOverride !== undefined ? inputConfigOverride : act?.inputConfig ?? null;
+      const nextSceneInput =
+        nextInputCfg !== null
+          ? resolveDefaultSceneInput(nextInputCfg)
+          : undefined;
       const announcement = title
         ? `Loaded variation: ${title}. Press Undo to restore previous blocks.`
         : 'Loaded variation into workspace. Press Undo to restore previous blocks.';
 
       set((state) => ({
         workspace: newWorkspace,
+        activeVariationInputConfig: inputConfigOverride ?? null,
+        ...(nextInputCfg !== null || state.activeVariationInputConfig !== null
+          ? { sceneInput: nextSceneInput }
+          : {}),
         ...(state.appMode === 'curriculum'
           ? {
               curriculumWorkspaces: {
@@ -3050,6 +3183,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     setSimEnvironment: (simId) => {
+      ensureSimEnvironmentsRegistered();
       if (get().appMode === 'curriculum') {
         get().setAppMode('sandbox');
       }
@@ -3078,6 +3212,8 @@ export const useAppStore = create<AppState>((set, get) => {
         workspace: destinationWorkspace,
         selectedBlockId: null,
         activeScope: 'MAIN',
+        activeVariationInputConfig: null,
+        sceneInput: undefined,
         ...(simId === 'beat' && (curSpeed === 'instant' || (curSpeed as any) === 0)
           ? { speed: 400 as SimulationSpeed }
           : {}),
@@ -3695,19 +3831,64 @@ export const useAppStore = create<AppState>((set, get) => {
       const id = `${newType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const simEnv = getSimEnvironment(get().activeSimId);
       const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === newType);
-      const resolvedParams =
-        params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
+      const activeActivityForDefaults = getActiveCurriculumActivityObj();
+      const effectiveInputForDefaults = getEffectiveInputConfig(activeActivityForDefaults);
+      const isConditionBlock = newType === 'IF' || newType === 'ELSE_IF' || newType === 'WHILE';
+      const resolvedParams = params
+        ? params
+        : isConditionBlock
+        ? {
+            condition: resolveDefaultConditionForContext(
+              get().activeSimId,
+              activeActivityForDefaults?.palette,
+              effectiveInputForDefaults
+            ),
+          }
+        : paletteItem?.params
+        ? { ...paletteItem.params }
+        : undefined;
       const newBlock: CodeBlock = { id, type: newType, params: resolvedParams };
 
       const nextBlocks = [...currentBlocks];
-      if (newType === 'LOOP_START') {
+      const closerType = getControlPairCloserType(newType);
+      if (closerType) {
         const candidateSingle = [...currentBlocks];
         candidateSingle.splice(targetIdx, 1, newBlock);
-        const loopCheck = validateLoopStructure(candidateSingle);
-        if (loopCheck.unclosedLoopStartIds.includes(newBlock.id)) {
+        const structCheck = validateLoopStructure(candidateSingle);
+        const isUnclosed =
+          structCheck.unclosedLoopStartIds.includes(newBlock.id) ||
+          structCheck.unclosedIfIds.includes(newBlock.id) ||
+          structCheck.unclosedWhileIds.includes(newBlock.id);
+        if (isUnclosed) {
+          const stateBeforeReplace = get();
+          if (stateBeforeReplace.appMode === 'curriculum' && activeActivityForDefaults) {
+            const budget = computeSlotBudget(
+              stateBeforeReplace.workspace,
+              scope,
+              stateBeforeReplace.appMode,
+              activeActivityForDefaults.slotCap
+            );
+            if (budget.isCapped && budget.remainingForScope !== null && budget.remainingForScope < 1) {
+              const allowedScopes: ScopeType[] =
+                activeActivityForDefaults.palette.allowedScopes &&
+                activeActivityForDefaults.palette.allowedScopes.length > 0
+                  ? activeActivityForDefaults.palette.allowedScopes
+                  : ['MAIN'];
+              const nextCount = stateBeforeReplace.slotCapRejectionCount + 1;
+              const baseMsg = formatSlotCapFullAnnouncement(budget, scope, allowedScopes, 2);
+              const nextAnnouncement =
+                stateBeforeReplace.statusAnnouncement === baseMsg ? `${baseMsg} ` : baseMsg;
+              set({
+                slotCapRejectionCount: nextCount,
+                lastSlotCapRejectedAt: Date.now(),
+                statusAnnouncement: nextAnnouncement,
+              });
+              return false;
+            }
+          }
           const endBlock: CodeBlock = {
-            id: `LOOP_END_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            type: 'LOOP_END',
+            id: `${closerType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            type: closerType,
           };
           nextBlocks.splice(targetIdx, 1, newBlock, endBlock);
         } else {
@@ -3907,6 +4088,8 @@ export const useAppStore = create<AppState>((set, get) => {
       if (speed !== 'instant' && (speed as any) !== 0) return;
       if (appMode === 'curriculum' && isExplanationActivity()) return;
 
+      const tickOpts = getActiveTickOptions();
+
       if (variantRuns.length > 1 && (activeSimId === 'grid' || activeSimId === 'depot' || activeSimId === 'switchyard')) {
         const freshRuns = resetVariantRunsList(variantRuns);
         const evaluatedRuns: VariantRunSnapshot[] = freshRuns.map((v) => {
@@ -3920,7 +4103,8 @@ export const useAppStore = create<AppState>((set, get) => {
             turtleState,
             beatState,
             vDepot,
-            vSwitchyard
+            vSwitchyard,
+            tickOpts
           );
           const isPausedOnPlaceholder = res.status === 'PAUSED';
           const vRuntime: InterpreterRuntimeState = {
@@ -3943,8 +4127,12 @@ export const useAppStore = create<AppState>((set, get) => {
         const allSucceeded = evaluatedRuns.every((v) => v.status === 'SUCCESS');
         const safeIdx = Math.min(Math.max(0, focusedVariantIndex), evaluatedRuns.length - 1);
         const firstFailIdx = evaluatedRuns.findIndex((v) => v.status !== 'SUCCESS');
+        const focusedStatus = evaluatedRuns[safeIdx]?.status;
         const nextFocusIdx =
-          !allSucceeded && evaluatedRuns[safeIdx]?.status === 'SUCCESS' && firstFailIdx >= 0
+          !allSucceeded &&
+          focusedStatus !== 'COLLISION' &&
+          focusedStatus !== 'STEP_LIMIT' &&
+          firstFailIdx >= 0
             ? firstFailIdx
             : safeIdx;
         const focused = evaluatedRuns[nextFocusIdx] ?? evaluatedRuns[0];
@@ -3990,7 +4178,8 @@ export const useAppStore = create<AppState>((set, get) => {
         turtleState,
         beatState,
         depotState,
-        switchyardState
+        switchyardState,
+        tickOpts
       );
       const isPausedOnPlaceholder = result.status === 'PAUSED';
       const nextRuntime: InterpreterRuntimeState = {
@@ -4062,38 +4251,60 @@ export const useAppStore = create<AppState>((set, get) => {
 
     addBlock: (scope, type, repeatCount, insertAtIndex, params) => {
       const stateBefore = get();
-      if (stateBefore.appMode === 'curriculum') {
-        const activity = resolveActiveCurriculumActivity(
+      const activeActForPolicy =
+        stateBefore.appMode === 'curriculum'
+          ? resolveActiveCurriculumActivity(
+              stateBefore.appMode,
+              stateBefore.activeActivityId,
+              stateBefore.activeActivityVersion
+            )
+          : undefined;
+      const allowActionParamsBefore =
+        stateBefore.appMode !== 'curriculum' ||
+        activeActForPolicy?.palette?.allowActionParams !== false;
+      const normalizedType =
+        stateBefore.appMode === 'curriculum' &&
+        !allowActionParamsBefore &&
+        stateBefore.activeSimId === 'turtle'
+          ? type === 'MOVE_FWD'
+            ? 'FORWARD'
+            : type === 'MOVE_BACK'
+            ? 'BACKWARD'
+            : type
+          : type;
+
+      const pairCloserType = getControlPairCloserType(normalizedType);
+      const requiredSlots = getRequiredSlotCostForBlockType(normalizedType);
+
+      if (stateBefore.appMode === 'curriculum' && activeActForPolicy) {
+        const allowedScopes: ScopeType[] =
+          activeActForPolicy.palette.allowedScopes && activeActForPolicy.palette.allowedScopes.length > 0
+            ? activeActForPolicy.palette.allowedScopes
+            : ['MAIN'];
+        if (!allowedScopes.includes(scope)) {
+          return;
+        }
+        const budget = computeSlotBudget(
+          stateBefore.workspace,
+          scope,
           stateBefore.appMode,
-          stateBefore.activeActivityId,
-          stateBefore.activeActivityVersion
+          activeActForPolicy.slotCap
         );
-        if (activity) {
-          const allowedScopes: ScopeType[] =
-            activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
-              ? activity.palette.allowedScopes
-              : ['MAIN'];
-          if (!allowedScopes.includes(scope)) {
-            return;
-          }
-          const budget = computeSlotBudget(
-            stateBefore.workspace,
-            scope,
-            stateBefore.appMode,
-            activity.slotCap
-          );
-          if (budget.isCapped && budget.isFull) {
-            const nextCount = stateBefore.slotCapRejectionCount + 1;
-            const baseMsg = formatSlotCapFullAnnouncement(budget, scope, allowedScopes);
-            const nextAnnouncement =
-              stateBefore.statusAnnouncement === baseMsg ? `${baseMsg} ` : baseMsg;
-            set({
-              slotCapRejectionCount: nextCount,
-              lastSlotCapRejectedAt: Date.now(),
-              statusAnnouncement: nextAnnouncement,
-            });
-            return;
-          }
+        if (
+          budget.isCapped &&
+          (budget.isFull ||
+            (budget.remainingForScope !== null && budget.remainingForScope < requiredSlots))
+        ) {
+          const nextCount = stateBefore.slotCapRejectionCount + 1;
+          const baseMsg = formatSlotCapFullAnnouncement(budget, scope, allowedScopes, requiredSlots);
+          const nextAnnouncement =
+            stateBefore.statusAnnouncement === baseMsg ? `${baseMsg} ` : baseMsg;
+          set({
+            slotCapRejectionCount: nextCount,
+            lastSlotCapRejectedAt: Date.now(),
+            statusAnnouncement: nextAnnouncement,
+          });
+          return;
         }
       }
 
@@ -4109,35 +4320,47 @@ export const useAppStore = create<AppState>((set, get) => {
         currentState.appMode !== 'curriculum' ||
         activeActivity?.palette?.allowActionParams !== false;
 
-      const normalizedType =
-        currentState.appMode === 'curriculum' &&
-        !allowActionParams &&
-        currentState.activeSimId === 'turtle'
-          ? type === 'MOVE_FWD'
-            ? 'FORWARD'
-            : type === 'MOVE_BACK'
-            ? 'BACKWARD'
-            : type
-          : type;
-
       const id = `${normalizedType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const simEnv = getSimEnvironment(currentState.activeSimId);
       const paletteItem = simEnv?.paletteItems.find((p) => p.actionType === normalizedType);
-      const isVariableOrPlaceholderBlock =
+      const isConditionBlock =
+        normalizedType === 'IF' || normalizedType === 'ELSE_IF' || normalizedType === 'WHILE';
+      const isVariableOrPlaceholderOrCondBlock =
         normalizedType === 'VAR_ASSIGN' ||
         normalizedType === 'VAR_OP' ||
-        normalizedType === 'PLACEHOLDER';
+        normalizedType === 'PLACEHOLDER' ||
+        isConditionBlock;
+      const effectiveInputConfig = getEffectiveInputConfig(activeActivity);
+      const defaultParams = isConditionBlock
+        ? {
+            condition: resolveDefaultConditionForContext(
+              currentState.activeSimId,
+              activeActivity?.palette,
+              effectiveInputConfig
+            ),
+          }
+        : paletteItem?.params
+        ? { ...paletteItem.params }
+        : undefined;
       const resolvedParams =
-        !allowActionParams && !isVariableOrPlaceholderBlock
+        !allowActionParams && !isVariableOrPlaceholderOrCondBlock
           ? undefined
-          : params ?? (paletteItem?.params ? { ...paletteItem.params } : undefined);
+          : params ?? defaultParams;
       const newBlock: CodeBlock = { id, type: normalizedType, repeatCount, params: resolvedParams };
+      const closerBlock: CodeBlock | null = pairCloserType
+        ? {
+            id: `${pairCloserType}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            type: pairCloserType,
+          }
+        : null;
+
       set((state) => {
         const currentBlocks = [...state.workspace[scope]];
+        const blocksToInsert = closerBlock ? [newBlock, closerBlock] : [newBlock];
         if (typeof insertAtIndex === 'number' && insertAtIndex >= 0 && insertAtIndex <= currentBlocks.length) {
-          currentBlocks.splice(insertAtIndex, 0, newBlock);
+          currentBlocks.splice(insertAtIndex, 0, ...blocksToInsert);
         } else {
-          currentBlocks.push(newBlock);
+          currentBlocks.push(...blocksToInsert);
         }
         const nextWorkspace: WorkspaceState = {
           ...state.workspace,
@@ -5153,7 +5376,12 @@ export const useAppStore = create<AppState>((set, get) => {
 
         const nextVariants: VariantRunSnapshot[] = currentVariants.map((v) => {
           const vState = activeSimId === 'grid' ? v.gridState : activeSimId === 'depot' ? v.depotState : v.switchyardState;
-          if (!vState || v.status === 'SUCCESS' || v.status === 'COLLISION') {
+          if (
+            !vState ||
+            v.status === 'SUCCESS' ||
+            v.status === 'COLLISION' ||
+            v.status === 'STEP_LIMIT'
+          ) {
             return v;
           }
           const vRuntime = v.runtime || createInitialInterpreterState();
@@ -5164,6 +5392,8 @@ export const useAppStore = create<AppState>((set, get) => {
           const vStatus: SimulationStatus =
             nextState.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS'
               ? 'SUCCESS'
+              : nextState.status === 'STEP_LIMIT' || res.nextRuntime.status === 'STEP_LIMIT'
+              ? 'STEP_LIMIT'
               : nextState.status === 'COLLISION' || res.nextRuntime.status === 'COLLISION'
               ? 'COLLISION'
               : paused
@@ -5171,7 +5401,11 @@ export const useAppStore = create<AppState>((set, get) => {
               : res.done
               ? nextState.status
               : 'RUNNING';
-          const vDone = res.done || vStatus === 'SUCCESS' || vStatus === 'COLLISION';
+          const vDone =
+            res.done ||
+            vStatus === 'SUCCESS' ||
+            vStatus === 'COLLISION' ||
+            vStatus === 'STEP_LIMIT';
           if (!vDone) allDone = false;
           return {
             ...v,
@@ -5188,11 +5422,13 @@ export const useAppStore = create<AppState>((set, get) => {
         const allSucceeded = nextVariants.every((v) => v.status === 'SUCCESS');
         const safeIdx = Math.min(Math.max(0, focusedVariantIndex), nextVariants.length - 1);
         const firstFailIdx = nextVariants.findIndex((v) => v.status !== 'SUCCESS');
+        const safeStatus = nextVariants[safeIdx]?.status;
         const nextFocusIdx =
           allDone &&
           !allSucceeded &&
           !anyPaused &&
-          nextVariants[safeIdx]?.status === 'SUCCESS' &&
+          safeStatus !== 'COLLISION' &&
+          safeStatus !== 'STEP_LIMIT' &&
           firstFailIdx >= 0
             ? firstFailIdx
             : safeIdx;
@@ -5313,7 +5549,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextGridState.status !== 'COLLISION'
+          nextGridState.status !== 'COLLISION' &&
+          nextGridState.status !== 'STEP_LIMIT'
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5384,7 +5621,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextBeat.status !== 'COLLISION'
+          nextBeat.status !== 'COLLISION' &&
+          nextBeat.status !== 'STEP_LIMIT'
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5449,7 +5687,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextDepotState.status !== 'COLLISION'
+          nextDepotState.status !== 'COLLISION' &&
+          nextDepotState.status !== 'STEP_LIMIT'
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5514,7 +5753,8 @@ export const useAppStore = create<AppState>((set, get) => {
           wasPlaying &&
           res.done &&
           !isPausedOnPlaceholder &&
-          nextSwitchyardState.status !== 'COLLISION'
+          nextSwitchyardState.status !== 'COLLISION' &&
+          nextSwitchyardState.status !== 'STEP_LIMIT'
         ) {
           recordCreativePlayCompletionIfApplicable(true);
         }
@@ -5634,7 +5874,12 @@ export const useAppStore = create<AppState>((set, get) => {
       const hasEndedOrFail =
         currentSimState.status === 'SUCCESS' ||
         currentSimState.status === 'COLLISION' ||
-        (runtime !== null && runtime.callStack.length === 0);
+        currentSimState.status === 'STEP_LIMIT' ||
+        (runtime !== null && runtime.callStack.length === 0) ||
+        (get().variantRuns.length > 1 &&
+          get().variantRuns.every(
+            (v) => v.status === 'SUCCESS' || v.status === 'COLLISION' || v.status === 'STEP_LIMIT'
+          ));
 
       if (hasEndedOrFail) {
         get().reset();

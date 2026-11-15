@@ -199,7 +199,7 @@ export interface RobotState {
   carriedCount?: number;
 }
 
-export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION';
+export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION' | 'STEP_LIMIT';
 
 export type SimulationSpeed = 400 | 100 | 25 | 'instant';
 
@@ -292,5 +292,6 @@ export interface InterpreterRuntimeState {
   stepCount: number;
   activeRepeatProgress?: { blockId: string; current: number; total: number } | null;
   variables: Record<VariableName, number>;
+  sceneInput?: number | string;
 }
 

@@ -40,11 +40,12 @@ export const LEGACY_MODULE_ID_ALIASES: Record<string, string> = {
   'module-2': 'param',
   'module-3': 'loop',
   'module-4': 'func',
+  'module-5': 'branch',
 };
 
 /**
  * One-way backward-compatibility aliases from V1 numeric/capstone activity IDs
- * (`1.0`..`4C`) to V2 Phase 1 slug activity IDs (`seq.0`..`func.C`).
+ * (`1.0`..`5C`) to V2 slug activity IDs (`seq.0`..`branch.C`).
  */
 export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   // Module 1 -> seq
@@ -107,6 +108,20 @@ export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   '4A': 'func.A',
   '4B': 'func.B',
   '4C': 'func.C',
+  // Module 5 -> branch
+  '5.0': 'branch.0',
+  '5.1': 'branch.1',
+  '5.2': 'branch.2',
+  '5.3': 'branch.3',
+  '5.4': 'branch.4',
+  '5.5': 'branch.5',
+  '5.6': 'branch.6',
+  '5.7': 'branch.7',
+  '5.8': 'branch.8',
+  '5.9': 'branch.9',
+  '5.10': 'branch.10',
+  '5A': 'branch.A',
+  '5C': 'branch.C',
 };
 
 export function resolveModuleIdAlias(moduleId: string): string {
@@ -201,16 +216,29 @@ interface ParsedCurriculumActivityId {
   suffix: string;
 }
 
+const PEDAGOGICAL_LESSON_NUM_OVERRIDES: Record<
+  string,
+  { slug: keyof typeof SLUG_MODULE_ORDER; lessonNum: number }
+> = {
+  'param.C': { slug: 'param', lessonNum: 6.5 },
+  'branch.9': { slug: 'branch', lessonNum: 7.05 },
+  'branch.7a': { slug: 'branch', lessonNum: 7.1 },
+  'branch.7b': { slug: 'branch', lessonNum: 7.2 },
+  'branch.8a': { slug: 'branch', lessonNum: 7.9 },
+  'branch.10a': { slug: 'branch', lessonNum: 9.9 },
+};
+
 function parseCurriculumActivityId(
   id: string,
   moduleId?: string
 ): ParsedCurriculumActivityId {
-  if (id === 'param.C') {
+  const override = PEDAGOGICAL_LESSON_NUM_OVERRIDES[id];
+  if (override) {
     return {
       familyRank: 0,
-      moduleNum: SLUG_MODULE_ORDER.param,
+      moduleNum: SLUG_MODULE_ORDER[override.slug],
       kindRank: 0,
-      lessonNum: 6.5,
+      lessonNum: override.lessonNum,
       suffix: '',
     };
   }
@@ -431,6 +459,9 @@ export function getActivityAtVersion(
     depotVariants: historical.depotVariants,
     switchyard: historical.switchyard ?? latest.switchyard,
     switchyardVariants: historical.switchyardVariants,
+    turtle: historical.turtle ?? latest.turtle,
+    beatRules: historical.beatRules ?? latest.beatRules,
+    inputConfig: historical.inputConfig ?? latest.inputConfig,
     defaultLoopPlayback: historical.defaultLoopPlayback,
     starterWorkspace: historical.starterWorkspace,
     palette: historical.palette,

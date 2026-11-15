@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStoreSelector } from '../store/useAppStore';
+import { ConditionBadge } from './ConditionBadge';
 import {
   AdultMathChallenge,
   generateAdultMathChallenge,
@@ -82,6 +83,10 @@ export interface SolutionModalProps {
   defaultDevProofsExpanded?: boolean;
   /** Optional activity override for inspecting/testing synthetic puzzle fixtures */
   activityOverride?: CurriculumActivity;
+  /** Optional initial expanded state for Tier 2 Full Solution disclosure (defaults to false) */
+  defaultTier2Revealed?: boolean;
+  /** Optional initial adult-gate unlock state for testing/preview (defaults to false) */
+  defaultAdultUnlocked?: boolean;
 }
 
 export const SolutionModal: React.FC<SolutionModalProps> = (props) => {
@@ -104,6 +109,8 @@ const SCOPE_DISPLAY_CONFIG: ReadonlyArray<{
 const SolutionModalContent: React.FC<SolutionModalProps> = ({
   defaultDevProofsExpanded = true,
   activityOverride,
+  defaultTier2Revealed = false,
+  defaultAdultUnlocked = false,
 }) => {
   const {
     appMode,
@@ -127,10 +134,10 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
     loadPartialScaffold: s.loadPartialScaffold,
   }));
 
-  const [isTier2Revealed, setIsTier2Revealed] = useState(false);
+  const [isTier2Revealed, setIsTier2Revealed] = useState(defaultTier2Revealed);
   const [isTeacherTipOpen, setIsTeacherTipOpen] = useState(false);
   const [isDevProofsOpen, setIsDevProofsOpen] = useState(defaultDevProofsExpanded);
-  const [isAdultUnlocked, setIsAdultUnlocked] = useState(false);
+  const [isAdultUnlocked, setIsAdultUnlocked] = useState(defaultAdultUnlocked);
   const [mathChallenge, setMathChallenge] = useState<AdultMathChallenge>(() =>
     generateAdultMathChallenge()
   );
@@ -464,7 +471,15 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
         break;
       case 'SCRAP_ITEM':
         bg = 'bg-rose-700 border-rose-400 text-white';
-        icon = <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />;
+        icon = (
+          <span
+            data-testid="solution-scrap-item-icon"
+            className="inline-flex flex-col items-center justify-center leading-none"
+          >
+            <span className="text-[13px] leading-none">♻️</span>
+            <span className="w-4 h-0.5 mt-0.5 rounded-full bg-rose-200/90" />
+          </span>
+        );
         break;
       case 'DEPOT_MOVE_TO':
       case 'MOVE_TO_S1':
@@ -504,6 +519,10 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
         className={`relative flex items-center justify-center gap-1 min-w-[46px] h-11 px-2 rounded-xl border-2 shadow-sm font-black text-sm select-none ${bg}`}
       >
         {icon}
+        {(block.type === 'IF' || block.type === 'ELSE_IF' || block.type === 'WHILE') &&
+          block.params?.condition && (
+            <ConditionBadge condition={block.params.condition} compact />
+          )}
         {label && <span className="font-black text-base">{label}</span>}
 
         {block.repeatCount !== undefined &&

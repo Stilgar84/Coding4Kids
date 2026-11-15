@@ -15,7 +15,9 @@ export const ENV_VERSION_BEAT = 1;
 export const ENV_VERSION_DEPOT = 1;
 export const ENV_VERSION_DEPOT_STATE = 2;
 export const ENV_VERSION_DEPOT_QUEUE = 3;
+export const ENV_VERSION_DEPOT_V4 = 4;
 export const ENV_VERSION_SWITCHYARD = 1;
+export const ENV_VERSION_SWITCHYARD_V2 = 2;
 export const ENV_VERSION_PROFILE = 1;
 
 // Environment IDs
@@ -155,7 +157,28 @@ export function indexToVarName(idx: number): VariableName {
 }
 
 export const SENSOR_REF_FLAG = 0x80;
-export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading', '$tileDial'] as const;
+export const COLOR_LITERAL_FLAG = 0x40;
+export const COLOR_LITERAL_PALETTE = [
+  'black',   // 0 (0x40)
+  'red',     // 1 (0x41)
+  'blue',    // 2 (0x42)
+  'green',   // 3 (0x43)
+  'amber',   // 4 (0x44) — 'yellow' aliases here
+  'purple',  // 5 (0x45)
+  'pink',    // 6 (0x46)
+  'cyan',    // 7 (0x47)
+  'orange',  // 8 (0x48)
+  'white',   // 9 (0x49)
+] as const;
+
+export const SERIALIZED_SENSOR_IDS = ['$x', '$y', '$heading', '$tileDial', '$input'] as const;
+export const SERIALIZED_SENSOR_BYTE_MAP: Record<string, number> = {
+  $x: 0x80,
+  $y: 0x81,
+  $heading: 0x82,
+  $tileDial: 0x83,
+  $input: 0x84,
+};
 
 export function sensorNameToByte(name: string): number {
   const idx = SERIALIZED_SENSOR_IDS.indexOf(name as (typeof SERIALIZED_SENSOR_IDS)[number]);
@@ -170,9 +193,30 @@ export function isSensorRefString(val: unknown): val is string {
   return typeof val === 'string' && val.startsWith('$') && SERIALIZED_SENSOR_IDS.includes(val as any);
 }
 
+/**
+ * Resolves `'color:red'`, `'red'`, `'yellow'` (-> index 4 `'amber'`), etc. to a palette index 0..9,
+ * or `-1` if not a recognized color literal.
+ */
+export function colorLiteralNameToIdx(val: unknown): number {
+  if (typeof val !== 'string') return -1;
+  const trimmed = val.trim().toLowerCase();
+  const normalized = (trimmed.startsWith('color:') ? trimmed.slice(6) : trimmed) === 'yellow'
+    ? 'amber'
+    : (trimmed.startsWith('color:') ? trimmed.slice(6) : trimmed);
+  return COLOR_LITERAL_PALETTE.indexOf(normalized as (typeof COLOR_LITERAL_PALETTE)[number]);
+}
+
+export function isColorLiteralString(val: unknown): boolean {
+  return colorLiteralNameToIdx(val) >= 0;
+}
+
 export function encodeVarOrSensorIndex(name: string): number {
   if (isSensorRefString(name)) {
     return SENSOR_REF_FLAG | sensorNameToByte(name);
+  }
+  const colorIdx = colorLiteralNameToIdx(name);
+  if (colorIdx >= 0) {
+    return COLOR_LITERAL_FLAG | colorIdx;
   }
   return varNameToIndex(name);
 }
@@ -180,6 +224,10 @@ export function encodeVarOrSensorIndex(name: string): number {
 export function decodeVarOrSensorIndex(byte: number): string {
   if ((byte & SENSOR_REF_FLAG) !== 0) {
     return byteToSensorName(byte & 0x7f);
+  }
+  if ((byte & COLOR_LITERAL_FLAG) !== 0) {
+    const idx = byte & 0x3f;
+    return `color:${COLOR_LITERAL_PALETTE[idx] ?? 'black'}`;
   }
   return indexToVarName(byte);
 }

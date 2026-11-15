@@ -26,17 +26,11 @@ import {
   MASK_HAS_VAR_PARAM,
   MASK_HAS_REP,
   MASK_ELSE_HAS_COND,
-  OPERAND_TYPE_VAR,
-  OPERAND_TYPE_POS_INT,
-  OPERAND_TYPE_NEG_INT,
-  OPERAND_TYPE_DOUBLE,
   opToByte,
   byteToOp,
   varNameToIndex,
   indexToVarName,
   isSensorRefString,
-  encodeVarOrSensorIndex,
-  decodeVarOrSensorIndex,
   OP_GRID_MOVE_FWD,
   OP_GRID_MOVE_BACK,
   OP_GRID_TURN_LEFT,
@@ -60,7 +54,13 @@ import {
   OP_TURTLE_CLEAR_CANVAS,
   OP_TURTLE_TELEPORT,
 } from './types';
-import { writeConditionExpr, readConditionExpr } from './conditionSerializer';
+import {
+  writeConditionExpr,
+  readConditionExpr,
+  getOperandType,
+  writeOperandData,
+  readOperandData,
+} from './conditionSerializer';
 import { writeTurtleParams, readTurtleParams } from './env/turtleSerializer';
 import {
   getBeatOpcodeForBlock,
@@ -84,58 +84,14 @@ import {
 
 let blockIdCounter = 0;
 
+function isVarOrSensorVal(v: unknown): boolean {
+  return typeof v === 'string' && (isVariableName(v) || isSensorRefString(v));
+}
+
 function createUniqueBlockId(type: string): string {
   blockIdCounter = (blockIdCounter + 1) % 100000;
   const rand = Math.random().toString(36).substring(2, 6);
   return `${type}_${Date.now()}_${blockIdCounter}_${rand}`;
-}
-
-function isVarOrSensorVal(val: unknown): boolean {
-  return (
-    isVariableName(val) ||
-    isSensorRefString(val) ||
-    (typeof val === 'string' && /^[a-z]$/.test(val))
-  );
-}
-
-function getOperandType(val: any): number {
-  if (val === undefined || val === null) return OPERAND_TYPE_POS_INT;
-  if (isVarOrSensorVal(val)) {
-    return OPERAND_TYPE_VAR;
-  }
-  const num = typeof val === 'number' ? val : Number(val);
-  if (!Number.isFinite(num)) return OPERAND_TYPE_POS_INT;
-  if (Number.isInteger(num)) {
-    return num >= 0 ? OPERAND_TYPE_POS_INT : OPERAND_TYPE_NEG_INT;
-  }
-  return OPERAND_TYPE_DOUBLE;
-}
-
-function writeOperandData(writer: BinaryWriter, type: number, val: any): void {
-  if (type === OPERAND_TYPE_VAR) {
-    writer.writeUint8(encodeVarOrSensorIndex(String(val)));
-  } else if (type === OPERAND_TYPE_POS_INT) {
-    const num = typeof val === 'number' ? val : Number(val);
-    writer.writeVLE(Math.max(0, Math.round(num)));
-  } else if (type === OPERAND_TYPE_NEG_INT) {
-    const num = typeof val === 'number' ? val : Number(val);
-    writer.writeVLE(Math.abs(Math.round(num)));
-  } else {
-    const num = typeof val === 'number' ? val : Number(val);
-    writer.writeFloat64(num);
-  }
-}
-
-function readOperandData(reader: BinaryReader, type: number): any {
-  if (type === OPERAND_TYPE_VAR) {
-    return decodeVarOrSensorIndex(reader.readUint8());
-  } else if (type === OPERAND_TYPE_POS_INT) {
-    return reader.readVLE();
-  } else if (type === OPERAND_TYPE_NEG_INT) {
-    return -reader.readVLE();
-  } else {
-    return reader.readFloat64();
-  }
 }
 
 /**
@@ -230,7 +186,7 @@ export function writeCodeScopes(
         writer.writeUint8(OP_IF);
         const condition = block.params?.condition;
         if (condition && typeof condition === 'object') {
-          writeConditionExpr(writer, condition as any);
+          writeConditionExpr(writer, condition as any, { envByte });
         } else {
           // Fallback: write pathAhead sensor tag 0x01
           writer.writeUint8(0x01);
@@ -243,7 +199,7 @@ export function writeCodeScopes(
         writer.writeUint8(OP_ELSE | MASK_ELSE_HAS_COND);
         const condition = block.params?.condition;
         if (condition && typeof condition === 'object') {
-          writeConditionExpr(writer, condition as any);
+          writeConditionExpr(writer, condition as any, { envByte });
         } else {
           writer.writeUint8(0x01);
         }
@@ -267,7 +223,7 @@ export function writeCodeScopes(
         writer.writeUint8(OP_WHILE);
         const condition = block.params?.condition;
         if (condition && typeof condition === 'object') {
-          writeConditionExpr(writer, condition as any);
+          writeConditionExpr(writer, condition as any, { envByte });
         } else {
           writer.writeUint8(0x01);
         }
@@ -469,7 +425,11 @@ export function writeCodeScopes(
  * Shared identically by Path A (`SavedProgramEntry` code-only saves), Path B (`ENV_ID_LESSON = 0x04`),
  * and Whole-Profile Backup autosaves (`ENV_ID_PROFILE = 0x06`).
  */
-export function readCodeScopes(reader: BinaryReader, envByte: number): WorkspaceState {
+export function readCodeScopes(
+  reader: BinaryReader,
+  envByte: number,
+  envVersion?: number
+): WorkspaceState {
   const workspace: WorkspaceState = {
     MAIN: [],
     F1: [],
@@ -507,7 +467,7 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
       // These opcodes use raw header bytes with bits 7..5 = 0 (except ELSE_IF: bit5=1).
       // Handle before the generic hasVar/hasRep/paramVarMask decode path.
       if (opcode === OP_IF) {
-        const condition = readConditionExpr(reader);
+        const condition = readConditionExpr(reader, { envByte, envVersion });
         const id = createUniqueBlockId('IF');
         blocks.push({ id, type: 'IF', params: { condition } });
         continue;
@@ -515,7 +475,7 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
       if (opcode === OP_ELSE) {
         if (elseHasCond) {
           // ELSE_IF: blockHeader = 0x25 (OP_ELSE | MASK_ELSE_HAS_COND)
-          const condition = readConditionExpr(reader);
+          const condition = readConditionExpr(reader, { envByte, envVersion });
           const id = createUniqueBlockId('ELSE_IF');
           blocks.push({ id, type: 'ELSE_IF', params: { condition } });
         } else {
@@ -531,7 +491,7 @@ export function readCodeScopes(reader: BinaryReader, envByte: number): Workspace
         continue;
       }
       if (opcode === OP_WHILE) {
-        const condition = readConditionExpr(reader);
+        const condition = readConditionExpr(reader, { envByte, envVersion });
         const id = createUniqueBlockId('WHILE');
         blocks.push({ id, type: 'WHILE', params: { condition } });
         continue;
@@ -758,5 +718,5 @@ export function importCodeOnlyFromBinary(bytes: Uint8Array): WorkspaceState {
   if (envByte === ENV_ID_DEPOT && envVersion >= 2) {
     readDepotState(reader, envVersion);
   }
-  return readCodeScopes(reader, envByte);
+  return readCodeScopes(reader, envByte, envVersion);
 }

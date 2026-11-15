@@ -26,8 +26,11 @@ import {
   computeSlotBudget,
   computeStagedPalettePolicy,
   getAllowedParamDefs,
+  getRequiredSlotCostForBlockType,
   resolveActiveCurriculumActivity,
+  resolveDefaultConditionForContext,
 } from '../utils/curriculumStagePolicy';
+import type { SceneInputConfig } from '../data/curriculum/types';
 
 const SLOT_SHAKE_DURATION_MS = 500;
 const MAX_RENDERED_COUNTER_PIPS = 12;
@@ -419,6 +422,8 @@ export const BlockPalette: React.FC = React.memo(() => {
     appMode,
     activeActivityId,
     activeActivityVersion,
+    activeDemoTabIndex,
+    activeVariationInputConfig,
     slotCapRejectionCount,
     lastSlotCapRejectedAt,
     activeSimId,
@@ -441,6 +446,8 @@ export const BlockPalette: React.FC = React.memo(() => {
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
+    activeVariationInputConfig: s.activeVariationInputConfig,
     slotCapRejectionCount: s.slotCapRejectionCount,
     lastSlotCapRejectedAt: s.lastSlotCapRejectedAt,
     activeSimId: s.activeSimId,
@@ -511,6 +518,22 @@ export const BlockPalette: React.FC = React.memo(() => {
     activeActivityVersion
   );
   const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+  let effectiveInputConfig: SceneInputConfig | undefined =
+    activeVariationInputConfig ?? undefined;
+  if (
+    !effectiveInputConfig &&
+    activeActivity?.format === 'explanation' &&
+    activeActivity.demoTabs?.length
+  ) {
+    const clampedIdx = Math.min(
+      Math.max(0, activeDemoTabIndex),
+      activeActivity.demoTabs.length - 1
+    );
+    effectiveInputConfig = activeActivity.demoTabs[clampedIdx]?.inputConfig;
+  }
+  if (!effectiveInputConfig) {
+    effectiveInputConfig = activeActivity?.inputConfig;
+  }
   const budget = computeSlotBudget(workspace, activeScope, appMode, activeActivity?.slotCap);
   const isSlotRejected =
     budget.isCapped &&
@@ -530,6 +553,16 @@ export const BlockPalette: React.FC = React.memo(() => {
   const showBadgeRow = policy.allowRepeatBadges || policy.paletteVariableBadges.length > 0;
 
   const resolveControlItemParams = (item: CoreControlItem): Record<string, any> | undefined => {
+    if (item.type === 'IF' || item.type === 'ELSE_IF' || item.type === 'WHILE') {
+      return {
+        ...(item.params ?? {}),
+        condition: resolveDefaultConditionForContext(
+          activeSimId,
+          policy.palette,
+          effectiveInputConfig
+        ),
+      };
+    }
     if (!item.params) return undefined;
     if (
       policy.isCurriculum &&
@@ -605,7 +638,11 @@ export const BlockPalette: React.FC = React.memo(() => {
     (!policy.isCurriculum ||
       policy.allowVariables ||
       policy.allowedControlTypes.has(targetBlock.type));
-  const hasParams = Boolean(allowedTargetParamDefs.length > 0 || isVarBlock);
+  const isCondBlock =
+    targetBlock?.type === 'IF' ||
+    targetBlock?.type === 'ELSE_IF' ||
+    targetBlock?.type === 'WHILE';
+  const hasParams = Boolean(allowedTargetParamDefs.length > 0 || isVarBlock || isCondBlock);
 
   const handleToggleParams = () => {
     if (!selectedBlockId && targetBlock) {
@@ -841,6 +878,13 @@ export const BlockPalette: React.FC = React.memo(() => {
         {/* Core Control Structure Blocks (LOOP, Variables, Functions) */}
         {visibleControlItems.map((item) => {
           const isRecursionBlocked = isControlItemRecursionBlocked(item.type);
+          const requiredSlots = getRequiredSlotCostForBlockType(item.type);
+          const isPairSlotShort =
+            !activePlaceholderTarget &&
+            requiredSlots > 1 &&
+            budget.isCapped &&
+            budget.remainingForScope !== null &&
+            budget.remainingForScope < requiredSlots;
           const isHintHighlighted =
             !isRecursionBlocked &&
             activeHintCategory !== null &&
@@ -851,16 +895,25 @@ export const BlockPalette: React.FC = React.memo(() => {
               type="button"
               data-testid={item.testId}
               data-recursion-blocked={isRecursionBlocked ? 'true' : undefined}
+              data-pair-slot-short={isPairSlotShort ? 'true' : undefined}
               disabled={isRecursionBlocked}
               data-hint-highlighted={isHintHighlighted ? 'true' : undefined}
               draggable={!isRecursionBlocked}
               onDragStart={(e) => handleCoreControlDragStart(e, item)}
               onClick={() => handleAddCoreBlock(item)}
-              title={isRecursionBlocked ? 'Recursion disabled in this lesson' : item.name}
+              title={
+                isRecursionBlocked
+                  ? 'Recursion disabled in this lesson'
+                  : isPairSlotShort
+                  ? `${item.name} requires ${requiredSlots} slots (${budget.remainingForScope} left)`
+                  : item.name
+              }
               aria-label={isRecursionBlocked ? `${item.name} (recursion disabled)` : item.name}
               className={`flex-shrink-0 flex items-center justify-center p-1.5 md:p-3 rounded-xl md:rounded-2xl border-2 shadow-lg transition-all touch-none min-w-[40px] min-h-[40px] md:min-w-[56px] md:min-h-[56px] ${item.bgClass} ${item.borderClass} ${
                 isRecursionBlocked
                   ? 'opacity-40 cursor-not-allowed grayscale'
+                  : isPairSlotShort
+                  ? 'opacity-55 border-dashed cursor-not-allowed active:scale-95'
                   : 'cursor-grab active:cursor-grabbing active:scale-95'
               } ${
                 isHintHighlighted

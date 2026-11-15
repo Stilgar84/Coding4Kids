@@ -17,6 +17,7 @@ import { useAppStoreSelector } from './store/useAppStore';
 import { CurriculumNextLessonBar } from './components/CurriculumNextLessonBar';
 import { MultiRunPipsBar } from './components/MultiRunPipsBar';
 import { SimulationTopLeftHud } from './components/SimulationTopLeftHud';
+import { SceneInputBar } from './components/SceneInputBar';
 import { VariationCardsPanel } from './components/VariationCardsPanel';
 import { GridToolbarTools } from './simulations/grid/components/GridToolbarTools';
 import { getSimEnvironment } from './engine/simulation/registry';
@@ -68,6 +69,9 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
           <GridToolbarTools />
         </div>
       )}
+
+      {/* Top Dock (shrink-0): Curriculum Scene Input Selector ($input) */}
+      <SceneInputBar />
 
       {/* Main Simulation Viewport (relative flex-1 min-h-0) */}
       <div className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col">

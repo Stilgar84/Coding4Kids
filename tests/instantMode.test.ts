@@ -178,14 +178,18 @@ describe('Instant Simulation Mode', () => {
       useAppStore.getState().setSpeed('instant');
       const startX = useAppStore.getState().grid.robot.initialX;
 
-      // Add unclosed LOOP_START
+      // Add LOOP_START (atomic pair [LOOP_START, LOOP_END]), insert MOVE_FWD inside,
+      // then remove LOOP_END to simulate an unclosed loop repaired later.
       useAppStore.getState().addBlock('MAIN', 'LOOP_START', 2);
-      useAppStore.getState().addBlock('MAIN', 'MOVE_FWD');
+      useAppStore.getState().addBlock('MAIN', 'MOVE_FWD', undefined, 1);
+      const endBlock = useAppStore.getState().workspace.MAIN.find((b) => b.type === 'LOOP_END');
+      expect(endBlock).toBeDefined();
+      useAppStore.getState().removeBlock('MAIN', endBlock!.id);
 
       // Should not run corrupted loop
       expect(useAppStore.getState().grid.robot.x).toBe(startX);
 
-      // Add matching LOOP_END
+      // Add matching LOOP_END back
       useAppStore.getState().addBlock('MAIN', 'LOOP_END');
 
       // Now it executes immediately: 2 iterations of MOVE_FWD = startX + 2
@@ -269,14 +273,11 @@ describe('Instant Simulation Mode', () => {
     it('caps execution at MAX_INSTANT_SIMULATION_STEPS (1000) without hanging', () => {
       useAppStore.getState().setSpeed('instant');
 
-      // Create a large loop with in-place action (TURN_LEFT) that does not collide
+      // Create nested atomic loops (9x9x9) with in-place action (TURN_LEFT) that does not collide
       useAppStore.getState().addBlock('MAIN', 'LOOP_START', 9);
-      useAppStore.getState().addBlock('MAIN', 'LOOP_START', 9);
-      useAppStore.getState().addBlock('MAIN', 'LOOP_START', 9);
-      useAppStore.getState().addBlock('MAIN', 'TURN_LEFT');
-      useAppStore.getState().addBlock('MAIN', 'LOOP_END');
-      useAppStore.getState().addBlock('MAIN', 'LOOP_END');
-      useAppStore.getState().addBlock('MAIN', 'LOOP_END');
+      useAppStore.getState().addBlock('MAIN', 'LOOP_START', 9, 1);
+      useAppStore.getState().addBlock('MAIN', 'LOOP_START', 9, 2);
+      useAppStore.getState().addBlock('MAIN', 'TURN_LEFT', undefined, 3);
 
       const runtime = useAppStore.getState().runtime;
       expect(runtime).not.toBeNull();

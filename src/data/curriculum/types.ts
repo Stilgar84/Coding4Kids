@@ -168,6 +168,10 @@ export type SwitchyardConditionSensor =
   | 'itemColor'
   | 'itemIcon';
 
+export type TurtleConditionSensor = 'insideCanvas';
+
+export type BeatConditionSensor = 'cursorAtEdge';
+
 export type DepotConditionSensor =
   | 'stationEmpty'
   | 'hasItem'
@@ -178,7 +182,9 @@ export type DepotConditionSensor =
 export type ConditionSensorType =
   | GridConditionSensor
   | SwitchyardConditionSensor
-  | DepotConditionSensor;
+  | DepotConditionSensor
+  | TurtleConditionSensor
+  | BeatConditionSensor;
 
 export type ConditionCombinatorOp = 'NOT' | 'AND' | 'OR';
 export type ConditionCompareOp = '=' | '!=' | '<' | '<=' | '>' | '>=';
@@ -278,6 +284,9 @@ export interface SwitchyardDockDef {
     icon?: SwitchyardIcon;
   }>;
   acceptsDamaged?: boolean;
+  quota?: number;
+  maxWeight?: number;
+  minWeight?: number;
 }
 
 export interface CurriculumSwitchyardDefinition {
@@ -290,6 +299,17 @@ export interface CurriculumSwitchyardDefinition {
     expectedDamagedOnly?: boolean;
     expectedCount?: number;
   };
+  scrapRules?:
+    | string
+    | {
+        kind?: string;
+        maxWeight?: number;
+        allowDamaged?: boolean;
+        forbidIntact?: boolean;
+        maxScraps?: number;
+      };
+  mode?: 'sort' | 'priority' | 'balance_scale' | string;
+  balanceTolerance?: number;
 }
 
 export interface CurriculumVariant {
@@ -297,8 +317,16 @@ export interface CurriculumVariant {
   label?: string;
   kind: 'grid' | 'depot' | 'switchyard';
   grid?: CurriculumGridDefinition;
-  depot?: DepotState;
+  depot?: CurriculumDepotDefinition;
   switchyard?: CurriculumSwitchyardDefinition;
+}
+
+export interface SceneInputConfig {
+  mode: 'int' | 'color';
+  min?: number;
+  max?: number;
+  options: (number | string)[];
+  previewInput?: number | string;
 }
 
 export interface GhostStepPreview {
@@ -319,6 +347,7 @@ export interface CreativeVariationCard {
   title: string;
   icon?: string;
   workspace: WorkspaceState;
+  inputConfig?: SceneInputConfig;
 }
 
 export type DemoSpotlightType =
@@ -337,6 +366,11 @@ export type DemoSpotlightType =
   | 'call-stack-jump'
   | 'sensor-beam'
   | 'branch-skip'
+  | 'else-if-chain'
+  | 'scene-input'
+  | 'while-guard'
+  | 'branch'
+  | 'while'
   | 'fifo-vs-lifo'
   | 'dial-read'
   | 'pose-bookmark'
@@ -345,10 +379,23 @@ export type DemoSpotlightType =
 export interface CurriculumDepotDefinition extends DepotState {
   /** Bitmask indicating active Depot workshop stations (e.g. stacks 1..3 = 0x07, +OUT = 0x0F). */
   activeStationsMask?: number;
+  mode?: string;
+  balanceTolerance?: number;
+  enforceHanoiRule?: boolean;
+  requireEmptyStacks?: boolean;
+  allowNonEmptyInput?: boolean;
+  exactOutputCount?: number;
+  scrapRules?: string | Record<string, any>;
 }
 
 export interface CurriculumTurtleDefinition {
   canvasBounds?: { halfWidth: number; halfHeight: number };
+  showCanvasBounds?: boolean;
+}
+
+export interface CurriculumBeatRules {
+  isLoopingDefault?: boolean;
+  cleanResetOnInputChange?: boolean;
 }
 
 export interface ExplanationDemoTab {
@@ -360,6 +407,7 @@ export interface ExplanationDemoTab {
   gridState?: CurriculumGridDefinition;
   depotState?: CurriculumDepotDefinition;
   switchyardState?: CurriculumSwitchyardDefinition;
+  inputConfig?: SceneInputConfig;
   workspace: WorkspaceState;
   spotlights?: DemoSpotlightType[];
 }
@@ -377,6 +425,12 @@ export interface ActivityVersionPayload {
   switchyard?: CurriculumSwitchyardDefinition;
   /** Ordered multi-stream Switchyard variants evaluated simultaneously */
   switchyardVariants?: CurriculumSwitchyardDefinition[];
+  /** Optional Turtle canvas configuration (e.g., showCanvasBounds for insideCanvas) */
+  turtle?: CurriculumTurtleDefinition;
+  /** Optional Beat playback/reset rules for reactive scenes */
+  beatRules?: CurriculumBeatRules;
+  /** Optional reactive $input scene selector configuration (branch.10a, branch.10, branch.B, branch.C) */
+  inputConfig?: SceneInputConfig;
   /** Whether continuous loop playback is enabled automatically on load (e.g., frame animation lessons) */
   defaultLoopPlayback?: boolean;
   /** Optional pre-populated starter blocks loaded on first visit or Reset to Starter */

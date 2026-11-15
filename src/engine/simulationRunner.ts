@@ -18,12 +18,26 @@ import { beatSimulationEnvironment } from '../simulations/beat/beatEnvironment';
 import { depotSimulationEnvironment } from '../simulations/depot/depotEnvironment';
 import { switchyardSimulationEnvironment } from '../simulations/switchyard/switchyardEnvironment';
 
-// Ensure environments are registered for headless simulation
-registerSimulation(gridSimulationEnvironment);
-registerSimulation(turtleSimulationEnvironment);
-registerSimulation(beatSimulationEnvironment);
-registerSimulation(depotSimulationEnvironment);
-registerSimulation(switchyardSimulationEnvironment);
+// Ensure environments are registered for headless simulation (idempotent; safe against ESM circular import TDZ)
+export function ensureSimEnvironmentsRegistered(): void {
+  if (!getSimEnvironment('grid') && typeof gridSimulationEnvironment !== 'undefined') {
+    registerSimulation(gridSimulationEnvironment);
+  }
+  if (!getSimEnvironment('turtle') && typeof turtleSimulationEnvironment !== 'undefined') {
+    registerSimulation(turtleSimulationEnvironment);
+  }
+  if (!getSimEnvironment('beat') && typeof beatSimulationEnvironment !== 'undefined') {
+    registerSimulation(beatSimulationEnvironment);
+  }
+  if (!getSimEnvironment('depot') && typeof depotSimulationEnvironment !== 'undefined') {
+    registerSimulation(depotSimulationEnvironment);
+  }
+  if (!getSimEnvironment('switchyard') && typeof switchyardSimulationEnvironment !== 'undefined') {
+    registerSimulation(switchyardSimulationEnvironment);
+  }
+}
+
+ensureSimEnvironmentsRegistered();
 
 export const MAX_SAVE_SIMULATION_STEPS = 1000;
 export const MAX_INSTANT_SIMULATION_STEPS = 1000;
@@ -35,6 +49,11 @@ export interface SimulationRunResult<TState = any> {
   finalRuntime: InterpreterRuntimeState;
 }
 
+export interface HeadlessSimulationOptions extends InterpreterTickOptions {
+  /** Fallback `$input` value when `sceneInput` is omitted (e.g. `activity.inputConfig.previewInput`). */
+  previewInput?: number | string;
+}
+
 /**
  * Runs a simulation headless from initial state to completion or up to maxSteps (default 200).
  * Does not mutate active reactive stores.
@@ -44,10 +63,16 @@ export function runHeadlessSimulation<TState = any>(
   simId: 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard',
   simState: TState,
   maxSteps: number = MAX_SAVE_SIMULATION_STEPS,
-  options?: InterpreterTickOptions
+  options?: HeadlessSimulationOptions
 ): SimulationRunResult<TState> {
+  ensureSimEnvironmentsRegistered();
+  const resolvedSceneInput =
+    options?.sceneInput !== undefined ? options.sceneInput : options?.previewInput;
   const simEnv = getSimEnvironment(simId) as SimulationEnvironment<TState> | undefined;
-  const initialRuntime = createInitialInterpreterState();
+  const initialRuntime: InterpreterRuntimeState = {
+    ...createInitialInterpreterState(),
+    ...(resolvedSceneInput !== undefined ? { sceneInput: resolvedSceneInput } : {}),
+  };
 
   if (!simEnv) {
     const finalState =
@@ -96,9 +121,16 @@ export function runHeadlessSimulation<TState = any>(
   let runtime = initialRuntime;
   let state = simState;
   let steps = 0;
+  const tickOptions: InterpreterTickOptions | undefined =
+    options || resolvedSceneInput !== undefined
+      ? {
+          ...options,
+          ...(resolvedSceneInput !== undefined ? { sceneInput: resolvedSceneInput } : {}),
+        }
+      : undefined;
 
   while (steps < maxSteps) {
-    const res = tickInterpreter(runtime, workspace, state, simEnv, options);
+    const res = tickInterpreter(runtime, workspace, state, simEnv, tickOptions);
     runtime = res.nextRuntime;
     state = res.nextGrid;
     steps++;
@@ -109,7 +141,10 @@ export function runHeadlessSimulation<TState = any>(
 
   const rawStatus = (state as any)?.status || runtime.status;
   const status: SimulationStatus =
-    rawStatus === 'SUCCESS' || rawStatus === 'COLLISION' || rawStatus === 'PAUSED'
+    rawStatus === 'SUCCESS' ||
+    rawStatus === 'COLLISION' ||
+    rawStatus === 'STEP_LIMIT' ||
+    rawStatus === 'PAUSED'
       ? rawStatus
       : 'IDLE';
 

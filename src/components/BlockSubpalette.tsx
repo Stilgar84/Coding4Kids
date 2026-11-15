@@ -2,6 +2,8 @@ import React from 'react';
 import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { ParamVisual } from './params/VisualParamBadges';
+import { ConditionSubpalette } from './ConditionSubpalette';
+import type { SceneInputConfig } from '../data/curriculum/types';
 import { BinaryOp, CodeBlock } from '../types';
 import {
   computeStagedPalettePolicy,
@@ -41,6 +43,8 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
       appMode,
       activeActivityId,
       activeActivityVersion,
+      activeDemoTabIndex,
+      activeVariationInputConfig,
       activeSimId,
       activeScope,
       updateBlockParams,
@@ -48,6 +52,8 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
       appMode: s.appMode,
       activeActivityId: s.activeActivityId,
       activeActivityVersion: s.activeActivityVersion,
+      activeDemoTabIndex: s.activeDemoTabIndex,
+      activeVariationInputConfig: s.activeVariationInputConfig,
       activeSimId: s.activeSimId,
       activeScope: s.activeScope,
       updateBlockParams: s.updateBlockParams,
@@ -111,6 +117,40 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
     }
     return ALL_OPS;
   }, [policy.isCurriculum, policy.allowedVarOps]);
+
+  let effectiveInputConfig: SceneInputConfig | undefined =
+    activeVariationInputConfig ?? undefined;
+  if (
+    !effectiveInputConfig &&
+    activeActivity?.format === 'explanation' &&
+    activeActivity.demoTabs?.length
+  ) {
+    const clampedIdx = Math.min(
+      Math.max(0, activeDemoTabIndex),
+      activeActivity.demoTabs.length - 1
+    );
+    effectiveInputConfig = activeActivity.demoTabs[clampedIdx]?.inputConfig;
+  }
+  if (!effectiveInputConfig) {
+    effectiveInputConfig = activeActivity?.inputConfig;
+  }
+
+  if (
+    selectedBlock.type === 'IF' ||
+    selectedBlock.type === 'ELSE_IF' ||
+    selectedBlock.type === 'WHILE'
+  ) {
+    return (
+      <ConditionSubpalette
+        block={selectedBlock}
+        activeScope={activeScope}
+        activeSimId={activeSimId}
+        policy={policy}
+        inputConfig={effectiveInputConfig ?? null}
+        updateBlockParams={updateBlockParams}
+      />
+    );
+  }
 
   const formatOperandDisplay = (v: any) => {
     if (v === '$tileDial') return '🎯 Dial';

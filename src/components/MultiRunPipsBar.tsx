@@ -19,6 +19,8 @@ function getStatusLabel(status: VariantRunSnapshot['status']): string {
       return 'passed';
     case 'COLLISION':
       return 'failed';
+    case 'STEP_LIMIT':
+      return 'step limit reached';
     case 'RUNNING':
       return 'running';
     case 'PAUSED':
@@ -66,6 +68,7 @@ export const MultiRunPipsBarView: React.FC<MultiRunPipsBarViewProps> = ({
       {variants.map((variant, idx) => {
         const isFocused = idx === focusedIndex;
         const isSuccess = variant.status === 'SUCCESS';
+        const isStepLimit = variant.status === 'STEP_LIMIT';
         const isFail = variant.status === 'COLLISION';
         const isRunning = variant.status === 'RUNNING' || variant.status === 'PAUSED';
         const variantNumber = idx + 1;
@@ -74,6 +77,8 @@ export const MultiRunPipsBarView: React.FC<MultiRunPipsBarViewProps> = ({
 
         const colorClasses = isSuccess
           ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 hover:bg-emerald-500/30'
+          : isStepLimit
+          ? 'bg-amber-500/20 border-amber-400 text-amber-200 hover:bg-amber-500/30'
           : isFail
           ? 'bg-rose-500/20 border-rose-400 text-rose-200 hover:bg-rose-500/30'
           : isRunning
@@ -100,6 +105,10 @@ export const MultiRunPipsBarView: React.FC<MultiRunPipsBarViewProps> = ({
             <span className="font-mono">{variantNumber}</span>
             {isSuccess ? (
               <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-300" aria-hidden="true" />
+            ) : isStepLimit ? (
+              <span aria-hidden="true" className="text-[11px] leading-none">
+                ⏳🔁
+              </span>
             ) : isFail ? (
               <X className="w-3.5 h-3.5 stroke-[3] text-rose-300" aria-hidden="true" />
             ) : isRunning ? (

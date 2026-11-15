@@ -16,6 +16,7 @@ import { SimulationEnvironment } from './simulation/types';
 import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { ConditionExpr } from '../data/curriculum/types';
 import { evaluateConditionExpr } from './serialization/conditionSerializer';
+import { colorLiteralNameToIdx, isColorLiteralString } from './serialization/types';
 
 export const MAX_CALL_STACK_DEPTH = 32;
 export const MAX_TOTAL_STEPS = 10000;
@@ -29,7 +30,8 @@ export function evaluateValue<TState = any>(
   variables: Record<string, number>,
   defaultValue: number = 0,
   simEnv?: SimulationEnvironment<TState>,
-  simState?: TState
+  simState?: TState,
+  sceneInput?: number | string
 ): number {
   if (val === undefined || val === null) return defaultValue;
   if (typeof val === 'number') return isNaN(val) ? defaultValue : val;
@@ -38,9 +40,19 @@ export function evaluateValue<TState = any>(
     if (/^[a-z]$/.test(trimmed)) {
       return variables[trimmed] ?? 0;
     }
+    if (trimmed === '$input' && sceneInput !== undefined) {
+      if (typeof sceneInput === 'string' && isColorLiteralString(sceneInput)) {
+        return colorLiteralNameToIdx(sceneInput);
+      }
+      const n = typeof sceneInput === 'number' ? sceneInput : Number(sceneInput);
+      return Number.isFinite(n) ? n : defaultValue;
+    }
     if (isSensorToken(trimmed) && simEnv?.readSensor && simState !== undefined) {
       const sensed = simEnv.readSensor(trimmed, simState);
       return Number.isFinite(sensed) ? sensed : defaultValue;
+    }
+    if (isColorLiteralString(trimmed)) {
+      return colorLiteralNameToIdx(trimmed);
     }
     const num = Number(trimmed);
     return isNaN(num) ? defaultValue : num;
@@ -91,6 +103,8 @@ export interface TickResult<TState = any> {
 export interface InterpreterTickOptions {
   /** Whether direct or indirect recursive calls (`F1->F1` or `F1->F2->F1`) are permitted at runtime. Defaults to true. */
   allowRecursion?: boolean;
+  /** Active `$input` scene-selector value (`1..N` int or color string `'red'` / `'color:red'`). */
+  sceneInput?: number | string;
 }
 
 const CALL_TYPE_TO_SCOPE: Record<string, ScopeType> = {
@@ -331,25 +345,47 @@ export function findIfStructure(blocks: CodeBlock[], ifIdx: number): IfStructure
   return { ifPc: ifIdx, elseIfPcs, elsePc, endIfPc };
 }
 
+export interface BlockConditionContext {
+  variables?: Record<string, number>;
+  sceneInput?: number | string;
+}
+
 /**
  * Evaluates the condition on a code block (IF, ELSE_IF, WHILE), delegating to
- * `simEnv.evaluateSensor` when available.
+ * `simEnv.evaluateSensor` when available and supplying variables + `$input` context.
  */
 export function evaluateBlockCondition<TState = any>(
   block: CodeBlock,
   simState: TState,
-  simEnv?: SimulationEnvironment<TState>
+  simEnv?: SimulationEnvironment<TState>,
+  context?: BlockConditionContext
 ): boolean {
   const evalSensor = (sensor: string, state: TState, param?: string): boolean => {
     if (simEnv?.evaluateSensor) {
       return simEnv.evaluateSensor(sensor, state, param);
     }
+    // Fallback for environments whose Wave 2B sensor handler is not mounted yet (e.g. Beat cursorAtEdge)
+    if (sensor === 'cursorAtEdge' && state && typeof state === 'object') {
+      const st = state as { cursor?: { x?: number; y?: number }; gridSize?: number };
+      if (st.cursor && typeof st.cursor.x === 'number' && typeof st.cursor.y === 'number') {
+        const size = typeof st.gridSize === 'number' && st.gridSize > 0 ? st.gridSize : 8;
+        return st.cursor.x <= 1 || st.cursor.x >= size || st.cursor.y <= 1 || st.cursor.y >= size;
+      }
+    }
     return false;
   };
 
+  const readValueSensor = simEnv?.readSensor
+    ? (sensor: string, state: TState) => simEnv.readSensor!(sensor, state)
+    : undefined;
+
   const cond = block.params?.condition as ConditionExpr | undefined;
   if (cond && typeof cond === 'object') {
-    return evaluateConditionExpr(cond, simState, evalSensor);
+    return evaluateConditionExpr(cond, simState, evalSensor, {
+      variables: context?.variables,
+      sceneInput: context?.sceneInput,
+      readValueSensor,
+    });
   }
 
   if (typeof block.params?.sensor === 'string') {
@@ -370,7 +406,7 @@ export function tickInterpreter<TState = GridState>(
   options?: InterpreterTickOptions
 ): TickResult<TState> {
   // If already stopped, do nothing
-  if (runtime.status === 'SUCCESS' || runtime.status === 'COLLISION') {
+  if (runtime.status === 'SUCCESS' || runtime.status === 'COLLISION' || runtime.status === 'STEP_LIMIT') {
     return { nextRuntime: runtime, nextGrid: simState, done: true };
   }
 
@@ -531,10 +567,19 @@ export function tickInterpreter<TState = GridState>(
     };
   }
 
+  const activeSceneInput = options?.sceneInput !== undefined ? options.sceneInput : runtime.sceneInput;
+
   // Handle Variable Assignment: a = b
   if (blockType === 'VAR_ASSIGN') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
-    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0, simEnv, simState);
+    const bVal = evaluateValue(
+      currentBlock.params?.b,
+      runtime.variables,
+      0,
+      simEnv,
+      simState,
+      activeSceneInput
+    );
     const nextVariables: Record<VariableName, number> = {
       ...runtime.variables,
       [a]: bVal,
@@ -565,8 +610,22 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'VAR_OP') {
     const a = (currentBlock.params?.a || 'a') as VariableName;
     const op = (currentBlock.params?.op || '+') as BinaryOp;
-    const bVal = evaluateValue(currentBlock.params?.b, runtime.variables, 0, simEnv, simState);
-    const cVal = evaluateValue(currentBlock.params?.c, runtime.variables, 0, simEnv, simState);
+    const bVal = evaluateValue(
+      currentBlock.params?.b,
+      runtime.variables,
+      0,
+      simEnv,
+      simState,
+      activeSceneInput
+    );
+    const cVal = evaluateValue(
+      currentBlock.params?.c,
+      runtime.variables,
+      0,
+      simEnv,
+      simState,
+      activeSceneInput
+    );
     const result = evaluateBinaryOp(bVal, op, cVal);
     const nextVariables: Record<VariableName, number> = {
       ...runtime.variables,
@@ -618,7 +677,10 @@ export function tickInterpreter<TState = GridState>(
       };
     }
 
-    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
+      variables: runtime.variables,
+      sceneInput: activeSceneInput,
+    });
     if (condTrue) {
       condStack.push({
         scope: currentFrame.scope,
@@ -668,7 +730,10 @@ export function tickInterpreter<TState = GridState>(
         currentFrame.pc = topCond.endIfPc + 1;
         condStack.pop();
       } else {
-        const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+        const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
+          variables: runtime.variables,
+          sceneInput: activeSceneInput,
+        });
         if (condTrue) {
           topCond.branchTaken = true;
           currentFrame.pc++;
@@ -790,7 +855,10 @@ export function tickInterpreter<TState = GridState>(
       };
     }
 
-    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv);
+    const condTrue = evaluateBlockCondition(currentBlock, simState, simEnv, {
+      variables: runtime.variables,
+      sceneInput: activeSceneInput,
+    });
     if (!condTrue) {
       if (whileStack.length > 0 && whileStack[whileStack.length - 1].whileStartPc === currentFrame.pc) {
         whileStack.pop();
@@ -858,7 +926,14 @@ export function tickInterpreter<TState = GridState>(
   if (blockType === 'LOOP_START') {
     const matchingEnd = findMatchingLoopEnd(scopeBlocks, currentFrame.pc);
     const rawCount = currentBlock.repeatCount !== undefined
-      ? evaluateValue(currentBlock.repeatCount, runtime.variables, 2, simEnv, simState)
+      ? evaluateValue(
+          currentBlock.repeatCount,
+          runtime.variables,
+          2,
+          simEnv,
+          simState,
+          activeSceneInput
+        )
       : 2;
     const loopCount = Math.round(rawCount);
 
@@ -960,7 +1035,14 @@ export function tickInterpreter<TState = GridState>(
 
   // Handle Domain Action blocks (e.g. MOVE_FWD, TURN_LEFT, SET_PEN_COLOR, etc.)
   const rawRepeats = currentBlock.repeatCount !== undefined
-    ? evaluateValue(currentBlock.repeatCount, runtime.variables, 1, simEnv, simState)
+    ? evaluateValue(
+        currentBlock.repeatCount,
+        runtime.variables,
+        1,
+        simEnv,
+        simState,
+        activeSceneInput
+      )
     : 1;
   const totalRepeats = Math.round(rawRepeats);
 
@@ -999,7 +1081,7 @@ export function tickInterpreter<TState = GridState>(
   if (currentBlock.params) {
     for (const [k, v] of Object.entries(currentBlock.params)) {
       if (typeof v === 'string' && (/^[a-z]$/.test(v.trim()) || isSensorToken(v))) {
-        resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, simState);
+        resolvedParams[k] = evaluateValue(v, runtime.variables, 0, simEnv, simState, activeSceneInput);
       } else {
         resolvedParams[k] = v;
       }
