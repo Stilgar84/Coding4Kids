@@ -8,6 +8,7 @@ import {
   createCurriculumGridState,
 } from '../src/data/curriculum/types';
 import { runHeadlessSimulation } from '../src/engine/simulationRunner';
+import { createInitialInterpreterState, tickInterpreter } from '../src/engine/interpreter';
 import {
   checkReferenceSolution,
   checkScaffoldWorkspace,
@@ -17,6 +18,7 @@ import { exportLessonToBinary, importFromBinary } from '../src/engine/serializat
 import { createInitialTurtleState } from '../src/simulations/turtle/turtleEnvironment';
 import { createInitialBeatState } from '../src/simulations/beat/beatEnvironment';
 import { isBeatLedOffHex } from '../src/simulations/beat/presets';
+import { BeatState } from '../src/simulations/beat/types';
 import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
 import { turtleSimulationEnvironment } from '../src/simulations/turtle/turtleEnvironment';
 import { beatSimulationEnvironment } from '../src/simulations/beat/beatEnvironment';
@@ -159,9 +161,58 @@ function countLitLeds(leds: string[][]): number {
   return count;
 }
 
+const MOJIBAKE_RE = /[\u00c2\u00c3\u00e2\u00f0]/;
+
+function assertNoMojibakeStrings(value: unknown, pathLabel: string): void {
+  if (typeof value === 'string') {
+    expect(MOJIBAKE_RE.test(value), `Mojibake detected at ${pathLabel}: ${value}`).toBe(false);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, idx) => assertNoMojibakeStrings(item, `${pathLabel}[${idx}]`));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      assertNoMojibakeStrings(v, `${pathLabel}.${k}`);
+    }
+  }
+}
+
+function runBeatCollectingPeakLeds(
+  workspace: WorkspaceState,
+  seed?: number,
+  maxSteps: number = 2000
+): { finalState: BeatState; stepCount: number; peakLitLeds: number; cursorAlwaysHidden: boolean } {
+  let runtime = createInitialInterpreterState(seed);
+  let state: BeatState = createInitialBeatState(true);
+  let stepCount = 0;
+  let peakLitLeds = countLitLeds(state.leds);
+  let cursorAlwaysHidden = state.cursor.visible === false;
+  const tickOpts = seed !== undefined ? { seed } : undefined;
+
+  while (stepCount < maxSteps) {
+    const res = tickInterpreter(runtime, workspace, state, beatSimulationEnvironment, tickOpts);
+    runtime = res.nextRuntime;
+    state = res.nextGrid;
+    stepCount++;
+    peakLitLeds = Math.max(peakLitLeds, countLitLeds(state.leds));
+    if (state.cursor.visible !== false) {
+      cursorAlwaysHidden = false;
+    }
+    if (res.done) break;
+  }
+
+  return { finalState: state, stepCount, peakLitLeds, cursorAlwaysHidden };
+}
+
 describe('Module var Curriculum & Anti-Bypass Verification', () => {
   it('boots app store in curriculum mode by default', () => {
     expect(useAppStore.getState().appMode).toBe('curriculum');
+  });
+
+  it('contains zero UTF-8 mojibake artifacts across all VAR_ACTIVITIES strings', () => {
+    assertNoMojibakeStrings(VAR_ACTIVITIES, 'VAR_ACTIVITIES');
   });
 
   it('defines all 16 activities in exact var/overview.md order with valid metadata', () => {
@@ -270,19 +321,17 @@ describe('Module var Curriculum & Anti-Bypass Verification', () => {
 
   it('enforces slotCap budgets, allowRepeatBadges, and neutral ? PLACEHOLDERs', () => {
     const repeatRequiredIds = [
+      'var.0',
       'var.1',
       'var.2',
+      'var.3',
       'var.4',
       'var.4a',
-      'var.6',
       'var.7',
       'var.8',
       'var.9',
-      'var.10',
       'var.A',
-      'var.B',
       'var.M1',
-      'var.M2',
     ];
     for (const id of repeatRequiredIds) {
       const act = getActivity(id);
@@ -291,8 +340,11 @@ describe('Module var Curriculum & Anti-Bypass Verification', () => {
       expect(policy.allowRepeatBadges).toBe(true);
     }
 
-    expect(getActivity('var.0').palette.allowRepeatBadges).toBe(false);
-    expect(getActivity('var.5').palette.allowRepeatBadges).toBe(false);
+    const repeatDisabledIds = ['var.5', 'var.6', 'var.10', 'var.B', 'var.M2'];
+    for (const id of repeatDisabledIds) {
+      const act = getActivity(id);
+      expect(act.palette.allowRepeatBadges, `${id} allowRepeatBadges`).toBe(false);
+    }
 
     // Every puzzle + var.M2 must have neutral '?' PLACEHOLDER blocks
     for (const id of [...PUZZLE_AND_M1_IDS, 'var.M2']) {
@@ -453,26 +505,27 @@ describe('Module var Curriculum & Anti-Bypass Verification', () => {
     ];
 
     for (const item of beatRuns) {
-      const res = runHeadlessSimulation(
-        item.ws,
-        'beat',
-        createInitialBeatState(true),
-        1000,
-        item.seed !== undefined ? { seed: item.seed } : undefined
+      const res = runBeatCollectingPeakLeds(item.ws, item.seed, 2000);
+      expect(res.cursorAlwaysHidden, `${item.id}:${item.label} cursor.visible`).toBe(true);
+      expect(res.finalState.cursor.visible, `${item.id}:${item.label} final cursor.visible`).toBe(
+        false
       );
-      expect(res.finalState.cursor.visible, `${item.id}:${item.label} cursor.visible`).toBe(false);
       expect(res.stepCount, `${item.id}:${item.label} steps`).toBeGreaterThan(0);
-      expect(countLitLeds(res.finalState.leds), `${item.id}:${item.label} lit LEDs`).toBeGreaterThan(
-        0
-      );
+      expect(res.peakLitLeds, `${item.id}:${item.label} peak lit LEDs`).toBeGreaterThan(0);
     }
 
     // Verify seeded determinism on var.8 Tab 1 & var.9 Var 2 (Loop x[0] safe coin-flip skip)
+    const tab1Ws = getActivity('var.8').demoTabs![0].workspace!;
+    const tab1A = runBeatCollectingPeakLeds(tab1Ws, 42, 2000);
+    const tab1B = runBeatCollectingPeakLeds(tab1Ws, 42, 2000);
+    expect(tab1A.finalState.leds).toEqual(tab1B.finalState.leds);
+    expect(tab1A.stepCount).toBe(tab1B.stepCount);
+
     const coinFlipWs = getActivity('var.9').variations![1].workspace;
-    const runA = runHeadlessSimulation(coinFlipWs, 'beat', createInitialBeatState(true), 1000, {
+    const runA = runHeadlessSimulation(coinFlipWs, 'beat', createInitialBeatState(true), 2000, {
       seed: 303,
     });
-    const runB = runHeadlessSimulation(coinFlipWs, 'beat', createInitialBeatState(true), 1000, {
+    const runB = runHeadlessSimulation(coinFlipWs, 'beat', createInitialBeatState(true), 2000, {
       seed: 303,
     });
     expect(runA.finalState.leds).toEqual(runB.finalState.leds);

@@ -179,19 +179,14 @@ const VAR_TURTLE_PARAMS: Record<string, string[]> = {
 };
 
 const VAR_BEAT_ALLOWED_BLOCKS: string[] = [
-  'DRUM_KICK',
-  'DRUM_SNARE',
-  'DRUM_CLAP',
-  'PLAY_CHIME',
-  'WAIT_BEAT',
-  'CLEAR_LEDS',
-  'PLAY_NOTE',
-  'SET_LED_COLOR',
+  'LIGHT_PIXEL',
   'LIGHT_ROW',
   'LIGHT_COL',
-  'LIGHT_PIXEL',
+  'SET_LED_COLOR',
+  'CLEAR_LEDS',
+  'PLAY_NOTE',
   'SET_BEAT_DELAY',
-  'STAMP_PRESET',
+  'WAIT_BEAT',
 ];
 
 const VAR_BEAT_PARAMS: Record<string, string[]> = {
@@ -202,25 +197,23 @@ const VAR_BEAT_PARAMS: Record<string, string[]> = {
   LIGHT_PIXEL: ['x', 'y'],
   SET_BEAT_DELAY: ['delay'],
   WAIT_BEAT: ['duration'],
-  STAMP_PRESET: ['preset'],
 };
 
-const VAR_GRID_ALLOWED_BLOCKS: string[] = [
+const VAR_GRID_MOTION_ONLY: string[] = ['MOVE_FWD', 'TURN_LEFT', 'TURN_RIGHT'];
+
+const VAR_GRID_INTERACTIVE: string[] = [
   'MOVE_FWD',
-  'MOVE_BACK',
   'TURN_LEFT',
   'TURN_RIGHT',
   'PICK_UP',
   'USE_DROP',
 ];
 
-const VAR_GRID_MOTION_ONLY: string[] = ['MOVE_FWD', 'MOVE_BACK', 'TURN_LEFT', 'TURN_RIGHT'];
-
 // ---------------------------------------------------------------------------
-// Activity Grids & Demo Tabs
+// Activity Grids & Demo Tabs (Matching docs/curriculum/var/*.md verbatim)
 // ---------------------------------------------------------------------------
 
-// var.0 Tab 2 â€” Dial Corridor Variants (8x3, dial at (1,1) = 4 or 2)
+// var.0 Tab 2/3 — Dial Corridor Variants (8x3, Start (1,1) E, Dial at (2,1) = 4 or 2)
 const VAR_0_CORRIDOR_V1: CurriculumGridDefinition = {
   label: '1',
   width: 8,
@@ -234,8 +227,8 @@ const VAR_0_CORRIDOR_V1: CurriculumGridDefinition = {
     [5, 1],
     [6, 1],
   ]),
-  dialTiles: [{ x: 1, y: 1, value: 4 }],
-  flags: [{ id: 'goal_var0_v1', x: 5, y: 1, isGoal: true, order: 1, collected: false }],
+  dialTiles: [{ x: 2, y: 1, value: 4 }],
+  flags: [{ id: 'goal_var0_v1', x: 6, y: 1, isGoal: true, order: 1, collected: false }],
   requireAllItemsCollected: false,
   requireEmptyBackpackAtGoal: false,
   strictInteractionCollision: true,
@@ -252,8 +245,8 @@ const VAR_0_CORRIDOR_V2: CurriculumGridDefinition = {
     [3, 1],
     [4, 1],
   ]),
-  dialTiles: [{ x: 1, y: 1, value: 2 }],
-  flags: [{ id: 'goal_var0_v2', x: 3, y: 1, isGoal: true, order: 1, collected: false }],
+  dialTiles: [{ x: 2, y: 1, value: 2 }],
+  flags: [{ id: 'goal_var0_v2', x: 4, y: 1, isGoal: true, order: 1, collected: false }],
   requireAllItemsCollected: false,
   requireEmptyBackpackAtGoal: false,
   strictInteractionCollision: true,
@@ -265,7 +258,7 @@ const VAR_0_TABS: ExplanationDemoTab[] = [
     label: '1',
     simId: 'turtle',
     coPilotCard:
-      'Put 100 in box s to size the whole house at once. Try changing 100 to 60 and tap Run!',
+      'Put a number inside a named box like s = 100, and every block wearing [s] uses that number! Change [s] once, and the walls and roof resize together.',
     turtle: {
       mode: 'static',
       showCanvasBounds: true,
@@ -280,8 +273,8 @@ const VAR_0_TABS: ExplanationDemoTab[] = [
           block('TURN_RIGHT', { params: { angle: 90 } }),
           block('LOOP_END'),
           block('FORWARD', { params: { length: 's' } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
           block('TURN_RIGHT', { params: { angle: 30 } }),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
           block('FORWARD', { params: { length: 's' } }),
           block('TURN_RIGHT', { params: { angle: 120 } }),
           block('FORWARD', { params: { length: 's' } }),
@@ -295,11 +288,12 @@ const VAR_0_TABS: ExplanationDemoTab[] = [
     label: '2',
     simId: 'grid',
     coPilotCard:
-      'Box d reads Dial = 4 off the floor so one move badge walks all 4 steps down the hall!',
+      'Step onto a spinning dial and save d = $tileDial to lock its number into box [d]. Then MOVE_FWD [×d] walks the exact dial count to the goal!',
     grid: VAR_0_CORRIDOR_V1,
     workspace: makeWorkspace(
       {
         MAIN: [
+          block('MOVE_FWD'),
           varAssign('d', '$tileDial'),
           block('MOVE_FWD', { repeatCount: 'd' }),
         ],
@@ -312,11 +306,12 @@ const VAR_0_TABS: ExplanationDemoTab[] = [
     label: '3',
     simId: 'grid',
     coPilotCard:
-      'Same program, shorter hall! Box d reads Dial = 2 automatically without changing any code.',
+      'Step onto a spinning dial and save d = $tileDial to lock its number into box [d]. Then MOVE_FWD [×d] walks the exact dial count to the goal!',
     grid: VAR_0_CORRIDOR_V2,
     workspace: makeWorkspace(
       {
         MAIN: [
+          block('MOVE_FWD'),
           varAssign('d', '$tileDial'),
           block('MOVE_FWD', { repeatCount: 'd' }),
         ],
@@ -326,41 +321,77 @@ const VAR_0_TABS: ExplanationDemoTab[] = [
   },
 ];
 
-// var.2 â€” Reading & Recalling a Dial Value (9x7, dial at (2,1) = 2, 3, 4)
-const VAR_2_GRIDS: CurriculumGridDefinition[] = [2, 3, 4].map((d, idx) => {
-  const openCells: Array<[number, number]> = [[1, 1], [2, 1]];
-  for (let x = 3; x <= 2 + d; x++) openCells.push([x, 1]);
-  for (let y = 2; y <= 1 + d; y++) openCells.push([2 + d, y]);
-  return {
-    label: `${idx + 1}`,
-    width: 9,
-    height: 7,
-    robot: { x: 1, y: 1, dir: 'EAST' },
-    barriers: buildSealedGridBarriers(9, 7, openCells),
-    dialTiles: [{ x: 2, y: 1, value: d }],
-    flags: [{ id: `goal_var2_v${idx + 1}`, x: 2 + d, y: 1 + d, isGoal: true, order: 1, collected: false }],
-    requireAllItemsCollected: false,
-    requireEmptyBackpackAtGoal: false,
-    strictInteractionCollision: true,
-  };
-});
+// var.2 — Reading & Recalling a Dial Value (9x7, Start (1,5) E, Dial (2,5) = 2,3,4, TURN_LEFT North)
+const VAR_2_GRIDS: CurriculumGridDefinition[] = [
+  {
+    d: 2,
+    goal: [4, 3] as [number, number],
+    openCells: [[1, 5], [2, 5], [3, 5], [4, 5], [4, 4], [4, 3]] as Array<[number, number]>,
+  },
+  {
+    d: 3,
+    goal: [5, 2] as [number, number],
+    openCells: [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5], [5, 4], [5, 3], [5, 2]] as Array<
+      [number, number]
+    >,
+  },
+  {
+    d: 4,
+    goal: [6, 1] as [number, number],
+    openCells: [
+      [1, 5],
+      [2, 5],
+      [3, 5],
+      [4, 5],
+      [5, 5],
+      [6, 5],
+      [6, 4],
+      [6, 3],
+      [6, 2],
+      [6, 1],
+    ] as Array<[number, number]>,
+  },
+].map(({ d, goal, openCells }, idx) => ({
+  label: `${idx + 1}`,
+  width: 9,
+  height: 7,
+  robot: { x: 1, y: 5, dir: 'EAST' },
+  barriers: buildSealedGridBarriers(9, 7, openCells),
+  dialTiles: [{ x: 2, y: 5, value: d }],
+  flags: [
+    {
+      id: `goal_var2_v${idx + 1}`,
+      x: goal[0],
+      y: goal[1],
+      isGoal: true,
+      order: 1,
+      collected: false,
+    },
+  ],
+  requireAllItemsCollected: false,
+  requireEmptyBackpackAtGoal: false,
+  strictInteractionCollision: true,
+}));
 
-// var.3 â€” Updating a Variable (3 Demo Tabs)
+// var.3 — Updating & Combining Variables (3 Demo Tabs)
 const VAR_3_TAB1_GRID: CurriculumGridDefinition = {
   label: '1',
   width: 9,
   height: 6,
-  robot: { x: 1, y: 2, dir: 'EAST' },
+  robot: { x: 1, y: 4, dir: 'EAST' },
   barriers: buildSealedGridBarriers(9, 6, [
-    [1, 2],
-    [2, 2],
-    [3, 2],
+    [1, 4],
+    [2, 4],
+    [2, 3],
+    [3, 3],
+    [4, 3],
     [4, 2],
     [5, 2],
     [6, 2],
+    [7, 2],
+    [7, 1],
   ]),
-  dialTiles: [{ x: 1, y: 2, value: 2 }],
-  flags: [{ id: 'goal_var3_t1', x: 6, y: 2, isGoal: true, order: 1, collected: false }],
+  flags: [{ id: 'goal_var3_t1', x: 7, y: 1, isGoal: true, order: 1, collected: false }],
   requireAllItemsCollected: false,
   requireEmptyBackpackAtGoal: false,
   strictInteractionCollision: true,
@@ -370,17 +401,20 @@ const VAR_3_TAB2_GRID: CurriculumGridDefinition = {
   label: '2',
   width: 7,
   height: 7,
-  robot: { x: 1, y: 1, dir: 'EAST' },
+  robot: { x: 1, y: 5, dir: 'EAST' },
   barriers: buildSealedGridBarriers(7, 7, [
-    [1, 1],
-    [2, 1],
-    [3, 1],
-    [4, 1],
+    [1, 5],
+    [2, 5],
+    [3, 5],
+    [4, 5],
+    [5, 5],
+    [5, 4],
+    [5, 3],
+    [5, 2],
     [4, 2],
-    [4, 3],
+    [3, 2],
     [3, 3],
   ]),
-  dialTiles: [{ x: 1, y: 1, value: 3 }],
   flags: [{ id: 'goal_var3_t2', x: 3, y: 3, isGoal: true, order: 1, collected: false }],
   requireAllItemsCollected: false,
   requireEmptyBackpackAtGoal: false,
@@ -391,27 +425,28 @@ const VAR_3_TAB3_GRID: CurriculumGridDefinition = {
   label: '3',
   width: 10,
   height: 9,
-  robot: { x: 1, y: 2, dir: 'EAST' },
+  robot: { x: 1, y: 7, dir: 'EAST' },
   barriers: buildSealedGridBarriers(10, 9, [
-    [1, 2],
-    [2, 2],
-    [3, 2],
-    [4, 2],
-    [5, 2],
-    [6, 2],
-    [7, 2],
-    [7, 3],
-    [7, 4],
-    [7, 5],
-    [7, 6],
+    [1, 7],
+    [2, 7],
+    [3, 7],
+    [4, 7],
+    [5, 7],
+    [6, 7],
     [7, 7],
-    [7, 8],
+    [8, 7],
+    [8, 6],
+    [8, 5],
+    [8, 4],
+    [8, 3],
+    [8, 2],
+    [8, 1],
   ]),
   dialTiles: [
-    { x: 1, y: 2, value: 2 },
-    { x: 2, y: 2, value: 3 },
+    { x: 2, y: 7, value: 2 },
+    { x: 3, y: 7, value: 3 },
   ],
-  flags: [{ id: 'goal_var3_t3', x: 7, y: 8, isGoal: true, order: 1, collected: false }],
+  flags: [{ id: 'goal_var3_t3', x: 8, y: 1, isGoal: true, order: 1, collected: false }],
   requireAllItemsCollected: false,
   requireEmptyBackpackAtGoal: false,
   strictInteractionCollision: true,
@@ -423,15 +458,19 @@ const VAR_3_TABS: ExplanationDemoTab[] = [
     label: '1',
     simId: 'grid',
     coPilotCard:
-      'a = a + 1 adds 1 to whatever number is already in box a, turning 2 steps into 3!',
+      'a = a + 1 adds 1 to the old number inside [a] and saves the bigger number right back in [a]. Each loop turn, the robot steps 1 tile farther!',
     grid: VAR_3_TAB1_GRID,
     workspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', '$tileDial'),
+          varAssign('a', 1),
+          loopStart(3),
           block('MOVE_FWD', { repeatCount: 'a' }),
+          block('TURN_LEFT'),
+          block('MOVE_FWD'),
+          block('TURN_RIGHT'),
           varOp('a', 'a', '+', 1),
-          block('MOVE_FWD', { repeatCount: 'a' }),
+          block('LOOP_END'),
         ],
       },
       'demo_var3_t1'
@@ -442,19 +481,17 @@ const VAR_3_TABS: ExplanationDemoTab[] = [
     label: '2',
     simId: 'grid',
     coPilotCard:
-      'a = a - 1 shrinks your step count by 1 after each turn to walk an inward spiral (3, 2, 1)!',
+      'a = a - 1 takes 1 away from [a] each turn so the coil shrinks smoothly toward the center. Watch the Memory Tray count down 4, 3, 2, 1!',
     grid: VAR_3_TAB2_GRID,
     workspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', '$tileDial'),
+          varAssign('a', 4),
+          loopStart(4),
           block('MOVE_FWD', { repeatCount: 'a' }),
-          block('TURN_RIGHT'),
+          block('TURN_LEFT'),
           varOp('a', 'a', '-', 1),
-          block('MOVE_FWD', { repeatCount: 'a' }),
-          block('TURN_RIGHT'),
-          varOp('a', 'a', '-', 1),
-          block('MOVE_FWD', { repeatCount: 'a' }),
+          block('LOOP_END'),
         ],
       },
       'demo_var3_t2'
@@ -465,18 +502,19 @@ const VAR_3_TABS: ExplanationDemoTab[] = [
     label: '3',
     simId: 'grid',
     coPilotCard:
-      'Combine two dial boxes with c = a + b, then double it with d = b * 2!',
+      'Save two dials into [a] and [b], then compute [c = a + b] and [d = b * 2] before you walk. Math blocks calculate first, and action slots use the finished box!',
     grid: VAR_3_TAB3_GRID,
     workspace: makeWorkspace(
       {
         MAIN: [
+          block('MOVE_FWD'),
           varAssign('a', '$tileDial'),
           block('MOVE_FWD'),
           varAssign('b', '$tileDial'),
           varOp('c', 'a', '+', 'b'),
           varOp('d', 'b', '*', 2),
           block('MOVE_FWD', { repeatCount: 'c' }),
-          block('TURN_RIGHT'),
+          block('TURN_LEFT'),
           block('MOVE_FWD', { repeatCount: 'd' }),
         ],
       },
@@ -485,82 +523,153 @@ const VAR_3_TABS: ExplanationDemoTab[] = [
   },
 ];
 
-// var.4 â€” Stepping Counters & Staircases (10x8, 3 variants: dial = 1, 2, 3 at (3,1))
-const VAR_4_GRIDS: CurriculumGridDefinition[] = [1, 2, 3].map((d, idx) => {
-  const openCells: Array<[number, number]> = [];
-  for (let x = 3; x <= 3 + d; x++) openCells.push([x, 1]);
-  for (let y = 2; y <= 2 + d; y++) openCells.push([3 + d, y]);
-  for (let x = 1; x <= 2 + d; x++) openCells.push([x, 2 + d]);
-  return {
-    label: `${idx + 1}`,
-    width: 10,
-    height: 8,
-    robot: { x: 3, y: 1, dir: 'EAST' },
-    barriers: buildSealedGridBarriers(10, 8, openCells),
-    dialTiles: [{ x: 3, y: 1, value: d }],
-    flags: [{ id: `goal_var4_v${idx + 1}`, x: 1, y: 2 + d, isGoal: true, order: 1, collected: false }],
-    requireAllItemsCollected: false,
-    requireEmptyBackpackAtGoal: false,
-    strictInteractionCollision: true,
-  };
-});
+// var.4 — Stepping Counters & Arithmetic Spirals (10x8, 3 variants: dial = 1, 2, 3 at (5,2))
+const VAR_4_GRIDS: CurriculumGridDefinition[] = [
+  {
+    d: 1,
+    goal: [3, 4] as [number, number],
+    openCells: [[5, 2], [6, 2], [6, 3], [6, 4], [5, 4], [4, 4], [3, 4]] as Array<
+      [number, number]
+    >,
+  },
+  {
+    d: 2,
+    goal: [3, 5] as [number, number],
+    openCells: [
+      [5, 2],
+      [6, 2],
+      [7, 2],
+      [7, 3],
+      [7, 4],
+      [7, 5],
+      [6, 5],
+      [5, 5],
+      [4, 5],
+      [3, 5],
+    ] as Array<[number, number]>,
+  },
+  {
+    d: 3,
+    goal: [3, 6] as [number, number],
+    openCells: [
+      [5, 2],
+      [6, 2],
+      [7, 2],
+      [8, 2],
+      [8, 3],
+      [8, 4],
+      [8, 5],
+      [8, 6],
+      [7, 6],
+      [6, 6],
+      [5, 6],
+      [4, 6],
+      [3, 6],
+    ] as Array<[number, number]>,
+  },
+].map(({ d, goal, openCells }, idx) => ({
+  label: `${idx + 1}`,
+  width: 10,
+  height: 8,
+  robot: { x: 5, y: 2, dir: 'EAST' },
+  barriers: buildSealedGridBarriers(10, 8, openCells),
+  dialTiles: [{ x: 5, y: 2, value: d }],
+  flags: [
+    {
+      id: `goal_var4_v${idx + 1}`,
+      x: goal[0],
+      y: goal[1],
+      isGoal: true,
+      order: 1,
+      collected: false,
+    },
+  ],
+  requireAllItemsCollected: false,
+  requireEmptyBackpackAtGoal: false,
+  strictInteractionCollision: true,
+}));
 
-// var.4a â€” Corridor Beacon Counters (9x8, 4 variants: 2, 3, 4, 5 red beacons)
+// var.4a — Corridor Beacon Counters (9x8, 4 variants: [3,6], [2,4,6], [2,3,5,7], [2,3,4,5,7])
 const VAR_4A_BEACON_XS: number[][] = [
-  [2, 5],
+  [3, 6],
   [2, 4, 6],
   [2, 3, 5, 7],
-  [2, 3, 4, 6, 7],
+  [2, 3, 4, 5, 7],
 ];
 
-const VAR_4A_GRIDS: CurriculumGridDefinition[] = VAR_4A_BEACON_XS.map((xs, idx) => {
-  const openCells: Array<[number, number]> = [];
-  for (let x = 1; x <= 7; x++) openCells.push([x, 1]);
-  for (let y = 2; y <= 6; y++) openCells.push([7, y]);
-  return {
-    label: `${idx + 1}`,
-    width: 9,
-    height: 8,
-    robot: { x: 1, y: 1, dir: 'EAST' },
-    barriers: buildSealedGridBarriers(9, 8, openCells),
-    beaconTiles: xs.map((bx) => ({ x: bx, y: 1, color: 'red' as const })),
-    flags: [{ id: `goal_var4a_v${idx + 1}`, x: 7, y: 1 + xs.length, isGoal: true, order: 1, collected: false }],
-    requireAllItemsCollected: false,
-    requireEmptyBackpackAtGoal: false,
-    strictInteractionCollision: true,
-  };
-});
+const VAR_4A_SHARED_WALKABLE: Array<[number, number]> = [
+  [1, 1],
+  [2, 1],
+  [3, 1],
+  [4, 1],
+  [5, 1],
+  [6, 1],
+  [7, 1],
+  [7, 2],
+  [7, 3],
+  [7, 4],
+  [7, 5],
+  [7, 6],
+];
 
-// var.A â€” Inventory Quartermaster (9x9, 4 variants: c = 1, 2, 3, 4 red beacons)
+const VAR_4A_GRIDS: CurriculumGridDefinition[] = VAR_4A_BEACON_XS.map((xs, idx) => ({
+  label: `${idx + 1}`,
+  width: 9,
+  height: 8,
+  robot: { x: 1, y: 1, dir: 'EAST' },
+  barriers: buildSealedGridBarriers(9, 8, VAR_4A_SHARED_WALKABLE),
+  beaconTiles: xs.map((bx) => ({ x: bx, y: 1, color: 'red' as const })),
+  flags: [
+    {
+      id: `goal_var4a_v${idx + 1}`,
+      x: 7,
+      y: 1 + xs.length,
+      isGoal: true,
+      order: 1,
+      collected: false,
+    },
+  ],
+  requireAllItemsCollected: false,
+  requireEmptyBackpackAtGoal: false,
+  strictInteractionCollision: true,
+}));
+
+// var.A — Inventory Quartermaster (9x8, 4 variants: [4], [3,5], [2,4,6], [2,3,5,6])
 const VAR_A_BEACON_XS: number[][] = [
-  [3],
-  [2, 5],
+  [4],
+  [3, 5],
   [2, 4, 6],
   [2, 3, 5, 6],
 ];
 
 const VAR_A_GRIDS: CurriculumGridDefinition[] = VAR_A_BEACON_XS.map((xs, idx) => {
   const c = xs.length;
-  const openCells: Array<[number, number]> = [];
-  for (let x = 1; x <= 7; x++) openCells.push([x, 1]);
-  for (let y = 2; y <= 7; y++) openCells.push([7, y]);
   return {
     label: `${idx + 1}`,
     width: 9,
-    height: 9,
+    height: 8,
     robot: { x: 1, y: 1, dir: 'EAST' },
-    barriers: buildSealedGridBarriers(9, 9, openCells),
+    barriers: buildSealedGridBarriers(9, 8, VAR_4A_SHARED_WALKABLE),
     beaconTiles: xs.map((bx) => ({ x: bx, y: 1, color: 'red' as const })),
     worldItems: [{ id: `cell_varA_v${idx + 1}`, type: 'crate', x: 7, y: 1 }],
     floorSwitches: [{ id: `sw_varA_v${idx + 1}`, x: 7, y: 1 + c, requiredForGoal: true }],
-    flags: [{ id: `goal_varA_v${idx + 1}`, x: 7, y: 2 + c, isGoal: true, order: 1, collected: false }],
+    flags: [
+      {
+        id: `goal_varA_v${idx + 1}`,
+        x: 7,
+        y: 2 + c,
+        isGoal: true,
+        order: 1,
+        collected: false,
+      },
+    ],
     requireAllItemsCollected: false,
     requireEmptyBackpackAtGoal: true,
     strictInteractionCollision: true,
   };
 });
 
-// var.M1 â€” Multi-Dial Vault (11x11, 4 variants: (1,2,1), (3,1,2), (2,3,1), (1,3,2))
+// var.M1 — Multi-Dial Vault Combination (11x11, Start (1,9) E, Dials (2,9),(3,9),(4,9))
 const VAR_M1_TRIPLES: Array<[number, number, number]> = [
   [1, 2, 1],
   [3, 1, 2],
@@ -568,30 +677,70 @@ const VAR_M1_TRIPLES: Array<[number, number, number]> = [
   [1, 3, 2],
 ];
 
+const VAR_M1_SHARED_WALKABLE: Array<[number, number]> = [
+  [1, 9],
+  [2, 9],
+  [3, 9],
+  [4, 9],
+  [5, 9],
+  [6, 9],
+  [7, 9],
+  [8, 9],
+  [9, 9],
+  [7, 8],
+  [8, 8],
+  [9, 8],
+  [7, 7],
+  [8, 7],
+  [9, 7],
+  [7, 6],
+  [8, 6],
+  [9, 6],
+  [7, 5],
+  [8, 5],
+  [9, 5],
+  [7, 4],
+  [8, 4],
+  [9, 4],
+  [7, 3],
+  [8, 3],
+  [9, 3],
+  [7, 2],
+  [8, 2],
+  [9, 2],
+  [7, 1],
+  [8, 1],
+  [9, 1],
+];
+
 const VAR_M1_GRIDS: CurriculumGridDefinition[] = VAR_M1_TRIPLES.map(([a, b, c], idx) => {
   const d = a + b;
-  const openCells: Array<[number, number]> = [];
-  for (let x = 1; x <= 9; x++) openCells.push([x, 1]);
-  for (let x = 7; x <= 9; x++) {
-    for (let y = 2; y <= 8; y++) {
-      openCells.push([x, y]);
-    }
-  }
-  for (let x = 7; x <= 10; x++) openCells.push([x, 9]);
+  const e = b * 2;
   return {
     label: `${idx + 1}`,
     width: 11,
     height: 11,
-    robot: { x: 1, y: 1, dir: 'EAST' },
-    barriers: buildSealedGridBarriers(11, 11, openCells),
+    robot: { x: 1, y: 9, dir: 'EAST' },
+    barriers: buildSealedGridBarriers(11, 11, VAR_M1_SHARED_WALKABLE),
     dialTiles: [
-      { x: 1, y: 1, value: a },
-      { x: 2, y: 1, value: b },
-      { x: 3, y: 1, value: c },
+      { x: 2, y: 9, value: a },
+      { x: 3, y: 9, value: b },
+      { x: 4, y: 9, value: c },
     ],
     worldItems: [{ id: `core_varM1_v${idx + 1}`, type: 'crate', x: 4 + d, y: 9 }],
-    floorSwitches: [{ id: `sw_varM1_v${idx + 1}`, x: 4 + d + c, y: 9, requiredForGoal: true }],
-    flags: [{ id: `goal_varM1_v${idx + 1}`, x: 4 + d + c, y: 9, isGoal: true, order: 1, collected: false }],
+    floorSwitches: [
+      { id: `sw_varM1_v${idx + 1}`, x: 4 + d, y: 9 - e, requiredForGoal: true },
+    ],
+    flags: [
+      {
+        id: `goal_varM1_v${idx + 1}`,
+        x: 4 + d,
+        y: 9 - e - c,
+        isGoal: true,
+        order: 1,
+        collected: false,
+      },
+    ],
     requireAllItemsCollected: false,
     requireEmptyBackpackAtGoal: true,
     strictInteractionCollision: true,
@@ -599,18 +748,18 @@ const VAR_M1_GRIDS: CurriculumGridDefinition[] = VAR_M1_TRIPLES.map(([a, b, c], 
 });
 
 // ---------------------------------------------------------------------------
-// Palette Configurations
+// Palette Configurations (Matching docs/curriculum/var/*.md verbatim)
 // ---------------------------------------------------------------------------
 
 const VAR_0_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
   allowedSimBlocks: ['FORWARD', 'TURN_RIGHT', 'SET_PEN_COLOR', 'MOVE_FWD'],
-  allowedControlBlocks: ['VAR_ASSIGN', 'LOOP_START', 'LOOP_END'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'VAR_ASSIGN'],
   allowVariables: true,
   allowedVariableNames: varList('s', 'd'),
   allowedValueSensors: ['$tileDial'],
   allowActionParams: true,
-  allowRepeatBadges: false,
+  allowRepeatBadges: true,
   allowedBlockParams: {
     FORWARD: ['length'],
     TURN_RIGHT: ['angle'],
@@ -621,7 +770,7 @@ const VAR_0_PALETTE: PaletteConfig = {
 const VAR_1_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1'],
   allowedSimBlocks: VAR_TURTLE_BASE_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'LOOP_START', 'LOOP_END', 'CALL_F1'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'VAR_ASSIGN'],
   allowVariables: true,
   allowedVariableNames: varList('a', 'b', 'e', 's'),
   allowActionParams: true,
@@ -643,7 +792,7 @@ const VAR_2_PALETTE: PaletteConfig = {
 const VAR_3_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
   allowedSimBlocks: VAR_GRID_MOTION_ONLY,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('a', 'b', 'c', 'd'),
@@ -655,10 +804,10 @@ const VAR_3_PALETTE: PaletteConfig = {
 const VAR_4_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
   allowedSimBlocks: VAR_GRID_MOTION_ONLY,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
-  allowedVariableNames: varList('a'),
+  allowedVariableNames: varList('s'),
   allowedValueSensors: ['$tileDial'],
   allowActionParams: false,
   allowRepeatBadges: true,
@@ -667,7 +816,7 @@ const VAR_4_PALETTE: PaletteConfig = {
 const VAR_4A_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
   allowedSimBlocks: VAR_GRID_MOTION_ONLY,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'WHILE', 'END_WHILE', 'IF', 'END_IF'],
+  allowedControlBlocks: ['WHILE', 'END_WHILE', 'IF', 'END_IF', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('c'),
@@ -679,7 +828,7 @@ const VAR_4A_PALETTE: PaletteConfig = {
 const VAR_5_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1'],
   allowedSimBlocks: VAR_TURTLE_BASE_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('a'),
@@ -691,20 +840,20 @@ const VAR_5_PALETTE: PaletteConfig = {
 const VAR_6_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1'],
   allowedSimBlocks: VAR_TURTLE_TELEPORT_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('a', 'b', 'c'),
   allowedValueSensors: ['$x', '$y', '$heading'],
   allowActionParams: true,
-  allowRepeatBadges: true,
+  allowRepeatBadges: false,
   allowedBlockParams: VAR_TURTLE_PARAMS,
 };
 
 const VAR_7_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1', 'F2'],
   allowedSimBlocks: VAR_BEAT_ALLOWED_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('c', 'p', 'r', 'x', 'y'),
@@ -717,17 +866,21 @@ const VAR_8_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1'],
   allowedSimBlocks: [
     'LIGHT_PIXEL',
-    'PLAY_NOTE',
     'SET_LED_COLOR',
+    'PLAY_NOTE',
+    'SET_BEAT_DELAY',
     'FORWARD',
     'TURN_RIGHT',
+    'PEN_UP',
+    'PEN_DOWN',
     'SET_PEN_COLOR',
     'SET_PEN_WIDTH',
+    'TELEPORT',
   ],
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
-  allowedVariableNames: varList('a', 'd', 'p', 'r', 's', 'x', 'y'),
+  allowedVariableNames: varList('c', 'p', 'r', 'x', 'y'),
   allowedValueSensors: [
     '$randCoin',
     '$randD4',
@@ -748,7 +901,7 @@ const VAR_8_PALETTE: PaletteConfig = {
 const VAR_9_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1', 'F2'],
   allowedSimBlocks: VAR_BEAT_ALLOWED_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('c', 'm', 'p', 'r'),
@@ -769,7 +922,7 @@ const VAR_9_PALETTE: PaletteConfig = {
 const VAR_10_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1', 'F2'],
   allowedSimBlocks: VAR_TURTLE_TELEPORT_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('a', 'd', 'r', 's', 'u', 'v', 'x', 'y'),
@@ -786,14 +939,14 @@ const VAR_10_PALETTE: PaletteConfig = {
     '$randomColor',
   ],
   allowActionParams: true,
-  allowRepeatBadges: true,
+  allowRepeatBadges: false,
   allowedBlockParams: VAR_TURTLE_PARAMS,
 };
 
 const VAR_A_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
-  allowedSimBlocks: VAR_GRID_ALLOWED_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'WHILE', 'END_WHILE', 'IF', 'END_IF'],
+  allowedSimBlocks: VAR_GRID_INTERACTIVE,
+  allowedControlBlocks: ['WHILE', 'END_WHILE', 'IF', 'END_IF', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('c'),
@@ -806,13 +959,13 @@ const VAR_B_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1', 'F2', 'F3'],
   allowedSimBlocks: VAR_TURTLE_TELEPORT_BLOCKS,
   allowedControlBlocks: [
-    'VAR_ASSIGN',
-    'VAR_OP',
     'LOOP_START',
     'LOOP_END',
     'CALL_F1',
     'CALL_F2',
     'CALL_F3',
+    'VAR_ASSIGN',
+    'VAR_OP',
   ],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
@@ -830,17 +983,17 @@ const VAR_B_PALETTE: PaletteConfig = {
     '$randomColor',
   ],
   allowActionParams: true,
-  allowRepeatBadges: true,
+  allowRepeatBadges: false,
   allowedBlockParams: VAR_TURTLE_PARAMS,
 };
 
 const VAR_M1_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN'],
-  allowedSimBlocks: VAR_GRID_ALLOWED_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP'],
+  allowedSimBlocks: VAR_GRID_INTERACTIVE,
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
-  allowedVariableNames: varList('a', 'b', 'c', 'd'),
+  allowedVariableNames: varList('a', 'b', 'c', 'd', 'e'),
   allowedValueSensors: ['$tileDial'],
   allowActionParams: false,
   allowRepeatBadges: true,
@@ -849,13 +1002,13 @@ const VAR_M1_PALETTE: PaletteConfig = {
 const VAR_M2_PALETTE: PaletteConfig = {
   allowedScopes: ['MAIN', 'F1', 'F2'],
   allowedSimBlocks: VAR_TURTLE_TELEPORT_BLOCKS,
-  allowedControlBlocks: ['VAR_ASSIGN', 'VAR_OP', 'LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2'],
+  allowedControlBlocks: ['LOOP_START', 'LOOP_END', 'CALL_F1', 'CALL_F2', 'VAR_ASSIGN', 'VAR_OP'],
   allowVariables: true,
   allowedVarOps: ['+', '-', '*'],
   allowedVariableNames: varList('a', 'b', 'h', 'u', 'v', 'w', 'x', 'y'),
   allowedValueSensors: ['$x', '$y', '$heading'],
   allowActionParams: true,
-  allowRepeatBadges: true,
+  allowRepeatBadges: false,
   allowedBlockParams: VAR_TURTLE_PARAMS,
 };
 
@@ -865,7 +1018,7 @@ const VAR_M2_PALETTE: PaletteConfig = {
 
 export const VAR_ACTIVITIES: CurriculumActivity[] = [
   // =========================================================================
-  // var.0 â€” Variable Memory Boxes (Explanation, Turtle + Grid)
+  // var.0 — Variable Memory Boxes (Explanation, Turtle + Grid)
   // =========================================================================
   {
     id: 'var.0',
@@ -873,21 +1026,21 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'explanation',
     simId: 'turtle',
-    icon: 'ðŸ“¦',
+    icon: '📦',
     title: 'Variable Memory Boxes',
     concept: 'Store a number in a named box (s = 100 or d = Dial) and reuse it across blocks',
     description:
       'Watch how a single memory box controls an entire LOGO house or reads floor dials of different lengths.',
-    hint: 'Switch between Tab 1 and Tab 2, change s or tap Variant 1 and 2, then press Run.',
+    hint: 'Switch between Tab 1, Tab 2, and Tab 3 and press Run to watch [s] and [d] update.',
     coPilotCard:
-      'Put a number or dial reading inside box s or d, then reuse that box everywhere you need it!',
+      'Put a number inside a named box like s = 100, and every block wearing [s] uses that number! Change [s] once, and the walls and roof resize together.',
     palette: VAR_0_PALETTE,
-    starterWorkspace: VAR_0_TABS[0].workspace!,
+    starterWorkspace: VAR_0_TABS[0].workspace,
     demoTabs: VAR_0_TABS,
   },
 
   // =========================================================================
-  // var.1 â€” Variables as Single-Point Constants (Creative, Turtle)
+  // var.1 — Variables as Single-Point Constants (Creative, Turtle)
   // =========================================================================
   {
     id: 'var.1',
@@ -895,115 +1048,139 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'sandbox',
     simId: 'turtle',
-    icon: 'â­',
-    title: 'Single-Point Constants',
-    concept: 'Configure size and turn angle constants in Main and pass them to Function 1',
+    icon: '🏠',
+    title: 'Variables as Single-Point Constants',
+    concept: 'Configure size and feature constants in Main and pass them cleanly across shapes and F1',
     description:
-      'Store side lengths and turn angles in s, a, b, and e so changing one box transforms stars, snowflakes, pinwheels, and daisies.',
-    hint: 'Set s, a, b, or e at the top of Main, then reuse them inside Function 1 loops.',
+      'Define constants once in Main (s, a, b, e) so changing a single value resizes houses, pixel bot faces, and scaled blueprints.',
+    hint: 'Change s = 100 at the top of Main, or pick a Variation Card to explore F1 scaling.',
     palette: VAR_1_PALETTE,
     slotCap: {
-      perScope: { MAIN: 16, F1: 12 },
+      maxTotal: 60,
+      perScope: { MAIN: 30, F1: 30 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('s', 145),
-          varAssign('a', 144),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
-          block('CALL_F1'),
-          block('TURN_RIGHT', { params: { angle: 36 } }),
+          varAssign('s', 100),
           block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-          block('CALL_F1'),
-        ],
-        F1: [
-          loopStart(5),
+          loopStart(4),
           block('FORWARD', { params: { length: 's' } }),
-          block('TURN_RIGHT', { params: { angle: 'a' } }),
+          block('TURN_RIGHT', { params: { angle: 90 } }),
           block('LOOP_END'),
+          block('FORWARD', { params: { length: 's' } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+          block('TURN_RIGHT', { params: { angle: 30 } }),
+          block('FORWARD', { params: { length: 's' } }),
+          block('TURN_RIGHT', { params: { angle: 120 } }),
+          block('FORWARD', { params: { length: 's' } }),
         ],
       },
       'start_var1'
     ),
     variations: [
       {
-        id: 'var.1-var1-snowflake',
-        title: '6-Point Snowflake',
-        icon: 'â„ï¸',
+        id: 'var.1-var1-neon-mansion',
+        title: 'Giant Neon Mansion',
+        icon: '🏰',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('e', 90),
-              varAssign('s', 55),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
-              loopStart(6),
-              block('FORWARD', { params: { length: 'e' } }),
-              block('CALL_F1'),
-              block('BACKWARD', { params: { length: 'e' } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
-              block('LOOP_END'),
-            ],
-            F1: [
-              loopStart(6),
+              varAssign('s', 150),
+              block('SET_PEN_WIDTH', { params: { width: 8 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
+              loopStart(4),
               block('FORWARD', { params: { length: 's' } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
               block('LOOP_END'),
+              block('FORWARD', { params: { length: 's' } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
+              block('FORWARD', { params: { length: 's' } }),
+              block('TURN_RIGHT', { params: { angle: 120 } }),
+              block('FORWARD', { params: { length: 's' } }),
             ],
           },
           'v1_var1'
         ),
       },
       {
-        id: 'var.1-var2-pinwheel',
-        title: '3-Color Square Pinwheel',
-        icon: 'ðŸŒ€',
+        id: 'var.1-var2-pixel-bot',
+        title: 'Variable Pixel Bot Face',
+        icon: '🤖',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('s', 100),
-              varAssign('a', 90),
-              varAssign('b', 120),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
-              block('CALL_F1'),
-              block('TURN_RIGHT', { params: { angle: 'b' } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-              block('CALL_F1'),
-              block('TURN_RIGHT', { params: { angle: 'b' } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
-              block('CALL_F1'),
-            ],
-            F1: [
+              varAssign('s', 200),
+              varAssign('e', 40),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
               loopStart(4),
               block('FORWARD', { params: { length: 's' } }),
-              block('TURN_RIGHT', { params: { angle: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
               block('LOOP_END'),
+              block('PEN_UP'),
+              block('FORWARD', { params: { length: 'e' }, repeatCount: 3 }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
+              block('FORWARD', { params: { length: 'e' } }),
+              block('TURN_LEFT', { params: { angle: 90 } }),
+              block('CALL_F1'),
+              block('CALL_F1'),
+              block('BACKWARD', { params: { length: 'e' }, repeatCount: 2 }),
+              block('TURN_LEFT', { params: { angle: 90 } }),
+              block('FORWARD', { params: { length: 'e' } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+              block('FORWARD', { params: { length: 'e' }, repeatCount: 3 }),
+            ],
+            F1: [
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              loopStart(4),
+              block('FORWARD', { params: { length: 'e' } }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
+              block('LOOP_END'),
+              block('PEN_UP'),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
+              block('FORWARD', { params: { length: 'e' }, repeatCount: 2 }),
+              block('TURN_LEFT', { params: { angle: 90 } }),
             ],
           },
           'v2_var1'
         ),
       },
       {
-        id: 'var.1-var3-daisy',
-        title: '24-Petal Daisy',
-        icon: 'ðŸŒ¼',
+        id: 'var.1-var3-twin-blueprints',
+        title: 'Twin Scaled Blueprints',
+        icon: '🏘️',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('s', 95),
-              varAssign('a', 15),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
-              loopStart(6),
-              loopStart(4),
+              varAssign('s', 150),
+              varAssign('b', 75),
+              varAssign('a', 's'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
               block('CALL_F1'),
-              block('TURN_RIGHT', { params: { angle: 'a' } }),
-              block('LOOP_END'),
-              block('LOOP_END'),
+              block('FORWARD', { params: { length: 50 } }),
+              block('TURN_LEFT', { params: { angle: 90 } }),
+              varAssign('a', 'b'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+              block('CALL_F1'),
             ],
             F1: [
-              block('ARC_RIGHT', { params: { radius: 's', angle: 60 } }),
+              block('PEN_DOWN'),
+              loopStart(4),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
+              block('LOOP_END'),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
+              block('FORWARD', { params: { length: 'a' } }),
               block('TURN_RIGHT', { params: { angle: 120 } }),
-              block('ARC_RIGHT', { params: { radius: 's', angle: 60 } }),
-              block('TURN_RIGHT', { params: { angle: 120 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('PEN_UP'),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_LEFT', { params: { angle: 90 } }),
             ],
           },
           'v3_var1'
@@ -1013,7 +1190,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.2 â€” Reading & Recalling a Dial Value (Puzzle, Grid)
+  // var.2 — Reading & Recalling a Dial Value (Puzzle, Grid)
   // =========================================================================
   {
     id: 'var.2',
@@ -1021,12 +1198,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'puzzle',
     simId: 'grid',
-    icon: 'ðŸŽ›ï¸',
+    icon: '🎛️',
     title: 'Reading & Recalling a Dial Value',
-    concept: 'Read a live floor dial once into box d and recall it on both legs of an L-hallway',
+    concept: 'Read $tileDial once into box d and recall [d] on both separated L-corridor strides',
     description:
-      'Step onto the floor dial, save its number in box d, and walk d steps East then d steps South to reach the Goal across all 3 map lengths.',
-    hint: 'Read d = Dial first, then tag both Forward blocks with [xd].',
+      'Step onto the floor dial, save its number in box d, and walk d steps East then turn left North d steps to reach Goal across all 3 variants.',
+    hint: 'Read d = $tileDial first, then use MOVE_FWD [×d], TURN_LEFT, MOVE_FWD [×d].',
     palette: VAR_2_PALETTE,
     slotCap: {
       maxTotal: 8,
@@ -1048,8 +1225,8 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
             block('MOVE_FWD'),
             varAssign('d', '$tileDial'),
             placeholder(),
+            block('TURN_LEFT'),
             placeholder(),
-            block('MOVE_FWD', { repeatCount: 'd' }),
           ],
         },
         'scaf_var2'
@@ -1061,7 +1238,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
           block('MOVE_FWD'),
           varAssign('d', '$tileDial'),
           block('MOVE_FWD', { repeatCount: 'd' }),
-          block('TURN_RIGHT'),
+          block('TURN_LEFT'),
           block('MOVE_FWD', { repeatCount: 'd' }),
         ],
       },
@@ -1084,7 +1261,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.3 â€” Updating a Variable: a = a + 1 (Explanation, Grid)
+  // var.3 — Updating & Combining Variables (Explanation, Grid)
   // =========================================================================
   {
     id: 'var.3',
@@ -1092,22 +1269,22 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'explanation',
     simId: 'grid',
-    icon: 'âž•',
-    title: 'Updating a Variable',
-    concept: 'Update variables with +, -, and * (a = a + 1, a = a - 1, c = a + b)',
+    icon: '➕',
+    title: 'Updating & Combining Variables',
+    concept: 'Update variables with +, -, and * (a = a + 1, a = a - 1, c = a + b, d = b * 2)',
     description:
-      'Watch how the 3-slot math block updates an existing variable box or combines two dial readings.',
-    hint: 'Tap Tabs 1, 2, and 3 and press Step or Run to inspect each variable update.',
+      'Watch how the 3-address math block updates an existing variable box or combines two dial readings.',
+    hint: 'Switch between Tab 1, Tab 2, and Tab 3 and press Run to inspect each variable update.',
     coPilotCard:
-      'Use +, -, and * math blocks to grow, shrink, or combine numbers already sitting in your boxes!',
+      'a = a + 1 adds 1 to the old number inside [a] and saves the bigger number right back in [a]. Each loop turn, the robot steps 1 tile farther!',
     palette: VAR_3_PALETTE,
-    starterWorkspace: VAR_3_TABS[0].workspace!,
+    starterWorkspace: VAR_3_TABS[0].workspace,
     grid: VAR_3_TAB1_GRID,
     demoTabs: VAR_3_TABS,
   },
 
   // =========================================================================
-  // var.4 â€” Stepping Counters & Staircases (Puzzle, Grid)
+  // var.4 — Stepping Counters & Arithmetic Spirals (Puzzle, Grid)
   // =========================================================================
   {
     id: 'var.4',
@@ -1115,12 +1292,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'puzzle',
     simId: 'grid',
-    icon: 'ðŸ“',
-    title: 'Stepping Counters & Staircases',
-    concept: 'Increment a step variable inside a 3-turn coil loop (a, a+1, a+2)',
+    icon: '📐',
+    title: 'Stepping Counters & Arithmetic Spirals',
+    concept: 'Increment starting dial s inside a Loop x3 spiral (s = s + 1)',
     description:
-      'Read the start dial into a, then use a 3x Loop that steps [xa], turns right, and grows a = a + 1 on every arm.',
-    hint: 'Inside Loop x3: Forward [xa], Turn Right, then a = a + 1.',
+      'Read the start dial into s, then inside Loop x3 step [×s], turn right, and update s = s + 1.',
+    hint: 'Keep TURN_RIGHT and add s = s + 1 inside Loop x3.',
     palette: VAR_4_PALETTE,
     slotCap: {
       maxTotal: 9,
@@ -1131,9 +1308,9 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', '$tileDial'),
+          varAssign('s', '$tileDial'),
           loopStart(3),
-          block('MOVE_FWD', { repeatCount: 'a' }),
+          block('MOVE_FWD', { repeatCount: 's' }),
           block('LOOP_END'),
         ],
       },
@@ -1144,10 +1321,10 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       scaffoldWorkspace: makeWorkspace(
         {
           MAIN: [
-            varAssign('a', '$tileDial'),
+            varAssign('s', '$tileDial'),
             loopStart(3),
-            block('MOVE_FWD', { repeatCount: 'a' }),
-            placeholder(),
+            block('MOVE_FWD', { repeatCount: 's' }),
+            block('TURN_RIGHT'),
             placeholder(),
             block('LOOP_END'),
           ],
@@ -1158,11 +1335,11 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     referenceSolution: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', '$tileDial'),
+          varAssign('s', '$tileDial'),
           loopStart(3),
-          block('MOVE_FWD', { repeatCount: 'a' }),
+          block('MOVE_FWD', { repeatCount: 's' }),
           block('TURN_RIGHT'),
-          varOp('a', 'a', '+', 1),
+          varOp('s', 's', '+', 1),
           block('LOOP_END'),
         ],
       },
@@ -1177,7 +1354,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       },
       {
         id: 'var.4-require-variable-stepping',
-        description: 'Three coil sizes (d=1,2,3) cannot all be solved without variables',
+        description: 'Three coil sizes (dial=1,2,3) cannot all be solved without variables',
         allowVariables: false,
         singleVariantBypassMustExist: true,
       },
@@ -1185,7 +1362,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.4a â€” Corridor Beacon Counters (Puzzle, Grid)
+  // var.4a — Corridor Beacon Counters (Puzzle, Grid)
   // =========================================================================
   {
     id: 'var.4a',
@@ -1193,12 +1370,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'puzzle',
     simId: 'grid',
-    icon: 'ðŸš¨',
+    icon: '🚨',
     title: 'Corridor Beacon Counters',
-    concept: 'Count red beacons while walking with While + If, then recall count c on the drop shaft',
+    concept: 'Count red beacons while walking with While + If, then recall tally c on the open shaft',
     description:
-      'Zero box c, walk down the hall counting each red beacon with c = c + 1, then turn right and step [xc] down the open shaft.',
-    hint: 'Inside While Path Ahead: Move Forward, then If Red Beacon -> c = c + 1.',
+      'Zero box c, walk down the corridor counting red beacons with c = c + 1, then turn right and walk MOVE_FWD [×c] to Goal.',
+    hint: 'Inside While pathAhead after MOVE_FWD: If Red Beacon -> c = c + 1, then MOVE_FWD [×c].',
     palette: VAR_4A_PALETTE,
     slotCap: {
       maxTotal: 12,
@@ -1214,7 +1391,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
           block('MOVE_FWD'),
           block('END_WHILE'),
           block('TURN_RIGHT'),
-          block('MOVE_FWD', { repeatCount: 'c' }),
+          block('MOVE_FWD'),
         ],
       },
       'start_var4a'
@@ -1257,7 +1434,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     antiBypassRules: [
       {
         id: 'var.4a-starter-must-fail',
-        description: 'Unedited starter leaves c = 0 at the top-right corner',
+        description: 'Unedited starter steps only once down the shaft with c = 0',
         unmodifiedStarterMustFail: true,
         minStarterEditDistance: 1,
       },
@@ -1271,7 +1448,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.5 â€” Growing & Shrinking Loops: Spirals (Creative, Turtle)
+  // var.5 — Growing & Shrinking Loops — Spirals (Creative, Turtle)
   // =========================================================================
   {
     id: 'var.5',
@@ -1279,26 +1456,27 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'sandbox',
     simId: 'turtle',
-    icon: 'ðŸš',
-    title: 'Growing & Shrinking Spirals',
-    concept: 'Update length variable a inside Loop xN to spin squares, hexagons, triangles, and shrinking spirals',
+    icon: '🐚',
+    title: 'Growing & Shrinking Loops — Spirals',
+    concept: 'Update length variable a inside Loop to spin squares, vortices, shells, wormholes, and galaxies',
     description:
-      'Grow or shrink step variable a inside a big loop to draw square spirals, honeycombs, triangular vortices, and whirlpools.',
-    hint: 'Start a small and add 8 each turn, or start a = 180 and subtract 6 inside Loop.',
+      'Put a self-updating variable (a = a + 12 or a = a - 15) inside a Loop to draw classic spirals, 122° vortices, Nautilus shells, and two-tone galaxy arms.',
+    hint: 'Try editing + 12 or turning angle 90°, or switch Variation Cards to see ARC_RIGHT and shrinking spirals.',
     palette: VAR_5_PALETTE,
     slotCap: {
-      perScope: { MAIN: 16, F1: 12 },
+      maxTotal: 24,
+      perScope: { MAIN: 14, F1: 14 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', 15),
-          block('SET_PEN_WIDTH', { params: { width: 3 } }),
+          varAssign('a', 20),
           block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
+          block('SET_PEN_WIDTH', { params: { width: 5 } }),
           loopStart(24),
           block('FORWARD', { params: { length: 'a' } }),
           block('TURN_RIGHT', { params: { angle: 90 } }),
-          varOp('a', 'a', '+', 8),
+          varOp('a', 'a', '+', 12),
           block('LOOP_END'),
         ],
       },
@@ -1306,19 +1484,19 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     ),
     variations: [
       {
-        id: 'var.5-var1-honeycomb',
-        title: '6-Sided Honeycomb Web',
-        icon: 'ðŸ¯',
+        id: 'var.5-var1-skewed-vortex',
+        title: 'Hypnotic Skewed Vortex',
+        icon: '🔺',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('a', 12),
-              block('SET_PEN_WIDTH', { params: { width: 3 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-              loopStart(24),
+              varAssign('a', 20),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
+              block('SET_PEN_WIDTH', { params: { width: 4 } }),
+              loopStart(30),
               block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
-              varOp('a', 'a', '+', 8),
+              block('TURN_RIGHT', { params: { angle: 122 } }),
+              varOp('a', 'a', '+', 10),
               block('LOOP_END'),
             ],
           },
@@ -1326,19 +1504,18 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.5-var2-vortex',
-        title: 'Triangular Vortex',
-        icon: 'ðŸ”º',
+        id: 'var.5-var2-nautilus-shell',
+        title: 'Nautilus Curved Shell',
+        icon: '🐌',
         workspace: makeWorkspace(
           {
             MAIN: [
               varAssign('a', 15),
-              block('SET_PEN_WIDTH', { params: { width: 3 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.green } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
               loopStart(18),
-              block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 122 } }),
-              varOp('a', 'a', '+', 12),
+              block('ARC_RIGHT', { params: { radius: 'a', angle: 90 } }),
+              varOp('a', 'a', '+', 10),
               block('LOOP_END'),
             ],
           },
@@ -1346,43 +1523,47 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.5-var3-whirlpool',
-        title: 'Shrinking Whirlpool (F1)',
-        icon: 'ðŸŒŠ',
+        id: 'var.5-var3-gravity-wormhole',
+        title: 'Shrinking Gravity Wormhole',
+        icon: '🌀',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('a', 180),
-              block('SET_PEN_WIDTH', { params: { width: 3 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
-              loopStart(24),
-              block('CALL_F1'),
-              block('LOOP_END'),
-            ],
-            F1: [
+              varAssign('a', 220),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
+              loopStart(14),
               block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 91 } }),
-              varOp('a', 'a', '-', 6),
+              block('TURN_RIGHT', { params: { angle: 88 } }),
+              varOp('a', 'a', '-', 15),
+              block('LOOP_END'),
             ],
           },
           'v3_var5'
         ),
       },
       {
-        id: 'var.5-var4-starburst',
-        title: '45-Step Starburst Spiral',
-        icon: 'ðŸ’¥',
+        id: 'var.5-var4-galaxy-arm',
+        title: 'Two-Tone Rainbow Galaxy Arm',
+        icon: '🌌',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('a', 10),
-              block('SET_PEN_WIDTH', { params: { width: 3 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
-              loopStart(45),
-              block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 144 } }),
-              varOp('a', 'a', '+', 5),
+              varAssign('a', 20),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
+              loopStart(14),
+              block('CALL_F1'),
               block('LOOP_END'),
+            ],
+            F1: [
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 89 } }),
+              varOp('a', 'a', '+', 12),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 89 } }),
+              varOp('a', 'a', '+', 12),
             ],
           },
           'v4_var5'
@@ -1392,7 +1573,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.6 â€” Teleport & Pose Sensors (Explanation, Turtle)
+  // var.6 — TELEPORT & Pose Sensors ($x, $y, $heading) (Explanation, Turtle)
   // =========================================================================
   {
     id: 'var.6',
@@ -1400,37 +1581,35 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'explanation',
     simId: 'turtle',
-    icon: 'ðŸ§­',
-    title: 'Teleport & Pose Sensors',
-    concept: 'Jump directly with Teleport(x, y, heading) and save pose sensors $x, $y, $heading',
+    icon: '🧭',
+    title: 'TELEPORT & Pose Sensors',
+    concept: 'Jump directly with TELEPORT(x, y, heading) and bookmark pose sensors $x, $y, $heading',
     description:
-      'Lift the pen, jump cleanly between islands with Teleport, and bookmark your spot with $x, $y, and $heading.',
-    hint: 'Compare Tab 1 (Twin Stars) and Tab 2 (Pose Bookmark) to see both Teleport and pose sensors in action.',
+      'Use TELEPORT with PEN_UP / PEN_DOWN to draw separated shapes, and save $x, $y, $heading into a, b, c to warp back cleanly.',
+    hint: 'Compare Tab 1 (Remote Twin Stars) and Tab 2 (Pose Bookmark & Heading Restore).',
     coPilotCard:
-      'Teleport jumps straight to x, y, and heading! Save $x, $y, and $heading into boxes to jump back later.',
+      'TELEPORT [x, y, heading] warps the turtle instantly to any spot and direction you type! Wrap jumps with PEN_UP and PEN_DOWN so no travel streaks connect separate shapes.',
     palette: VAR_6_PALETTE,
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: -140, y: 40, heading: 18 } }),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-          block('PEN_DOWN'),
+          block('TELEPORT', { params: { x: -145, y: 45, heading: 18 } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
           block('CALL_F1'),
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: 80, y: -30, heading: 18 } }),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
-          block('PEN_DOWN'),
+          block('TELEPORT', { params: { x: 75, y: 45, heading: 18 } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
           block('CALL_F1'),
         ],
         F1: [
+          block('PEN_DOWN'),
           loopStart(5),
-          block('FORWARD', { params: { length: 80 } }),
+          block('FORWARD', { params: { length: 110 } }),
           block('TURN_RIGHT', { params: { angle: 144 } }),
           block('LOOP_END'),
+          block('PEN_UP'),
         ],
       },
-      'demo_var6_t1_start'
+      'demo_var6_start'
     ),
     demoTabs: [
       {
@@ -1438,26 +1617,24 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         label: '1',
         simId: 'turtle',
         coPilotCard:
-          'Pen Up, Teleport to (-140, 40) and (80, -30), then Pen Down to draw twin stars cleanly!',
+          'TELEPORT [x, y, heading] warps the turtle instantly to any spot and direction you type! Wrap jumps with PEN_UP and PEN_DOWN so no travel streaks connect separate shapes.',
         workspace: makeWorkspace(
           {
             MAIN: [
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -140, y: 40, heading: 18 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-              block('PEN_DOWN'),
+              block('TELEPORT', { params: { x: -145, y: 45, heading: 18 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
               block('CALL_F1'),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 80, y: -30, heading: 18 } }),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
-              block('PEN_DOWN'),
+              block('TELEPORT', { params: { x: 75, y: 45, heading: 18 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
               block('CALL_F1'),
             ],
             F1: [
+              block('PEN_DOWN'),
               loopStart(5),
-              block('FORWARD', { params: { length: 80 } }),
+              block('FORWARD', { params: { length: 110 } }),
               block('TURN_RIGHT', { params: { angle: 144 } }),
               block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'demo_var6_t1'
@@ -1468,28 +1645,25 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         label: '2',
         simId: 'turtle',
         coPilotCard:
-          'Save $x, $y, and $heading into boxes a, b, c. Draw a red branch, then Teleport straight back!',
+          'Save a = $x, b = $y, and c = $heading before wandering away. Later, TELEPORT [a, b, c] beams the turtle straight back to its exact spot and angle!',
         workspace: makeWorkspace(
           {
             MAIN: [
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-              loopStart(4),
-              block('FORWARD', { params: { length: 110 } }),
-              block('TURN_RIGHT', { params: { angle: 90 } }),
-              block('LOOP_END'),
-              block('FORWARD', { params: { length: 110 } }),
-              block('TURN_RIGHT', { params: { angle: 45 } }),
+              block('TELEPORT', { params: { x: -90, y: -40, heading: 45 } }),
               varAssign('a', '$x'),
               varAssign('b', '$y'),
               varAssign('c', '$heading'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
-              block('FORWARD', { params: { length: 110 } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
+              loopStart(6),
+              block('FORWARD', { params: { length: 130 } }),
+              block('TURN_RIGHT', { params: { angle: 75 } }),
+              block('LOOP_END'),
               block('PEN_UP'),
               block('TELEPORT', { params: { x: 'a', y: 'b', heading: 'c' } }),
               block('PEN_DOWN'),
-              block('TURN_RIGHT', { params: { angle: 90 } }),
               block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.green } }),
-              block('FORWARD', { params: { length: 110 } }),
+              block('FORWARD', { params: { length: 130 } }),
             ],
           },
           'demo_var6_t2'
@@ -1499,7 +1673,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.7 â€” Sweeping Coordinates & Musical Scales (Creative, Beat)
+  // var.7 — Sweeping Coordinates & Scales (Creative, Beat)
   // =========================================================================
   {
     id: 'var.7',
@@ -1507,30 +1681,32 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'sandbox',
     simId: 'beat',
-    icon: 'ðŸŽ¹',
+    icon: '🎹',
     title: 'Sweeping Coordinates & Scales',
-    concept: 'Step LED rows, columns, and 1..16 C Major pitches synchronously using variable math',
+    concept: 'Step LED rows, columns, and C Major pitches synchronously using variable arithmetic',
     description:
-      'Drive column c, row r, and pitch p together to sweep diagonals, columns, octave jumps, sirens, and 2-octave overdrive scales.',
-    hint: 'Update c, r, and p inside Loop, or split Up and Down sweeps into Function 1 and Function 2.',
+      'Use r, c, x, y, and p inside Loops and F1/F2 helpers to sweep rainbow scales, X-crosshairs, equalizer bars, sirens, and 1..12 overdrive columns.',
+    hint: 'Pair r, c, and p updates inside Loop, or split rising F1 and falling F2 sweeps.',
     palette: VAR_7_PALETTE,
     beatRules: { cleanResetOnInputChange: true },
     slotCap: {
-      perScope: { MAIN: 24, F1: 12, F2: 12 },
+      maxTotal: 60,
+      perScope: { MAIN: 30, F1: 30, F2: 30 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('c', 1),
-          varAssign('r', 1),
+          block('SET_BEAT_DELAY', { params: { delay: 0.5 } }),
           varAssign('p', 1),
-          block('SET_LED_COLOR', { params: { color: BEAT_COLORS.cyan } }),
+          varAssign('r', 8),
+          varAssign('c', 1),
           loopStart(8),
+          block('SET_LED_COLOR', { params: { color: BEAT_COLORS.cyan } }),
           block('LIGHT_PIXEL', { params: { x: 'c', y: 'r' } }),
           block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-          varOp('c', 'c', '+', 1),
-          varOp('r', 'r', '+', 1),
           varOp('p', 'p', '+', 1),
+          varOp('r', 'r', '-', 1),
+          varOp('c', 'c', '+', 1),
           block('LOOP_END'),
         ],
       },
@@ -1538,30 +1714,25 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     ),
     variations: [
       {
-        id: 'var.7-var1-rainbow-cols',
-        title: 'Rainbow Sweeping Columns',
-        icon: 'ðŸŒˆ',
+        id: 'var.7-var1-x-crosshair',
+        title: 'Diagonal X-Crosshair Sweep',
+        icon: '❌',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('c', 1),
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
+              varAssign('x', 1),
+              varAssign('y', 8),
               varAssign('p', 1),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.cyan } }),
               loopStart(8),
-              block('LIGHT_COL', { params: { x: 'c' } }),
-              block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-              varOp('c', 'c', '+', 1),
-              varOp('p', 'p', '+', 1),
-              block('LOOP_END'),
               block('SET_LED_COLOR', { params: { color: BEAT_COLORS.purple } }),
-              block('CALL_F1'),
-            ],
-            F1: [
-              loopStart(8),
-              varOp('c', 'c', '-', 1),
-              varOp('p', 'p', '-', 1),
-              block('LIGHT_COL', { params: { x: 'c' } }),
+              block('LIGHT_PIXEL', { params: { x: 'x', y: 'x' } }),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.amber } }),
+              block('LIGHT_PIXEL', { params: { x: 'x', y: 'y' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
+              varOp('x', 'x', '+', 1),
+              varOp('y', 'y', '-', 1),
+              varOp('p', 'p', '+', 1),
               block('LOOP_END'),
             ],
           },
@@ -1569,21 +1740,25 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.7-var2-octave-jump',
-        title: 'Multiplying Grid & Octave Jump',
-        icon: 'âš¡',
+        id: 'var.7-var2-equalizer',
+        title: 'Nested Variable Equalizer Bars',
+        icon: '📶',
         workspace: makeWorkspace(
           {
             MAIN: [
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
               varAssign('c', 1),
               varAssign('p', 1),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.amber } }),
-              loopStart(4),
-              varOp('x', 'c', '*', 2),
-              block('LIGHT_PIXEL', { params: { x: 'x', y: 'x' } }),
+              loopStart(8),
+              varAssign('r', 8),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.green } }),
+              loopStart('c'),
+              block('LIGHT_PIXEL', { params: { x: 'c', y: 'r' } }),
+              varOp('r', 'r', '-', 1),
+              block('LOOP_END'),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
               varOp('c', 'c', '+', 1),
-              varOp('p', 'p', '*', 2),
+              varOp('p', 'p', '+', 1),
               block('LOOP_END'),
             ],
           },
@@ -1592,34 +1767,39 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       },
       {
         id: 'var.7-var3-siren',
-        title: 'Up-and-Down Siren (F1/F2)',
-        icon: 'ðŸš“',
+        title: 'F1/F2 Up-and-Down Police Siren',
+        icon: '🚓',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('p', 1),
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
               varAssign('r', 1),
-              loopStart(2),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.red } }),
+              varAssign('p', 1),
+              loopStart(3),
               block('CALL_F1'),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.blue } }),
               block('CALL_F2'),
               block('LOOP_END'),
             ],
             F1: [
-              loopStart(8),
+              loopStart(7),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.red } }),
               block('LIGHT_ROW', { params: { y: 'r' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-              varOp('p', 'p', '+', 1),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
               varOp('r', 'r', '+', 1),
+              varOp('p', 'p', '+', 1),
               block('LOOP_END'),
             ],
             F2: [
-              loopStart(8),
-              varOp('p', 'p', '-', 1),
-              varOp('r', 'r', '-', 1),
+              loopStart(7),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.blue } }),
               block('LIGHT_ROW', { params: { y: 'r' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
+              varOp('r', 'r', '-', 1),
+              varOp('p', 'p', '-', 1),
               block('LOOP_END'),
             ],
           },
@@ -1628,24 +1808,17 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       },
       {
         id: 'var.7-var4-overdrive',
-        title: '1..12 Overdrive Scale',
-        icon: 'ðŸš€',
+        title: 'Two-Octave Overdrive Column Sweep',
+        icon: '🚀',
         workspace: makeWorkspace(
           {
             MAIN: [
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
+              varAssign('c', 1),
               varAssign('p', 1),
-              varAssign('c', 1),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.green } }),
-              loopStart(8),
-              block('LIGHT_PIXEL', { params: { x: 'c', y: 4 } }),
-              block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-              varOp('c', 'c', '+', 1),
-              varOp('p', 'p', '+', 1),
-              block('LOOP_END'),
-              varAssign('c', 1),
+              loopStart(12),
               block('SET_LED_COLOR', { params: { color: BEAT_COLORS.amber } }),
-              loopStart(4),
-              block('LIGHT_PIXEL', { params: { x: 'c', y: 6 } }),
+              block('LIGHT_COL', { params: { x: 'c' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
               varOp('c', 'c', '+', 1),
               varOp('p', 'p', '+', 1),
@@ -1659,7 +1832,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.8 â€” Random Dice & Color (Explanation, Beat + Turtle)
+  // var.8 — Random Dice & $randomColor (Explanation, Beat + Turtle)
   // =========================================================================
   {
     id: 'var.8',
@@ -1667,30 +1840,31 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'explanation',
     simId: 'beat',
-    icon: 'ðŸŽ²',
-    title: 'Random Dice & Color',
-    concept: 'Roll dice sensors ($randCoin, $randD4..$randD20) and $randomColor for generative music and art',
+    icon: '🎲',
+    title: 'Random Dice & $randomColor',
+    concept: 'Roll dice sensors ($randCoin, $randD4..$randD20, $rand01) and $randomColor for generative music and art',
     description:
-      'Discover how dice boxes pick fresh pitches, LED spots, step sizes, turn angles, and colors on every run.',
-    hint: 'Press Run twice on Tab 1 and Tab 2 to watch new patterns roll each time.',
+      'Discover how dice boxes pick fresh notes, LED pads, and TELEPORT star locations every run.',
+    hint: 'Compare Tab 1 (Beat Matrix D8) and Tab 2 (LOGO D20 Star Sky), then run twice.',
     coPilotCard:
-      'Dice blocks and $randomColor roll a brand-new surprise every Run! Try two runs in a row.',
+      'Pick a die like D8 (1..8) to roll a random C Major note and a random pad row/column! Plug [$randomColor] right into the paint block for instant confetti lights.',
     palette: VAR_8_PALETTE,
     beatRules: { cleanResetOnInputChange: true },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
+          block('SET_BEAT_DELAY', { params: { delay: 0.5 } }),
           loopStart(8),
-          varAssign('x', '$randD8'),
-          varAssign('y', '$randD8'),
           varAssign('p', '$randD8'),
+          varAssign('r', '$randD8'),
+          varAssign('c', '$randD8'),
           block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
-          block('LIGHT_PIXEL', { params: { x: 'x', y: 'y' } }),
+          block('LIGHT_PIXEL', { params: { x: 'c', y: 'r' } }),
           block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
           block('LOOP_END'),
         ],
       },
-      'demo_var8_t1_start'
+      'demo_var8_start'
     ),
     demoTabs: [
       {
@@ -1698,17 +1872,18 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         label: '1',
         simId: 'beat',
         coPilotCard:
-          'Roll $randD8 into x, y, and p and pick $randomColor to paint and chime random sparkles!',
+          'Pick a die like D8 (1..8) to roll a random C Major note and a random pad row/column! Plug [$randomColor] right into the paint block for instant confetti lights.',
         beatRules: { cleanResetOnInputChange: true },
         workspace: makeWorkspace(
           {
             MAIN: [
+              block('SET_BEAT_DELAY', { params: { delay: 0.5 } }),
               loopStart(8),
-              varAssign('x', '$randD8'),
-              varAssign('y', '$randD8'),
               varAssign('p', '$randD8'),
+              varAssign('r', '$randD8'),
+              varAssign('c', '$randD8'),
               block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
-              block('LIGHT_PIXEL', { params: { x: 'x', y: 'y' } }),
+              block('LIGHT_PIXEL', { params: { x: 'c', y: 'r' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
               block('LOOP_END'),
             ],
@@ -1721,23 +1896,30 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         label: '2',
         simId: 'turtle',
         coPilotCard:
-          'Multiply a dice roll by 15 or 45 and splash $randomColor for a new confetti trail every Run!',
+          'Roll D20 dice and multiply to scatter stars anywhere across the sky! Re-run to deal a fresh sky, or lock a seed number to replay the exact same art.',
         workspace: makeWorkspace(
           {
             MAIN: [
-              loopStart(10),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
+              loopStart(8),
+              varAssign('x', '$randD20'),
+              varOp('x', 'x', '*', 18),
+              varOp('x', 'x', '-', 190),
+              varAssign('y', '$randD20'),
+              varOp('y', 'y', '*', 14),
+              varOp('y', 'y', '-', 140),
+              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 18 } }),
+              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
               block('CALL_F1'),
               block('LOOP_END'),
             ],
             F1: [
-              varAssign('r', '$randD8'),
-              varOp('s', 'r', '*', 15),
-              varAssign('d', '$randD4'),
-              varOp('a', 'd', '*', 45),
-              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
-              block('SET_PEN_WIDTH', { params: { width: 4 } }),
-              block('FORWARD', { params: { length: 's' } }),
-              block('TURN_RIGHT', { params: { angle: 'a' } }),
+              block('PEN_DOWN'),
+              loopStart(5),
+              block('FORWARD', { params: { length: 65 } }),
+              block('TURN_RIGHT', { params: { angle: 144 } }),
+              block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'demo_var8_t2'
@@ -1747,7 +1929,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.9 â€” Dice Beat & Light DJ (Creative, Beat)
+  // var.9 — Dice Beat & Light DJ (Creative, Beat)
   // =========================================================================
   {
     id: 'var.9',
@@ -1755,28 +1937,30 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'sandbox',
     simId: 'beat',
-    icon: 'ðŸŽ§',
+    icon: '🎧',
     title: 'Dice Beat & Light DJ',
-    concept: 'Compose procedural Beat & Light shows with $randD8, $randD20, $randCoin (Loop x[0]), and $randomColor',
+    concept: 'Improvise C Major melodies (1..16), Loop x[c] coin-flip drops, and strobe F1/F2 jams',
     description:
-      'Mix random colors, dice melodies, 50/50 coin-flip drum fills, and dual-deck F1/F2 jams.',
-    hint: 'Store $randCoin in c for Loop x[c] (0 skips safely, 1 claps!), or split bass and lead across F1 and F2.',
+      'Use random dice and $randomColor to jam across 8x8 LEDs with two-octave arpeggios, Loop x[c] coin-flip drops, and F1/F2 strobes.',
+    hint: 'Store $randCoin in c for Loop x[c] (0 skips safely, 1 plays F1!), or double $randD8 via m = p * 2.',
     palette: VAR_9_PALETTE,
     beatRules: { cleanResetOnInputChange: true },
     slotCap: {
-      perScope: { MAIN: 16, F1: 12, F2: 12 },
+      maxTotal: 60,
+      perScope: { MAIN: 30, F1: 30, F2: 30 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          loopStart(8),
+          block('CLEAR_LEDS'),
+          block('SET_BEAT_DELAY', { params: { delay: 0.5 } }),
+          loopStart(16),
+          varAssign('p', '$randD8'),
           varAssign('r', '$randD8'),
           varAssign('c', '$randD8'),
-          varAssign('p', '$randD8'),
           block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
           block('LIGHT_PIXEL', { params: { x: 'c', y: 'r' } }),
           block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-          block('DRUM_KICK'),
           block('LOOP_END'),
         ],
       },
@@ -1784,20 +1968,19 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     ),
     variations: [
       {
-        id: 'var.9-var1-d20-fountain',
-        title: 'D20 Super-Melody Fountain',
-        icon: 'â›²',
+        id: 'var.9-var1-starlight-arpeggio',
+        title: 'Two-Octave Starlight Arpeggio',
+        icon: '✨',
         workspace: makeWorkspace(
           {
             MAIN: [
-              loopStart(8),
-              varAssign('c', '$randD8'),
-              varAssign('p', '$randD20'),
-              varAssign('m', '$randD8'),
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
+              loopStart(16),
+              varAssign('p', '$randD8'),
+              varOp('m', 'p', '*', 2),
+              varAssign('r', '$randD8'),
               block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
-              block('LIGHT_COL', { params: { x: 'c' } }),
-              block('PLAY_NOTE', { params: { pitch: 'm', duration: 0.5 } }),
-              varOp('m', 'm', '+', 8),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
               block('PLAY_NOTE', { params: { pitch: 'm', duration: 0.5 } }),
               block('LOOP_END'),
             ],
@@ -1806,55 +1989,73 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.9-var2-coin-flip-fill',
-        title: '50/50 Coin-Flip Drum Fill',
-        icon: 'ðŸª™',
+        id: 'var.9-var2-coin-flip-stutter',
+        title: 'Coin-Flip Stutter Drop',
+        icon: '🪙',
         workspace: makeWorkspace(
           {
             MAIN: [
-              loopStart(8),
-              block('DRUM_KICK'),
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
+              loopStart(16),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.cyan } }),
+              block('LIGHT_COL', { params: { x: 1 } }),
+              block('PLAY_NOTE', { params: { pitch: 1, duration: 0.5 } }),
               varAssign('c', '$randCoin'),
               loopStart('c'),
-              block('DRUM_CLAP'),
-              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.amber } }),
-              block('LIGHT_ROW', { params: { y: 4 } }),
+              block('CALL_F1'),
               block('LOOP_END'),
-              block('WAIT_BEAT', { params: { duration: 0.5 } }),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_COL', { params: { x: 1 } }),
               block('LOOP_END'),
+            ],
+            F1: [
+              block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
+              varAssign('r', '$randD8'),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
+              varAssign('p', '$randD4'),
+              block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
             ],
           },
           'v2_var9'
         ),
       },
       {
-        id: 'var.9-var3-remix-stage',
-        title: '2-Instrument Remix Stage',
-        icon: 'ðŸŽ›ï¸',
+        id: 'var.9-var3-twin-strobe',
+        title: 'Twin Strobe Crosshair Jam',
+        icon: '🎛️',
         workspace: makeWorkspace(
           {
             MAIN: [
-              loopStart(4),
+              block('CLEAR_LEDS'),
+              block('SET_BEAT_DELAY', { params: { delay: 0.25 } }),
+              loopStart(8),
               block('CALL_F1'),
               block('CALL_F2'),
               block('LOOP_END'),
             ],
             F1: [
               varAssign('r', '$randD8'),
-              varAssign('p', '$randD8'),
+              varAssign('p', '$randD4'),
               block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
               block('LIGHT_ROW', { params: { y: 'r' } }),
               block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-              block('DRUM_KICK'),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_ROW', { params: { y: 'r' } }),
+              block('WAIT_BEAT', { params: { duration: 0.25 } }),
+              block('PLAY_NOTE', { params: { pitch: 1, duration: 0.5 } }),
             ],
             F2: [
               varAssign('c', '$randD8'),
-              varAssign('p', '$randD8'),
-              varOp('p', 'p', '+', 8),
+              varAssign('m', '$randD8'),
+              varOp('m', 'm', '+', 8),
               block('SET_LED_COLOR', { params: { color: '$randomColor' } }),
               block('LIGHT_COL', { params: { x: 'c' } }),
-              block('PLAY_NOTE', { params: { pitch: 'p', duration: 0.5 } }),
-              block('DRUM_SNARE'),
+              block('PLAY_NOTE', { params: { pitch: 'm', duration: 0.5 } }),
+              block('SET_LED_COLOR', { params: { color: BEAT_COLORS.black } }),
+              block('LIGHT_COL', { params: { x: 'c' } }),
+              block('WAIT_BEAT', { params: { duration: 0.25 } }),
             ],
           },
           'v3_var9'
@@ -1864,7 +2065,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.10 â€” Confetti Fireworks & Walkers (Creative, Turtle)
+  // var.10 — Confetti, TELEPORT Fireworks & Random Walkers (Creative, Turtle)
   // =========================================================================
   {
     id: 'var.10',
@@ -1872,59 +2073,61 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'sandbox',
     simId: 'turtle',
-    icon: 'ðŸŽ†',
-    title: 'Confetti Fireworks & Walkers',
-    concept: 'Combine Teleport, random dice math, $randomColor, and Function helpers for fireworks and walkers',
+    icon: '🎆',
+    title: 'Confetti, TELEPORT Fireworks & Random Walkers',
+    concept: 'Combine TELEPORT, 3-address dice math, $randomColor, and F1 helpers for generative art',
     description:
-      'Jump across the canvas with centered random coordinates, launch fireworks bursts, and build random lattice walkers.',
-    hint: 'Compute x = u * 10 then x = x - 110 to scatter shapes across the whole screen.',
+      'Build confetti starfields, cosmic random walkers with $rand01 * 360, neon starburst fireworks, and 4-way mirrored kaleidoscope quilts.',
+    hint: 'Compute negative coordinates with u = 0 - x before passing [u, y, 90] into TELEPORT.',
     palette: VAR_10_PALETTE,
     slotCap: {
-      perScope: { MAIN: 20, F1: 16, F2: 16 },
+      maxTotal: 60,
+      perScope: { MAIN: 30, F1: 30, F2: 30 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          loopStart(12),
-          varAssign('u', '$randD20'),
-          varAssign('v', '$randD20'),
-          varOp('x', 'u', '*', 10),
-          varOp('y', 'v', '*', 10),
-          varOp('x', 'x', '-', 110),
-          varOp('y', 'y', '-', 110),
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: 'x', y: 'y', heading: 0 } }),
-          block('PEN_DOWN'),
+          block('SET_PEN_WIDTH', { params: { width: 5 } }),
+          loopStart(14),
+          varAssign('x', '$randD20'),
+          varOp('x', 'x', '*', 20),
+          varOp('x', 'x', '-', 210),
+          varAssign('y', '$randD20'),
+          varOp('y', 'y', '*', 15),
+          varOp('y', 'y', '-', 155),
+          block('TELEPORT', { params: { x: 'x', y: 'y', heading: 18 } }),
           block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
-          varAssign('s', '$randD8'),
-          varOp('s', 's', '*', 5),
           block('CALL_F1'),
           block('LOOP_END'),
         ],
         F1: [
+          block('PEN_DOWN'),
           loopStart(5),
-          block('FORWARD', { params: { length: 's' } }),
+          block('FORWARD', { params: { length: 60 } }),
           block('TURN_RIGHT', { params: { angle: 144 } }),
           block('LOOP_END'),
+          block('PEN_UP'),
         ],
       },
       'start_var10'
     ),
     variations: [
       {
-        id: 'var.10-var1-lattice-walker',
-        title: 'Random Lattice Walker',
-        icon: 'ðŸš¶',
+        id: 'var.10-var1-cosmic-walker',
+        title: 'Cosmic Random Walker',
+        icon: '🚶',
         workspace: makeWorkspace(
           {
             MAIN: [
-              block('SET_PEN_WIDTH', { params: { width: 4 } }),
-              loopStart(30),
-              varAssign('d', '$randD4'),
-              varOp('a', 'd', '*', 90),
-              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
-              block('FORWARD', { params: { length: 45 } }),
+              block('SET_PEN_WIDTH', { params: { width: 6 } }),
+              loopStart(45),
+              varAssign('a', '$rand01'),
+              varOp('a', 'a', '*', 360),
               block('TURN_RIGHT', { params: { angle: 'a' } }),
+              varAssign('d', '$randD6'),
+              varOp('d', 'd', '*', 18),
+              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
+              block('FORWARD', { params: { length: 'd' } }),
               block('LOOP_END'),
             ],
           },
@@ -1932,31 +2135,34 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.10-var2-fireworks',
-        title: 'Starburst Fireworks',
-        icon: 'ðŸŽ‡',
+        id: 'var.10-var2-neon-fireworks',
+        title: 'Neon Fireworks Night',
+        icon: '🎇',
         workspace: makeWorkspace(
           {
             MAIN: [
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
               loopStart(6),
-              varAssign('u', '$randD20'),
-              varAssign('v', '$randD20'),
-              varOp('x', 'u', '*', 10),
-              varOp('y', 'v', '*', 10),
-              varOp('x', 'x', '-', 110),
-              varOp('y', 'y', '-', 110),
-              block('PEN_UP'),
+              varAssign('x', '$randD8'),
+              varOp('x', 'x', '*', 55),
+              varOp('x', 'x', '-', 245),
+              varAssign('y', '$randD6'),
+              varOp('y', 'y', '*', 50),
+              varOp('y', 'y', '-', 175),
               block('TELEPORT', { params: { x: 'x', y: 'y', heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
               block('CALL_F1'),
               block('LOOP_END'),
             ],
             F1: [
-              loopStart(8),
-              block('FORWARD', { params: { length: 40 } }),
-              block('BACKWARD', { params: { length: 40 } }),
-              block('TURN_RIGHT', { params: { angle: 45 } }),
+              loopStart(12),
+              varAssign('r', '$randD6'),
+              varOp('r', 'r', '*', 14),
+              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
+              block('PEN_DOWN'),
+              block('FORWARD', { params: { length: 'r' } }),
+              block('PEN_UP'),
+              block('BACKWARD', { params: { length: 'r' } }),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
               block('LOOP_END'),
             ],
           },
@@ -1964,35 +2170,40 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.10-var3-spiro-tree',
-        title: 'Randomized Spirograph Tree',
-        icon: 'ðŸŒ³',
+        id: 'var.10-var3-kaleidoscope-quilt',
+        title: 'Confetti Kaleidoscope Quilt',
+        icon: '💠',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('s', 120),
-              block('SET_PEN_WIDTH', { params: { width: 3 } }),
-              loopStart(6),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
+              loopStart(8),
+              varAssign('x', '$randD8'),
+              varOp('x', 'x', '*', 22),
+              varAssign('y', '$randD8'),
+              varOp('y', 'y', '*', 22),
+              varOp('u', 0, '-', 'x'),
+              varOp('v', 0, '-', 'y'),
+              varAssign('s', '$randD6'),
+              varOp('s', 's', '*', 10),
               block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
-              block('FORWARD', { params: { length: 's' } }),
+              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 0 } }),
               block('CALL_F1'),
-              block('BACKWARD', { params: { length: 's' } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
+              block('TELEPORT', { params: { x: 'u', y: 'y', heading: 90 } }),
+              block('CALL_F1'),
+              block('TELEPORT', { params: { x: 'u', y: 'v', heading: 180 } }),
+              block('CALL_F1'),
+              block('TELEPORT', { params: { x: 'x', y: 'v', heading: 270 } }),
+              block('CALL_F1'),
               block('LOOP_END'),
             ],
             F1: [
-              varAssign('r', '$randD4'),
-              varOp('a', 'r', '*', 15),
-              block('TURN_RIGHT', { params: { angle: 'a' } }),
-              block('FORWARD', { params: { length: 50 } }),
-              block('CALL_F2'),
-              block('BACKWARD', { params: { length: 50 } }),
-              block('TURN_LEFT', { params: { angle: 'a' } }),
-            ],
-            F2: [
+              block('PEN_DOWN'),
               loopStart(4),
-              block('ARC_RIGHT', { params: { radius: 25, angle: 90 } }),
+              block('FORWARD', { params: { length: 's' } }),
+              block('TURN_RIGHT', { params: { angle: 90 } }),
               block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'v3_var10'
@@ -2002,7 +2213,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.A â€” Inventory Quartermaster (Puzzle Capstone, Grid)
+  // var.A — Inventory Quartermaster (Puzzle Capstone, Grid)
   // =========================================================================
   {
     id: 'var.A',
@@ -2011,12 +2222,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     format: 'puzzle',
     capstoneType: 'puzzle',
     simId: 'grid',
-    icon: 'ðŸ†',
+    icon: '🏆',
     title: 'Inventory Quartermaster',
-    concept: 'Count beacons into c, haul the Energy Cell [xc] onto the Floor Switch, then reach the Goal',
+    concept: 'Count beacons into c, haul the Energy Cell [×c] onto the Floor Switch, then reach Goal',
     description:
-      'Walk the beacon hall counting red beacons in box c, pick up the Energy Cell at the corner, march [xc] steps south, drop it onto the switch, and step onto the Goal!',
-    hint: 'After counting c beacons: Pick Up, Turn Right, Forward [xc], Drop, Move Forward.',
+      'Scan the corridor counting red beacons in box c, pick up the Energy Cell at (7, 1), march [×c] south, drop it onto the switch, and step forward onto Goal.',
+    hint: 'After counting c beacons: PICK_UP, TURN_RIGHT, MOVE_FWD [×c], USE_DROP, MOVE_FWD.',
     palette: VAR_A_PALETTE,
     slotCap: {
       maxTotal: 15,
@@ -2050,7 +2261,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
             block('PICK_UP'),
             block('TURN_RIGHT'),
             placeholder(),
-            placeholder(),
+            block('USE_DROP'),
             block('MOVE_FWD'),
           ],
         },
@@ -2098,7 +2309,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.B â€” Spiral & Wave Studio (Creative Capstone, Turtle)
+  // var.B — Spiral, Wave & Telemetry Studio (Creative Capstone, Turtle)
   // =========================================================================
   {
     id: 'var.B',
@@ -2107,152 +2318,155 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     format: 'sandbox',
     capstoneType: 'creative',
     simId: 'turtle',
-    icon: 'ðŸŽ¨',
-    title: 'Spiral & Wave Studio',
-    concept: 'Build multi-part LOGO compositions with Variables, Teleport, Pose Sensors, Dice, and Functions 1â€“3',
+    icon: '🎨',
+    title: 'Spiral, Wave & Telemetry Studio',
+    concept: 'Synthesize TELEPORT, F1..F3 helpers, growing/shrinking math, and $x/$y pose bookmarks',
     description:
-      'Design a signature gallery piece combining growing spirals, dice stars, rainbow sine waves, and pose bookmarks across Main and F1â€“F3.',
-    hint: 'Save $x, $y, $heading before calling helper F1/F2/F3, or use Teleport to place shapes on a grid.',
+      'Compose bold mathematical tapestries combining mirror galaxies, Nautilus scrolls, pyramid waves with $x/$y crest stars, and 4-corner spiro-gardens.',
+    hint: 'Save x = $x and y = $y at mid-wave before flying F3 back to crown the peak.',
     palette: VAR_B_PALETTE,
     slotCap: {
-      perScope: { MAIN: 24, F1: 16, F2: 16, F3: 16 },
+      maxTotal: 60,
+      perScope: { MAIN: 30, F1: 30, F2: 30, F3: 30 },
     },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: -100, y: 0, heading: 0 } }),
-          block('PEN_DOWN'),
+          block('SET_PEN_WIDTH', { params: { width: 4 } }),
+          block('TELEPORT', { params: { x: -135, y: 0, heading: 0 } }),
           block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
           block('CALL_F1'),
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: 80, y: 20, heading: 0 } }),
-          block('PEN_DOWN'),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-          block('CALL_F2'),
+          block('TELEPORT', { params: { x: 135, y: 0, heading: 180 } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
+          block('CALL_F1'),
         ],
         F1: [
-          varAssign('a', 8),
-          loopStart(14),
+          varAssign('a', 16),
+          block('PEN_DOWN'),
+          loopStart(18),
           block('FORWARD', { params: { length: 'a' } }),
-          block('TURN_RIGHT', { params: { angle: 60 } }),
-          varOp('a', 'a', '+', 5),
+          block('TURN_RIGHT', { params: { angle: 89 } }),
+          varOp('a', 'a', '+', 8),
           block('LOOP_END'),
-        ],
-        F2: [
-          loopStart(5),
-          block('FORWARD', { params: { length: 90 } }),
-          block('TURN_RIGHT', { params: { angle: 144 } }),
-          block('LOOP_END'),
+          block('PEN_UP'),
         ],
       },
       'start_varB'
     ),
     variations: [
       {
-        id: 'var.B-var1-galaxy',
-        title: 'Triple Spiral Galaxy',
-        icon: 'ðŸŒŒ',
+        id: 'var.B-var1-dragon-nautilus',
+        title: 'Twin Dragon Nautilus Scroll',
+        icon: '🐉',
         workspace: makeWorkspace(
           {
             MAIN: [
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -110, y: -40, heading: 0 } }),
-              block('PEN_DOWN'),
+              block('SET_PEN_WIDTH', { params: { width: 5 } }),
+              block('TELEPORT', { params: { x: 0, y: 0, heading: 0 } }),
               block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
               block('CALL_F1'),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 90, y: 40, heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
-              block('CALL_F2'),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 0, y: 90, heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
-              block('CALL_F3'),
+              block('TELEPORT', { params: { x: 0, y: 0, heading: 180 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+              block('CALL_F1'),
             ],
             F1: [
-              varAssign('a', 10),
-              loopStart(12),
-              block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 90 } }),
-              varOp('a', 'a', '+', 6),
+              varAssign('a', 15),
+              block('PEN_DOWN'),
+              loopStart(14),
+              block('ARC_RIGHT', { params: { radius: 'a', angle: 90 } }),
+              varOp('a', 'a', '+', 12),
               block('LOOP_END'),
-            ],
-            F2: [
-              varAssign('a', 75),
-              loopStart(12),
-              block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 90 } }),
-              varOp('a', 'a', '-', 5),
-              block('LOOP_END'),
-            ],
-            F3: [
-              loopStart(6),
-              block('ARC_RIGHT', { params: { radius: 35, angle: 60 } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
-              block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'v1_varB'
         ),
       },
       {
-        id: 'var.B-var2-sine-wave',
-        title: 'Rainbow Sine Ribbon',
-        icon: 'ã€°ï¸',
+        id: 'var.B-var2-pyramid-wave',
+        title: 'Rainbow Pyramid Wave + $x/$y Star Crest',
+        icon: '⛰️',
         workspace: makeWorkspace(
           {
             MAIN: [
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -160, y: 0, heading: 45 } }),
+              varAssign('a', 40),
+              block('TELEPORT', { params: { x: -320, y: 80, heading: 0 } }),
               block('PEN_DOWN'),
-              block('SET_PEN_WIDTH', { params: { width: 5 } }),
-              loopStart(6),
-              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              loopStart(4),
               block('CALL_F1'),
+              block('LOOP_END'),
+              varAssign('x', '$x'),
+              varAssign('y', '$y'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
+              loopStart(4),
               block('CALL_F2'),
               block('LOOP_END'),
+              block('PEN_UP'),
+              varOp('y', 'y', '-', 135),
+              varOp('x', 'x', '-', 22),
+              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 18 } }),
+              block('CALL_F3'),
             ],
             F1: [
-              block('ARC_RIGHT', { params: { radius: 28, angle: 90 } }),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 120 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_LEFT', { params: { angle: 150 } }),
+              varOp('a', 'a', '+', 24),
             ],
             F2: [
-              block('ARC_LEFT', { params: { radius: 28, angle: 90 } }),
+              varOp('a', 'a', '-', 24),
+              block('TURN_RIGHT', { params: { angle: 30 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_RIGHT', { params: { angle: 120 } }),
+              block('FORWARD', { params: { length: 'a' } }),
+              block('TURN_LEFT', { params: { angle: 150 } }),
+            ],
+            F3: [
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
+              loopStart(5),
+              block('FORWARD', { params: { length: 65 } }),
+              block('TURN_RIGHT', { params: { angle: 144 } }),
+              block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'v2_varB'
         ),
       },
       {
-        id: 'var.B-var3-star-meadow',
-        title: 'Random Dice Star Meadow',
-        icon: 'ðŸŒ ',
+        id: 'var.B-var3-spiro-garden',
+        title: 'Four-Corner Spiro-Garden',
+        icon: '🌺',
         workspace: makeWorkspace(
           {
             MAIN: [
-              loopStart(8),
-              varAssign('x', '$randD20'),
-              varAssign('y', '$randD20'),
-              varOp('x', 'x', '*', 12),
-              varOp('y', 'y', '*', 10),
-              varOp('x', 'x', '-', 130),
-              varOp('y', 'y', '-', 110),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 18 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: '$randomColor' } }),
+              block('SET_PEN_WIDTH', { params: { width: 4 } }),
+              block('TELEPORT', { params: { x: -145, y: -115, heading: 0 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
               block('CALL_F1'),
-              block('LOOP_END'),
+              block('TELEPORT', { params: { x: 145, y: -115, heading: 90 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.pink } }),
+              block('CALL_F1'),
+              block('TELEPORT', { params: { x: 145, y: 115, heading: 180 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.green } }),
+              block('CALL_F1'),
+              block('TELEPORT', { params: { x: -145, y: 115, heading: 270 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
+              block('CALL_F1'),
             ],
             F1: [
-              varAssign('a', '$randD6'),
-              varOp('a', 'a', '*', 10),
-              loopStart(5),
+              varAssign('a', 12),
+              block('PEN_DOWN'),
+              loopStart(16),
               block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 144 } }),
+              block('TURN_RIGHT', { params: { angle: 115 } }),
+              varOp('a', 'a', '+', 8),
               block('LOOP_END'),
+              block('PEN_UP'),
             ],
           },
           'v3_varB'
@@ -2262,7 +2476,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.M1 â€” Multi-Dial Vault (Mastery Challenge, Grid, 0-starter)
+  // var.M1 — Multi-Dial Vault Combination (Mastery Challenge, Grid, 0-starter)
   // =========================================================================
   {
     id: 'var.M1',
@@ -2270,12 +2484,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'challenge',
     simId: 'grid',
-    icon: 'ðŸ”',
-    title: 'Multi-Dial Vault',
-    concept: 'Read three floor dials (a, b, c), compute d = a + b, retrieve the Vault Core, and drop it on the Goal Switch',
+    icon: '🔐',
+    title: 'Multi-Dial Vault Combination',
+    concept: 'Read dials a, b, c, compute d = a + b and e = b * 2, drop Core on Switch (4+d, 9-e), then walk [×c] to Goal',
     description:
-      'No starter blocks! Read dials a, b, and c from tiles 1..3, compute d = a + b, navigate East [xd] then South [x8] to pick up the Core at (4+d, 9), then turn East [xc] and drop it on the Goal Switch.',
-    hint: 'Read a, step, read b, step, read c, step to (4, 1), compute d = a + b, then walk [xd], Turn Right, [x8], Pick Up, Turn Left, [xc], Drop.',
+      'No starter blocks! Read dials a, b, and c at (2..4, 9), compute d = a + b and e = b * 2, walk [×d] to pick up the Vault Core, turn North [×e] to drop it on sw_0, then walk [×c] to Goal.',
+    hint: 'Read a, b, c with MOVE_FWD steps, compute d = a + b and e = b * 2, then [×d], PICK_UP, TURN_LEFT, [×e], USE_DROP, [×c].',
     palette: VAR_M1_PALETTE,
     slotCap: {
       maxTotal: 20,
@@ -2289,20 +2503,20 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       scaffoldWorkspace: makeWorkspace(
         {
           MAIN: [
+            block('MOVE_FWD'),
             varAssign('a', '$tileDial'),
             block('MOVE_FWD'),
             varAssign('b', '$tileDial'),
             block('MOVE_FWD'),
             varAssign('c', '$tileDial'),
-            block('MOVE_FWD'),
             placeholder(),
-            block('MOVE_FWD', { repeatCount: 'd' }),
-            block('TURN_RIGHT'),
-            block('MOVE_FWD', { repeatCount: 8 }),
             placeholder(),
+            placeholder(),
+            block('PICK_UP'),
             block('TURN_LEFT'),
             placeholder(),
             block('USE_DROP'),
+            placeholder(),
           ],
         },
         'scaf_varM1'
@@ -2311,20 +2525,20 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     referenceSolution: makeWorkspace(
       {
         MAIN: [
+          block('MOVE_FWD'),
           varAssign('a', '$tileDial'),
           block('MOVE_FWD'),
           varAssign('b', '$tileDial'),
           block('MOVE_FWD'),
           varAssign('c', '$tileDial'),
-          block('MOVE_FWD'),
           varOp('d', 'a', '+', 'b'),
+          varOp('e', 'b', '*', 2),
           block('MOVE_FWD', { repeatCount: 'd' }),
-          block('TURN_RIGHT'),
-          block('MOVE_FWD', { repeatCount: 8 }),
           block('PICK_UP'),
           block('TURN_LEFT'),
-          block('MOVE_FWD', { repeatCount: 'c' }),
+          block('MOVE_FWD', { repeatCount: 'e' }),
           block('USE_DROP'),
+          block('MOVE_FWD', { repeatCount: 'c' }),
         ],
       },
       'ref_varM1'
@@ -2345,7 +2559,7 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
   },
 
   // =========================================================================
-  // var.M2 â€” Opposing Spirals (Mastery Challenge, Turtle)
+  // var.M2 — Counter-Rotating Opposing Spirals (Mastery Challenge, Turtle)
   // =========================================================================
   {
     id: 'var.M2',
@@ -2353,12 +2567,12 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     version: 1,
     format: 'challenge',
     simId: 'turtle',
-    icon: 'â˜¯ï¸',
-    title: 'Opposing Spirals',
-    concept: 'Coordinate growing F1 and shrinking F2 spirals via Teleport and pose variables ($x, $y, $heading)',
+    icon: '☯️',
+    title: 'Counter-Rotating Opposing Spirals',
+    concept: 'Complete CW spiral with counter-rotating CCW spiral and dual $x/$y/$heading bookmark braids',
     description:
-      'Read initial pose into x, y, and h, grow an outer blue spiral in Function 1, Teleport symmetrically, and unwind an inner red spiral in Function 2.',
-    hint: 'Save x = $x, y = $y, h = $heading in Main, then compute opposing step sizes in F1 and F2.',
+      'Build from the 10-block CW cyan spiral starter to complete sequential double helices, simultaneous braided pinwheels, and twin arc tapestries.',
+    hint: 'Assign b = 186 and TELEPORT [0, 0, 180] after the cyan spiral, or interleave F1 (x,y,h) and F2 (u,v,w).',
     palette: VAR_M2_PALETTE,
     slotCap: {
       maxTotal: 50,
@@ -2367,17 +2581,16 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', 12),
-          varAssign('b', 110),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-          block('CALL_F1'),
-        ],
-        F1: [
-          loopStart(14),
+          varAssign('a', 16),
+          block('SET_PEN_WIDTH', { params: { width: 4 } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+          loopStart(18),
           block('FORWARD', { params: { length: 'a' } }),
-          block('TURN_RIGHT', { params: { angle: 90 } }),
-          varOp('a', 'a', '+', 12),
+          block('TURN_RIGHT', { params: { angle: 89 } }),
+          varOp('a', 'a', '+', 10),
           block('LOOP_END'),
+          block('PEN_UP'),
+          block('TELEPORT', { params: { x: 0, y: 0, heading: 0 } }),
         ],
       },
       'start_varM2'
@@ -2387,34 +2600,22 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       scaffoldWorkspace: makeWorkspace(
         {
           MAIN: [
-            varAssign('a', 12),
-            varAssign('b', 100),
-            block('PEN_UP'),
-            block('TELEPORT', { params: { x: -120, y: 20, heading: 0 } }),
-            block('PEN_DOWN'),
-            block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-            block('CALL_F1'),
-            block('PEN_UP'),
-            varAssign('x', '$x'),
-            varAssign('y', '$y'),
-            varAssign('h', '$heading'),
-            varOp('u', 'x', '+', 180),
-            block('TELEPORT', { params: { x: 'u', y: 'y', heading: 'h' } }),
-            block('PEN_DOWN'),
-            block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
+            varAssign('a', 16),
             placeholder(),
-          ],
-          F1: [
-            loopStart(16),
+            block('SET_PEN_WIDTH', { params: { width: 4 } }),
+            block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+            loopStart(18),
             block('FORWARD', { params: { length: 'a' } }),
-            block('TURN_RIGHT', { params: { angle: 90 } }),
-            varOp('a', 'a', '+', 6),
+            block('TURN_RIGHT', { params: { angle: 89 } }),
+            varOp('a', 'a', '+', 10),
             block('LOOP_END'),
-          ],
-          F2: [
-            loopStart(16),
-            block('FORWARD', { params: { length: 'b' } }),
-            block('TURN_LEFT', { params: { angle: 90 } }),
+            block('PEN_UP'),
+            placeholder(),
+            block('PEN_DOWN'),
+            block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+            loopStart(18),
+            placeholder(),
+            placeholder(),
             placeholder(),
             block('LOOP_END'),
           ],
@@ -2425,35 +2626,23 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     referenceSolution: makeWorkspace(
       {
         MAIN: [
-          varAssign('a', 12),
-          varAssign('b', 100),
-          block('PEN_UP'),
-          block('TELEPORT', { params: { x: -120, y: 20, heading: 0 } }),
-          block('PEN_DOWN'),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-          block('CALL_F1'),
-          block('PEN_UP'),
-          varAssign('x', '$x'),
-          varAssign('y', '$y'),
-          varAssign('h', '$heading'),
-          varOp('u', 'x', '+', 180),
-          block('TELEPORT', { params: { x: 'u', y: 'y', heading: 'h' } }),
-          block('PEN_DOWN'),
-          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
-          block('CALL_F2'),
-        ],
-        F1: [
-          loopStart(16),
+          varAssign('a', 16),
+          varAssign('b', 186),
+          block('SET_PEN_WIDTH', { params: { width: 4 } }),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+          loopStart(18),
           block('FORWARD', { params: { length: 'a' } }),
-          block('TURN_RIGHT', { params: { angle: 90 } }),
-          varOp('a', 'a', '+', 6),
+          block('TURN_RIGHT', { params: { angle: 89 } }),
+          varOp('a', 'a', '+', 10),
           block('LOOP_END'),
-        ],
-        F2: [
-          loopStart(16),
+          block('PEN_UP'),
+          block('TELEPORT', { params: { x: 0, y: 0, heading: 180 } }),
+          block('PEN_DOWN'),
+          block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+          loopStart(18),
           block('FORWARD', { params: { length: 'b' } }),
-          block('TURN_LEFT', { params: { angle: 90 } }),
-          varOp('b', 'b', '-', 6),
+          block('TURN_LEFT', { params: { angle: 89 } }),
+          varOp('b', 'b', '-', 10),
           block('LOOP_END'),
         ],
       },
@@ -2461,41 +2650,29 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     ),
     variations: [
       {
-        id: 'var.M2-target1-twin-spirals',
-        title: 'Target 1: Opposing Twin Spirals',
-        icon: 'ðŸŒ€',
+        id: 'var.M2-target1-sequential-helix',
+        title: 'Target 1: Sequential Double Helix',
+        icon: '🌀',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('a', 12),
-              varAssign('b', 100),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -120, y: 20, heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.blue } }),
-              block('CALL_F1'),
-              block('PEN_UP'),
-              varAssign('x', '$x'),
-              varAssign('y', '$y'),
-              varAssign('h', '$heading'),
-              varOp('u', 'x', '+', 180),
-              block('TELEPORT', { params: { x: 'u', y: 'y', heading: 'h' } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.red } }),
-              block('CALL_F2'),
-            ],
-            F1: [
-              loopStart(16),
+              varAssign('a', 16),
+              varAssign('b', 186),
+              block('SET_PEN_WIDTH', { params: { width: 4 } }),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              loopStart(18),
               block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 90 } }),
-              varOp('a', 'a', '+', 6),
+              block('TURN_RIGHT', { params: { angle: 89 } }),
+              varOp('a', 'a', '+', 10),
               block('LOOP_END'),
-            ],
-            F2: [
-              loopStart(16),
+              block('PEN_UP'),
+              block('TELEPORT', { params: { x: 0, y: 0, heading: 180 } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.orange } }),
+              loopStart(18),
               block('FORWARD', { params: { length: 'b' } }),
-              block('TURN_LEFT', { params: { angle: 90 } }),
-              varOp('b', 'b', '-', 6),
+              block('TURN_LEFT', { params: { angle: 89 } }),
+              varOp('b', 'b', '-', 10),
               block('LOOP_END'),
             ],
           },
@@ -2503,76 +2680,96 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
         ),
       },
       {
-        id: 'var.M2-target2-double-helix',
-        title: 'Target 2: Double-Helix Lattice',
-        icon: 'ðŸ§¬',
+        id: 'var.M2-target2-braided-pinwheel',
+        title: 'Target 2: Simultaneous Braided Pinwheel',
+        icon: '🧬',
         workspace: makeWorkspace(
           {
             MAIN: [
-              varAssign('a', 15),
-              varAssign('b', 115),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -110, y: -30, heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              varAssign('a', 16),
+              varAssign('b', 186),
+              varAssign('x', 0),
+              varAssign('y', 0),
+              varAssign('h', 0),
+              varAssign('u', 0),
+              varAssign('v', 0),
+              varAssign('w', 180),
+              block('SET_PEN_WIDTH', { params: { width: 4 } }),
+              loopStart(18),
               block('CALL_F1'),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 110, y: 30, heading: 180 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
               block('CALL_F2'),
+              block('LOOP_END'),
             ],
             F1: [
-              loopStart(12),
+              block('PEN_UP'),
+              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 'h' } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
               block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 60 } }),
-              varOp('a', 'a', '+', 8),
-              block('LOOP_END'),
+              block('TURN_RIGHT', { params: { angle: 89 } }),
+              varOp('a', 'a', '+', 10),
+              varAssign('x', '$x'),
+              varAssign('y', '$y'),
+              varAssign('h', '$heading'),
             ],
             F2: [
-              loopStart(12),
+              block('PEN_UP'),
+              block('TELEPORT', { params: { x: 'u', y: 'v', heading: 'w' } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.purple } }),
               block('FORWARD', { params: { length: 'b' } }),
-              block('TURN_LEFT', { params: { angle: 60 } }),
-              varOp('b', 'b', '-', 8),
-              block('LOOP_END'),
+              block('TURN_LEFT', { params: { angle: 89 } }),
+              varOp('b', 'b', '-', 10),
+              varAssign('u', '$x'),
+              varAssign('v', '$y'),
+              varAssign('w', '$heading'),
             ],
           },
           't2_varM2'
         ),
       },
       {
-        id: 'var.M2-target3-quad-mirror',
-        title: 'Target 3: Mirrored Whirlpools',
-        icon: 'ðŸªž',
+        id: 'var.M2-target3-arc-tapestry',
+        title: 'Target 3: Twin Bookmark Arc Tapestry',
+        icon: '🪡',
         workspace: makeWorkspace(
           {
             MAIN: [
               varAssign('a', 18),
-              varAssign('b', 120),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: -95, y: -25, heading: 0 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.green } }),
+              varAssign('b', 168),
+              varAssign('x', -110),
+              varAssign('y', 0),
+              varAssign('h', 0),
+              varAssign('u', 110),
+              varAssign('v', 0),
+              varAssign('w', 0),
+              block('SET_PEN_WIDTH', { params: { width: 4 } }),
+              loopStart(16),
               block('CALL_F1'),
-              block('PEN_UP'),
-              block('TELEPORT', { params: { x: 95, y: 25, heading: 180 } }),
-              block('PEN_DOWN'),
-              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
               block('CALL_F2'),
+              block('LOOP_END'),
             ],
             F1: [
-              loopStart(14),
-              block('FORWARD', { params: { length: 'a' } }),
-              block('TURN_RIGHT', { params: { angle: 92 } }),
-              varOp('a', 'a', '+', 7),
-              block('LOOP_END'),
+              block('PEN_UP'),
+              block('TELEPORT', { params: { x: 'x', y: 'y', heading: 'h' } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.cyan } }),
+              block('ARC_RIGHT', { params: { radius: 'a', angle: 90 } }),
+              varOp('a', 'a', '+', 10),
+              varAssign('x', '$x'),
+              varAssign('y', '$y'),
+              varAssign('h', '$heading'),
             ],
             F2: [
-              loopStart(14),
-              block('FORWARD', { params: { length: 'b' } }),
-              block('TURN_LEFT', { params: { angle: 92 } }),
-              varOp('b', 'b', '-', 7),
-              block('LOOP_END'),
+              block('PEN_UP'),
+              block('TELEPORT', { params: { x: 'u', y: 'v', heading: 'w' } }),
+              block('PEN_DOWN'),
+              block('SET_PEN_COLOR', { params: { color: TURTLE_COLORS.amber } }),
+              block('ARC_LEFT', { params: { radius: 'b', angle: 90 } }),
+              varOp('b', 'b', '-', 10),
+              varAssign('u', '$x'),
+              varAssign('v', '$y'),
+              varAssign('w', '$heading'),
             ],
           },
           't3_varM2'
