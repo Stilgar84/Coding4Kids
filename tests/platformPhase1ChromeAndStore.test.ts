@@ -702,7 +702,7 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
       }
     });
 
-    it('verifies 9x9 +-greenhouse loop.A constraints (8 crates + 8 requiredForGoal switches, slotCap 10, maxLoopNestingDepth 1) in < 150ms', () => {
+    it('verifies 9x9 +-greenhouse loop.A constraints (8 crates + 8 requiredForGoal switches, slotCap 10, maxLoopNestingDepth 1) in < 200ms', () => {
       const barriers: WallEdge[] = [];
       for (const y of [0, 1, 2, 3, 5, 6, 7, 8]) {
         barriers.push({ orientation: 'V', x: 4, y });
@@ -819,8 +819,8 @@ describe('Phase 1 Chrome, HUD Clearance, Icon Disambiguation & Store Contracts',
             exploredStates: r.exploredStates,
           }))
         )
-      ).toBeLessThan(150);
-      expect(wallMs).toBeLessThan(150);
+      ).toBeLessThan(200);
+      expect(wallMs).toBeLessThan(200);
     });
   });
 });

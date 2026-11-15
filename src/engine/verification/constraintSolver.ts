@@ -1713,7 +1713,6 @@ function solveLoopFreeBfs(
   extraDepthBeyondCap = 20
 ): BfsSearchOutcome {
   const tracker = buildExecCountTracker(maxActionExecutions);
-  const initCounts = tracker ? new Array<number>(tracker.keys.length).fill(0) : null;
 
   // Check if initial state is somehow already at SUCCESS
   if (evaluator.initialGrid.status === 'SUCCESS') {
@@ -1725,21 +1724,119 @@ function solveLoopFreeBfs(
     };
   }
 
-  const startFullKey = tracker
-    ? `${evaluator.initialBaseKey}|e:${encodeExecCounts(initCounts!)}`
-    : evaluator.initialBaseKey;
+  const hardMaxDepth =
+    slotLimit !== undefined ? slotLimit + extraDepthBeyondCap : 200;
+  const hasDenseItems = (evaluator.initialGrid.worldItems?.length ?? 0) >= 4;
+  const postCapStateLimit = hasDenseItems ? 2000 : 6000;
+  const unboundedStateLimit = 2000;
 
-  interface BfsNode {
+  const buildWinningOutcome = (
+    exploredStates: number,
+    depth: number,
+    parentChain: ReadonlyArray<{ parentIdx: number; viaSpec: CandidateActionSpec | null }>,
+    curIdx: number,
+    finalSpec: CandidateActionSpec
+  ): BfsSearchOutcome => {
+    const specs: CandidateActionSpec[] = [finalSpec];
+    let walk = curIdx;
+    while (walk > 0) {
+      const node = parentChain[walk];
+      if (node.viaSpec) specs.push(node.viaSpec);
+      walk = node.parentIdx;
+    }
+    specs.reverse();
+    return {
+      exploredStates,
+      minWinningBlocks: depth + 1,
+      exhaustedStateSpace: false,
+      winningAst: specs.map((s) => ({
+        kind: 'action',
+        spec: s,
+        slotCost: 1,
+      })),
+    };
+  };
+
+  if (tracker === null) {
+    evaluator.initIndexedTable(actions.length);
+    const startId = evaluator.initialStateId;
+    if (evaluator.isTerminalSuccessById(startId)) {
+      return {
+        exploredStates: 1,
+        minWinningBlocks: 0,
+        exhaustedStateSpace: false,
+        winningAst: [],
+      };
+    }
+
+    const visitedIds = new Set<number>([startId]);
+    const queue: Array<{
+      stateId: number;
+      depth: number;
+      parentIdx: number;
+      viaSpec: CandidateActionSpec | null;
+    }> = [{ stateId: startId, depth: 0, parentIdx: -1, viaSpec: null }];
+    let truncatedByCap = false;
+
+    for (let curIdx = 0; curIdx < queue.length; curIdx++) {
+      const cur = queue[curIdx];
+      if (cur.depth >= hardMaxDepth) {
+        truncatedByCap = true;
+        continue;
+      }
+      if (
+        slotLimit !== undefined &&
+        cur.depth >= slotLimit &&
+        visitedIds.size >= postCapStateLimit
+      ) {
+        truncatedByCap = true;
+        break;
+      }
+      if (slotLimit === undefined && visitedIds.size >= unboundedStateLimit) {
+        truncatedByCap = true;
+        break;
+      }
+
+      for (let i = 0; i < actions.length; i++) {
+        const spec = actions[i];
+        const tr = evaluator.executeBlockById(cur.stateId, spec);
+        if (tr.statusCode === 2 || tr.nextStateId === cur.stateId) {
+          continue;
+        }
+        if (evaluator.isTerminalSuccessById(tr.nextStateId)) {
+          return buildWinningOutcome(visitedIds.size, cur.depth, queue, curIdx, spec);
+        }
+        if (!visitedIds.has(tr.nextStateId)) {
+          visitedIds.add(tr.nextStateId);
+          queue.push({
+            stateId: tr.nextStateId,
+            depth: cur.depth + 1,
+            parentIdx: curIdx,
+            viaSpec: spec,
+          });
+        }
+      }
+    }
+
+    return {
+      exploredStates: visitedIds.size,
+      minWinningBlocks: null,
+      exhaustedStateSpace: !truncatedByCap,
+    };
+  }
+
+  const initCounts = new Array<number>(tracker.keys.length).fill(0);
+  const startFullKey = `${evaluator.initialBaseKey}|e:${encodeExecCounts(initCounts)}`;
+
+  const visited = new Set<string>([startFullKey]);
+  const queue: Array<{
     grid: GridState;
     baseKey: string;
-    execCounts: number[] | null;
+    execCounts: number[];
     depth: number;
     parentIdx: number;
     viaSpec: CandidateActionSpec | null;
-  }
-
-  const visited = new Set<string>([startFullKey]);
-  const queue: BfsNode[] = [
+  }> = [
     {
       grid: evaluator.initialGrid,
       baseKey: evaluator.initialBaseKey,
@@ -1750,16 +1847,8 @@ function solveLoopFreeBfs(
     },
   ];
 
-  const hardMaxDepth =
-    slotLimit !== undefined ? slotLimit + extraDepthBeyondCap : 200;
-  const hasDenseItems = (evaluator.initialGrid.worldItems?.length ?? 0) >= 4;
-  const postCapStateLimit = hasDenseItems ? 2000 : 6000;
-  const unboundedStateLimit = 2000;
   let truncatedByCap = false;
-
-  let head = 0;
-  while (head < queue.length) {
-    const curIdx = head++;
+  for (let curIdx = 0; curIdx < queue.length; curIdx++) {
     const cur = queue[curIdx];
 
     if (cur.depth >= hardMaxDepth) {
@@ -1793,31 +1882,12 @@ function solveLoopFreeBfs(
         spec.actionType,
         trans.executedTicks
       );
-      if (nextCounts === 'EXCEEDED') {
+      if (nextCounts === 'EXCEEDED' || nextCounts === null) {
         continue;
       }
 
       if (evaluator.isTerminalSuccess(trans.nextGrid)) {
-        // Reconstruct shortest winning path
-        const specs: CandidateActionSpec[] = [spec];
-        let walk = curIdx;
-        while (walk > 0) {
-          const node = queue[walk];
-          if (node.viaSpec) specs.push(node.viaSpec);
-          walk = node.parentIdx;
-        }
-        specs.reverse();
-        const ast: AstNode[] = specs.map((s) => ({
-          kind: 'action',
-          spec: s,
-          slotCost: 1,
-        }));
-        return {
-          exploredStates: visited.size,
-          minWinningBlocks: cur.depth + 1,
-          exhaustedStateSpace: false,
-          winningAst: ast,
-        };
+        return buildWinningOutcome(visited.size, cur.depth, queue, curIdx, spec);
       }
 
       // Prune state no-ops immediately
@@ -1825,9 +1895,7 @@ function solveLoopFreeBfs(
         continue;
       }
 
-      const nextFullKey = tracker
-        ? `${trans.nextBaseKey}|e:${encodeExecCounts(nextCounts!)}`
-        : trans.nextBaseKey;
+      const nextFullKey = `${trans.nextBaseKey}|e:${encodeExecCounts(nextCounts)}`;
 
       if (!visited.has(nextFullKey)) {
         visited.add(nextFullKey);
@@ -2091,8 +2159,13 @@ function solveStructuralLoopSearch(
     if (!hasPickAction) return 1;
     if (slots <= 4) return 1;
     if (slots === 5) return 2;
-    if (slots === 6) return Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches);
-    if (slots === 7) return Math.max(maxPeriodicSingleDropSites, globalMaxCollinearSwitches) + 1;
+    const maxSingleDropLoop = Math.max(
+      maxPeriodicSingleDropSites,
+      globalMaxCollinearSwitches
+    );
+    if (slots === 6) return maxSingleDropLoop;
+    if (slots === 7) return maxSingleDropLoop + 1;
+    if (slots === 8) return maxSingleDropLoop + 2;
     return Infinity;
   };
 
@@ -3784,13 +3857,28 @@ export function verifyActivityRule(
     simEnv
   );
 
-  const bfsOutcome = solveLoopFreeBfs(
-    evaluator,
-    actions,
-    loopsAllowed ? undefined : slotLimit,
-    rule.maxActionExecutions,
-    options?.extraBfsDepthBeyondCap ?? 20
-  );
+  // When loops are allowed within a finite slot cap and no actions/badges/execs are restricted,
+  // `solveStructuralLoopSearch` already explores all loop-free + loop paths <= `slotLimit`.
+  const skipLoopFreePrePass =
+    loopsAllowed &&
+    slotLimit !== undefined &&
+    (rule.forbidBlocks?.length ?? 0) === 0 &&
+    rule.allowRepeatBadges !== false &&
+    !rule.maxActionExecutions;
+
+  const bfsOutcome: BfsSearchOutcome = skipLoopFreePrePass
+    ? {
+        exploredStates: 0,
+        minWinningBlocks: null,
+        exhaustedStateSpace: false,
+      }
+    : solveLoopFreeBfs(
+        evaluator,
+        actions,
+        loopsAllowed ? undefined : slotLimit,
+        rule.maxActionExecutions,
+        options?.extraBfsDepthBeyondCap ?? 20
+      );
   totalExplored += bfsOutcome.exploredStates;
 
   if (!loopsAllowed && !rule.pureSingleLoopOnly) {
