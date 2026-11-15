@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
+import { useAppStoreSelector } from '../store/useAppStore';
+import {
+  AdultMathChallenge,
+  generateAdultMathChallenge,
+  verifyAdultMathAnswer,
+} from '../utils/adultMathGate';
 import { LESSONS } from '../data/lessons';
 import {
   CURRICULUM_ACTIVITIES,
@@ -85,11 +90,21 @@ export const SolutionModal: React.FC<SolutionModalProps> = (props) => {
   return <SolutionModalContent {...props} />;
 };
 
+const SCOPE_DISPLAY_CONFIG: ReadonlyArray<{
+  scope: ScopeType;
+  title: string;
+  colorClass: string;
+}> = [
+  { scope: 'MAIN', title: '★ Main', colorClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
+  { scope: 'F1', title: '📞 F1', colorClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+  { scope: 'F2', title: '📞 F2', colorClass: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+  { scope: 'F3', title: '📞 F3', colorClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
+];
+
 const SolutionModalContent: React.FC<SolutionModalProps> = ({
   defaultDevProofsExpanded = true,
   activityOverride,
 }) => {
-  useAppStore();
   const {
     appMode,
     activeActivityId,
@@ -100,11 +115,27 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
     loadSolution,
     triggerGhostPreview,
     loadPartialScaffold,
-  } = useAppStore.getState();
+  } = useAppStoreSelector((s) => ({
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    currentLevel: s.currentLevel,
+    isSolutionOpen: s.isSolutionOpen,
+    setSolutionOpen: s.setSolutionOpen,
+    loadSolution: s.loadSolution,
+    triggerGhostPreview: s.triggerGhostPreview,
+    loadPartialScaffold: s.loadPartialScaffold,
+  }));
 
   const [isTier2Revealed, setIsTier2Revealed] = useState(false);
   const [isTeacherTipOpen, setIsTeacherTipOpen] = useState(false);
   const [isDevProofsOpen, setIsDevProofsOpen] = useState(defaultDevProofsExpanded);
+  const [isAdultUnlocked, setIsAdultUnlocked] = useState(false);
+  const [mathChallenge, setMathChallenge] = useState<AdultMathChallenge>(() =>
+    generateAdultMathChallenge()
+  );
+  const [mathInput, setMathInput] = useState('');
+  const [mathError, setMathError] = useState(false);
 
   const isCurriculum = appMode === 'curriculum';
   const resolvedActivity =
@@ -128,7 +159,11 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
   useEffect(() => {
     setIsTier2Revealed(false);
     setIsTeacherTipOpen(false);
-  }, [activeActivityId, isSolutionOpen]);
+    setIsAdultUnlocked(false);
+    setMathInput('');
+    setMathError(false);
+    setMathChallenge(generateAdultMathChallenge());
+  }, [appMode, activeActivityId, activeActivityVersion, currentLevel, isSolutionOpen]);
 
   useEffect(() => {
     setIsDevProofsOpen(defaultDevProofsExpanded);
@@ -179,6 +214,25 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
       loadSolution(currentLesson.id);
     }
     setSolutionOpen(false);
+  };
+
+  const handleMathSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verifyAdultMathAnswer(mathChallenge, mathInput)) {
+      setIsAdultUnlocked(true);
+      setMathInput('');
+      setMathError(false);
+      return;
+    }
+    setMathError(true);
+    setMathInput('');
+    setMathChallenge((prev) => {
+      let next = generateAdultMathChallenge();
+      if (next.prompt === prev.prompt) {
+        next = generateAdultMathChallenge();
+      }
+      return next;
+    });
   };
 
   const renderBlockMini = (block: CodeBlock, index: number) => {
@@ -492,6 +546,77 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
     );
   };
 
+  const renderWorkspaceScopes = (targetWorkspace: WorkspaceState | undefined | null) =>
+    SCOPE_DISPLAY_CONFIG.map((cfg) => (
+      <React.Fragment key={cfg.scope}>
+        {renderScopeBlocks(targetWorkspace, cfg.scope, cfg.title, cfg.colorClass)}
+      </React.Fragment>
+    ));
+
+  const renderAdultMathGate = () => (
+    <div
+      data-testid="adult-math-gate"
+      className="p-3.5 rounded-2xl border border-amber-500/40 bg-slate-900/90 space-y-2.5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg leading-none" aria-hidden="true">
+            🧮
+          </span>
+          <span className="text-xs sm:text-sm font-black tracking-wide text-amber-200">
+            Grown-Up Check
+          </span>
+        </div>
+
+        {mathError && (
+          <span
+            data-testid="adult-math-error"
+            role="status"
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"
+          >
+            Try again
+          </span>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleMathSubmit}
+        className="flex flex-wrap items-center justify-between gap-2.5"
+      >
+        <div className="flex items-center gap-1.5 font-mono tabular-nums text-lg sm:text-xl font-black text-white select-none">
+          <span data-testid="adult-math-prompt">{mathChallenge.prompt}</span>
+          <span className="text-slate-400">= ?</span>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            data-testid="adult-math-input"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="off"
+            placeholder="?"
+            aria-label="Grown-up math check answer"
+            value={mathInput}
+            onChange={(e) => setMathInput(e.target.value)}
+            className={`w-24 min-h-[44px] px-3 rounded-xl bg-slate-950 border-2 font-mono tabular-nums text-center text-base font-black text-white placeholder:text-slate-500 focus:outline-none transition-colors ${
+              mathError
+                ? 'border-rose-400 focus:border-rose-300'
+                : 'border-slate-700 focus:border-amber-400'
+            }`}
+          />
+          <button
+            type="submit"
+            data-testid="btn-adult-math-submit"
+            className="min-h-[44px] min-w-[44px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            Check
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+
   const ghostMaxSteps = currentActivity?.partialHelp?.ghostPreview?.maxSteps ?? 2;
   const conceptText = isCurriculum ? currentActivity?.concept : currentLesson.concept;
   const descText = isCurriculum ? currentActivity?.description : currentLesson.description;
@@ -614,30 +739,7 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
                   </div>
 
                   <div className="space-y-2">
-                    {renderScopeBlocks(
-                      scaffoldWorkspace,
-                      'MAIN',
-                      '★ Main',
-                      'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                    )}
-                    {renderScopeBlocks(
-                      scaffoldWorkspace,
-                      'F1',
-                      '📞 F1',
-                      'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                    )}
-                    {renderScopeBlocks(
-                      scaffoldWorkspace,
-                      'F2',
-                      '📞 F2',
-                      'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                    )}
-                    {renderScopeBlocks(
-                      scaffoldWorkspace,
-                      'F3',
-                      '📞 F3',
-                      'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                    )}
+                    {renderWorkspaceScopes(scaffoldWorkspace)}
                   </div>
                 </section>
               )}
@@ -653,7 +755,7 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
                     data-testid="btn-reveal-full-solution"
                     aria-expanded={isTier2Revealed}
                     onClick={() => setIsTier2Revealed((prev) => !prev)}
-                    className="w-full flex items-center justify-between gap-3 p-3.5 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center justify-between gap-3 p-3.5 hover:bg-slate-900/80 transition-colors text-left cursor-pointer min-h-[44px]"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-base" aria-hidden="true">
@@ -675,52 +777,35 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
 
                   {isTier2Revealed && (
                     <div className="p-3.5 pt-2 border-t border-slate-800/80 space-y-3">
-                      <div className="space-y-2">
-                        {renderScopeBlocks(
-                          solutionWorkspace,
-                          'MAIN',
-                          '★ Main',
-                          'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                        )}
-                        {renderScopeBlocks(
-                          solutionWorkspace,
-                          'F1',
-                          '📞 F1',
-                          'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        )}
-                        {renderScopeBlocks(
-                          solutionWorkspace,
-                          'F2',
-                          '📞 F2',
-                          'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                        )}
-                        {renderScopeBlocks(
-                          solutionWorkspace,
-                          'F3',
-                          '📞 F3',
-                          'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                        )}
-                      </div>
+                      {isAdultUnlocked ? (
+                        <>
+                          <div className="space-y-2">
+                            {renderWorkspaceScopes(solutionWorkspace)}
+                          </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
-                        <div
-                          data-testid="solution-undo-reminder"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300"
-                        >
-                          <Undo2 className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Undo restores your blocks</span>
-                        </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                            <div
+                              data-testid="solution-undo-reminder"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300"
+                            >
+                              <Undo2 className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Undo restores your blocks</span>
+                            </div>
 
-                        <button
-                          type="button"
-                          data-testid="btn-load-solution"
-                          onClick={handleLoadSolution}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
-                        >
-                          <Play className="w-4 h-4 fill-slate-950" />
-                          <span>Use Answer</span>
-                        </button>
-                      </div>
+                            <button
+                              type="button"
+                              data-testid="btn-load-solution"
+                              onClick={handleLoadSolution}
+                              className="flex items-center gap-2 min-h-[44px] px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
+                            >
+                              <Play className="w-4 h-4 fill-slate-950" />
+                              <span>Use Answer</span>
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        renderAdultMathGate()
+                      )}
                     </div>
                   )}
                 </section>
@@ -979,43 +1064,26 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
                   </span>
                 </h3>
 
-                <button
-                  type="button"
-                  data-testid="btn-load-solution"
-                  onClick={handleLoadSolution}
-                  className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-slate-950" />
-                  <span>Load Solution</span>
-                </button>
+                {isAdultUnlocked && (
+                  <button
+                    type="button"
+                    data-testid="btn-load-solution"
+                    onClick={handleLoadSolution}
+                    className="flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-black text-sm shadow-lg transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-slate-950" />
+                    <span>Load Solution</span>
+                  </button>
+                )}
               </div>
 
-              <div className="space-y-2.5">
-                {renderScopeBlocks(
-                  solutionWorkspace,
-                  'MAIN',
-                  '★ Main',
-                  'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                )}
-                {renderScopeBlocks(
-                  solutionWorkspace,
-                  'F1',
-                  '📞 F1',
-                  'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                )}
-                {renderScopeBlocks(
-                  solutionWorkspace,
-                  'F2',
-                  '📞 F2',
-                  'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                )}
-                {renderScopeBlocks(
-                  solutionWorkspace,
-                  'F3',
-                  '📞 F3',
-                  'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                )}
-              </div>
+              {isAdultUnlocked ? (
+                <div className="space-y-2.5">
+                  {renderWorkspaceScopes(solutionWorkspace)}
+                </div>
+              ) : (
+                renderAdultMathGate()
+              )}
             </div>
           )}
 
