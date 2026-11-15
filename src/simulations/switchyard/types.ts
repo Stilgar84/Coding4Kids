@@ -111,16 +111,24 @@ export interface SwitchyardItem {
   color: ItemColor;
   icon: ItemIcon;
   damaged?: boolean;
-  /** Optional Phase 3 weight value */
+  /** Optional Phase 3 weight value (1..99) */
   weight?: number;
+  /** Optional Phase 3 arrival sequence tag number (#1, #2, ...) */
+  seqNum?: number;
+  /** Optional raw string sequence label (e.g. '#1') */
+  seqTag?: string;
 }
 
 export type DockId = 'DOCK_A' | 'DOCK_B' | 'DOCK_C' | 'SCRAP';
+
+export type SwitchyardParitySlot = 'odd' | 'even';
 
 export interface DockExpectedItemSpec {
   color?: ItemColor;
   icon?: ItemIcon;
   damaged?: boolean;
+  weight?: number;
+  seqNum?: number;
 }
 
 export interface DockSpec {
@@ -128,13 +136,17 @@ export interface DockSpec {
   acceptColor?: ItemColor;
   acceptIcon?: ItemIcon;
   rejectDamaged?: boolean;
-  /** Optional ordered car sequence expected at this dock */
+  /** Optional ordered/accepted car specs at this dock */
   expectedItems?: DockExpectedItemSpec[];
-  /** Optional exact or maximum quota at this dock */
+  /** Optional exact or capacity quota at this dock */
   quota?: number;
   /** Optional Phase 3 weight bounds */
   minWeight?: number;
   maxWeight?: number;
+  /** Optional Phase 3 sequence parity slot ('odd' = #1,#3,#5; 'even' = #2,#4,#6) */
+  paritySlot?: SwitchyardParitySlot;
+  /** Optional Phase 5 return bay flag */
+  isReturnBay?: boolean;
 }
 
 export interface DockState {
@@ -146,20 +158,26 @@ export interface DockState {
   quota?: number;
   minWeight?: number;
   maxWeight?: number;
+  paritySlot?: SwitchyardParitySlot;
+  isReturnBay?: boolean;
 }
 
 export type SwitchDirection = 'LEFT' | 'RIGHT';
 
+export type SwitchJunctionId = 'A' | 'B' | 'C';
+
 export interface SwitchState {
-  id: 'A' | 'B';
+  id: SwitchJunctionId;
   direction: SwitchDirection;
   initialDirection: SwitchDirection;
-  /** Optional explicit destination IDs ('DOCK_A' | 'DOCK_B' | 'DOCK_C' | 'SWITCH_B' | 'SCRAP') */
+  /** Optional explicit destination IDs ('DOCK_A' | 'DOCK_B' | 'DOCK_C' | 'SWITCH_B' | 'SWITCH_C' | 'SCRAP') */
   leftTarget?: string;
   rightTarget?: string;
 }
 
-export type SwitchyardScrapRule = 'damaged_only' | 'any' | 'none';
+export type SwitchyardScrapRule = 'damaged_only' | 'damaged_or_overweight' | 'any' | 'none';
+
+export type SwitchyardMode = 'standard' | 'balance_scale' | 'order_manifest' | 'strategy_filter';
 
 export type SwitchyardFailureReason =
   | 'WRONG_DOCK_COLOR'
@@ -173,6 +191,8 @@ export type SwitchyardFailureReason =
   | 'UNSORTED_ITEMS_REMAIN'
   | 'DOCK_QUOTA_EXCEEDED'
   | 'WEIGHT_LIMIT_VIOLATED'
+  | 'PARITY_SLOT_VIOLATED'
+  | 'SCALE_IMBALANCED'
   | 'EXPECTED_ITEMS_MISMATCH'
   | 'SCRAP_DISALLOWED';
 
@@ -186,7 +206,9 @@ export interface SwitchyardFailureDetail {
     | 'QUEUE_EMPTY'
     | 'INVALID_SWITCH'
     | 'QUOTA_MISMATCH'
-    | 'WEIGHT_MISMATCH';
+    | 'WEIGHT_MISMATCH'
+    | 'PARITY_MISMATCH'
+    | 'BALANCE_MISMATCH';
   dockId?: DockId;
   remainingCount?: number;
   expectedColor?: ItemColor;
@@ -195,6 +217,16 @@ export interface SwitchyardFailureDetail {
   actualIcon?: ItemIcon;
   expectedDamaged?: boolean;
   actualDamaged?: boolean;
+  actualWeight?: number;
+  minWeight?: number;
+  maxWeight?: number;
+  quota?: number;
+  actualCount?: number;
+  expectedParity?: SwitchyardParitySlot;
+  actualSeqNum?: number;
+  leftWeightSum?: number;
+  rightWeightSum?: number;
+  balanceTolerance?: number;
 }
 
 export interface SwitchyardAnimEvent {
@@ -206,12 +238,13 @@ export interface SwitchyardAnimEvent {
   targetDock?: DockId;
   toDock?: DockId;
   targetSlotIndex?: number;
-  junction?: 'A' | 'B';
+  junction?: SwitchJunctionId;
   direction?: SwitchDirection;
   switchADir?: SwitchDirection;
   switchBDir?: SwitchDirection;
+  switchCDir?: SwitchDirection;
   switchCount?: number;
-  switchesTraversed?: Array<'A' | 'B'>;
+  switchesTraversed?: SwitchJunctionId[];
 }
 
 export interface SwitchyardState {
@@ -225,8 +258,24 @@ export interface SwitchyardState {
   scrap?: SwitchyardItem[];
   /** Scrap chute acceptance policy (default: 'damaged_only') */
   scrapRule?: SwitchyardScrapRule;
+  /** Maximum non-overweight crate weight when `scrapRule === 'damaged_or_overweight'` (e.g. 20) */
+  scrapMaxWeight?: number;
   /** Mirror of curriculum scrapChute.expectedDamagedOnly */
   scrapExpectedDamagedOnly?: boolean;
+  /** Phase 3+ Switchyard puzzle mode (e.g. 'balance_scale' for cmp.M2) */
+  mode?: SwitchyardMode;
+  /** Maximum allowed |ΣLeft - ΣRight| difference in 'balance_scale' mode (default 0) */
+  balanceTolerance?: number;
+  /** Live weight sum on Left Pan (Dock A) */
+  leftWeightSum?: number;
+  /** Live weight sum on Right Pan (Dock B) */
+  rightWeightSum?: number;
+  /** Live Twin-Scale Fulcrum Balance Beam tilt in degrees (-15..+15) */
+  beamTiltDeg?: number;
+  /** Count of cars dispatched or scrapped so far from initialQueue (0-based) */
+  dispatchedCount?: number;
+  /** Optional Phase 4+ sparse tape cells when saved in Sandbox */
+  tape?: Record<string, number>;
   status: SimulationStatus;
   stepCount: number;
   lastFailureReason?: string;

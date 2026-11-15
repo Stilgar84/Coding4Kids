@@ -14,6 +14,7 @@ import {
   evaluateSwitchyardCompletion,
   evaluateSwitchyardSensor,
   readSwitchyardNumericSensor,
+  readSwitchyardTypedSensor,
   resetSwitchyardState,
 } from './physics';
 import { SwitchyardCanvas } from './components/SwitchyardCanvas';
@@ -198,11 +199,24 @@ export const SWITCHYARD_PALETTE_ITEMS: SimPaletteItem[] = [
   },
 ];
 
-export const SWITCHYARD_SENSORS: SimSensorDef[] = [
+export const SWITCHYARD_BOOLEAN_SENSORS: SimSensorDef[] = [
   { id: 'hasNextItem', label: 'Car Ready?', icon: '🚂', shortLabel: 'Next' },
   { id: 'itemDamaged', label: 'Damaged?', icon: '⚡', shortLabel: 'Dmg' },
   { id: 'itemColor', label: 'Car Color?', icon: '🔴', shortLabel: 'Col' },
   { id: 'itemIcon', label: 'Car Emblem?', icon: '📦', shortLabel: 'Icon' },
+];
+
+/**
+ * Switchyard typed/numeric value sensors surfaced in BlockSubpalette & ParamSelectionPopover
+ * (0xA8 $itemWeight, 0xA9 $itemColor, 0xAA $dockQuota[i], 0xAB $dockCount[i]).
+ */
+export const SWITCHYARD_SENSORS: SimSensorDef[] = [
+  { id: '$itemWeight', label: 'Car Weight', icon: '$itemWeight', shortLabel: '⚖️' },
+  { id: '$itemColor', label: 'Car Color', icon: '$itemColor', shortLabel: '🎨' },
+  { id: '$dockQuota[0]', label: 'Dock A Quota', icon: '$dockQuota[0]', shortLabel: '🎯[A]' },
+  { id: '$dockCount[0]', label: 'Dock A Count', icon: '$dockCount[0]', shortLabel: '📊[A]' },
+  { id: '$dockQuota[1]', label: 'Dock B Quota', icon: '$dockQuota[1]', shortLabel: '🎯[B]' },
+  { id: '$dockCount[1]', label: 'Dock B Count', icon: '$dockCount[1]', shortLabel: '📊[B]' },
 ];
 
 export const switchyardSimulationEnvironment: SimulationEnvironment<SwitchyardState> = {
@@ -227,6 +241,7 @@ export const switchyardSimulationEnvironment: SimulationEnvironment<SwitchyardSt
 
   evaluateSensor: (sensor, state, param) => evaluateSwitchyardSensor(sensor, state, param),
   readSensor: (sensor, state) => readSwitchyardNumericSensor(sensor, state),
+  readTypedSensor: (sensor, state) => readSwitchyardTypedSensor(sensor, state),
   evaluateCompletion: (state) => evaluateSwitchyardCompletion(state),
 
   Renderer: SwitchyardCanvas,
