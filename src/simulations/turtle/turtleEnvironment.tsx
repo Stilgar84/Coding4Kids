@@ -83,9 +83,11 @@ export const TURTLE_ANGLE_PARAM_DEF: ActionParamDef = {
     { value: 30, label: '30°' },
     { value: 45, label: '45°' },
     { value: 60, label: '60°' },
+    { value: 72, label: '72°' },
     { value: 90, label: '90°' },
     { value: 120, label: '120°' },
     { value: 135, label: '135°' },
+    { value: 144, label: '144°' },
     { value: 180, label: '180°' },
   ],
 };
@@ -438,7 +440,28 @@ const TURTLE_PALETTE_ITEMS: SimPaletteItem[] = [
     ],
     params: { x: 0, y: 0, heading: 0 },
     icon: ({ isActive }) => (
-      <Crosshair className={`w-6 h-6 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-cyan-300 stroke-[2.5]'}`} />
+      <span className="relative inline-flex items-center justify-center">
+        <Crosshair className={`w-5 h-5 ${isActive ? 'text-slate-950 stroke-[2.5]' : 'text-cyan-300 stroke-[2.5]'}`} />
+        <svg
+          data-testid="teleport-mini-turtle"
+          aria-hidden="true"
+          viewBox="0 0 16 16"
+          className={`w-3.5 h-3.5 -ml-1 self-end shrink-0 ${isActive ? 'text-slate-950' : 'text-emerald-300'}`}
+          fill="currentColor"
+        >
+          {/* Flippers */}
+          <circle cx="4.5" cy="4.2" r="1.5" />
+          <circle cx="4.5" cy="11.8" r="1.5" />
+          <circle cx="10.2" cy="4.2" r="1.5" />
+          <circle cx="10.2" cy="11.8" r="1.5" />
+          {/* Head */}
+          <circle cx="13.4" cy="8" r="1.9" />
+          {/* Tail */}
+          <polygon points="1.2,8 3.6,6.8 3.6,9.2" />
+          {/* Shell */}
+          <ellipse cx="7.4" cy="8" rx="4.3" ry="3.7" />
+        </svg>
+      </span>
     ),
     bgClass: 'bg-cyan-700 hover:bg-cyan-600',
     borderClass: 'border-cyan-400',

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   moveTurtleForward,
   moveTurtleBackward,
@@ -9,9 +11,11 @@ import {
 } from '../src/simulations/turtle/physics';
 import { TurtleState } from '../src/simulations/turtle/types';
 import {
+  TURTLE_ANGLE_PARAM_DEF,
   createInitialTurtleState,
   turtleSimulationEnvironment,
 } from '../src/simulations/turtle/turtleEnvironment';
+import { TurtleCanvas } from '../src/simulations/turtle/components/TurtleCanvas';
 
 function createInitialState(): TurtleState {
   return {
@@ -183,5 +187,112 @@ describe('Turtle Physics & Kinematics', () => {
       expect(arcRes.nextState.paths[0].radius).toBe(75);
       expect(arcRes.nextState.paths[0].sweepAngle).toBe(-45);
     }
+  });
+
+  it('includes 72° and 144° angle presets and closes pentagon/5-star polygons', () => {
+    const presetValues = TURTLE_ANGLE_PARAM_DEF.options.map((o) => Number(o.value));
+    expect(presetValues).toEqual([15, 30, 45, 60, 72, 90, 120, 135, 144, 180]);
+
+    // 5 x 72° regular pentagon closure
+    let pentagon = createInitialTurtleState();
+    for (let i = 0; i < 5; i++) {
+      pentagon = moveTurtleForward(pentagon, 80);
+      pentagon = turnTurtle(pentagon, 72);
+    }
+    expect(pentagon.robot.x).toBeCloseTo(0, 5);
+    expect(pentagon.robot.y).toBeCloseTo(0, 5);
+    expect(pentagon.robot.heading).toBeCloseTo(0, 5);
+
+    // 5 x 144° regular 5-pointed star closure
+    let star = createInitialTurtleState();
+    for (let i = 0; i < 5; i++) {
+      star = moveTurtleForward(star, 100);
+      star = turnTurtle(star, 144);
+    }
+    expect(star.robot.x).toBeCloseTo(0, 5);
+    expect(star.robot.y).toBeCloseTo(0, 5);
+    expect(star.robot.heading).toBeCloseTo(0, 5);
+  });
+
+  it('renders miniature turtle silhouette accent alongside Crosshair on TELEPORT icon', () => {
+    const teleportItem = turtleSimulationEnvironment.paletteItems.find(
+      (item) => item.actionType === 'TELEPORT'
+    );
+    expect(teleportItem).toBeDefined();
+
+    const inactiveHtml = renderToStaticMarkup(
+      React.createElement('div', null, teleportItem!.icon({ isActive: false }))
+    );
+    expect(inactiveHtml).toContain('lucide-crosshair');
+    expect(inactiveHtml).toContain('data-testid="teleport-mini-turtle"');
+
+    const activeHtml = renderToStaticMarkup(
+      React.createElement('div', null, teleportItem!.icon({ isActive: true }))
+    );
+    expect(activeHtml).toContain('lucide-crosshair');
+    expect(activeHtml).toContain('data-testid="teleport-mini-turtle"');
+    expect(activeHtml).toContain('text-slate-950');
+  });
+
+  it('erases prior strokes cleanly with #ffffff ink compositing without width halo inflation', () => {
+    let state = createInitialTurtleState();
+
+    // 1. Red base line (width 8)
+    state = turtleSimulationEnvironment.executeAction('SET_PEN_COLOR', state, {
+      params: { color: '#ef4444' },
+    }).nextState;
+    state = turtleSimulationEnvironment.executeAction('SET_PEN_WIDTH', state, {
+      params: { width: 8 },
+    }).nextState;
+    state = turtleSimulationEnvironment.executeAction('FORWARD', state, {
+      params: { distance: 100 },
+    }).nextState;
+
+    // 2. White eraser stroke overlapping red at exact width 6 (no halo inflation)
+    state = turtleSimulationEnvironment.executeAction('SET_PEN_COLOR', state, {
+      params: { color: '#ffffff' },
+    }).nextState;
+    state = turtleSimulationEnvironment.executeAction('SET_PEN_WIDTH', state, {
+      params: { width: 6 },
+    }).nextState;
+    state = turtleSimulationEnvironment.executeAction('BACKWARD', state, {
+      params: { distance: 60 },
+    }).nextState;
+
+    // 3. Blue post-eraser stroke painted on top after white
+    state = turtleSimulationEnvironment.executeAction('SET_PEN_COLOR', state, {
+      params: { color: '#3b82f6' },
+    }).nextState;
+    state = turtleSimulationEnvironment.executeAction('FORWARD', state, {
+      params: { distance: 40 },
+    }).nextState;
+
+    expect(state.paths).toHaveLength(3);
+    expect(state.paths[1].color).toBe('#ffffff');
+    expect(state.paths[1].width).toBe(6);
+
+    const html = renderToStaticMarkup(React.createElement(TurtleCanvas, { state }));
+    // Background grid sits outside/underneath turtle-ink-layer
+    const gridIdx = html.indexOf('url(#turtle-grid)');
+    const inkLayerIdx = html.indexOf('data-testid="turtle-ink-layer"');
+    expect(gridIdx).toBeGreaterThan(-1);
+    expect(inkLayerIdx).toBeGreaterThan(gridIdx);
+
+    // Mask cuts out only prior strokes (turtle-line-0) with black mask stroke at exact stroke-width="6"
+    const maskStart = html.indexOf('<mask ');
+    const maskEnd = html.indexOf('</mask>');
+    expect(maskStart).toBeGreaterThan(-1);
+    expect(maskEnd).toBeGreaterThan(maskStart);
+    const maskMarkup = html.slice(maskStart, maskEnd);
+    expect(maskMarkup).toContain('data-testid="turtle-line-1"');
+    expect(maskMarkup).toContain('data-ink-eraser="true"');
+    expect(maskMarkup).toContain('stroke="#000000"');
+    expect(maskMarkup).toContain('stroke-width="6"');
+
+    // Prior red stroke is inside masked group, whereas later blue stroke is outside the mask group
+    const maskedGroupMatch = html.match(/<g mask="url\(#([^"]+)\)">([\s\S]*?)<\/g><g><line data-testid="turtle-line-2"/);
+    expect(maskedGroupMatch).not.toBeNull();
+    expect(maskedGroupMatch![2]).toContain('data-testid="turtle-line-0"');
+    expect(maskedGroupMatch![2]).not.toContain('data-testid="turtle-line-2"');
   });
 });
