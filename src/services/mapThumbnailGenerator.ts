@@ -9,7 +9,7 @@ import { TurtleState } from '../simulations/turtle/types';
 import { getArcSvgPath } from '../simulations/turtle/physics';
 import { BEAT_GRID_SIZE, BeatState } from '../simulations/beat/types';
 import { DepotState } from '../simulations/depot/types';
-import { ITEM_COLORS, SwitchyardState } from '../simulations/switchyard/types';
+import { SWITCHYARD_COLOR_META, SwitchyardState } from '../simulations/switchyard/types';
 import { renderDepotWorkshopSvg } from '../simulations/depot/depotThumbnail';
 
 const CELL_SIZE = 40;
@@ -578,29 +578,101 @@ export function renderSwitchyardMapSvg(switchyard?: SwitchyardState): string {
   const w = 180;
   const h = 132;
   const parts: string[] = [];
-  parts.push(`<rect width="${w}" height="${h}" rx="12" fill="#0f172a" />`);
-  // Track lines
-  parts.push(`<rect x="12" y="58" width="70" height="16" rx="3" fill="#1e293b" />`);
-  parts.push(`<line x1="82" y1="66" x2="110" y2="66" stroke="#475569" stroke-width="3" />`);
-  parts.push(`<line x1="110" y1="66" x2="140" y2="40" stroke="#475569" stroke-width="2.5" />`);
-  parts.push(`<line x1="110" y1="66" x2="140" y2="92" stroke="#475569" stroke-width="2.5" />`);
 
-  // Scanner arch
-  parts.push(`<rect x="68" y="48" width="22" height="36" rx="3" fill="#1e3a5f" stroke="#38bdf8" stroke-width="1.5" />`);
+  // Daylight Toy-Workshop Sky + Wooden Board
+  parts.push(`<rect width="${w}" height="${h}" rx="12" fill="#dbeafe" />`);
+  parts.push(`<rect x="5" y="14" width="${w - 10}" height="${h - 19}" rx="10" fill="#fef3c7" stroke="#d9b27c" stroke-width="1.8" />`);
 
-  // Switch indicator
-  parts.push(`<circle cx="110" cy="66" r="6" fill="#3b82f6" stroke="#bfdbfe" stroke-width="1" />`);
-
-  // Docks
-  parts.push(`<rect x="140" y="28" width="28" height="24" rx="4" fill="#1e293b" stroke="#ef4444" stroke-width="1.2" />`);
-  parts.push(`<rect x="140" y="80" width="28" height="24" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1.2" />`);
-
-  // Item preview
+  const switches = switchyard?.switches ?? [{ id: 'A', direction: 'LEFT', initialDirection: 'LEFT' }];
+  const switchCount = switches.length;
+  const docks = switchyard?.docks ?? [];
   const items = switchyard?.queue ?? switchyard?.initialQueue ?? [];
+
+  // Upper-left Brick Tunnel + Feeder Track into Scanner (90, 46)
+  parts.push(`<path d="M 50 28 C 72 28, 90 30, 90 42" fill="none" stroke="#475569" stroke-width="4" stroke-linecap="round" />`);
+  parts.push(`<rect x="12" y="18" width="42" height="20" rx="4" fill="#c2410c" stroke="#7c2d12" stroke-width="1.2" />`);
+  parts.push(`<circle cx="50" cy="24" r="2.5" fill="#fde047" />`);
+
+  // Track Tree (0, 1, or 2 switches)
+  if (switchCount === 0) {
+    parts.push(`<path d="M 90 54 L 90 100" stroke="#0284c7" stroke-width="4" stroke-linecap="round" />`);
+    parts.push(`<rect x="70" y="99" width="40" height="22" rx="5" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.6" />`);
+  } else if (switchCount === 1) {
+    const dirA = switches[0]?.direction ?? 'LEFT';
+    parts.push(`<path d="M 90 54 L 90 70" stroke="#0284c7" stroke-width="4" stroke-linecap="round" />`);
+    parts.push(
+      `<path d="M 90 70 C 90 84, 52 84, 52 100" fill="none" stroke="${
+        dirA === 'LEFT' ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${dirA === 'LEFT' ? '1' : '0.4'}" stroke-width="3.5" />`
+    );
+    parts.push(
+      `<path d="M 90 70 C 90 84, 128 84, 128 100" fill="none" stroke="${
+        dirA === 'RIGHT' ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${dirA === 'RIGHT' ? '1' : '0.4'}" stroke-width="3.5" />`
+    );
+    parts.push(`<circle cx="90" cy="70" r="6" fill="#0ea5e9" stroke="#ffffff" stroke-width="1.4" />`);
+
+    const dockAColor = docks[0]?.spec.acceptColor
+      ? SWITCHYARD_COLOR_META[docks[0].spec.acceptColor]?.hex ?? '#ef4444'
+      : '#ef4444';
+    const dockBColor = docks[1]?.spec.acceptColor
+      ? SWITCHYARD_COLOR_META[docks[1].spec.acceptColor]?.hex ?? '#3b82f6'
+      : '#3b82f6';
+    parts.push(`<rect x="33" y="99" width="38" height="22" rx="5" fill="#ffffff" stroke="${dockAColor}" stroke-width="1.8" />`);
+    parts.push(`<rect x="109" y="99" width="38" height="22" rx="5" fill="#ffffff" stroke="${dockBColor}" stroke-width="1.8" />`);
+  } else {
+    const dirA = switches[0]?.direction ?? 'LEFT';
+    const dirB = switches[1]?.direction ?? 'LEFT';
+    const bActive = dirA === 'RIGHT';
+    parts.push(`<path d="M 90 54 L 90 65" stroke="#0284c7" stroke-width="3.8" stroke-linecap="round" />`);
+    parts.push(
+      `<path d="M 90 65 C 90 80, 36 82, 36 100" fill="none" stroke="${
+        dirA === 'LEFT' ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${dirA === 'LEFT' ? '1' : '0.4'}" stroke-width="3.2" />`
+    );
+    parts.push(
+      `<path d="M 90 65 C 90 74, 118 76, 118 82" fill="none" stroke="${
+        bActive ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${bActive ? '1' : '0.4'}" stroke-width="3.2" />`
+    );
+    parts.push(
+      `<path d="M 118 82 C 118 90, 94 90, 94 100" fill="none" stroke="${
+        bActive && dirB === 'LEFT' ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${bActive && dirB === 'LEFT' ? '1' : '0.4'}" stroke-width="3" />`
+    );
+    parts.push(
+      `<path d="M 118 82 C 118 90, 146 90, 146 100" fill="none" stroke="${
+        bActive && dirB === 'RIGHT' ? '#0284c7' : '#94a3b8'
+      }" stroke-opacity="${bActive && dirB === 'RIGHT' ? '1' : '0.4'}" stroke-width="3" />`
+    );
+    parts.push(`<circle cx="90" cy="65" r="5.5" fill="#0ea5e9" stroke="#ffffff" stroke-width="1.2" />`);
+    parts.push(`<circle cx="118" cy="82" r="5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.2" />`);
+
+    const dockCenters = [36, 94, 146];
+    const fallbackColors = ['#ef4444', '#3b82f6', '#10b981'];
+    dockCenters.forEach((cx, i) => {
+      const acceptColor = docks[i]?.spec.acceptColor;
+      const strokeHex = acceptColor
+        ? SWITCHYARD_COLOR_META[acceptColor]?.hex ?? fallbackColors[i]
+        : fallbackColors[i];
+      parts.push(`<rect x="${cx - 17}" y="99" width="34" height="22" rx="5" fill="#ffffff" stroke="${strokeHex}" stroke-width="1.8" />`);
+    });
+  }
+
+  // Optional Scrap Chute Silhouette on Right Wall
+  if ((switchyard?.scrapped?.length ?? switchyard?.scrap?.length ?? 0) > 0 || items.some((i) => i.damaged)) {
+    parts.push(`<line x1="106" y1="45" x2="144" y2="48" stroke="#facc15" stroke-width="3" />`);
+    parts.push(`<rect x="142" y="38" width="22" height="20" rx="4" fill="#fffbeb" stroke="#d97706" stroke-width="1.5" />`);
+  }
+
+  // Scanner Arch at (74..106, 36..54)
+  parts.push(`<rect x="74" y="36" width="32" height="20" rx="5" fill="#f8fafc" stroke="#0ea5e9" stroke-width="1.6" />`);
+  parts.push(`<rect x="78" y="42" width="24" height="12" rx="3" fill="#0f172a" />`);
+
+  // Current Car Preview inside Scanner
   if (items.length > 0) {
-    const itemHex =
-      ITEM_COLORS.find((c) => c.id === items[0].color)?.hex ?? '#ef4444';
-    parts.push(`<rect x="71" y="55" width="16" height="16" rx="3" fill="${itemHex}" />`);
+    const itemHex = SWITCHYARD_COLOR_META[items[0].color]?.hex ?? '#ef4444';
+    parts.push(`<rect x="83" y="44" width="14" height="8" rx="2.5" fill="${itemHex}" stroke="#ffffff" stroke-width="0.9" />`);
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
