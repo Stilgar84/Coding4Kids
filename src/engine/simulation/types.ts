@@ -1,10 +1,10 @@
 import React from 'react';
-import { ScopeType, SimulationStatus } from '../../types';
+import { ScopeType, SimulationStatus, TypedValue } from '../../types';
 
 export interface SimulationRendererProps<TState = any> {
   state: TState;
   runtimeStatus?: SimulationStatus;
-  runtimeVariables?: Record<string, number> | null;
+  runtimeVariables?: Record<string, number | TypedValue> | null;
   activeBlockId?: string | null;
   activeScope?: ScopeType;
 }
@@ -111,7 +111,8 @@ export interface SimulationEnvironment<TState = any> {
 
   // Hook for sensor queries
   getSensorInfo?: (state: TState, sensorId: string) => any;
-  readSensor?: (sensorId: string, state: TState) => number;
+  readSensor?: (sensorId: string, state: TState) => number | TypedValue;
+  readTypedSensor?: (sensorId: string, state: TState) => number | TypedValue | undefined;
   evaluateSensor?: (sensor: any, state: TState, params?: any) => boolean;
 
   // Victory / Completion evaluation when call stack finishes

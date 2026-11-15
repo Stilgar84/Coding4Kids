@@ -20,12 +20,17 @@ import {
   OP_BEAT_CURSOR_TURN,
   OP_BEAT_SET_DELAY,
   OP_BEAT_WAIT_DURATION,
-  varNameToIndex,
-  indexToVarName,
+  encodeVarOrSensorIndex,
+  decodeVarOrSensorIndex,
+  isSensorRefString,
 } from '../types';
 
 function isVarVal(val: unknown): boolean {
-  return isVariableName(val) || (typeof val === 'string' && /^[a-z]$/.test(val.trim()));
+  return (
+    isVariableName(val) ||
+    isSensorRefString(val) ||
+    (typeof val === 'string' && /^[a-z]$/.test(val.trim()))
+  );
 }
 
 /**
@@ -39,7 +44,7 @@ export function writeBeatVarOrVLE(
   isVarFlag: boolean
 ): void {
   if (isVarFlag) {
-    writer.writeUint8(varNameToIndex(String(val)));
+    writer.writeUint8(encodeVarOrSensorIndex(String(val)));
   } else {
     const num = Math.max(0, Math.round(Number(val ?? defaultVal)));
     writer.writeVLE(Number.isFinite(num) ? num : defaultVal);
@@ -51,7 +56,7 @@ export function writeBeatVarOrVLE(
  */
 export function readBeatVarOrVLE(reader: BinaryReader, isVarFlag: boolean): number | string {
   if (isVarFlag) {
-    return indexToVarName(reader.readUint8());
+    return decodeVarOrSensorIndex(reader.readUint8());
   }
   return reader.readVLE();
 }
@@ -166,7 +171,7 @@ export function writeBeatParams(
   switch (opcode) {
     case OP_BEAT_STAMP_PRESET: {
       if ((paramVarMask & 0x02) !== 0) {
-        writer.writeUint8(varNameToIndex(String(params?.preset ?? params?.presetId ?? 'a')));
+        writer.writeUint8(encodeVarOrSensorIndex(String(params?.preset ?? params?.presetId ?? 'a')));
       } else if (blockType === 'STAMP_HEART') {
         writer.writeUint8(0);
       } else if (blockType === 'STAMP_STAR') {
@@ -194,7 +199,7 @@ export function writeBeatParams(
 
     case OP_BEAT_SET_LED_COLOR: {
       if ((paramVarMask & 0x02) !== 0) {
-        writer.writeUint8(varNameToIndex(params?.color));
+        writer.writeUint8(encodeVarOrSensorIndex(String(params?.color ?? 'a')));
       } else {
         writer.writeUint8(beatColorToByte(params?.color));
       }
@@ -228,7 +233,7 @@ export function writeBeatParams(
     case OP_BEAT_SET_DELAY: {
       const delayVal = params?.delay ?? params?.multiplier;
       if ((paramVarMask & 0x02) !== 0) {
-        writer.writeUint8(varNameToIndex(String(delayVal ?? 'a')));
+        writer.writeUint8(encodeVarOrSensorIndex(String(delayVal ?? 'a')));
       } else {
         const mult = Number(delayVal ?? 0);
         const scaled = Math.max(0, Math.round((Number.isFinite(mult) ? mult : 0) * 100));
@@ -239,7 +244,7 @@ export function writeBeatParams(
 
     case OP_BEAT_WAIT_DURATION: {
       if ((paramVarMask & 0x02) !== 0) {
-        writer.writeUint8(varNameToIndex(String(params?.duration ?? 'a')));
+        writer.writeUint8(encodeVarOrSensorIndex(String(params?.duration ?? 'a')));
       } else {
         const dur = Number(params?.duration ?? 1);
         const scaled = Math.max(0, Math.round((Number.isFinite(dur) ? dur : 1) * 100));
@@ -274,7 +279,7 @@ export function readBeatBlock(
     case OP_BEAT_STAMP_PRESET: {
       const rawByte = reader.readUint8();
       if ((paramVarMask & 0x02) !== 0) {
-        return { type: 'STAMP_PRESET', params: { preset: indexToVarName(rawByte) } };
+        return { type: 'STAMP_PRESET', params: { preset: decodeVarOrSensorIndex(rawByte) } };
       }
       if (rawByte === 0) return { type: 'STAMP_HEART' };
       if (rawByte === 1) return { type: 'STAMP_STAR' };
@@ -297,7 +302,7 @@ export function readBeatBlock(
     case OP_BEAT_SET_LED_COLOR: {
       const color =
         (paramVarMask & 0x02) !== 0
-          ? indexToVarName(reader.readUint8())
+          ? decodeVarOrSensorIndex(reader.readUint8())
           : byteToBeatColor(reader.readUint8());
       return { type: 'SET_LED_COLOR', params: { color } };
     }
@@ -323,14 +328,14 @@ export function readBeatBlock(
     case OP_BEAT_SET_DELAY: {
       const delay =
         (paramVarMask & 0x02) !== 0
-          ? indexToVarName(reader.readUint8())
+          ? decodeVarOrSensorIndex(reader.readUint8())
           : reader.readVLE() / 100;
       return { type: 'SET_BEAT_DELAY', params: { delay } };
     }
     case OP_BEAT_WAIT_DURATION: {
       const duration =
         (paramVarMask & 0x02) !== 0
-          ? indexToVarName(reader.readUint8())
+          ? decodeVarOrSensorIndex(reader.readUint8())
           : reader.readVLE() / 100;
       return { type: 'WAIT_BEAT', params: { duration } };
     }

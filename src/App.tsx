@@ -15,6 +15,7 @@ import { VictoryCelebrationModal } from './components/VictoryCelebrationModal';
 import { PwaUpdatePrompt } from './components/PwaUpdatePrompt';
 import { useAppStoreSelector } from './store/useAppStore';
 import { CurriculumNextLessonBar } from './components/CurriculumNextLessonBar';
+import { InteractiveControlsBar } from './components/InteractiveControlsBar';
 import { MultiRunPipsBar } from './components/MultiRunPipsBar';
 import { SimulationTopLeftHud } from './components/SimulationTopLeftHud';
 import { SceneInputBar } from './components/SceneInputBar';
@@ -97,8 +98,9 @@ const ActiveSimulationPane: React.FC = React.memo(() => {
         )}
       </div>
 
-      {/* Bottom Dock (shrink-0): Next Lesson CTA & Creative Variation Cards */}
+      {/* Bottom Dock (shrink-0): Next Lesson CTA, Interactive Controls & Creative Variation Cards */}
       <div className="shrink-0">
+        <InteractiveControlsBar />
         <CurriculumNextLessonBar />
         <VariationCardsPanel />
       </div>

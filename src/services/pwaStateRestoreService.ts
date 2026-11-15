@@ -143,7 +143,16 @@ export function clearPendingUpdateState(): void {
   removeLocal(PENDING_UPDATE_STORAGE_KEY);
 }
 
-const VALID_SCOPES: readonly ScopeType[] = ['MAIN', 'F1', 'F2', 'F3'];
+const EVENT_SCOPES_RESTORE: readonly ScopeType[] = [
+  'ON_TAP',
+  'ON_KEY_UP',
+  'ON_KEY_DOWN',
+  'ON_KEY_LEFT',
+  'ON_KEY_RIGHT',
+  'ON_KEY_A',
+  'ON_KEY_B',
+];
+const VALID_SCOPES: readonly ScopeType[] = ['MAIN', 'F1', 'F2', 'F3', ...EVENT_SCOPES_RESTORE];
 const VALID_DIRECTIONS: readonly Direction[] = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
 const VALID_TOOLS: readonly EditorTool[] = [
   'NONE',
@@ -159,7 +168,18 @@ const VALID_TOOLS: readonly EditorTool[] = [
   'SWITCH',
   'ERASE',
 ];
-const VALID_STATUSES: readonly SimulationStatus[] = ['IDLE', 'RUNNING', 'PAUSED', 'SUCCESS', 'COLLISION'];
+const VALID_STATUSES: readonly SimulationStatus[] = [
+  'IDLE',
+  'RUNNING',
+  'PAUSED',
+  'SUCCESS',
+  'COLLISION',
+  'STEP_LIMIT',
+  'TYPE_ERROR',
+  'MATH_ERROR',
+  'STACK_OVERFLOW',
+  'DEADLOCK',
+];
 
 function sanitizeBlockList(raw: unknown): CodeBlock[] {
   if (!Array.isArray(raw)) return [];
@@ -185,12 +205,19 @@ function sanitizeBlockList(raw: unknown): CodeBlock[] {
 
 function sanitizeWorkspace(raw: unknown): WorkspaceState {
   const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  return {
+  const ws: WorkspaceState = {
     MAIN: sanitizeBlockList(src.MAIN),
     F1: sanitizeBlockList(src.F1),
     F2: sanitizeBlockList(src.F2),
     F3: sanitizeBlockList(src.F3),
   };
+  for (const sc of EVENT_SCOPES_RESTORE) {
+    const sanitized = sanitizeBlockList(src[sc]);
+    if (sanitized.length > 0) {
+      ws[sc] = sanitized;
+    }
+  }
+  return ws;
 }
 
 function sanitizeGridState(raw: unknown, fallbackGrid: GridState): GridState {

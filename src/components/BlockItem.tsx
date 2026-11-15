@@ -20,6 +20,7 @@ import { getSimEnvironment } from '../engine/simulation/registry';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
 import { ConditionBadge } from './ConditionBadge';
+import { SensorVisual, TileDialGlyphSvg } from './params/VisualParamBadges';
 import {
   computeStagedPalettePolicy,
   getAllowedParamDefs,
@@ -754,42 +755,31 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           </div>
         );
 
-      case 'VAR_ASSIGN': {
-        const formatOp = (v: any) =>
-          v === '$tileDial'
-            ? '🎯 Dial'
-            : v === '$x'
-            ? '📍X'
-            : v === '$y'
-            ? '📍Y'
-            : v === '$heading'
-            ? '🧭∠'
-            : v;
-        return (
-          <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-xs md:text-sm select-none px-1">
-            <span className="text-[10px] opacity-75" aria-hidden="true">📦</span>
-            <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
-              {block.params?.a ?? 'a'}
-            </span>
-            <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>←</span>
-            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
-              {formatOp(block.params?.b ?? 1)}
-            </span>
-          </div>
-        );
-      }
-
+      case 'VAR_ASSIGN':
       case 'VAR_OP': {
-        const formatOp = (v: any) =>
-          v === '$tileDial'
-            ? '🎯 Dial'
-            : v === '$x'
-            ? '📍X'
-            : v === '$y'
-            ? '📍Y'
-            : v === '$heading'
-            ? '🧭∠'
-            : v;
+        const formatOp = (v: any): React.ReactNode => {
+          if (v === '$tileDial') {
+            return <TileDialGlyphSvg compact className="inline-block align-middle" />;
+          }
+          if (typeof v === 'string' && v.startsWith('$')) {
+            return <SensorVisual sensorId={v} compact />;
+          }
+          return v;
+        };
+        if (block.type === 'VAR_ASSIGN') {
+          return (
+            <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-xs md:text-sm select-none px-1">
+              <span className="text-[10px] opacity-75" aria-hidden="true">📦</span>
+              <span className={`italic ${isActive ? 'text-slate-950 font-black' : 'text-amber-300'}`}>
+                {block.params?.a ?? 'a'}
+              </span>
+              <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>←</span>
+              <span className={`inline-flex items-center ${isActive ? 'text-slate-950 font-black' : 'text-violet-200'}`}>
+                {formatOp(block.params?.b ?? 1)}
+              </span>
+            </div>
+          );
+        }
         return (
           <div className="flex items-center gap-0.5 md:gap-1 font-mono font-bold text-[10px] md:text-xs select-none px-0.5 md:px-1">
             <span className="text-[10px] opacity-75" aria-hidden="true">📦</span>
@@ -797,13 +787,13 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
               {block.params?.a ?? 'a'}
             </span>
             <span className={isActive ? 'text-slate-800' : 'text-slate-300'}>←</span>
-            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
+            <span className={`inline-flex items-center ${isActive ? 'text-slate-950 font-black' : 'text-violet-200'}`}>
               {formatOp(block.params?.b ?? 'a')}
             </span>
             <span className={isActive ? 'text-slate-950 font-black' : 'text-amber-400'}>
               {block.params?.op ?? '+'}
             </span>
-            <span className={isActive ? 'text-slate-950 font-black' : 'text-violet-200'}>
+            <span className={`inline-flex items-center ${isActive ? 'text-slate-950 font-black' : 'text-violet-200'}`}>
               {formatOp(block.params?.c ?? 1)}
             </span>
           </div>

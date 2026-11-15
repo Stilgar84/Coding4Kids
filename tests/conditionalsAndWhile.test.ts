@@ -782,7 +782,7 @@ describe('Commit 21: Conditionals (IF, ELSE, ELSE_IF, WHILE) & Compound Booleans
         if (res.done) break;
       }
 
-      expect(runtime.status).toBe('COLLISION');
+      expect(runtime.status).toBe('STEP_LIMIT');
       expect(runtime.stepCount).toBeGreaterThanOrEqual(10000);
     });
   });

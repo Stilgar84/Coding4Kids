@@ -15,9 +15,7 @@ import {
   Undo2,
   Zap,
 } from 'lucide-react';
-import { PRESET_LEVELS, useAppStoreSelector } from '../store/useAppStore';
-import { ScopeType } from '../types';
-import { validateLoopStructure } from '../engine/interpreter';
+import { hasWorkspaceLoopError, PRESET_LEVELS, useAppStoreSelector } from '../store/useAppStore';
 import { LESSONS } from '../data/lessons';
 import {
   CURRICULUM_ACTIVITIES,
@@ -104,13 +102,7 @@ export const Toolbar: React.FC = React.memo(() => {
     getActivityLatest(activeActivityId) ??
     CURRICULUM_ACTIVITIES[0];
 
-  const hasLoopError = useMemo(
-    () =>
-      (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).some(
-        (sc) => (workspace[sc]?.length ?? 0) > 0 && validateLoopStructure(workspace[sc]).hasError
-      ),
-    [workspace]
-  );
+  const hasLoopError = useMemo(() => hasWorkspaceLoopError(workspace), [workspace]);
 
   const instantDisabled = isInstantSpeedDisabled(
     appMode,

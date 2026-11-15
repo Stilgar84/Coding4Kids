@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import type {
+  ConditionCompareOp,
   ConditionExpr,
+  ConditionKeyCode,
   ConditionSensorType,
   SceneInputConfig,
 } from '../data/curriculum/types';
-import { CodeBlock, ScopeType } from '../types';
+import { CodeBlock, isTypedValue, ScopeType } from '../types';
 import { TURTLE_COLOR_PALETTE } from '../engine/serialization/types';
 import {
   PALETTE_COLOR_NAMES,
@@ -16,6 +18,27 @@ import {
   resolveDefaultConditionForContext,
 } from '../utils/curriculumStagePolicy';
 import { ConditionBadge } from './ConditionBadge';
+import { SensorVisual, TileDialGlyphSvg } from './params/VisualParamBadges';
+
+const ALL_CMP_OPS: readonly ConditionCompareOp[] = ['=', '!=', '<', '<=', '>', '>='];
+const CMP_OP_GLYPHS: Record<ConditionCompareOp, string> = {
+  '=': '=',
+  '==': '=',
+  '!=': '≠',
+  '<': '<',
+  '<=': '≤',
+  '>': '>',
+  '>=': '≥',
+};
+const KEY_HELD_CHOICES: ReadonlyArray<{ key: ConditionKeyCode; glyph: string }> = [
+  { key: 'UP', glyph: '▲' },
+  { key: 'DOWN', glyph: '▼' },
+  { key: 'LEFT', glyph: '◀' },
+  { key: 'RIGHT', glyph: '▶' },
+  { key: 'A', glyph: '🅰️' },
+  { key: 'B', glyph: '🅱️' },
+];
+const CMP_NUMBERS = [0, 1, 2, 3, 5, 10] as const;
 
 export interface ConditionSubpaletteProps {
   block: CodeBlock;
@@ -115,8 +138,26 @@ function makeDefaultExprForSensor(
   sensor: string,
   prevAtom: ConditionExpr | undefined,
   inputConfig?: SceneInputConfig | null,
-  allowedDepotStations?: ReadonlySet<string>
+  allowedDepotStations?: ReadonlySet<string>,
+  allowedCmpOps?: readonly ConditionCompareOp[]
 ): ConditionExpr {
+  if (sensor === 'cmp') {
+    if (prevAtom?.kind === 'cmp' && prevAtom.left !== '$input') {
+      return prevAtom;
+    }
+    return {
+      kind: 'cmp',
+      op: allowedCmpOps?.[0] ?? '=',
+      left: 'a',
+      right: 0,
+    };
+  }
+  if (sensor === 'keyHeld') {
+    if (prevAtom?.kind === 'keyHeld') {
+      return prevAtom;
+    }
+    return { kind: 'keyHeld', key: 'UP' };
+  }
   if (sensor === '$input') {
     const prevRight = prevAtom?.kind === 'cmp' && prevAtom.left === '$input' ? prevAtom.right : undefined;
     const prevOp =
@@ -127,16 +168,17 @@ function makeDefaultExprForSensor(
       inputConfig?.previewInput ??
       (inputConfig?.options && inputConfig.options.length > 0 ? inputConfig.options[0] : 1);
     const chosen = prevRight ?? defaultOpt;
+    const chosenScalar = isTypedValue(chosen) ? chosen.value : chosen;
     return {
       kind: 'cmp',
       op: prevOp,
       left: '$input',
       right:
         inputConfig?.mode === 'color'
-          ? normalizeColorLiteralParam(chosen)
-          : typeof chosen === 'number'
-          ? chosen
-          : Number(chosen) || 1,
+          ? normalizeColorLiteralParam(String(chosenScalar))
+          : typeof chosenScalar === 'number'
+          ? chosenScalar
+          : Number(chosenScalar) || 1,
     };
   }
   if (COLOR_SENSOR_SET.has(sensor)) {
@@ -208,7 +250,24 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
     policy.isCurriculum && policy.allowedSensors && policy.allowedSensors.length > 0
       ? policy.allowedSensors
       : getFallbackSensorsForSim(activeSimId, hasInputConfig);
-  const allowedSensors = Array.from(new Set(rawAllowedSensors));
+  const effectiveSensorPool = [...rawAllowedSensors];
+  if (
+    (!policy.isCurriculum || (policy.allowedCmpOps && policy.allowedCmpOps.length > 0)) &&
+    !effectiveSensorPool.includes('cmp')
+  ) {
+    effectiveSensorPool.push('cmp');
+  }
+  if (
+    (!policy.isCurriculum || policy.allowInteractiveEvents) &&
+    !effectiveSensorPool.includes('keyHeld')
+  ) {
+    effectiveSensorPool.push('keyHeld');
+  }
+  const allowedSensors = Array.from(new Set(effectiveSensorPool));
+  const allowedCmpOps: readonly ConditionCompareOp[] =
+    policy.allowedCmpOps && policy.allowedCmpOps.length > 0
+      ? policy.allowedCmpOps
+      : ALL_CMP_OPS;
 
   const allowedCombinators: ReadonlySet<'NOT' | 'AND' | 'OR'> = policy.isCurriculum
     ? new Set(policy.allowedCombinators ?? [])
@@ -277,7 +336,8 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
       secondSensor,
       undefined,
       inputConfig,
-      allowedDepotStations
+      allowedDepotStations,
+      allowedCmpOps
     );
     commitCondition({ kind: mode, left: currentCond, right: secondClause });
   };
@@ -287,17 +347,37 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
       sensorId,
       activeAtom,
       inputConfig,
-      allowedDepotStations
+      allowedDepotStations,
+      allowedCmpOps
     );
     commitActiveClause(wrapNot(nextAtom, isActiveNegated));
   };
 
   const activeSensorId =
-    activeAtom.kind === 'cmp' && activeAtom.left === '$input'
-      ? '$input'
+    activeAtom.kind === 'cmp'
+      ? activeAtom.left === '$input'
+        ? '$input'
+        : 'cmp'
+      : activeAtom.kind === 'keyHeld'
+      ? 'keyHeld'
       : activeAtom.kind === 'sensor'
       ? activeAtom.sensor
       : null;
+
+  const cmpVarChoices = policy.subpaletteOperandVarNames?.length
+    ? policy.subpaletteOperandVarNames
+    : ['a', 'b', 'c'];
+  const cmpValueSensorChoices = policy.allowedValueSensors?.length
+    ? policy.allowedValueSensors
+    : activeSimId === 'depot'
+    ? ['$heldValue', '$topValue', '$heldColor', '$topColor', '$stationLen']
+    : activeSimId === 'switchyard'
+    ? ['$itemWeight', '$itemColor', '$dockQuota[0]', '$dockCount[0]', '$dockQuota[1]', '$dockCount[1]']
+    : activeSimId === 'beat'
+    ? ['$cursorX', '$cursorY', '$beatIndex']
+    : activeSimId === 'turtle'
+    ? ['$x', '$y', '$heading']
+    : ['$tileDial', '$randD6', '$randomColor'];
 
   const showCombinatorRow = canNot || canAnd || canOr;
   const inputOptions = inputConfig?.options?.length ? inputConfig.options : [1, 2, 3];
@@ -430,7 +510,8 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
             sensorId,
             isSelected ? activeAtom : undefined,
             inputConfig,
-            allowedDepotStations
+            allowedDepotStations,
+            allowedCmpOps
           );
           return (
             <button
@@ -663,6 +744,216 @@ export const ConditionSubpalette: React.FC<ConditionSubpaletteProps> = ({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* KeyHeld Picker (`UP/DOWN/LEFT/RIGHT/A/B`) */}
+      {activeAtom.kind === 'keyHeld' && (
+        <div
+          data-testid="cond-keyheld-picker"
+          className="palette-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 px-0.5"
+        >
+          {KEY_HELD_CHOICES.map(({ key, glyph }) => {
+            const isSelected = String(activeAtom.key).toUpperCase() === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                data-testid={`cond-keyheld-opt-${key}`}
+                aria-pressed={isSelected}
+                aria-label={`Key held ${key}`}
+                onClick={() =>
+                  commitActiveClause(wrapNot({ kind: 'keyHeld', key }, isActiveNegated))
+                }
+                className={`flex-shrink-0 min-w-[36px] min-h-[36px] md:min-w-[44px] md:min-h-[44px] px-2 rounded-lg border font-bold text-sm transition-all active:scale-95 ${
+                  isSelected
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-100 ring-2 ring-amber-400/40'
+                    : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500'
+                }`}
+              >
+                {glyph}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Typed Comparison Builder (`0x30 COND_TAG_CMP`: left op right) */}
+      {activeAtom.kind === 'cmp' && activeAtom.left !== '$input' && (
+        <div data-testid="cond-cmp-picker" className="flex flex-col gap-1.5 px-0.5">
+          {/* Left operand row */}
+          <div className="palette-scrollbar flex items-center gap-1 overflow-x-auto pb-0.5">
+            {cmpVarChoices.map((v) => {
+              const isSelected = activeAtom.left === v;
+              return (
+                <button
+                  key={`l-var-${v}`}
+                  type="button"
+                  data-testid={`cond-cmp-left-var-${v}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, left: v }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 min-w-[32px] h-[32px] px-2 rounded-lg border font-mono font-black italic text-xs transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
+                      : 'bg-slate-900 border-slate-700 text-amber-300/80 hover:border-slate-500'
+                  }`}
+                >
+                  {v}
+                </button>
+              );
+            })}
+            {cmpValueSensorChoices.map((sId) => {
+              const isSelected = activeAtom.left === sId;
+              return (
+                <button
+                  key={`l-sen-${sId}`}
+                  type="button"
+                  data-testid={`cond-cmp-left-sensor-${sId}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, left: sId }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 h-[32px] px-1.5 rounded-lg border inline-flex items-center justify-center transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-cyan-500/25 border-cyan-400 ring-2 ring-cyan-400/40'
+                      : 'bg-slate-900 border-slate-700 hover:border-slate-500'
+                  }`}
+                >
+                  {sId === '$tileDial' ? (
+                    <TileDialGlyphSvg compact />
+                  ) : (
+                    <SensorVisual sensorId={sId} compact />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Operator row */}
+          <div className="palette-scrollbar flex items-center gap-1 overflow-x-auto pb-0.5">
+            {allowedCmpOps.map((op) => {
+              const isSelected =
+                activeAtom.op === op || (op === '=' && activeAtom.op === '==');
+              return (
+                <button
+                  key={`cmp-op-${op}`}
+                  type="button"
+                  data-testid={`cond-cmp-op-${op}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, op }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 min-w-[34px] h-[32px] px-2 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-cyan-500/25 border-cyan-400 text-cyan-100 ring-2 ring-cyan-400/40'
+                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  {CMP_OP_GLYPHS[op]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right operand row (numbers, vars, sensors, colors) */}
+          <div className="palette-scrollbar flex items-center gap-1 overflow-x-auto pb-0.5">
+            {CMP_NUMBERS.map((n) => {
+              const isSelected = activeAtom.right === n;
+              return (
+                <button
+                  key={`r-num-${n}`}
+                  type="button"
+                  data-testid={`cond-cmp-right-num-${n}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, right: n }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 min-w-[30px] h-[30px] px-1.5 rounded-lg border font-mono font-black text-xs transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
+                      : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500'
+                  }`}
+                >
+                  {n}
+                </button>
+              );
+            })}
+            {cmpVarChoices.map((v) => {
+              const isSelected = activeAtom.right === v;
+              return (
+                <button
+                  key={`r-var-${v}`}
+                  type="button"
+                  data-testid={`cond-cmp-right-var-${v}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, right: v }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 min-w-[30px] h-[30px] px-1.5 rounded-lg border font-mono font-black italic text-xs transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/40'
+                      : 'bg-slate-900 border-slate-700 text-amber-300/80 hover:border-slate-500'
+                  }`}
+                >
+                  {v}
+                </button>
+              );
+            })}
+            {cmpValueSensorChoices.map((sId) => {
+              const isSelected = activeAtom.right === sId;
+              return (
+                <button
+                  key={`r-sen-${sId}`}
+                  type="button"
+                  data-testid={`cond-cmp-right-sensor-${sId}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, right: sId }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 h-[30px] px-1.5 rounded-lg border inline-flex items-center justify-center transition-all active:scale-95 ${
+                    isSelected
+                      ? 'bg-cyan-500/25 border-cyan-400 ring-2 ring-cyan-400/40'
+                      : 'bg-slate-900 border-slate-700 hover:border-slate-500'
+                  }`}
+                >
+                  {sId === '$tileDial' ? (
+                    <TileDialGlyphSvg compact />
+                  ) : (
+                    <SensorVisual sensorId={sId} compact />
+                  )}
+                </button>
+              );
+            })}
+            {SENSOR_COLOR_SWATCH_MAP.map(({ name, hex }) => {
+              const targetVal = `color:${name}`;
+              const isSelected =
+                isTypedValue(activeAtom.right)
+                  ? activeAtom.right.type === 'color' && normalizeColorName(activeAtom.right.value) === name
+                  : typeof activeAtom.right === 'string' &&
+                    activeAtom.right.startsWith('color:') &&
+                    normalizeColorName(activeAtom.right) === name;
+              return (
+                <button
+                  key={`r-col-${name}`}
+                  type="button"
+                  data-testid={`cond-cmp-right-color-${name}`}
+                  aria-pressed={isSelected}
+                  aria-label={`Compare color ${name}`}
+                  onClick={() =>
+                    commitActiveClause(wrapNot({ ...activeAtom, right: targetVal }, isActiveNegated))
+                  }
+                  className={`flex-shrink-0 w-7 h-7 rounded-full border-2 transition-all active:scale-95 ${
+                    isSelected
+                      ? 'border-amber-300 ring-2 ring-amber-400/60 scale-110'
+                      : 'border-slate-600 hover:border-white/70'
+                  }`}
+                  style={{ backgroundColor: hex }}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

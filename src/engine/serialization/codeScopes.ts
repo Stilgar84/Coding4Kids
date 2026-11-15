@@ -10,6 +10,13 @@ import {
   SCOPE_ID_F1,
   SCOPE_ID_F2,
   SCOPE_ID_F3,
+  SCOPE_ID_ON_TAP,
+  SCOPE_ID_ON_KEY_UP,
+  SCOPE_ID_ON_KEY_DOWN,
+  SCOPE_ID_ON_KEY_LEFT,
+  SCOPE_ID_ON_KEY_RIGHT,
+  SCOPE_ID_ON_KEY_A,
+  SCOPE_ID_ON_KEY_B,
   OP_LOOP_START,
   OP_LOOP_END,
   OP_CALL_FN,
@@ -30,6 +37,8 @@ import {
   byteToOp,
   varNameToIndex,
   indexToVarName,
+  encodeVarOrSensorIndex,
+  decodeVarOrSensorIndex,
   isSensorRefString,
   OP_GRID_MOVE_FWD,
   OP_GRID_MOVE_BACK,
@@ -94,8 +103,50 @@ function createUniqueBlockId(type: string): string {
   return `${type}_${Date.now()}_${blockIdCounter}_${rand}`;
 }
 
+export const ALL_SERIALIZABLE_SCOPES: readonly ScopeType[] = [
+  'MAIN',
+  'F1',
+  'F2',
+  'F3',
+  'ON_TAP',
+  'ON_KEY_UP',
+  'ON_KEY_DOWN',
+  'ON_KEY_LEFT',
+  'ON_KEY_RIGHT',
+  'ON_KEY_A',
+  'ON_KEY_B',
+];
+
+export const SCOPE_TO_ID_MAP: Record<ScopeType, number> = {
+  MAIN: SCOPE_ID_MAIN,
+  F1: SCOPE_ID_F1,
+  F2: SCOPE_ID_F2,
+  F3: SCOPE_ID_F3,
+  ON_TAP: SCOPE_ID_ON_TAP,
+  ON_KEY_UP: SCOPE_ID_ON_KEY_UP,
+  ON_KEY_DOWN: SCOPE_ID_ON_KEY_DOWN,
+  ON_KEY_LEFT: SCOPE_ID_ON_KEY_LEFT,
+  ON_KEY_RIGHT: SCOPE_ID_ON_KEY_RIGHT,
+  ON_KEY_A: SCOPE_ID_ON_KEY_A,
+  ON_KEY_B: SCOPE_ID_ON_KEY_B,
+};
+
+export const ID_TO_SCOPE_MAP: Record<number, ScopeType> = {
+  [SCOPE_ID_MAIN]: 'MAIN',
+  [SCOPE_ID_F1]: 'F1',
+  [SCOPE_ID_F2]: 'F2',
+  [SCOPE_ID_F3]: 'F3',
+  [SCOPE_ID_ON_TAP]: 'ON_TAP',
+  [SCOPE_ID_ON_KEY_UP]: 'ON_KEY_UP',
+  [SCOPE_ID_ON_KEY_DOWN]: 'ON_KEY_DOWN',
+  [SCOPE_ID_ON_KEY_LEFT]: 'ON_KEY_LEFT',
+  [SCOPE_ID_ON_KEY_RIGHT]: 'ON_KEY_RIGHT',
+  [SCOPE_ID_ON_KEY_A]: 'ON_KEY_A',
+  [SCOPE_ID_ON_KEY_B]: 'ON_KEY_B',
+};
+
 /**
- * Encodes all non-empty workspace scopes (`MAIN`, `F1`, `F2`, `F3`) into `writer`
+ * Encodes all non-empty workspace scopes (`MAIN`, `F1`, `F2`, `F3`, `ON_*`) into `writer`
  * using the opcode table governed by `envByte` (`0x00`/`0x01` Grid, `0x02` Turtle, `0x03` Beat).
  * Shared identically by Path A (`SavedProgramEntry` code-only saves), Path B (`ENV_ID_LESSON = 0x04`),
  * and Whole-Profile Backup autosaves (`ENV_ID_PROFILE = 0x06`).
@@ -105,27 +156,12 @@ export function writeCodeScopes(
   workspace: WorkspaceState,
   envByte: number
 ): void {
-  const scopes: readonly ScopeType[] = ['MAIN', 'F1', 'F2', 'F3'];
-  const nonEmptyScopes = scopes.filter((sc) => (workspace[sc]?.length ?? 0) > 0);
+  const nonEmptyScopes = ALL_SERIALIZABLE_SCOPES.filter((sc) => (workspace[sc]?.length ?? 0) > 0);
 
   writer.writeVLE(nonEmptyScopes.length);
 
   for (const scope of nonEmptyScopes) {
-    let scopeId: number;
-    switch (scope) {
-      case 'MAIN':
-        scopeId = SCOPE_ID_MAIN;
-        break;
-      case 'F1':
-        scopeId = SCOPE_ID_F1;
-        break;
-      case 'F2':
-        scopeId = SCOPE_ID_F2;
-        break;
-      case 'F3':
-        scopeId = SCOPE_ID_F3;
-        break;
-    }
+    const scopeId = SCOPE_TO_ID_MAP[scope] ?? SCOPE_ID_MAIN;
     writer.writeUint8(scopeId);
 
     const blocks = workspace[scope] || [];
@@ -341,12 +377,10 @@ export function writeCodeScopes(
       }
 
       // Check if repeat count or any parameters are variables
-      const repIsVar =
-        isVariableName(block.repeatCount) ||
-        (typeof block.repeatCount === 'string' && /^[a-z]$/.test(block.repeatCount));
+      const repIsVar = isVarOrSensorVal(block.repeatCount);
       const hasRep =
         block.type === 'LOOP_START'
-          ? block.repeatCount !== undefined && (repIsVar || (block.repeatCount as number) > 0)
+          ? block.repeatCount !== undefined && (repIsVar || (block.repeatCount as number) >= 0)
           : block.repeatCount !== undefined && (repIsVar || (block.repeatCount as number) > 1);
 
       let param0IsVar = false;
@@ -372,6 +406,8 @@ export function writeCodeScopes(
         } else if (block.type === 'ARC_LEFT' || block.type === 'ARC_RIGHT') {
           param0IsVar = isVarOrSensorVal(block.params.radius);
           param1IsVar = isVarOrSensorVal(block.params.angle);
+        } else if (block.type === 'SET_PEN_COLOR') {
+          param0IsVar = isVarOrSensorVal(block.params.color);
         } else if (block.type === 'SET_PEN_WIDTH') {
           param0IsVar = isVarOrSensorVal(block.params.width);
         } else if (block.type === 'WAIT') {
@@ -397,7 +433,7 @@ export function writeCodeScopes(
 
       if (hasRep) {
         if (repIsVar) {
-          writer.writeUint8(varNameToIndex(block.repeatCount as VariableName));
+          writer.writeUint8(encodeVarOrSensorIndex(String(block.repeatCount)));
         } else {
           writer.writeVLE(block.repeatCount as number);
         }
@@ -444,12 +480,8 @@ export function readCodeScopes(
   const scopeCount = reader.readVLE();
   for (let s = 0; s < scopeCount; s++) {
     const scopeByte = reader.readUint8();
-    let scope: ScopeType;
-    if (scopeByte === SCOPE_ID_MAIN) scope = 'MAIN';
-    else if (scopeByte === SCOPE_ID_F1) scope = 'F1';
-    else if (scopeByte === SCOPE_ID_F2) scope = 'F2';
-    else if (scopeByte === SCOPE_ID_F3) scope = 'F3';
-    else {
+    const scope = ID_TO_SCOPE_MAP[scopeByte];
+    if (!scope) {
       throw new Error(`Unknown scope ID: 0x${scopeByte.toString(16)}`);
     }
 
@@ -513,10 +545,10 @@ export function readCodeScopes(
         paramVarMask = reader.readUint8();
       }
 
-      let repeatCount: number | VariableName | undefined;
+      let repeatCount: number | string | undefined;
       if (hasRep) {
         if (hasVar && (paramVarMask & 0x01) !== 0) {
-          repeatCount = indexToVarName(reader.readUint8());
+          repeatCount = decodeVarOrSensorIndex(reader.readUint8());
         } else {
           repeatCount = reader.readVLE();
         }

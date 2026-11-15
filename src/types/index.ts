@@ -57,6 +57,39 @@ export interface VarOpParams {
   c: OperandValue;
 }
 
+export const PALETTE_COLORS = [
+  'black',
+  'red',
+  'blue',
+  'green',
+  'amber',
+  'purple',
+  'pink',
+  'cyan',
+  'orange',
+  'white',
+] as const;
+
+export type PaletteColor = (typeof PALETTE_COLORS)[number] | 'yellow';
+
+export type TypedValue =
+  | { type: 'number'; value: number }
+  | { type: 'color'; value: PaletteColor };
+
+export function isTypedValue(val: unknown): val is TypedValue {
+  if (!val || typeof val !== 'object') return false;
+  const t = (val as any).type;
+  const v = (val as any).value;
+  if (t === 'number') return typeof v === 'number' && !Number.isNaN(v);
+  if (t === 'color') {
+    return (
+      typeof v === 'string' &&
+      (v === 'yellow' || (PALETTE_COLORS as readonly string[]).includes(v))
+    );
+  }
+  return false;
+}
+
 export type BlockType =
   | 'MOVE_FWD'
   | 'MOVE_BACK'
@@ -76,15 +109,26 @@ export type BlockType =
 export interface CodeBlock {
   id: string;
   type: string;
-  /** Multiplier badge for movement or loop iteration count (2..9 or VariableName) */
-  repeatCount?: number | VariableName;
+  /** Multiplier badge for movement or loop iteration count (2..9, VariableName, or sensor ref) */
+  repeatCount?: number | VariableName | string;
   /** Block configuration parameters (e.g. angle: 30, color: '#ef4444') */
   params?: Record<string, any>;
 }
 
-export type ScopeType = 'MAIN' | 'F1' | 'F2' | 'F3';
+export type CoreScopeType = 'MAIN' | 'F1' | 'F2' | 'F3';
+export type EventScopeType =
+  | 'ON_TAP'
+  | 'ON_KEY_UP'
+  | 'ON_KEY_DOWN'
+  | 'ON_KEY_LEFT'
+  | 'ON_KEY_RIGHT'
+  | 'ON_KEY_A'
+  | 'ON_KEY_B';
+export type ScopeType = CoreScopeType | EventScopeType;
 
-export type WorkspaceState = Record<ScopeType, CodeBlock[]>;
+export type WorkspaceState = Record<CoreScopeType, CodeBlock[]> & {
+  [K in EventScopeType]?: CodeBlock[];
+};
 
 export interface CellCoord {
   x: number;
@@ -199,7 +243,17 @@ export interface RobotState {
   carriedCount?: number;
 }
 
-export type SimulationStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'SUCCESS' | 'COLLISION' | 'STEP_LIMIT';
+export type SimulationStatus =
+  | 'IDLE'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'SUCCESS'
+  | 'COLLISION'
+  | 'STEP_LIMIT'
+  | 'TYPE_ERROR'
+  | 'MATH_ERROR'
+  | 'STACK_OVERFLOW'
+  | 'DEADLOCK';
 
 export type SimulationSpeed = 400 | 100 | 25 | 'instant';
 
@@ -281,6 +335,8 @@ export interface CondFrame {
   branchTaken: boolean;
 }
 
+export type VariableRuntimeValue = number | TypedValue;
+
 export interface InterpreterRuntimeState {
   callStack: StackFrame[];
   loopStack: LoopFrame[];
@@ -291,7 +347,10 @@ export interface InterpreterRuntimeState {
   status: SimulationStatus;
   stepCount: number;
   activeRepeatProgress?: { blockId: string; current: number; total: number } | null;
-  variables: Record<VariableName, number>;
-  sceneInput?: number | string;
+  variables: Record<VariableName, VariableRuntimeValue>;
+  sceneInput?: number | string | TypedValue;
+  eventQueue?: ScopeType[];
+  randomSeed?: number;
+  pointer?: { x: number; y: number; isDown: boolean };
 }
 
