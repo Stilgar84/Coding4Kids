@@ -1,303 +1,334 @@
 import React from 'react';
+import { Trophy } from 'lucide-react';
 import { SimulationStatus } from '../../../types';
-import {
-  SwitchyardState,
-  SwitchyardItem,
-  DockState,
-  ITEM_COLORS,
-  ITEM_ICONS,
-} from '../types';
-import { useAppStoreSelector } from '../../../store/useAppStore';
+import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculum';
+import {
+  DockId,
+  DockState,
+  ItemIcon,
+  SWITCHYARD_COLOR_META,
+  SwitchState,
+  SwitchyardItem,
+  SwitchyardState,
+} from '../types';
+import {
+  deriveSwitchyardFailureDiagnostic,
+  resolveSwitchyardRoute,
+} from '../physics';
 
-// ─── Sizing constants ──────────────────────────────────────────────────────
-const SVG_W = 480;
-const SVG_H = 320;
-
-const QUEUE_ITEM_W = 44;
-const QUEUE_ITEM_H = 44;
-const QUEUE_START_X = 20;
-const QUEUE_Y = 60;
-const QUEUE_GAP = 8;
-
-const SCANNER_X = 190;
-const SCANNER_Y = 42;
-const SCANNER_W = 56;
-const SCANNER_H = 76;
-
-const SWITCH_X = 265;
-const SWITCH_Y = 120;
-
-const DOCK_W = 70;
-const DOCK_H = 54;
-const DOCK_A_X = 350;
-const DOCK_A_Y = 60;
-const DOCK_B_X = 350;
-const DOCK_B_Y = 170;
-
-const SCRAP_X = 350;
-const SCRAP_Y = 265;
-
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-function colorHex(color: string): string {
-  return ITEM_COLORS.find((c) => c.id === color)?.hex ?? '#94a3b8';
-}
-
-function iconEmoji(icon: string): string {
-  return ITEM_ICONS.find((i) => i.id === icon)?.emoji ?? '📦';
-}
-
-/** Renders a single conveyor item card (SVG foreignObject for emoji). */
-function ItemCard({
-  item,
-  x,
-  y,
-  w = QUEUE_ITEM_W,
-  h = QUEUE_ITEM_H,
-  atScanner = false,
-  dimmed = false,
-}: {
-  item: SwitchyardItem;
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  atScanner?: boolean;
-  dimmed?: boolean;
-}) {
-  const hex = colorHex(item.color);
-  return (
-    <g opacity={dimmed ? 0.4 : 1}>
-      {/* Glow ring when at scanner */}
-      {atScanner && (
-        <rect
-          x={x - 3}
-          y={y - 3}
-          width={w + 6}
-          height={h + 6}
-          rx={8}
-          fill="none"
-          stroke="#fbbf24"
-          strokeWidth={2.5}
-          strokeDasharray={atScanner ? undefined : '4 3'}
-        />
-      )}
-      {/* Body */}
-      <rect x={x} y={y} width={w} height={h} rx={6} fill={hex} opacity={0.9} />
-      {/* Cracked overlay for damaged items */}
-      {item.damaged && (
-        <line
-          x1={x + 10}
-          y1={y + 8}
-          x2={x + w - 8}
-          y2={y + h - 8}
-          stroke="#fff"
-          strokeWidth={2}
-          strokeLinecap="round"
-          opacity={0.7}
-        />
-      )}
-      {/* Icon */}
-      <text
-        x={x + w / 2}
-        y={y + h / 2 + 1}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={atScanner ? 22 : 18}
-      >
-        {iconEmoji(item.icon)}
-      </text>
-      {/* Damage indicator spark */}
-      {item.damaged && (
-        <text
-          x={x + w - 4}
-          y={y + 4}
-          textAnchor="end"
-          dominantBaseline="hanging"
-          fontSize={10}
-        >
-          ⚡
-        </text>
-      )}
-    </g>
-  );
-}
-
-/** Renders the illuminated scanner gate arch. */
-function ScannerGate({
-  active,
-  x,
-  y,
-  w,
-  h,
-}: {
-  active: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}) {
-  return (
-    <g>
-      {/* Background */}
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx={5}
-        fill={active ? '#1e3a5f' : '#1e293b'}
-        stroke={active ? '#38bdf8' : '#334155'}
-        strokeWidth={2}
-      />
-      {/* Scanner beam */}
-      {active && (
-        <line
-          x1={x + 4}
-          y1={y + h / 2}
-          x2={x + w - 4}
-          y2={y + h / 2}
-          stroke="#38bdf8"
-          strokeWidth={1.5}
-          strokeDasharray="3 2"
-          opacity={0.7}
-        />
-      )}
-      {/* Label */}
-      <text
-        x={x + w / 2}
-        y={y + h - 6}
-        textAnchor="middle"
-        fontSize={9}
-        fill={active ? '#7dd3fc' : '#64748b'}
-        fontWeight="600"
-      >
-        SCAN
-      </text>
-    </g>
-  );
-}
-
-/** Renders a track switch arrow. */
-function SwitchArrow({
-  direction,
-  switchId,
-  x,
-  y,
-}: {
-  direction: 'LEFT' | 'RIGHT';
-  switchId: string;
-  x: number;
-  y: number;
-}) {
-  const isLeft = direction === 'LEFT';
-  return (
-    <g>
-      <circle cx={x} cy={y} r={16} fill={isLeft ? '#1e40af' : '#7c3aed'} stroke="#c4b5fd" strokeWidth={1.5} />
-      <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize={14} fill="#fff">
-        {isLeft ? '←' : '→'}
-      </text>
-      <text x={x} y={y + 20} textAnchor="middle" fontSize={9} fill="#94a3b8">
-        Sw {switchId}
-      </text>
-    </g>
-  );
-}
-
-/** Renders a receiving dock. */
-function DockBox({
-  dock,
-  x,
-  y,
-  label,
-}: {
-  dock: DockState;
-  x: number;
-  y: number;
-  label: string;
-}) {
-  const spec = dock.spec;
-  const hasItems = dock.items.length > 0;
-  const isScrap = spec.id === 'SCRAP';
-
-  return (
-    <g>
-      {/* Dock floor */}
-      <rect
-        x={x}
-        y={y}
-        width={DOCK_W}
-        height={DOCK_H}
-        rx={6}
-        fill={dock.mismatch ? '#7f1d1d' : isScrap ? '#292524' : '#0f172a'}
-        stroke={dock.mismatch ? '#ef4444' : isScrap ? '#78716c' : '#334155'}
-        strokeWidth={2}
-      />
-
-      {/* Dock label */}
-      <text x={x + DOCK_W / 2} y={y + 10} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="700">
-        {label}
-      </text>
-
-      {/* Acceptance emblem */}
-      {spec.acceptColor && (
-        <circle
-          cx={x + 14}
-          cy={y + 26}
-          r={6}
-          fill={colorHex(spec.acceptColor)}
-          opacity={0.9}
-        />
-      )}
-      {spec.rejectDamaged && (
-        <text x={x + 30} y={y + 30} fontSize={12} textAnchor="middle">
-          🚫⚡
-        </text>
-      )}
-
-      {/* Item count badge */}
-      {hasItems && (
-        <>
-          <rect x={x + DOCK_W - 22} y={y + DOCK_H - 20} width={18} height={16} rx={4} fill="#1e293b" />
-          <text
-            x={x + DOCK_W - 13}
-            y={y + DOCK_H - 11}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize={10}
-            fill="#34d399"
-            fontWeight="700"
-          >
-            {dock.items.length}
-          </text>
-        </>
-      )}
-
-      {/* Mismatch indicator */}
-      {dock.mismatch && (
-        <text x={x + DOCK_W / 2} y={y + DOCK_H / 2 + 4} textAnchor="middle" fontSize={16}>
-          💥
-        </text>
-      )}
-    </g>
-  );
-}
-
-// ─── Main Canvas ───────────────────────────────────────────────────────────
-
-export const SwitchyardCanvas: React.FC<{
+export interface SwitchyardCanvasProps {
   state: SwitchyardState;
   runtimeStatus?: SimulationStatus;
   spotlightsOverride?: string[];
-}> = ({ state, runtimeStatus, spotlightsOverride }) => {
-  const { appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex } =
-    useAppStoreSelector((s) => ({
-      appMode: s.appMode,
-      activeActivityId: s.activeActivityId,
-      activeActivityVersion: s.activeActivityVersion,
-      activeDemoTabIndex: s.activeDemoTabIndex,
-    }));
+  activeBlockId?: string | null;
+}
+
+const ANIM_KEYFRAMES = `
+@keyframes syLaserPulse {
+  0%, 100% { opacity: 0.45; transform: translateY(0px); }
+  50% { opacity: 0.95; transform: translateY(3px); }
+}
+@keyframes syCarEnterScanner {
+  0% { transform: translate(-48px, -24px) scale(0.92); opacity: 0.7; }
+  100% { transform: translate(0px, 0px) scale(1); opacity: 1; }
+}
+@keyframes syChevronFlow {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes syCarDockPop {
+  0% { transform: translateY(-22px) scale(0.85); opacity: 0.5; }
+  70% { transform: translateY(2px) scale(1.06); opacity: 1; }
+  100% { transform: translateY(0px) scale(1); opacity: 1; }
+}
+@keyframes syHazardSpark {
+  0%, 100% { opacity: 0.35; transform: scale(0.9) rotate(-4deg); }
+  50% { opacity: 1; transform: scale(1.12) rotate(4deg); }
+}
+@keyframes syCollisionShake {
+  0%, 100% { transform: translateX(0px); }
+  25% { transform: translateX(-6px); }
+  55% { transform: translateX(6px); }
+  80% { transform: translateX(-3px); }
+}
+`;
+
+function computeAnimDurationMs(
+  speed: number | 'instant',
+  isLowQuality: boolean,
+  reducedMotion: boolean
+): number {
+  if (isLowQuality || reducedMotion || speed === 'instant' || speed === 0) return 0;
+  if (typeof speed !== 'number' || speed <= 0) return 320;
+  return Math.max(120, Math.min(480, Math.round(speed * 0.85)));
+}
+
+/**
+ * Vector emblem glyphs rendered directly inside SVG cargo bays, floor stencils, and failure bubbles.
+ */
+const ItemEmblemGlyph: React.FC<{
+  icon: ItemIcon;
+  cx: number;
+  cy: number;
+  size?: number;
+  stroke?: string;
+  fill?: string;
+}> = ({ icon, cx, cy, size = 18, stroke = '#0f172a', fill = '#ffffff' }) => {
+  const half = size / 2;
+  switch (icon) {
+    case 'CRATE':
+      return (
+        <g transform={`translate(${cx - half}, ${cy - half})`} aria-hidden="true">
+          <rect
+            x="1"
+            y="1"
+            width={size - 2}
+            height={size - 2}
+            rx="3"
+            fill={fill}
+            fillOpacity="0.92"
+            stroke={stroke}
+            strokeWidth="1.8"
+          />
+          <line x1="2.5" y1="2.5" x2={size - 2.5} y2={size - 2.5} stroke={stroke} strokeWidth="1.5" />
+          <line x1={size - 2.5} y1="2.5" x2="2.5" y2={size - 2.5} stroke={stroke} strokeWidth="1.5" />
+        </g>
+      );
+    case 'BATTERY':
+      return (
+        <g transform={`translate(${cx - half}, ${cy - half})`} aria-hidden="true">
+          <rect
+            x={size * 0.34}
+            y="0.5"
+            width={size * 0.32}
+            height={size * 0.14}
+            rx="1"
+            fill={stroke}
+          />
+          <rect
+            x={size * 0.18}
+            y={size * 0.16}
+            width={size * 0.64}
+            height={size * 0.78}
+            rx="2.5"
+            fill={fill}
+            fillOpacity="0.94"
+            stroke={stroke}
+            strokeWidth="1.8"
+          />
+          <path
+            d={`M${size * 0.54} ${size * 0.3} L${size * 0.36} ${size * 0.56} H${size * 0.52} L${size * 0.44} ${size * 0.8} L${size * 0.64} ${size * 0.52} H${size * 0.49} Z`}
+            fill="#f59e0b"
+            stroke={stroke}
+            strokeWidth="0.9"
+            strokeLinejoin="round"
+          />
+        </g>
+      );
+    case 'GEAR': {
+      const rOuter = size * 0.44;
+      const rInner = size * 0.18;
+      const teeth = 6;
+      const pts: string[] = [];
+      for (let i = 0; i < teeth * 2; i++) {
+        const angle = (i * Math.PI) / teeth;
+        const r = i % 2 === 0 ? rOuter : rOuter * 0.72;
+        pts.push(`${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`);
+      }
+      return (
+        <g aria-hidden="true">
+          <polygon
+            points={pts.join(' ')}
+            fill={fill}
+            fillOpacity="0.94"
+            stroke={stroke}
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <circle cx={cx} cy={cy} r={rInner} fill="#94a3b8" stroke={stroke} strokeWidth="1.4" />
+        </g>
+      );
+    }
+    case 'CRYSTAL':
+      return (
+        <g aria-hidden="true">
+          <polygon
+            points={`${cx},${cy - half} ${cx + half * 0.88},${cy - half * 0.15} ${cx},${cy + half} ${cx - half * 0.88},${cy - half * 0.15}`}
+            fill="#e0f2fe"
+            stroke={stroke}
+            strokeWidth="1.7"
+            strokeLinejoin="round"
+          />
+          <line
+            x1={cx - half * 0.85}
+            y1={cy - half * 0.15}
+            x2={cx + half * 0.85}
+            y2={cy - half * 0.15}
+            stroke={stroke}
+            strokeWidth="1.2"
+          />
+          <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke={stroke} strokeWidth="1.1" opacity="0.5" />
+        </g>
+      );
+  }
+};
+
+/**
+ * Toy railway freight car rendered inside the tunnel queue, scanner gate, or dock bays.
+ */
+const ToyRailCarSvg: React.FC<{
+  item: SwitchyardItem;
+  cx: number;
+  cy: number;
+  scale?: number;
+  inScanner?: boolean;
+  dimmed?: boolean;
+  animStyle?: React.CSSProperties;
+}> = ({ item, cx, cy, scale = 1, inScanner = false, dimmed = false, animStyle }) => {
+  const meta = SWITCHYARD_COLOR_META[item.color] ?? SWITCHYARD_COLOR_META.RED;
+  const damaged = Boolean(item.damaged);
+  const tilt = damaged ? 'rotate(-5)' : '';
+  const bodyStroke = item.color === 'WHITE' ? '#475569' : meta.stroke;
+
+  return (
+    <g
+      transform={`translate(${cx}, ${cy}) scale(${scale}) ${tilt}`}
+      opacity={dimmed ? 0.72 : 1}
+      style={animStyle}
+    >
+      {/* Drop shadow on sleepers */}
+      <ellipse cx="0" cy="18" rx="22" ry="4.5" fill="#0f172a" fillOpacity="0.16" />
+
+      {/* Undercarriage & steel wheels */}
+      <rect x="-20" y="9" width="40" height="5" rx="2" fill="#334155" />
+      <circle cx="-12" cy="14.5" r="4" fill="#1e293b" stroke="#cbd5e1" strokeWidth="1.2" />
+      <circle cx="12" cy="14.5" r="4" fill="#1e293b" stroke="#cbd5e1" strokeWidth="1.2" />
+
+      {/* Painted Toy Freight Body */}
+      <rect
+        x="-23"
+        y="-14"
+        width="46"
+        height="25"
+        rx="6"
+        fill={meta.hex}
+        stroke={inScanner ? '#0ea5e9' : bodyStroke}
+        strokeWidth={inScanner ? '2.8' : '2'}
+      />
+      {/* Top glossy wooden-toy specular rim */}
+      <rect x="-19" y="-11.5" width="38" height="4.5" rx="2.2" fill="#ffffff" fillOpacity="0.38" />
+
+      {/* Center Emblem */}
+      <ItemEmblemGlyph
+        icon={item.icon}
+        cx={0}
+        cy={-1}
+        size={17}
+        stroke={item.color === 'BLACK' ? '#f8fafc' : '#0f172a'}
+        fill="#ffffff"
+      />
+
+      {/* 4-cue itemDamaged Hazard Overlay (Crack + Spark + Tilt + Alert Badge) */}
+      {damaged && (
+        <g aria-label="Damaged hazard cue">
+          <path
+            d="M-15 -13 L-7 -3 L-12 2 L-4 10 M11 -12 L6 -4 L13 2 L8 10"
+            stroke="#1e293b"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <polygon
+            points="18,-23 11,-11 17,-11 13,-2 24,-13 18,-13"
+            fill="#facc15"
+            stroke="#991b1b"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+          <polygon
+            points="-20,-18 -25,-12 -21,-12 -24,-6 -16,-14 -20,-14"
+            fill="#fde047"
+            stroke="#b45309"
+            strokeWidth="1"
+          />
+        </g>
+      )}
+    </g>
+  );
+};
+
+interface DockLayoutSlot {
+  id: Exclude<DockId, 'SCRAP'>;
+  cx: number;
+}
+
+function getDockLayout(docks: readonly DockState[], switchCount: number): DockLayoutSlot[] {
+  if (switchCount === 0 && docks.length <= 1) {
+    return [{ id: docks[0]?.id ?? 'DOCK_A', cx: 320 }];
+  }
+  if (docks.length <= 2 && switchCount <= 1) {
+    return [
+      { id: docks[0]?.id ?? 'DOCK_A', cx: 186 },
+      { id: docks[1]?.id ?? 'DOCK_B', cx: 454 },
+    ];
+  }
+  const positions = [128, 336, 524];
+  return docks.slice(0, 3).map((d, i) => ({
+    id: d.id,
+    cx: positions[i] ?? 524,
+  }));
+}
+
+interface TrackSegment {
+  key: string;
+  d: string;
+  active: boolean;
+  isSkipCandidate?: boolean;
+  chevronPos?: { x: number; y: number; angleDeg: number };
+}
+
+function buildCurvedPath(x1: number, y1: number, x2: number, y2: number): string {
+  const midY = (y1 + y2) / 2;
+  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+}
+
+export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
+  state: propState,
+  runtimeStatus,
+  spotlightsOverride,
+}) => {
+  // All React hooks strictly above any conditional returns (per UI Guidelines)
+  const {
+    storeSwitchyardState,
+    isLowQuality,
+    speed,
+    hasMultiVariant,
+    appMode,
+    activeActivityId,
+    activeActivityVersion,
+    activeDemoTabIndex,
+  } = useAppStoreSelector((s) => ({
+    storeSwitchyardState: s.switchyardState,
+    isLowQuality: isLowQualityActive(s),
+    speed: s.speed,
+    hasMultiVariant: s.variantRuns.length > 1,
+    appMode: s.appMode,
+    activeActivityId: s.activeActivityId,
+    activeActivityVersion: s.activeActivityVersion,
+    activeDemoTabIndex: s.activeDemoTabIndex,
+  }));
+
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
 
   const spotlights = React.useMemo(() => {
     if (spotlightsOverride) return spotlightsOverride;
@@ -310,168 +341,929 @@ export const SwitchyardCanvas: React.FC<{
     return act.demoTabs[idx]?.spotlights ?? [];
   }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
 
-  const hasSensorBeam = spotlights.includes('sensor-beam');
-  const hasBranchSkip = spotlights.includes('branch-skip');
+  const state = propState || storeSwitchyardState;
+  if (!state) {
+    return (
+      <div
+        data-testid="switchyard-canvas"
+        className="w-full h-full flex items-center justify-center bg-[#dbeafe]"
+      />
+    );
+  }
 
-  const hasScanner = state.queue.length > 0;
-  const scannerItem = state.queue[0] ?? null;
-  const queueRest = state.queue.slice(1);
-  const isTwoSwitch = state.switches.length >= 2;
+  const effectiveStatus = runtimeStatus ?? state.status;
+  const isSuccess = effectiveStatus === 'SUCCESS';
+  const isCollision = effectiveStatus === 'COLLISION';
+  const animMs = computeAnimDurationMs(speed, isLowQuality, prefersReducedMotion);
+  const shouldAnimate = animMs > 0;
 
-  // Map dock states to display configs
-  const dockLabels = ['Dock A', 'Dock B', 'Dock C'];
-  const dockYPositions = [DOCK_A_Y, DOCK_B_Y, DOCK_B_Y + DOCK_H + 12];
+  const hasSensorBeamSpotlight = spotlights.includes('sensor-beam');
+  const hasBranchSkipSpotlight = spotlights.includes('branch-skip');
+
+  const headItem = state.queue[0];
+  const peekQueue = state.queue.slice(1, 3);
+  const hiddenExtraCount = Math.max(0, state.queue.length - 3);
+
+  const switches = state.switches ?? [];
+  const switchCount = switches.length;
+  const swA: SwitchState | undefined = switches.find((s) => s.id === 'A') ?? switches[0];
+  const swB: SwitchState | undefined =
+    switchCount >= 2 ? switches.find((s) => s.id === 'B') ?? switches[1] : undefined;
+
+  const dockSlots = getDockLayout(state.docks, switchCount);
+  const dockCenterById = new Map<string, number>(dockSlots.map((s) => [s.id, s.cx]));
+
+  const { targetDock, switchesTraversed } = resolveSwitchyardRoute(switches, state.docks);
+  const bActive = switchesTraversed.includes('B');
+
+  const showScrapChute =
+    state.scrapRule !== 'none' &&
+    (state.scrapped.length > 0 ||
+      state.queue.some((i) => i.damaged) ||
+      state.initialQueue.some((i) => i.damaged) ||
+      state.scrapRule === 'damaged_only');
+
+  // Switch hub coordinates
+  const swACoord = switchCount >= 2 ? { x: 320, y: 270 } : { x: 320, y: 290 };
+  const swBCoord = { x: 430, y: 344 };
+
+  // Build track tree segments for 0, 1, or 2 switches
+  const trackSegments: TrackSegment[] = [];
+  if (switchCount === 0) {
+    const cx = dockSlots[0]?.cx ?? 320;
+    trackSegments.push({
+      key: 'direct-dock-a',
+      d: buildCurvedPath(320, 224, cx, 420),
+      active: true,
+      chevronPos: { x: 320, y: 326, angleDeg: 0 },
+    });
+  } else if (switchCount === 1 && swA) {
+    const leftDest = swA.leftTarget === 'DOCK_B' ? 'DOCK_B' : 'DOCK_A';
+    const rightDest = swA.rightTarget === 'DOCK_A' ? 'DOCK_A' : 'DOCK_B';
+    const leftX = dockCenterById.get(leftDest) ?? 186;
+    const rightX = dockCenterById.get(rightDest) ?? 454;
+
+    trackSegments.push({
+      key: 'trunk-a',
+      d: `M 320 224 L ${swACoord.x} ${swACoord.y}`,
+      active: true,
+    });
+    trackSegments.push({
+      key: 'a-left',
+      d: buildCurvedPath(swACoord.x, swACoord.y, leftX, 420),
+      active: swA.direction === 'LEFT',
+      isSkipCandidate: swA.direction !== 'LEFT',
+      chevronPos: { x: (swACoord.x + leftX) / 2, y: 356, angleDeg: 28 },
+    });
+    trackSegments.push({
+      key: 'a-right',
+      d: buildCurvedPath(swACoord.x, swACoord.y, rightX, 420),
+      active: swA.direction === 'RIGHT',
+      isSkipCandidate: swA.direction !== 'RIGHT',
+      chevronPos: { x: (swACoord.x + rightX) / 2, y: 356, angleDeg: -28 },
+    });
+  } else if (swA && swB) {
+    const dockAX = dockCenterById.get(swA.leftTarget ?? 'DOCK_A') ?? 128;
+    const dockBX = dockCenterById.get(swB.leftTarget ?? 'DOCK_B') ?? 336;
+    const dockCX = dockCenterById.get(swB.rightTarget ?? 'DOCK_C') ?? 524;
+
+    trackSegments.push({
+      key: 'trunk-a',
+      d: `M 320 224 L ${swACoord.x} ${swACoord.y}`,
+      active: true,
+    });
+    trackSegments.push({
+      key: 'a-left',
+      d: buildCurvedPath(swACoord.x, swACoord.y, dockAX, 420),
+      active: swA.direction === 'LEFT',
+      isSkipCandidate: swA.direction !== 'LEFT',
+      chevronPos: { x: 218, y: 344, angleDeg: 38 },
+    });
+    trackSegments.push({
+      key: 'a-to-b',
+      d: buildCurvedPath(swACoord.x, swACoord.y, swBCoord.x, swBCoord.y),
+      active: swA.direction === 'RIGHT' && bActive,
+      isSkipCandidate: swA.direction !== 'RIGHT',
+      chevronPos: { x: 378, y: 306, angleDeg: -42 },
+    });
+    trackSegments.push({
+      key: 'b-left',
+      d: buildCurvedPath(swBCoord.x, swBCoord.y, dockBX, 420),
+      active: bActive && swB.direction === 'LEFT',
+      isSkipCandidate: !bActive || swB.direction !== 'LEFT',
+      chevronPos: { x: 384, y: 382, angleDeg: 32 },
+    });
+    trackSegments.push({
+      key: 'b-right',
+      d: buildCurvedPath(swBCoord.x, swBCoord.y, dockCX, 420),
+      active: bActive && swB.direction === 'RIGHT',
+      isSkipCandidate: !bActive || swB.direction !== 'RIGHT',
+      chevronPos: { x: 478, y: 382, angleDeg: -32 },
+    });
+  }
+
+  const failureDiag = isCollision ? deriveSwitchyardFailureDiagnostic(state) : {};
+  const failureDetail = failureDiag.detail;
+  const strandedCount =
+    failureDetail?.code === 'STRANDED_CARS'
+      ? failureDetail.remainingCount ?? state.queue.length
+      : failureDiag.reason === 'UNSORTED_ITEMS_REMAIN'
+      ? state.queue.length
+      : 0;
+
+  const animEv = state.lastAnimEvent;
+  const isEnterScannerAnim =
+    shouldAnimate && animEv && (animEv.type === 'SEND_NEXT' || animEv.type === 'SCRAP_ITEM');
+  const isScrapFlash = shouldAnimate && animEv?.type === 'SCRAP_ITEM';
+  const headColorMeta = headItem ? SWITCHYARD_COLOR_META[headItem.color] : undefined;
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-slate-950" data-testid="switchyard-canvas">
-      {/* SVG simulation scene */}
-      <svg
-        viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="w-full h-full"
-        aria-label="Switchyard simulation"
-      >
-        {/* Background conveyor track */}
-        <rect x={QUEUE_START_X} y={QUEUE_Y + 8} width={SCANNER_X - QUEUE_START_X} height={QUEUE_ITEM_H - 16} rx={4} fill="#1e293b" />
-        {/* Track to switch */}
-        <line x1={SCANNER_X + SCANNER_W} y1={QUEUE_Y + QUEUE_ITEM_H / 2} x2={SWITCH_X} y2={SWITCH_Y} stroke="#334155" strokeWidth={6} strokeLinecap="round" />
+    <div
+      data-testid="switchyard-canvas"
+      className="relative w-full h-full flex flex-col overflow-hidden select-none bg-gradient-to-b from-[#dbeafe] via-[#eff6ff] to-[#fef3c7]"
+    >
+      <style>{ANIM_KEYFRAMES}</style>
 
-        {/* Track from switch to Dock A (left branch) */}
-        <line x1={SWITCH_X} y1={SWITCH_Y} x2={DOCK_A_X} y2={DOCK_A_Y + DOCK_H / 2} stroke="#334155" strokeWidth={4} strokeLinecap="round" />
-        {/* Track from switch to Dock B / Switch B area (right branch) */}
-        {!isTwoSwitch ? (
-          <line x1={SWITCH_X} y1={SWITCH_Y} x2={DOCK_B_X} y2={DOCK_B_Y + DOCK_H / 2} stroke="#334155" strokeWidth={4} strokeLinecap="round" />
-        ) : (
-          <>
-            <line x1={SWITCH_X} y1={SWITCH_Y} x2={SWITCH_X + 24} y2={DOCK_B_Y + DOCK_H / 2} stroke="#334155" strokeWidth={4} />
-            <line x1={SWITCH_X + 24} y1={DOCK_B_Y + DOCK_H / 2} x2={DOCK_B_X} y2={DOCK_B_Y + DOCK_H / 2} stroke="#334155" strokeWidth={4} />
-            <line x1={SWITCH_X + 24} y1={DOCK_B_Y + DOCK_H / 2} x2={DOCK_B_X} y2={dockYPositions[2] + DOCK_H / 2} stroke="#334155" strokeWidth={4} />
-          </>
+      {/* Top Centered Victory / Collision Pill safely below MultiRunPipsBar sky slot */}
+      {isCollision && (
+        <div
+          data-testid="status-collision"
+          className={`absolute ${
+            hasMultiVariant ? 'top-14' : 'top-12'
+          } right-3 z-20 px-3 py-1 bg-rose-600 text-white rounded-full font-black shadow-lg border-2 border-white flex items-center gap-1.5 pointer-events-none ${
+            isLowQuality || prefersReducedMotion ? '' : 'animate-bounce'
+          }`}
+          style={
+            shouldAnimate && animEv?.type === 'COLLISION'
+              ? { animation: `syCollisionShake ${animMs}ms ease-out` }
+              : undefined
+          }
+        >
+          <span className="text-sm leading-none">
+            {strandedCount > 0 ? `🚂 ×${strandedCount}` : '❌'}
+          </span>
+        </div>
+      )}
+
+      {isSuccess && (
+        <div
+          data-testid="status-success"
+          className={`absolute ${
+            hasMultiVariant ? 'top-14' : 'top-12'
+          } left-1/2 -translate-x-1/2 z-20 px-4 py-1 bg-amber-400 text-slate-900 rounded-full font-black shadow-lg border-2 border-white flex items-center gap-1.5 pointer-events-none ${
+            isLowQuality || prefersReducedMotion ? '' : 'animate-pulse'
+          }`}
+        >
+          <Trophy className="w-4 h-4" />
+          <span className="text-base leading-none">⭐ ⭐ ⭐</span>
+        </div>
+      )}
+
+      {/* Daylight Top-to-Bottom Toy Railway Workshop SVG (y=0..48 kept open sky for HUD!) */}
+      <svg
+        viewBox="0 0 640 540"
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full h-full flex-1 min-h-0"
+        role="img"
+        aria-label="Switchyard rail sorting workshop"
+      >
+        <defs>
+          <linearGradient id="sy-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#dbeafe" />
+            <stop offset="100%" stopColor="#eff6ff" />
+          </linearGradient>
+          <linearGradient id="sy-board" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fef9c3" stopOpacity="0.65" />
+            <stop offset="100%" stopColor="#fde68a" stopOpacity="0.88" />
+          </linearGradient>
+          <pattern id="sy-hazard-stripes" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="12" fill="#facc15" />
+            <rect x="6" width="6" height="12" fill="#1e293b" />
+          </pattern>
+        </defs>
+
+        {/* y = 0..48: Uncluttered HUD Sky Band */}
+        <rect x="0" y="0" width="640" height="58" fill="url(#sy-sky)" />
+
+        {/* Daylight Wooden Craft Workshop Deck (y = 54..540) */}
+        <rect
+          x="10"
+          y="54"
+          width="620"
+          height="478"
+          rx="22"
+          fill="url(#sy-board)"
+          stroke="#d9b27c"
+          strokeWidth="4"
+        />
+        <rect
+          x="16"
+          y="60"
+          width="608"
+          height="466"
+          rx="18"
+          fill="none"
+          stroke="#ffffff"
+          strokeOpacity="0.65"
+          strokeWidth="2"
+        />
+
+        {/* Curved Feeder Track from Tunnel (190, 110) into Scanner Top (320, 152) */}
+        <path
+          d="M 184 110 C 266 110, 320 118, 320 156"
+          fill="none"
+          stroke="#d4a373"
+          strokeWidth="20"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 184 110 C 266 110, 320 118, 320 156"
+          fill="none"
+          stroke="#475569"
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 184 110 C 266 110, 320 118, 320 156"
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth="6"
+          strokeDasharray="6 8"
+          strokeLinecap="round"
+        />
+
+        {/* Upper-Left Brick Masonry Tunnel & Convoy Queue (y >= 58) */}
+        <g data-testid="switchyard-tunnel">
+          {/* Tunnel Approach Track Bed */}
+          <rect x="24" y="96" width="166" height="28" rx="6" fill="#334155" />
+          <line x1="28" y1="104" x2="188" y2="104" stroke="#94a3b8" strokeWidth="2.5" />
+          <line x1="28" y1="117" x2="188" y2="117" stroke="#94a3b8" strokeWidth="2.5" />
+
+          {/* Brick Tunnel Arch Frame */}
+          <path
+            d="M 24 62 H 196 V 136 H 170 V 96 C 170 80, 156 76, 110 76 C 64 76, 50 80, 50 96 V 136 H 24 Z"
+            fill="#c2410c"
+            stroke="#7c2d12"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+          {/* Decorative Masonry Mortar Lines */}
+          <path
+            d="M 28 74 H 192 M 58 62 V 74 M 110 62 V 74 M 162 62 V 74"
+            stroke="#fed7aa"
+            strokeOpacity="0.45"
+            strokeWidth="1.5"
+          />
+
+          {/* Cozy Hanging Warm Lantern */}
+          <circle
+            cx="182"
+            cy="88"
+            r="9"
+            fill={state.queue.length === 0 && !isCollision ? '#34d399' : '#fde047'}
+            stroke="#78350f"
+            strokeWidth="2"
+          />
+
+          {/* Remaining Convoy Peek Cars inside Tunnel */}
+          {peekQueue
+            .slice()
+            .reverse()
+            .map((peekItem, revIdx) => {
+              const slotX = 72 + revIdx * 52;
+              return (
+                <ToyRailCarSvg
+                  key={peekItem.id}
+                  item={peekItem}
+                  cx={slotX}
+                  cy={106}
+                  scale={0.72}
+                  dimmed
+                />
+              );
+            })}
+
+          {/* +N Queue Counter Badge */}
+          {state.queue.length > 0 && (
+            <g transform="translate(46, 70)">
+              <rect
+                x="-22"
+                y="-11"
+                width="44"
+                height="22"
+                rx="11"
+                fill="#0f172a"
+                stroke="#38bdf8"
+                strokeWidth="2"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#f8fafc"
+                fontSize="12"
+                fontWeight="900"
+              >
+                {hiddenExtraCount > 0 ? `+${state.queue.length}` : `×${state.queue.length}`}
+              </text>
+            </g>
+          )}
+        </g>
+
+        {/* Track Tree (0, 1, or 2 Switches) */}
+        <g data-testid="switchyard-track-tree">
+          {trackSegments.map((seg) => (
+            <g
+              key={seg.key}
+              data-testid={
+                seg.isSkipCandidate && (hasBranchSkipSpotlight || !seg.active)
+                  ? 'switchyard-branch-skip'
+                  : undefined
+              }
+              data-spotlight={hasBranchSkipSpotlight && seg.isSkipCandidate ? 'true' : undefined}
+            >
+              {/* Wooden Track Ties Base */}
+              <path
+                d={seg.d}
+                fill="none"
+                stroke={seg.active ? '#d4a373' : '#cbd5e1'}
+                strokeOpacity={seg.active ? 0.95 : 0.32}
+                strokeWidth="22"
+                strokeLinecap="round"
+              />
+              {/* Active Cyan-Sky Outer Glow */}
+              {seg.active && (
+                <path
+                  d={seg.d}
+                  fill="none"
+                  stroke="#38bdf8"
+                  strokeOpacity="0.45"
+                  strokeWidth="26"
+                  strokeLinecap="round"
+                />
+              )}
+              {/* Twin Steel Track Channel */}
+              <path
+                d={seg.d}
+                fill="none"
+                stroke={seg.active ? '#0284c7' : '#64748b'}
+                strokeOpacity={seg.active ? 1 : 0.3}
+                strokeWidth="12"
+                strokeLinecap="round"
+              />
+              {/* Animated Center Flow Line */}
+              <path
+                d={seg.d}
+                fill="none"
+                stroke={seg.active ? '#e0f2fe' : '#94a3b8'}
+                strokeOpacity={seg.active ? 0.95 : 0.25}
+                strokeWidth={seg.active ? '4' : '2.5'}
+                strokeDasharray="6 6"
+                strokeLinecap="round"
+                style={
+                  seg.active && shouldAnimate
+                    ? { animation: `syChevronFlow ${Math.max(400, animMs * 2)}ms linear infinite` }
+                    : undefined
+                }
+              />
+
+              {/* Directional Chevron Indicator on Active Branches */}
+              {seg.active && seg.chevronPos && (
+                <g
+                  transform={`translate(${seg.chevronPos.x}, ${seg.chevronPos.y}) rotate(${seg.chevronPos.angleDeg})`}
+                >
+                  <circle cx="0" cy="0" r="11" fill="#0ea5e9" stroke="#ffffff" strokeWidth="2" />
+                  <path
+                    d="M -4.5 -2 L 0 3.5 L 4.5 -2"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              )}
+            </g>
+          ))}
+        </g>
+
+        {/* Right-Wall Attached Hazard Trapdoor Chute & Scrap Bin */}
+        {showScrapChute && (
+          <g data-testid="switchyard-scrap-chute">
+            {/* Chute Connector Ramp */}
+            <path
+              d="M 372 184 L 510 198 L 510 220 L 372 204 Z"
+              fill={isScrapFlash ? '#fef08a' : '#e2e8f0'}
+              stroke="#475569"
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Yellow/Black Hazard Trapdoor Strip */}
+            <rect
+              x="382"
+              y="182"
+              width="58"
+              height="10"
+              rx="3"
+              transform="rotate(7 382 182)"
+              fill="url(#sy-hazard-stripes)"
+              stroke="#0f172a"
+              strokeWidth="1.5"
+            />
+            {/* Scrap Recycling Bin */}
+            <g transform="translate(510, 174)">
+              <path
+                d="M 4 12 H 92 L 82 82 H 14 Z"
+                fill={
+                  failureDetail?.code === 'GOOD_SCRAPPED'
+                    ? '#fecaca'
+                    : isScrapFlash
+                    ? '#fef08a'
+                    : '#fffbeb'
+                }
+                stroke={failureDetail?.code === 'GOOD_SCRAPPED' ? '#dc2626' : '#d97706'}
+                strokeWidth="3"
+                strokeLinejoin="round"
+              />
+              <rect
+                x="0"
+                y="4"
+                width="96"
+                height="12"
+                rx="5"
+                fill="url(#sy-hazard-stripes)"
+                stroke="#1e293b"
+                strokeWidth="2"
+              />
+              <text x="48" y="42" textAnchor="middle" fontSize="22">
+                ♻️
+              </text>
+              {/* Scrapped count chips */}
+              {state.scrapped.length > 0 && (
+                <g transform="translate(48, 65)">
+                  <rect x="-20" y="-10" width="40" height="20" rx="10" fill="#1e293b" />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#fef08a"
+                    fontSize="12"
+                    fontWeight="900"
+                  >
+                    ×{state.scrapped.length}
+                  </text>
+                </g>
+              )}
+            </g>
+          </g>
         )}
 
-        {/* Scanner gate */}
-        <ScannerGate active={hasScanner} x={SCANNER_X} y={SCANNER_Y} w={SCANNER_W} h={SCANNER_H} />
+        {/* Inspection Scanner Gate (center x=320, y=150..228) */}
+        <g data-testid="switchyard-scanner">
+          {/* Scanner Housing Frame */}
+          <rect
+            x="262"
+            y="150"
+            width="116"
+            height="78"
+            rx="16"
+            fill="#f8fafc"
+            stroke={hasSensorBeamSpotlight ? '#0ea5e9' : '#475569'}
+            strokeWidth={hasSensorBeamSpotlight ? '3.5' : '2.5'}
+          />
+          <rect x="272" y="176" width="96" height="46" rx="10" fill="#0f172a" />
 
-        {/* Sensor-Beam Spotlight (Commit 27) */}
-        {hasSensorBeam && scannerItem && (
-          <g data-testid="switchyard-sensor-beam" className="pointer-events-none select-none">
-            <line
-              x1={SCANNER_X + SCANNER_W / 2}
-              y1={SCANNER_Y + 4}
-              x2={SCANNER_X + SCANNER_W / 2}
-              y2={SCANNER_Y + SCANNER_H - 4}
-              stroke="#38bdf8"
-              strokeWidth={3}
-              strokeDasharray="4 2"
-              className="animate-pulse"
-            />
+          {/* Top Hood Sensor Trio (Color Lamp, Emblem Tile, Hazard Lamp) */}
+          <g transform="translate(320, 163)">
+            {/* Color Sensor Lamp */}
             <circle
-              cx={SCANNER_X + SCANNER_W / 2}
-              cy={SCANNER_Y - 10}
-              r={10}
-              fill={scannerItem.damaged ? '#dc2626' : '#059669'}
+              cx="-28"
+              cy="0"
+              r="8"
+              fill={headColorMeta ? headColorMeta.hex : '#cbd5e1'}
+              stroke="#1e293b"
+              strokeWidth="1.8"
+            />
+            {/* Emblem Sensor Lamp */}
+            <rect
+              x="-10"
+              y="-9"
+              width="20"
+              height="18"
+              rx="4"
+              fill="#e2e8f0"
+              stroke="#1e293b"
+              strokeWidth="1.6"
+            />
+            {headItem && (
+              <ItemEmblemGlyph
+                icon={headItem.icon}
+                cx={0}
+                cy={0}
+                size={13}
+                stroke="#0f172a"
+                fill="#ffffff"
+              />
+            )}
+            {/* Hazard / Damaged Lamp */}
+            <circle
+              cx="28"
+              cy="0"
+              r="8"
+              fill={
+                !headItem
+                  ? '#cbd5e1'
+                  : headItem.damaged
+                  ? '#f59e0b'
+                  : '#10b981'
+              }
+              stroke="#1e293b"
+              strokeWidth="1.8"
+            />
+            {headItem?.damaged && (
+              <text
+                x="28"
+                y="3.5"
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="900"
+                fill="#ffffff"
+              >
+                ⚡
+              </text>
+            )}
+          </g>
+
+          {/* Scanning Laser Beam */}
+          <g
+            data-testid="switchyard-sensor-beam"
+            data-spotlight={hasSensorBeamSpotlight ? 'true' : undefined}
+            style={
+              shouldAnimate
+                ? { animation: `syLaserPulse ${Math.max(900, animMs * 2)}ms ease-in-out infinite` }
+                : undefined
+            }
+          >
+            <line
+              x1="276"
+              y1="198"
+              x2="364"
+              y2="198"
+              stroke={headItem?.damaged ? '#fbbf24' : '#38bdf8'}
+              strokeWidth={hasSensorBeamSpotlight ? '4' : '2.5'}
+              strokeLinecap="round"
+            />
+            <line
+              x1="276"
+              y1="198"
+              x2="364"
+              y2="198"
               stroke="#ffffff"
-              strokeWidth={1.5}
+              strokeWidth="1"
+              strokeOpacity="0.85"
+            />
+          </g>
+
+          {/* Current Head Freight Car Centered in Scanner Gate */}
+          {headItem && (
+            <ToyRailCarSvg
+              key={headItem.id}
+              item={headItem}
+              cx={320}
+              cy={199}
+              scale={0.96}
+              inScanner
+              animStyle={
+                isEnterScannerAnim
+                  ? { animation: `syCarEnterScanner ${animMs}ms ease-out both` }
+                  : headItem.damaged && shouldAnimate
+                  ? { animation: `syHazardSpark ${Math.max(700, animMs * 2)}ms ease-in-out infinite` }
+                  : undefined
+              }
+            />
+          )}
+        </g>
+
+        {/* Stranded Cars Bubble (`🚂 ×N left!`) when queue remains at program end */}
+        {isCollision && strandedCount > 0 && (
+          <g data-testid="switchyard-stranded-bubble" transform="translate(215, 162)">
+            <rect
+              x="-54"
+              y="-20"
+              width="108"
+              height="34"
+              rx="17"
+              fill="#fff1f2"
+              stroke="#e11d48"
+              strokeWidth="2.5"
             />
             <text
-              x={SCANNER_X + SCANNER_W / 2}
-              y={SCANNER_Y - 9}
+              x="0"
+              y="2"
               textAnchor="middle"
-              dominantBaseline="central"
-              fill="#ffffff"
-              fontSize={10}
+              fill="#be123c"
+              fontSize="13"
               fontWeight="900"
             >
-              {scannerItem.damaged ? '⚠️' : '✓'}
+              {`🚂 ×${strandedCount} left!`}
             </text>
           </g>
         )}
 
-        {/* Branch-Skip Switch Path Arc Indicator (Commit 27) */}
-        {hasBranchSkip && state.switches.length > 0 && (
-          <g data-testid="switchyard-branch-skip" className="pointer-events-none select-none">
-            <path
-              d={
-                state.switches[0].direction === 'LEFT'
-                  ? `M ${SWITCH_X} ${SWITCH_Y} Q ${SWITCH_X + 40} ${SWITCH_Y - 20} ${DOCK_A_X} ${DOCK_A_Y + DOCK_H / 2}`
-                  : `M ${SWITCH_X} ${SWITCH_Y} Q ${SWITCH_X + 40} ${SWITCH_Y + 20} ${DOCK_B_X} ${DOCK_B_Y + DOCK_H / 2}`
-              }
-              fill="none"
-              stroke="#38bdf8"
-              strokeWidth={3}
-              strokeDasharray="5 3"
-              opacity={0.85}
-              className="animate-pulse"
+        {/* Switch A Turntable Hub */}
+        {swA && (
+          <g data-testid="switchyard-switch-A" transform={`translate(${swACoord.x}, ${swACoord.y})`}>
+            <circle cx="0" cy="0" r="24" fill="#ffffff" stroke="#0284c7" strokeWidth="3.5" />
+            <circle cx="0" cy="0" r="19" fill="#e0f2fe" />
+            {/* Rotating Mechanical Rail Pointer */}
+            <line
+              x1="0"
+              y1="-14"
+              x2={swA.direction === 'LEFT' ? -13 : 13}
+              y2="14"
+              stroke="#0369a1"
+              strokeWidth="5"
+              strokeLinecap="round"
             />
+            <circle cx="0" cy="0" r="10" fill="#0ea5e9" stroke="#ffffff" strokeWidth="2" />
+            <text x="0" y="4" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="900">
+              A
+            </text>
           </g>
         )}
 
-        {/* Item at scanner */}
-        {scannerItem && (
-          <ItemCard
-            item={scannerItem}
-            x={SCANNER_X + 6}
-            y={SCANNER_Y + (SCANNER_H - QUEUE_ITEM_H) / 2}
-            atScanner
-          />
+        {/* Switch B Turntable Hub (when 2-switch topology) */}
+        {swB && (
+          <g
+            data-testid="switchyard-switch-B"
+            transform={`translate(${swBCoord.x}, ${swBCoord.y})`}
+            opacity={bActive ? 1 : 0.72}
+          >
+            <circle
+              cx="0"
+              cy="0"
+              r="22"
+              fill="#ffffff"
+              stroke={bActive ? '#d97706' : '#94a3b8'}
+              strokeWidth="3.5"
+            />
+            <circle cx="0" cy="0" r="17" fill={bActive ? '#fef3c7' : '#f1f5f9'} />
+            <line
+              x1="0"
+              y1="-13"
+              x2={swB.direction === 'LEFT' ? -12 : 12}
+              y2="13"
+              stroke={bActive ? '#b45309' : '#64748b'}
+              strokeWidth="4.5"
+              strokeLinecap="round"
+            />
+            <circle
+              cx="0"
+              cy="0"
+              r="9.5"
+              fill={bActive ? '#f59e0b' : '#64748b'}
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+            <text x="0" y="3.5" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="900">
+              B
+            </text>
+          </g>
         )}
 
-        {/* Incoming queue items (index 1+, right-to-left of scanner) */}
-        {queueRest.map((item, i) => (
-          <ItemCard
-            key={i}
-            item={item}
-            x={SCANNER_X - (i + 1) * (QUEUE_ITEM_W + QUEUE_GAP) - QUEUE_GAP}
-            y={QUEUE_Y}
-            dimmed={i > 2}
-          />
-        ))}
+        {/* Bottom Receiving Dock Bays (y = 418..520) */}
+        <g data-testid="switchyard-docks">
+          {dockSlots.map((slot) => {
+            const dock = state.docks.find((d) => d.id === slot.id);
+            if (!dock) return null;
 
-        {/* Switch(es) */}
-        {state.switches.map((sw, i) => (
-          <SwitchArrow
-            key={sw.id}
-            direction={sw.direction}
-            switchId={sw.id}
-            x={SWITCH_X + i * 36}
-            y={SWITCH_Y}
-          />
-        ))}
+            const isTargeted = targetDock === dock.id;
+            const isDockFailed =
+              isCollision &&
+              (failureDetail?.dockId === dock.id ||
+                (state.lastRoutedDock === dock.id && strandedCount === 0));
+            const colorMeta = dock.spec.acceptColor
+              ? SWITCHYARD_COLOR_META[dock.spec.acceptColor]
+              : undefined;
+            const bayWidth = dockSlots.length <= 2 ? 174 : 156;
+            const leftX = slot.cx - bayWidth / 2;
+            const dockLetter = dock.id.replace('DOCK_', '');
 
-        {/* Docks */}
-        {state.docks.map((dock, i) => (
-          <DockBox
-            key={dock.spec.id}
-            dock={dock}
-            x={DOCK_A_X}
-            y={dockYPositions[i] ?? DOCK_B_Y + i * (DOCK_H + 12)}
-            label={dockLabels[i] ?? `Dock ${i + 1}`}
-          />
-        ))}
+            const visibleCars = dock.items.slice(-3);
+            const overflowCars = Math.max(0, dock.items.length - visibleCars.length);
 
-        {/* Scrap chute */}
-        <g>
-          <rect x={SCRAP_X} y={SCRAP_Y} width={DOCK_W} height={36} rx={5} fill="#292524" stroke="#78716c" strokeWidth={1.5} />
-          <text x={SCRAP_X + DOCK_W / 2} y={SCRAP_Y + 12} textAnchor="middle" fontSize={9} fill="#a8a29e" fontWeight="700">
-            SCRAP
-          </text>
-          <text x={SCRAP_X + DOCK_W / 2} y={SCRAP_Y + 25} textAnchor="middle" fontSize={12}>
-            🗑️ {state.scrapped.length > 0 ? `×${state.scrapped.length}` : ''}
-          </text>
+            return (
+              <g key={dock.id} data-testid={`switchyard-dock-${dock.id}`}>
+                {/* Toy Loading Bay Box */}
+                <rect
+                  x={leftX}
+                  y="418"
+                  width={bayWidth}
+                  height="100"
+                  rx="16"
+                  fill={isDockFailed ? '#fff1f2' : colorMeta ? colorMeta.lightBg : '#ffffff'}
+                  stroke={
+                    isDockFailed
+                      ? '#e11d48'
+                      : isTargeted
+                      ? '#0ea5e9'
+                      : colorMeta
+                      ? colorMeta.stroke
+                      : '#64748b'
+                  }
+                  strokeWidth={isDockFailed || isTargeted ? '3.5' : '2.5'}
+                />
+
+                {/* Top Dock Letter Tag + Optional Quota Pill */}
+                <g transform={`translate(${leftX + 18}, 434)`}>
+                  <circle
+                    cx="0"
+                    cy="0"
+                    r="11"
+                    fill={colorMeta ? colorMeta.hex : '#475569'}
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill={dock.spec.acceptColor === 'WHITE' ? '#0f172a' : '#ffffff'}
+                    fontSize="11"
+                    fontWeight="900"
+                  >
+                    {dockLetter}
+                  </text>
+                </g>
+
+                {dock.spec.quota !== undefined && (
+                  <g transform={`translate(${leftX + bayWidth - 28}, 434)`}>
+                    <rect x="-18" y="-9" width="36" height="18" rx="9" fill="#0f172a" />
+                    <text x="0" y="4" textAnchor="middle" fill="#f8fafc" fontSize="10" fontWeight="900">
+                      {`${dock.items.length}/${dock.spec.quota}`}
+                    </text>
+                  </g>
+                )}
+
+                {/* No-Hazard Shield Corner Icon */}
+                {dock.spec.rejectDamaged && (
+                  <g transform={`translate(${leftX + bayWidth - 18}, 500)`} aria-label="No damaged cars">
+                    <circle cx="0" cy="0" r="10" fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.5" />
+                    <text x="0" y="3.5" textAnchor="middle" fontSize="10">
+                      ⚡
+                    </text>
+                    <line x1="-6" y1="-6" x2="6" y2="6" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+                  </g>
+                )}
+
+                {/* Large >=44px Floor Stencil Target Badge */}
+                <g transform={`translate(${slot.cx}, 456)`}>
+                  <rect
+                    x="-24"
+                    y="-22"
+                    width="48"
+                    height="44"
+                    rx="11"
+                    fill={colorMeta ? colorMeta.hex : '#e2e8f0'}
+                    fillOpacity={colorMeta ? 0.25 : 0.7}
+                    stroke={colorMeta ? colorMeta.stroke : '#64748b'}
+                    strokeWidth="2.2"
+                    strokeDasharray={dock.items.length === 0 ? '4 3' : undefined}
+                  />
+                  {dock.spec.acceptIcon ? (
+                    <ItemEmblemGlyph
+                      icon={dock.spec.acceptIcon}
+                      cx={0}
+                      cy={0}
+                      size={22}
+                      stroke={colorMeta ? colorMeta.stroke : '#0f172a'}
+                      fill="#ffffff"
+                    />
+                  ) : (
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="12"
+                      fill={colorMeta ? colorMeta.hex : '#94a3b8'}
+                      stroke="#ffffff"
+                      strokeWidth="2"
+                    />
+                  )}
+                </g>
+
+                {/* Parked Mini-Cars Successfully Sorted Into Dock */}
+                {visibleCars.map((car, idx) => {
+                  const spacing = Math.min(44, (bayWidth - 44) / Math.max(1, visibleCars.length));
+                  const startX = slot.cx - ((visibleCars.length - 1) * spacing) / 2;
+                  const isNewest =
+                    shouldAnimate &&
+                    animEv?.type === 'SEND_NEXT' &&
+                    animEv.targetDock === dock.id &&
+                    idx === visibleCars.length - 1;
+                  return (
+                    <ToyRailCarSvg
+                      key={car.id}
+                      item={car}
+                      cx={startX + idx * spacing}
+                      cy={494}
+                      scale={0.62}
+                      animStyle={
+                        isNewest
+                          ? { animation: `syCarDockPop ${animMs}ms ease-out both` }
+                          : undefined
+                      }
+                    />
+                  );
+                })}
+
+                {overflowCars > 0 && (
+                  <g transform={`translate(${leftX + 22}, 500)`}>
+                    <rect x="-14" y="-9" width="28" height="18" rx="9" fill="#0f172a" />
+                    <text x="0" y="3.5" textAnchor="middle" fill="#f8fafc" fontSize="10" fontWeight="900">
+                      +{overflowCars}
+                    </text>
+                  </g>
+                )}
+
+                {/* Zero-Reading Failure Diagnostic Bubble above Failing Dock */}
+                {isDockFailed && failureDetail && (
+                  <g
+                    data-testid="switchyard-failure-bubble"
+                    transform={`translate(${slot.cx}, 394)`}
+                  >
+                    <rect
+                      x="-52"
+                      y="-20"
+                      width="104"
+                      height="34"
+                      rx="14"
+                      fill="#fff1f2"
+                      stroke="#e11d48"
+                      strokeWidth="2.5"
+                    />
+                    {/* Actual vs Expected visual chips */}
+                    <circle
+                      cx="-26"
+                      cy="-3"
+                      r="8"
+                      fill={
+                        failureDetail.actualColor
+                          ? SWITCHYARD_COLOR_META[failureDetail.actualColor].hex
+                          : '#f59e0b'
+                      }
+                      stroke="#1e293b"
+                      strokeWidth="1.5"
+                    />
+                    <text x="0" y="2" textAnchor="middle" fill="#e11d48" fontSize="14" fontWeight="900">
+                      {failureDetail.code === 'DAMAGED_REJECTED' ? '⚡🚫' : '≠'}
+                    </text>
+                    {failureDetail.expectedIcon ? (
+                      <ItemEmblemGlyph
+                        icon={failureDetail.expectedIcon}
+                        cx={26}
+                        cy={-3}
+                        size={14}
+                        stroke="#0f172a"
+                        fill="#ffffff"
+                      />
+                    ) : (
+                      <circle
+                        cx="26"
+                        cy="-3"
+                        r="8"
+                        fill={
+                          failureDetail.expectedColor
+                            ? SWITCHYARD_COLOR_META[failureDetail.expectedColor].hex
+                            : '#10b981'
+                        }
+                        stroke="#1e293b"
+                        strokeWidth="1.5"
+                      />
+                    )}
+                  </g>
+                )}
+              </g>
+            );
+          })}
         </g>
 
-        {/* Success / Collision overlay */}
-        {(runtimeStatus === 'SUCCESS' || runtimeStatus === 'COLLISION') && (
-          <text
-            x={SVG_W / 2}
-            y={SVG_H / 2}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize={48}
-            opacity={0.85}
-          >
-            {runtimeStatus === 'SUCCESS' ? '🏁' : '💥'}
-          </text>
+        {/* Zero-Reading Scrap Failure Bubble when Good Car Scrapped */}
+        {isCollision && failureDetail?.code === 'GOOD_SCRAPPED' && (
+          <g data-testid="switchyard-failure-bubble" transform="translate(556, 152)">
+            <rect
+              x="-44"
+              y="-18"
+              width="88"
+              height="30"
+              rx="14"
+              fill="#fff1f2"
+              stroke="#e11d48"
+              strokeWidth="2.5"
+            />
+            <text x="0" y="2" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+              ✓ ≠ ♻️
+            </text>
+          </g>
         )}
       </svg>
     </div>

@@ -452,7 +452,35 @@ function sanitizeSwitchyardState(raw: unknown): SwitchyardState {
   if (!raw || typeof raw !== 'object') {
     return defaults;
   }
-  return createInitialSwitchyardState(raw as any);
+  const obj = raw as Record<string, unknown>;
+  const safeQueue = Array.isArray(obj.queue)
+    ? obj.queue.filter((x) => x && typeof x === 'object')
+    : undefined;
+  const safeInitialQueue = Array.isArray(obj.initialQueue)
+    ? obj.initialQueue.filter((x) => x && typeof x === 'object')
+    : undefined;
+  const safeSwitches = Array.isArray(obj.switches)
+    ? obj.switches.filter((x) => x && typeof x === 'object')
+    : undefined;
+  const safeDocks = Array.isArray(obj.docks)
+    ? obj.docks.filter((x) => x && typeof x === 'object')
+    : undefined;
+  const safeInitialDockSpecs = Array.isArray(obj.initialDockSpecs)
+    ? obj.initialDockSpecs.filter((x) => x && typeof x === 'object')
+    : undefined;
+  const safeScrap = Array.isArray(obj.scrap)
+    ? obj.scrap.filter((x) => x && typeof x === 'object')
+    : undefined;
+
+  return createInitialSwitchyardState({
+    ...obj,
+    ...(safeQueue ? { queue: safeQueue } : {}),
+    ...(safeInitialQueue ? { initialQueue: safeInitialQueue } : {}),
+    ...(safeSwitches ? { switches: safeSwitches } : {}),
+    ...(safeDocks ? { docks: safeDocks } : {}),
+    ...(safeInitialDockSpecs ? { initialDockSpecs: safeInitialDockSpecs } : {}),
+    ...(safeScrap ? { scrap: safeScrap } : {}),
+  } as any);
 }
 
 function sanitizeSimId(raw: unknown): 'grid' | 'turtle' | 'beat' | 'depot' | 'switchyard' {

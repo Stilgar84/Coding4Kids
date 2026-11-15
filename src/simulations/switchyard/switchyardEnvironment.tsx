@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActionParamDef,
   SimActionResult,
   SimPaletteItem,
   SimSensorDef,
@@ -12,139 +13,224 @@ import {
   createInitialSwitchyardState,
   evaluateSwitchyardCompletion,
   evaluateSwitchyardSensor,
+  readSwitchyardNumericSensor,
   resetSwitchyardState,
 } from './physics';
-import { DEFAULT_SWITCHYARD_STATE } from './presets';
 import { SwitchyardCanvas } from './components/SwitchyardCanvas';
 import { SwitchyardToolbarTools } from './components/SwitchyardToolbarTools';
 
-// ─── Palette items ─────────────────────────────────────────────────────────
+export const SWITCHYARD_JUNCTION_PARAM_DEF: ActionParamDef = {
+  id: 'junction',
+  label: 'Junction',
+  type: 'turnDir',
+  defaultValue: 'A',
+  options: [
+    { value: 'A', label: '[A]' },
+    { value: 'B', label: '[B]' },
+  ],
+};
 
-function SwitchIcon({ isActive }: { isActive?: boolean }) {
-  const stroke = isActive ? '#0f172a' : '#fff';
-  return (
-    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-      className={`w-6 h-6 md:w-7 md:h-7`} stroke={stroke}>
-      <path d="M4 12 L10 6 L20 6" />
-      <path d="M10 18 L20 18" />
-      <circle cx={20} cy={6} r={2} />
-      <circle cx={20} cy={18} r={2} />
-    </svg>
-  );
-}
+/**
+ * Top-to-Bottom track fork icon highlighting the active Left branch (↙).
+ */
+const SwitchLeftIcon: React.FC<{ isActive?: boolean }> = ({ isActive }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={`w-6 h-6 md:w-7 md:h-7 ${isActive ? 'text-slate-950' : 'text-white'}`}
+    fill="none"
+    aria-hidden="true"
+  >
+    <path d="M12 2V9" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+    <path
+      d="M12 9L19 16.5V21"
+      stroke="currentColor"
+      strokeOpacity="0.28"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 9L5 16.5V21"
+      stroke="#38bdf8"
+      strokeWidth="2.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2.6 18.2L5 21.4L7.6 18.2"
+      stroke="#38bdf8"
+      strokeWidth="2.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="9" r="2.2" fill="#38bdf8" />
+  </svg>
+);
 
-function SendNextIcon({ isActive }: { isActive?: boolean }) {
-  const stroke = isActive ? '#0f172a' : '#fff';
-  return (
-    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-      className={`w-6 h-6 md:w-7 md:h-7`} stroke={stroke}>
-      <rect x={2} y={8} width={12} height={8} rx={2} />
-      <polyline points="14,10 20,12 14,14" />
-    </svg>
-  );
-}
+/**
+ * Top-to-Bottom track fork icon highlighting the active Right branch (↘).
+ */
+const SwitchRightIcon: React.FC<{ isActive?: boolean }> = ({ isActive }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={`w-6 h-6 md:w-7 md:h-7 ${isActive ? 'text-slate-950' : 'text-white'}`}
+    fill="none"
+    aria-hidden="true"
+  >
+    <path d="M12 2V9" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+    <path
+      d="M12 9L5 16.5V21"
+      stroke="currentColor"
+      strokeOpacity="0.28"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 9L19 16.5V21"
+      stroke="#fbbf24"
+      strokeWidth="2.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M16.4 18.2L19 21.4L21.4 18.2"
+      stroke="#fbbf24"
+      strokeWidth="2.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="9" r="2.2" fill="#fbbf24" />
+  </svg>
+);
 
-function ScrapIcon({ isActive }: { isActive?: boolean }) {
-  const stroke = isActive ? '#0f172a' : '#fff';
-  return (
-    <svg viewBox="0 0 24 24" fill="none" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-      className={`w-6 h-6 md:w-7 md:h-7`} stroke={stroke}>
-      {/* CornerDownLeft per ui_guidelines §4 for structural/routing closers */}
-      <polyline points="9,10 4,15 9,20" />
-      <path d="M20 4h-7a4 4 0 0 0-4 4v7" />
-      {/* Trash indicator */}
-      <line x1="18" y1="6" x2="18" y2="6.01" strokeWidth={3} />
-    </svg>
-  );
-}
+/**
+ * Top-to-Bottom dispatch rail car + downward chevron icon for SEND_NEXT.
+ */
+const SendNextIcon: React.FC<{ isActive?: boolean }> = ({ isActive }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={`w-6 h-6 md:w-7 md:h-7 ${isActive ? 'text-slate-950' : 'text-white'}`}
+    fill="none"
+    aria-hidden="true"
+  >
+    <path d="M8 3V21M16 3V21" stroke="currentColor" strokeOpacity="0.32" strokeWidth="1.8" strokeLinecap="round" />
+    <rect x="6" y="4" width="12" height="8" rx="2.5" fill="currentColor" fillOpacity="0.9" />
+    <path d="M12 13V20.5" stroke="#fde047" strokeWidth="2.8" strokeLinecap="round" />
+    <path
+      d="M8.5 17.5L12 21L15.5 17.5"
+      stroke="#fde047"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/**
+ * Yellow/black diagonal hazard trapdoor chute + recycling bin silhouette for SCRAP_ITEM.
+ */
+const ScrapIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6 md:w-7 md:h-7" fill="none" aria-hidden="true">
+    <path d="M3 5L14 9.5L13 12L2 7.5Z" fill="#facc15" stroke="#1e293b" strokeWidth="1.2" />
+    <path d="M6 6.2L5 8.6M10 7.8L9 10.2" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+    <path
+      d="M11.5 12H20.5L19.5 21H12.5L11.5 12Z"
+      fill="#fef08a"
+      stroke="#0f172a"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+    />
+    <path d="M10.5 12H21.5" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" />
+    <path
+      d="M16 14.2L17.8 17.8H14.2L16 14.2Z"
+      stroke="#0f172a"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 export const SWITCHYARD_PALETTE_ITEMS: SimPaletteItem[] = [
   {
-    id: 'switch-left',
+    id: 'switchyard-switch-left',
     actionType: 'SWITCH_LEFT',
     name: 'Switch Left',
     category: 'motion',
+    paramDefs: [SWITCHYARD_JUNCTION_PARAM_DEF],
     params: { junction: 'A' },
-    icon: SwitchIcon,
-    bgClass: 'bg-blue-700 hover:bg-blue-600',
-    borderClass: 'border-blue-400',
+    icon: ({ isActive }) => <SwitchLeftIcon isActive={isActive} />,
+    bgClass: 'bg-indigo-600 hover:bg-indigo-500',
+    borderClass: 'border-indigo-400',
     supportsRepeat: false,
   },
   {
-    id: 'switch-right',
+    id: 'switchyard-switch-right',
     actionType: 'SWITCH_RIGHT',
     name: 'Switch Right',
     category: 'motion',
+    paramDefs: [SWITCHYARD_JUNCTION_PARAM_DEF],
     params: { junction: 'A' },
-    icon: SwitchIcon,
-    bgClass: 'bg-violet-700 hover:bg-violet-600',
-    borderClass: 'border-violet-400',
+    icon: ({ isActive }) => <SwitchRightIcon isActive={isActive} />,
+    bgClass: 'bg-teal-600 hover:bg-teal-500',
+    borderClass: 'border-teal-400',
     supportsRepeat: false,
   },
   {
-    id: 'send-next',
+    id: 'switchyard-send-next',
     actionType: 'SEND_NEXT',
     name: 'Send Next',
     category: 'action',
-    icon: SendNextIcon,
-    bgClass: 'bg-emerald-700 hover:bg-emerald-600',
+    icon: ({ isActive }) => <SendNextIcon isActive={isActive} />,
+    bgClass: 'bg-emerald-600 hover:bg-emerald-500',
     borderClass: 'border-emerald-400',
     supportsRepeat: true,
   },
   {
-    id: 'scrap-item',
+    id: 'switchyard-scrap-item',
     actionType: 'SCRAP_ITEM',
     name: 'Scrap Item',
     category: 'action',
-    icon: ScrapIcon,
-    bgClass: 'bg-rose-700 hover:bg-rose-600',
+    icon: () => <ScrapIcon />,
+    bgClass: 'bg-rose-600 hover:bg-rose-500',
     borderClass: 'border-rose-400',
     supportsRepeat: false,
   },
 ];
 
-// ─── Sensor definitions ────────────────────────────────────────────────────
-
 export const SWITCHYARD_SENSORS: SimSensorDef[] = [
-  { id: 'hasNextItem', label: 'Has Next Item', icon: '🚂', shortLabel: 'Next?' },
-  { id: 'itemDamaged', label: 'Item Damaged',  icon: '⚡', shortLabel: 'Damaged?' },
-  { id: 'itemColor',   label: 'Item Color',    icon: '🎨', shortLabel: 'Color?' },
-  { id: 'itemIcon',    label: 'Item Type',     icon: '📦', shortLabel: 'Type?' },
+  { id: 'hasNextItem', label: 'Car Ready?', icon: '🚂', shortLabel: 'Next' },
+  { id: 'itemDamaged', label: 'Damaged?', icon: '⚡', shortLabel: 'Dmg' },
+  { id: 'itemColor', label: 'Car Color?', icon: '🔴', shortLabel: 'Col' },
+  { id: 'itemIcon', label: 'Car Emblem?', icon: '📦', shortLabel: 'Icon' },
 ];
-
-// ─── SimulationEnvironment registration ───────────────────────────────────
 
 export const switchyardSimulationEnvironment: SimulationEnvironment<SwitchyardState> = {
   id: 'switchyard',
-  name: '🚂 Switchyard',
-  icon: React.createElement('span', { 'aria-hidden': true }, '🚂'),
-
+  name: 'Switchyard',
+  icon: <span className="text-xl">🚂</span>,
   paletteItems: SWITCHYARD_PALETTE_ITEMS,
   sensors: SWITCHYARD_SENSORS,
 
-  createInitialState: () => createInitialSwitchyardState(DEFAULT_SWITCHYARD_STATE),
-  resetState: (state) => resetSwitchyardState(state),
+  createInitialState: () => createInitialSwitchyardState(),
+  resetState: (state: SwitchyardState): SwitchyardState => resetSwitchyardState(state),
 
-  executeAction(actionType, state, options): SimActionResult<SwitchyardState> {
-    if (state.status === 'COLLISION') {
-      return { nextState: state, status: 'COLLISION', isCollision: true };
-    }
+  executeAction: (actionType, state, options): SimActionResult<SwitchyardState> => {
     const nextState = applySwitchyardAction(actionType, state, options);
-    const isCollision = nextState.status === 'COLLISION';
     return {
       nextState,
-      status: isCollision ? 'COLLISION' : 'IDLE',
-      isCollision,
+      isSuccess: nextState.status === 'SUCCESS',
+      isCollision: nextState.status === 'COLLISION',
+      status: nextState.status,
     };
   },
 
-  evaluateCompletion: (state) => evaluateSwitchyardCompletion(state),
-
   evaluateSensor: (sensor, state, param) => evaluateSwitchyardSensor(sensor, state, param),
+  readSensor: (sensor, state) => readSwitchyardNumericSensor(sensor, state),
+  evaluateCompletion: (state) => evaluateSwitchyardCompletion(state),
 
   Renderer: SwitchyardCanvas,
   ToolsComponent: SwitchyardToolbarTools,
 };
 
-// Auto-register
 registerSimulation(switchyardSimulationEnvironment);

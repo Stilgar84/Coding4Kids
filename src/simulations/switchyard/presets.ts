@@ -1,32 +1,48 @@
-import { SwitchyardState } from './types';
 import { createInitialSwitchyardState } from './physics';
+import { SwitchyardState } from './types';
 
-/** Default sandbox preset: 4-item queue, 2 docks, 1 switch. */
 export const DEFAULT_SWITCHYARD_STATE: SwitchyardState = createInitialSwitchyardState({
-  initialQueue: [
-    { color: 'RED',   icon: 'CRATE',   damaged: false },
-    { color: 'BLUE',  icon: 'BATTERY', damaged: false },
-    { color: 'RED',   icon: 'GEAR',    damaged: false },
-    { color: 'BLUE',  icon: 'CRYSTAL', damaged: false },
+  queue: [
+    { id: 'c1', color: 'RED', icon: 'CRATE', damaged: false },
+    { id: 'c2', color: 'BLUE', icon: 'CRATE', damaged: false },
+    { id: 'c3', color: 'RED', icon: 'GEAR', damaged: false },
+    { id: 'c4', color: 'BLUE', icon: 'BATTERY', damaged: false },
   ],
-  initialDockSpecs: [
-    { id: 'DOCK_A' },
-    { id: 'DOCK_B' },
+  docks: [
+    { id: 'DOCK_A', spec: { dockId: 'DOCK_A', acceptColor: 'RED', rejectDamaged: true }, items: [] },
+    { id: 'DOCK_B', spec: { dockId: 'DOCK_B', acceptColor: 'BLUE', rejectDamaged: true }, items: [] },
   ],
-  initialSwitchDirections: ['LEFT'],
-} as Partial<SwitchyardState>);
+  switches: [{ id: 'A', direction: 'LEFT', initialDirection: 'LEFT' }],
+});
 
-/** Sample preset with damaged items for Lesson 5.3 / 5B style puzzles. */
 export const HAZARD_PRESET: SwitchyardState = createInitialSwitchyardState({
-  initialQueue: [
-    { color: 'RED',  icon: 'CRATE',   damaged: false },
-    { color: 'BLUE', icon: 'BATTERY', damaged: true  },
-    { color: 'RED',  icon: 'GEAR',    damaged: true  },
-    { color: 'BLUE', icon: 'CRYSTAL', damaged: false },
+  queue: [
+    { id: 'h1', color: 'RED', icon: 'CRATE', damaged: true },
+    { id: 'h2', color: 'RED', icon: 'BATTERY', damaged: false },
+    { id: 'h3', color: 'BLUE', icon: 'GEAR', damaged: true },
+    { id: 'h4', color: 'BLUE', icon: 'CRYSTAL', damaged: false },
   ],
-  initialDockSpecs: [
-    { id: 'DOCK_A', rejectDamaged: true },
-    { id: 'DOCK_B', rejectDamaged: true },
+  docks: [
+    { id: 'DOCK_A', spec: { dockId: 'DOCK_A', acceptColor: 'RED', rejectDamaged: true }, items: [] },
+    { id: 'DOCK_B', spec: { dockId: 'DOCK_B', acceptColor: 'BLUE', rejectDamaged: true }, items: [] },
   ],
-  initialSwitchDirections: ['LEFT'],
-} as Partial<SwitchyardState>);
+  switches: [{ id: 'A', direction: 'LEFT', initialDirection: 'LEFT' }],
+});
+
+export const TWO_SWITCH_PRESET: SwitchyardState = createInitialSwitchyardState({
+  queue: [
+    { id: 't1', color: 'RED', icon: 'CRATE', damaged: false },
+    { id: 't2', color: 'BLUE', icon: 'GEAR', damaged: false },
+    { id: 't3', color: 'GREEN', icon: 'BATTERY', damaged: false },
+    { id: 't4', color: 'BLUE', icon: 'CRATE', damaged: true },
+  ],
+  docks: [
+    { id: 'DOCK_A', spec: { dockId: 'DOCK_A', acceptColor: 'RED', rejectDamaged: true }, items: [] },
+    { id: 'DOCK_B', spec: { dockId: 'DOCK_B', acceptColor: 'BLUE', rejectDamaged: true }, items: [] },
+    { id: 'DOCK_C', spec: { dockId: 'DOCK_C', acceptColor: 'GREEN', rejectDamaged: true }, items: [] },
+  ],
+  switches: [
+    { id: 'A', direction: 'LEFT', initialDirection: 'LEFT', leftTarget: 'DOCK_A', rightTarget: 'SWITCH_B' },
+    { id: 'B', direction: 'LEFT', initialDirection: 'LEFT', leftTarget: 'DOCK_B', rightTarget: 'DOCK_C' },
+  ],
+});
