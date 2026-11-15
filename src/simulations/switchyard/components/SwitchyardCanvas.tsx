@@ -30,21 +30,25 @@ const ANIM_KEYFRAMES = `
   50% { opacity: 0.95; transform: translateY(3px); }
 }
 @keyframes syCarEnterScanner {
-  0% { transform: translate(-48px, -24px) scale(0.92); opacity: 0.7; }
+  0% { transform: translate(-52px, -28px) scale(0.88); opacity: 0.55; }
   100% { transform: translate(0px, 0px) scale(1); opacity: 1; }
 }
 @keyframes syChevronFlow {
   0% { stroke-dashoffset: 24; }
   100% { stroke-dashoffset: 0; }
 }
-@keyframes syCarDockPop {
-  0% { transform: translateY(-22px) scale(0.85); opacity: 0.5; }
-  70% { transform: translateY(2px) scale(1.06); opacity: 1; }
-  100% { transform: translateY(0px) scale(1); opacity: 1; }
+@keyframes syDockSlotReveal {
+  0%, 84% { opacity: 0; transform: scale(0.75); }
+  92% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes sySwitchPulse {
+  0% { opacity: 0.9; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1.36); }
 }
 @keyframes syHazardSpark {
-  0%, 100% { opacity: 0.35; transform: scale(0.9) rotate(-4deg); }
-  50% { opacity: 1; transform: scale(1.12) rotate(4deg); }
+  0%, 100% { opacity: 0.72; transform: scale(0.96) rotate(-3deg); }
+  50% { opacity: 1; transform: scale(1.06) rotate(3deg); }
 }
 @keyframes syCollisionShake {
   0%, 100% { transform: translateX(0px); }
@@ -52,16 +56,31 @@ const ANIM_KEYFRAMES = `
   55% { transform: translateX(6px); }
   80% { transform: translateX(-3px); }
 }
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="switchyard-canvas"] *,
+  [data-testid="switchyard-canvas"] *::before,
+  [data-testid="switchyard-canvas"] *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 0ms !important;
+  }
+}
 `;
 
-function computeAnimDurationMs(
+/**
+ * Computes Switchyard animation duration in ms matching the Depot speed schedule.
+ */
+export function computeSwitchyardAnimDurationMs(
   speed: number | 'instant',
   isLowQuality: boolean,
-  reducedMotion: boolean
+  hasEvent: boolean
 ): number {
-  if (isLowQuality || reducedMotion || speed === 'instant' || speed === 0) return 0;
-  if (typeof speed !== 'number' || speed <= 0) return 320;
-  return Math.max(120, Math.min(480, Math.round(speed * 0.85)));
+  if (!hasEvent || isLowQuality || speed === 'instant') return 0;
+  const numericSpeed = Number(speed);
+  if (!Number.isFinite(numericSpeed)) return 1350;
+  if (numericSpeed <= 0) return 0;
+  if (numericSpeed <= 25) return 230;
+  if (numericSpeed <= 100) return 585;
+  return Math.round(numericSpeed * 3.375);
 }
 
 /**
@@ -175,28 +194,18 @@ const ItemEmblemGlyph: React.FC<{
 };
 
 /**
- * Toy railway freight car rendered inside the tunnel queue, scanner gate, or dock bays.
+ * Core freight car vector shapes centered at (0, 0).
  */
-const ToyRailCarSvg: React.FC<{
+const ToyRailCarBody: React.FC<{
   item: SwitchyardItem;
-  cx: number;
-  cy: number;
-  scale?: number;
   inScanner?: boolean;
-  dimmed?: boolean;
-  animStyle?: React.CSSProperties;
-}> = ({ item, cx, cy, scale = 1, inScanner = false, dimmed = false, animStyle }) => {
+}> = ({ item, inScanner = false }) => {
   const meta = SWITCHYARD_COLOR_META[item.color] ?? SWITCHYARD_COLOR_META.RED;
   const damaged = Boolean(item.damaged);
-  const tilt = damaged ? 'rotate(-5)' : '';
   const bodyStroke = item.color === 'WHITE' ? '#475569' : meta.stroke;
 
   return (
-    <g
-      transform={`translate(${cx}, ${cy}) scale(${scale}) ${tilt}`}
-      opacity={dimmed ? 0.72 : 1}
-      style={animStyle}
-    >
+    <>
       {/* Drop shadow on sleepers */}
       <ellipse cx="0" cy="18" rx="22" ry="4.5" fill="#0f172a" fillOpacity="0.16" />
 
@@ -254,9 +263,188 @@ const ToyRailCarSvg: React.FC<{
           />
         </g>
       )}
+    </>
+  );
+};
+
+/**
+ * Toy railway freight car rendered inside the tunnel queue, scanner gate, or dock bays.
+ * Outer <g> uses strictly SVG transform placement so CSS animations on the inner <g>
+ * never override SVG coordinates in Chromium SVG2.
+ */
+const ToyRailCarSvg: React.FC<{
+  item: SwitchyardItem;
+  cx: number;
+  cy: number;
+  scale?: number;
+  inScanner?: boolean;
+  dimmed?: boolean;
+  animStyle?: React.CSSProperties;
+  testId?: string;
+}> = ({ item, cx, cy, scale = 1, inScanner = false, dimmed = false, animStyle, testId }) => {
+  const damaged = Boolean(item.damaged);
+  const tilt = damaged ? 'rotate(-5)' : '';
+
+  return (
+    <g
+      data-testid={testId}
+      transform={`translate(${cx}, ${cy}) scale(${scale})${tilt ? ` ${tilt}` : ''}`}
+      opacity={dimmed ? 0.72 : 1}
+    >
+      {animStyle ? (
+        <g style={animStyle}>
+          <ToyRailCarBody item={item} inScanner={inScanner} />
+        </g>
+      ) : (
+        <ToyRailCarBody item={item} inScanner={inScanner} />
+      )}
     </g>
   );
 };
+
+type RouteSeg =
+  | { kind: 'L'; x0: number; y0: number; x1: number; y1: number }
+  | {
+      kind: 'C';
+      x0: number;
+      y0: number;
+      cx1: number;
+      cy1: number;
+      cx2: number;
+      cy2: number;
+      x1: number;
+      y1: number;
+    };
+
+function makeCurvedSeg(x0: number, y0: number, x1: number, y1: number): RouteSeg {
+  const midY = (y0 + y1) / 2;
+  return { kind: 'C', x0, y0, cx1: x0, cy1: midY, cx2: x1, cy2: midY, x1, y1 };
+}
+
+function evalRouteSeg(seg: RouteSeg, t: number): { x: number; y: number } {
+  if (seg.kind === 'L') {
+    return {
+      x: seg.x0 + (seg.x1 - seg.x0) * t,
+      y: seg.y0 + (seg.y1 - seg.y0) * t,
+    };
+  }
+  const u = 1 - t;
+  const uu = u * u;
+  const tt = t * t;
+  const uuu = uu * u;
+  const ttt = tt * t;
+  return {
+    x: uuu * seg.x0 + 3 * uu * t * seg.cx1 + 3 * u * tt * seg.cx2 + ttt * seg.x1,
+    y: uuu * seg.y0 + 3 * uu * t * seg.cy1 + 3 * u * tt * seg.cy2 + ttt * seg.y1,
+  };
+}
+
+function segsToSvgPath(segs: readonly RouteSeg[]): string {
+  if (segs.length === 0) return '';
+  const parts: string[] = [`M ${segs[0].x0} ${segs[0].y0}`];
+  for (const s of segs) {
+    if (s.kind === 'L') {
+      parts.push(`L ${s.x1} ${s.y1}`);
+    } else {
+      parts.push(`C ${s.cx1} ${s.cy1}, ${s.cx2} ${s.cy2}, ${s.x1} ${s.y1}`);
+    }
+  }
+  return parts.join(' ');
+}
+
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+interface InflightRouteData {
+  path: string;
+  keyframesCss: string;
+  animName: string;
+  waypointsAttr: string;
+}
+
+function buildInflightRouteData(
+  segs: readonly RouteSeg[],
+  animName: string,
+  startScale: number,
+  endScale: number
+): InflightRouteData | null {
+  if (segs.length === 0) return null;
+  const originX = segs[0].x0;
+  const originY = segs[0].y0;
+
+  const rawPts: { x: number; y: number; s: number }[] = [];
+  let totalLen = 0;
+  const samplesPerSeg = 24;
+  for (const seg of segs) {
+    for (let i = 0; i <= samplesPerSeg; i++) {
+      if (rawPts.length > 0 && i === 0) continue;
+      const pt = evalRouteSeg(seg, i / samplesPerSeg);
+      if (rawPts.length > 0) {
+        const prev = rawPts[rawPts.length - 1];
+        totalLen += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+      }
+      rawPts.push({ x: pt.x, y: pt.y, s: totalLen });
+    }
+  }
+  if (rawPts.length < 2 || totalLen <= 0) return null;
+
+  const sampleAtNormS = (normS: number): { x: number; y: number } => {
+    const targetS = Math.min(1, Math.max(0, normS)) * totalLen;
+    for (let i = 1; i < rawPts.length; i++) {
+      if (rawPts[i].s >= targetS) {
+        const prev = rawPts[i - 1];
+        const curr = rawPts[i];
+        const span = curr.s - prev.s || 1;
+        const frac = (targetS - prev.s) / span;
+        return {
+          x: prev.x + (curr.x - prev.x) * frac,
+          y: prev.y + (curr.y - prev.y) * frac,
+        };
+      }
+    }
+    return rawPts[rawPts.length - 1];
+  };
+
+  const travelEndPct = 85;
+  const numStops = 16;
+  const keyframeStops: string[] = [];
+  const waypointPairs: string[] = [];
+
+  for (let i = 0; i <= numStops; i++) {
+    const u = i / numStops;
+    const pct = (u * travelEndPct).toFixed(1).replace(/\.0$/, '');
+    const eased = easeInOutQuad(u);
+    const pt = sampleAtNormS(eased);
+    const dx = (pt.x - originX).toFixed(1);
+    const dy = (pt.y - originY).toFixed(1);
+    const scale = (startScale + (endScale - startScale) * eased).toFixed(3);
+    keyframeStops.push(
+      `${pct}% { transform: translate(${dx}px, ${dy}px) scale(${scale}); opacity: 1; }`
+    );
+    if (i % 4 === 0 || i === numStops) {
+      waypointPairs.push(`${Math.round(pt.x)},${Math.round(pt.y)}`);
+    }
+  }
+
+  const endPt = rawPts[rawPts.length - 1];
+  const endDx = (endPt.x - originX).toFixed(1);
+  const endDy = (endPt.y - originY).toFixed(1);
+  const endScaleStr = endScale.toFixed(3);
+  keyframeStops.push(
+    `92% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0.92; }`
+  );
+  keyframeStops.push(
+    `100% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0; }`
+  );
+
+  return {
+    path: segsToSvgPath(segs),
+    keyframesCss: `@keyframes ${animName} {\n  ${keyframeStops.join('\n  ')}\n}`,
+    animName,
+    waypointsAttr: waypointPairs.join(';'),
+  };
+}
 
 interface DockLayoutSlot {
   id: Exclude<DockId, 'SCRAP'>;
@@ -346,6 +534,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
     return (
       <div
         data-testid="switchyard-canvas"
+        data-anim-duration={0}
+        data-anim-event="NONE"
         className="w-full h-full flex items-center justify-center bg-[#dbeafe]"
       />
     );
@@ -354,8 +544,18 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
   const effectiveStatus = runtimeStatus ?? state.status;
   const isSuccess = effectiveStatus === 'SUCCESS';
   const isCollision = effectiveStatus === 'COLLISION';
-  const animMs = computeAnimDurationMs(speed, isLowQuality, prefersReducedMotion);
+  const animEv = state.lastAnimEvent;
+  const rawAnimMs = computeSwitchyardAnimDurationMs(speed, isLowQuality, Boolean(animEv));
+  const animMs = prefersReducedMotion ? 0 : rawAnimMs;
   const shouldAnimate = animMs > 0;
+  const allowAmbientMotion =
+    !isLowQuality &&
+    !prefersReducedMotion &&
+    speed !== 'instant' &&
+    (typeof speed !== 'number' || speed > 0);
+  const ambientAnimMs = allowAmbientMotion
+    ? computeSwitchyardAnimDurationMs(speed, isLowQuality, true)
+    : 0;
 
   const hasSensorBeamSpotlight = spotlights.includes('sensor-beam');
   const hasBranchSkipSpotlight = spotlights.includes('branch-skip');
@@ -471,18 +671,101 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
       ? state.queue.length
       : 0;
 
-  const animEv = state.lastAnimEvent;
+  const animSeq = animEv?.seq ?? animEv?.stepId ?? state.stepCount;
+  const dispatchedItem = animEv?.dispatchedItem ?? animEv?.item;
+  const destDock = animEv?.toDock ?? animEv?.targetDock;
   const isEnterScannerAnim =
-    shouldAnimate && animEv && (animEv.type === 'SEND_NEXT' || animEv.type === 'SCRAP_ITEM');
-  const isScrapFlash = shouldAnimate && animEv?.type === 'SCRAP_ITEM';
+    shouldAnimate && (animEv?.type === 'SEND_NEXT' || animEv?.type === 'SCRAP_ITEM');
+  const isScrapAnim =
+    shouldAnimate &&
+    Boolean(dispatchedItem) &&
+    (animEv?.type === 'SCRAP_ITEM' || (animEv?.type === 'SEND_NEXT' && destDock === 'SCRAP'));
+  const isSendNextAnim =
+    shouldAnimate &&
+    animEv?.type === 'SEND_NEXT' &&
+    Boolean(dispatchedItem) &&
+    Boolean(destDock) &&
+    destDock !== 'SCRAP';
+  const isSwitchToggleAnim =
+    shouldAnimate && (animEv?.type === 'SWITCH_LEFT' || animEv?.type === 'SWITCH_RIGHT');
+  const switchTransitionMs = shouldAnimate ? animMs : 0;
+  const isScrapFlash = isScrapAnim;
   const headColorMeta = headItem ? SWITCHYARD_COLOR_META[headItem.color] : undefined;
+
+  let inflightRoute: InflightRouteData | null = null;
+  if (isScrapAnim) {
+    inflightRoute = buildInflightRouteData(
+      [
+        {
+          kind: 'C',
+          x0: 320,
+          y0: 199,
+          cx1: 380,
+          cy1: 194,
+          cx2: 470,
+          cy2: 196,
+          x1: 558,
+          y1: 215,
+        },
+      ],
+      `syInflightRoute_${animSeq}`,
+      0.96,
+      0.5
+    );
+  } else if (isSendNextAnim && destDock) {
+    const destSlot = dockSlots.find((s) => s.id === destDock);
+    const destDockObj = state.docks.find((d) => d.id === destDock);
+    if (destSlot && destDockObj) {
+      const bayWidth = dockSlots.length <= 2 ? 174 : 156;
+      const visibleCars = destDockObj.items.slice(-3);
+      const overflowCars = Math.max(0, destDockObj.items.length - visibleCars.length);
+      const localTargetIdx =
+        animEv?.targetSlotIndex !== undefined
+          ? Math.max(0, Math.min(visibleCars.length - 1, animEv.targetSlotIndex - overflowCars))
+          : Math.max(0, visibleCars.length - 1);
+      const spacing = Math.min(44, (bayWidth - 44) / Math.max(1, visibleCars.length));
+      const startX = destSlot.cx - ((visibleCars.length - 1) * spacing) / 2;
+      const slotCx = visibleCars.length > 0 ? startX + localTargetIdx * spacing : destSlot.cx;
+      const slotCy = 494;
+
+      const routeSegs: RouteSeg[] = [{ kind: 'L', x0: 320, y0: 199, x1: 320, y1: 224 }];
+      if (switchCount === 0) {
+        routeSegs.push(makeCurvedSeg(320, 224, destSlot.cx, 420));
+      } else if (switchCount === 1 || !swB) {
+        routeSegs.push({ kind: 'L', x0: 320, y0: 224, x1: swACoord.x, y1: swACoord.y });
+        routeSegs.push(makeCurvedSeg(swACoord.x, swACoord.y, destSlot.cx, 420));
+      } else {
+        routeSegs.push({ kind: 'L', x0: 320, y0: 224, x1: swACoord.x, y1: swACoord.y });
+        const traversedB = animEv?.switchesTraversed
+          ? animEv.switchesTraversed.includes('B')
+          : (animEv?.switchADir ?? swA?.direction) === 'RIGHT' &&
+            destDock !== (swA?.leftTarget ?? 'DOCK_A');
+        if (traversedB) {
+          routeSegs.push(makeCurvedSeg(swACoord.x, swACoord.y, swBCoord.x, swBCoord.y));
+          routeSegs.push(makeCurvedSeg(swBCoord.x, swBCoord.y, destSlot.cx, 420));
+        } else {
+          routeSegs.push(makeCurvedSeg(swACoord.x, swACoord.y, destSlot.cx, 420));
+        }
+      }
+      routeSegs.push(makeCurvedSeg(destSlot.cx, 420, slotCx, slotCy));
+
+      inflightRoute = buildInflightRouteData(
+        routeSegs,
+        `syInflightRoute_${animSeq}`,
+        0.96,
+        0.62
+      );
+    }
+  }
 
   return (
     <div
       data-testid="switchyard-canvas"
+      data-anim-duration={animMs}
+      data-anim-event={shouldAnimate && animEv ? animEv.type : 'NONE'}
       className="relative w-full h-full flex flex-col overflow-hidden select-none bg-gradient-to-b from-[#dbeafe] via-[#eff6ff] to-[#fef3c7]"
     >
-      <style>{ANIM_KEYFRAMES}</style>
+      <style>{`${ANIM_KEYFRAMES}${inflightRoute ? `\n${inflightRoute.keyframesCss}` : ''}`}</style>
 
       {/* Top Centered Victory / Collision Pill safely below MultiRunPipsBar sky slot */}
       {isCollision && (
@@ -540,6 +823,9 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             <rect width="6" height="12" fill="#facc15" />
             <rect x="6" width="6" height="12" fill="#1e293b" />
           </pattern>
+          <clipPath id="sy-tunnel-arch-clip">
+            <rect x="50" y="76" width="120" height="60" rx="8" />
+          </clipPath>
         </defs>
 
         {/* y = 0..48: Uncluttered HUD Sky Band */}
@@ -626,22 +912,25 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           />
 
           {/* Remaining Convoy Peek Cars inside Tunnel */}
-          {peekQueue
-            .slice()
-            .reverse()
-            .map((peekItem, revIdx) => {
-              const slotX = 72 + revIdx * 52;
-              return (
-                <ToyRailCarSvg
-                  key={peekItem.id}
-                  item={peekItem}
-                  cx={slotX}
-                  cy={106}
-                  scale={0.72}
-                  dimmed
-                />
-              );
-            })}
+          <g clipPath="url(#sy-tunnel-arch-clip)">
+            {peekQueue
+              .slice()
+              .reverse()
+              .map((peekItem, revIdx) => {
+                const slotX = 136 - (peekQueue.length - 1 - revIdx) * 52;
+                return (
+                  <ToyRailCarSvg
+                    key={peekItem.id}
+                    testId={`switchyard-tunnel-car-${revIdx}`}
+                    item={peekItem}
+                    cx={slotX}
+                    cy={106}
+                    scale={0.72}
+                    dimmed
+                  />
+                );
+              })}
+          </g>
 
           {/* +N Queue Counter Badge */}
           {state.queue.length > 0 && (
@@ -721,8 +1010,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 strokeDasharray="6 6"
                 strokeLinecap="round"
                 style={
-                  seg.active && shouldAnimate
-                    ? { animation: `syChevronFlow ${Math.max(400, animMs * 2)}ms linear infinite` }
+                  seg.active && allowAmbientMotion
+                    ? { animation: `syChevronFlow ${Math.max(450, ambientAnimMs)}ms linear infinite` }
                     : undefined
                 }
               />
@@ -795,26 +1084,51 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 stroke="#1e293b"
                 strokeWidth="2"
               />
-              <text x="48" y="42" textAnchor="middle" fontSize="22">
+              <text x="48" y="34" textAnchor="middle" fontSize="18">
                 ♻️
               </text>
               {/* Scrapped count chips */}
               {state.scrapped.length > 0 && (
-                <g transform="translate(48, 65)">
-                  <rect x="-20" y="-10" width="40" height="20" rx="10" fill="#1e293b" />
-                  <text
-                    x="0"
-                    y="4"
-                    textAnchor="middle"
-                    fill="#fef08a"
-                    fontSize="12"
-                    fontWeight="900"
+                <g transform="translate(48, 68)">
+                  <g
+                    style={
+                      isScrapAnim && state.scrapped.length === 1
+                        ? { animation: `syDockSlotReveal ${animMs}ms linear both` }
+                        : undefined
+                    }
                   >
-                    ×{state.scrapped.length}
-                  </text>
+                    <rect x="-20" y="-10" width="40" height="20" rx="10" fill="#1e293b" />
+                    <text
+                      x="0"
+                      y="4"
+                      textAnchor="middle"
+                      fill="#fef08a"
+                      fontSize="12"
+                      fontWeight="900"
+                    >
+                      ×{state.scrapped.length}
+                    </text>
+                  </g>
                 </g>
               )}
             </g>
+            {/* Latest Scrapped Car Mini Preview inside Bin */}
+            {state.scrapped.length > 0 && (
+              <ToyRailCarSvg
+                key={`scrap-preview-${state.scrapped.length}-${state.scrapped[state.scrapped.length - 1].id}`}
+                testId="switchyard-scrap-preview-car"
+                item={state.scrapped[state.scrapped.length - 1]}
+                cx={558}
+                cy={222}
+                scale={0.48}
+                dimmed
+                animStyle={
+                  isScrapAnim
+                    ? { animation: `syDockSlotReveal ${animMs}ms linear both` }
+                    : undefined
+                }
+              />
+            )}
           </g>
         )}
 
@@ -899,8 +1213,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             data-testid="switchyard-sensor-beam"
             data-spotlight={hasSensorBeamSpotlight ? 'true' : undefined}
             style={
-              shouldAnimate
-                ? { animation: `syLaserPulse ${Math.max(900, animMs * 2)}ms ease-in-out infinite` }
+              allowAmbientMotion
+                ? { animation: `syLaserPulse ${Math.max(800, ambientAnimMs)}ms ease-in-out infinite` }
                 : undefined
             }
           >
@@ -927,7 +1241,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           {/* Current Head Freight Car Centered in Scanner Gate */}
           {headItem && (
             <ToyRailCarSvg
-              key={headItem.id}
+              key={isEnterScannerAnim ? `${headItem.id}-enter-${animSeq}` : headItem.id}
+              testId="switchyard-scanner-wagon"
               item={headItem}
               cx={320}
               cy={199}
@@ -936,8 +1251,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               animStyle={
                 isEnterScannerAnim
                   ? { animation: `syCarEnterScanner ${animMs}ms ease-out both` }
-                  : headItem.damaged && shouldAnimate
-                  ? { animation: `syHazardSpark ${Math.max(700, animMs * 2)}ms ease-in-out infinite` }
+                  : headItem.damaged && allowAmbientMotion
+                  ? { animation: `syHazardSpark ${Math.max(700, ambientAnimMs)}ms ease-in-out infinite` }
                   : undefined
               }
             />
@@ -973,18 +1288,44 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
         {/* Switch A Turntable Hub */}
         {swA && (
           <g data-testid="switchyard-switch-A" transform={`translate(${swACoord.x}, ${swACoord.y})`}>
+            {isSwitchToggleAnim && (animEv?.junction ?? 'A') === 'A' && (
+              <circle
+                key={`sw-pulse-A-${animSeq}`}
+                cx="0"
+                cy="0"
+                r="26"
+                fill="none"
+                stroke="#38bdf8"
+                strokeWidth="3"
+                style={{
+                  transformOrigin: '0px 0px',
+                  animation: `sySwitchPulse ${animMs}ms ease-out both`,
+                }}
+              />
+            )}
             <circle cx="0" cy="0" r="24" fill="#ffffff" stroke="#0284c7" strokeWidth="3.5" />
             <circle cx="0" cy="0" r="19" fill="#e0f2fe" />
-            {/* Rotating Mechanical Rail Pointer */}
-            <line
-              x1="0"
-              y1="-14"
-              x2={swA.direction === 'LEFT' ? -13 : 13}
-              y2="14"
-              stroke="#0369a1"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
+            {/* Rotating Mechanical Rail Pointer (CSS transition strictly on inner <g>) */}
+            <g
+              data-testid="switchyard-switch-A-lever"
+              style={{
+                transformOrigin: '0px -14px',
+                transform: `rotate(${swA.direction === 'LEFT' ? 25 : -25}deg)`,
+                transitionProperty: 'transform',
+                transitionDuration: `${switchTransitionMs}ms`,
+                transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            >
+              <line
+                x1="0"
+                y1="-14"
+                x2="0"
+                y2="16"
+                stroke="#0369a1"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+            </g>
             <circle cx="0" cy="0" r="10" fill="#0ea5e9" stroke="#ffffff" strokeWidth="2" />
             <text x="0" y="4" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="900">
               A
@@ -999,6 +1340,21 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             transform={`translate(${swBCoord.x}, ${swBCoord.y})`}
             opacity={bActive ? 1 : 0.72}
           >
+            {isSwitchToggleAnim && animEv?.junction === 'B' && (
+              <circle
+                key={`sw-pulse-B-${animSeq}`}
+                cx="0"
+                cy="0"
+                r="24"
+                fill="none"
+                stroke="#f59e0b"
+                strokeWidth="3"
+                style={{
+                  transformOrigin: '0px 0px',
+                  animation: `sySwitchPulse ${animMs}ms ease-out both`,
+                }}
+              />
+            )}
             <circle
               cx="0"
               cy="0"
@@ -1008,15 +1364,26 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               strokeWidth="3.5"
             />
             <circle cx="0" cy="0" r="17" fill={bActive ? '#fef3c7' : '#f1f5f9'} />
-            <line
-              x1="0"
-              y1="-13"
-              x2={swB.direction === 'LEFT' ? -12 : 12}
-              y2="13"
-              stroke={bActive ? '#b45309' : '#64748b'}
-              strokeWidth="4.5"
-              strokeLinecap="round"
-            />
+            <g
+              data-testid="switchyard-switch-B-lever"
+              style={{
+                transformOrigin: '0px -13px',
+                transform: `rotate(${swB.direction === 'LEFT' ? 25 : -25}deg)`,
+                transitionProperty: 'transform',
+                transitionDuration: `${switchTransitionMs}ms`,
+                transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+            >
+              <line
+                x1="0"
+                y1="-13"
+                x2="0"
+                y2="15"
+                stroke={bActive ? '#b45309' : '#64748b'}
+                strokeWidth="4.5"
+                strokeLinecap="round"
+              />
+            </g>
             <circle
               cx="0"
               cy="0"
@@ -1155,21 +1522,24 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 {visibleCars.map((car, idx) => {
                   const spacing = Math.min(44, (bayWidth - 44) / Math.max(1, visibleCars.length));
                   const startX = slot.cx - ((visibleCars.length - 1) * spacing) / 2;
+                  const actualItemIdx = overflowCars + idx;
                   const isNewest =
-                    shouldAnimate &&
-                    animEv?.type === 'SEND_NEXT' &&
-                    animEv.targetDock === dock.id &&
-                    idx === visibleCars.length - 1;
+                    isSendNextAnim &&
+                    destDock === dock.id &&
+                    (animEv?.targetSlotIndex !== undefined
+                      ? actualItemIdx === animEv.targetSlotIndex
+                      : idx === visibleCars.length - 1);
                   return (
                     <ToyRailCarSvg
-                      key={car.id}
+                      key={`${dock.id}-car-${actualItemIdx}-${car.id}`}
+                      testId={`switchyard-dock-${dock.id}-car-${actualItemIdx}`}
                       item={car}
                       cx={startX + idx * spacing}
                       cy={494}
                       scale={0.62}
                       animStyle={
                         isNewest
-                          ? { animation: `syCarDockPop ${animMs}ms ease-out both` }
+                          ? { animation: `syDockSlotReveal ${animMs}ms linear both` }
                           : undefined
                       }
                     />
@@ -1263,6 +1633,29 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             <text x="0" y="2" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
               ✓ ≠ ♻️
             </text>
+          </g>
+        )}
+
+        {/* In-Flight Dispatched Freight Wagon Traveling Along Exact Rail Path */}
+        {shouldAnimate && inflightRoute && dispatchedItem && (
+          <g
+            key={`inflight-${animSeq}`}
+            data-testid="switchyard-inflight-wagon"
+            data-route-path={inflightRoute.path}
+            data-target-dock={destDock}
+            data-anim-seq={animSeq}
+            data-waypoints={inflightRoute.waypointsAttr}
+            transform="translate(320, 199)"
+          >
+            <g
+              style={{
+                animation: `${inflightRoute.animName} ${animMs}ms linear both`,
+              }}
+            >
+              <g transform={dispatchedItem.damaged ? 'rotate(-5)' : undefined}>
+                <ToyRailCarBody item={dispatchedItem} />
+              </g>
+            </g>
           </g>
         )}
       </svg>

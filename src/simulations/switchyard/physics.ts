@@ -750,8 +750,29 @@ function areAllDocksSatisfied(docks: readonly DockState[]): boolean {
   });
 }
 
+function getSwitchSnapshot(switches: readonly SwitchState[]): {
+  switchCount: number;
+  switchADir?: SwitchDirection;
+  switchBDir?: SwitchDirection;
+} {
+  const switchCount = switches.length;
+  const swA = switches.find((s) => s.id === 'A') ?? switches[0];
+  const swB = switchCount >= 2 ? switches.find((s) => s.id === 'B') ?? switches[1] : undefined;
+  return {
+    switchCount,
+    ...(swA ? { switchADir: swA.direction } : {}),
+    ...(swB ? { switchBDir: swB.direction } : {}),
+  };
+}
+
+function nextAnimSeq(state: SwitchyardState, nextStep: number): number {
+  return Math.max(nextStep, (state.lastAnimEvent?.seq ?? 0) + 1);
+}
+
 function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
   const nextStep = state.stepCount + 1;
+  const nextSeq = nextAnimSeq(state, nextStep);
+  const swSnap = getSwitchSnapshot(state.switches);
   const activeStatus: SimulationStatus = state.status === 'IDLE' ? 'IDLE' : 'RUNNING';
 
   if (state.queue.length === 0) {
@@ -762,7 +783,14 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
       lastFailureReason: 'NO_ITEM_AT_SCANNER',
       lastFailureDetail: { code: 'QUEUE_EMPTY', dockId: 'SCRAP' },
       lastRoutedDock: 'SCRAP',
-      lastAnimEvent: { stepId: nextStep, type: 'COLLISION', targetDock: 'SCRAP' },
+      lastAnimEvent: {
+        stepId: nextStep,
+        seq: nextSeq,
+        type: 'COLLISION',
+        targetDock: 'SCRAP',
+        toDock: 'SCRAP',
+        ...swSnap,
+      },
     };
   }
 
@@ -777,7 +805,16 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
       lastFailureReason: 'SCRAP_DISALLOWED',
       lastFailureDetail: { code: 'GOOD_SCRAPPED', dockId: 'SCRAP', actualDamaged: Boolean(item.damaged) },
       lastRoutedDock: 'SCRAP',
-      lastAnimEvent: { stepId: nextStep, type: 'COLLISION', item, targetDock: 'SCRAP' },
+      lastAnimEvent: {
+        stepId: nextStep,
+        seq: nextSeq,
+        type: 'COLLISION',
+        item,
+        dispatchedItem: item,
+        targetDock: 'SCRAP',
+        toDock: 'SCRAP',
+        ...swSnap,
+      },
     };
   }
 
@@ -794,7 +831,16 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
         actualDamaged: false,
       },
       lastRoutedDock: 'SCRAP',
-      lastAnimEvent: { stepId: nextStep, type: 'COLLISION', item, targetDock: 'SCRAP' },
+      lastAnimEvent: {
+        stepId: nextStep,
+        seq: nextSeq,
+        type: 'COLLISION',
+        item,
+        dispatchedItem: item,
+        targetDock: 'SCRAP',
+        toDock: 'SCRAP',
+        ...swSnap,
+      },
     };
   }
 
@@ -814,9 +860,14 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
     lastFailureDetail: queueDone && !docksOk ? { code: 'QUOTA_MISMATCH' } : undefined,
     lastAnimEvent: {
       stepId: nextStep,
+      seq: nextSeq,
       type: 'SCRAP_ITEM',
       item,
+      dispatchedItem: item,
       targetDock: 'SCRAP',
+      toDock: 'SCRAP',
+      targetSlotIndex: nextScrap.length - 1,
+      ...swSnap,
     },
   };
 }
@@ -836,6 +887,7 @@ export function applySwitchyardAction(
   }
 
   const nextStep = state.stepCount + 1;
+  const nextSeq = nextAnimSeq(state, nextStep);
   const activeStatus: SimulationStatus = state.status === 'IDLE' ? 'IDLE' : 'RUNNING';
 
   if (actionType === 'SWITCH_LEFT' || actionType === 'SWITCH_RIGHT') {
@@ -850,7 +902,13 @@ export function applySwitchyardAction(
         stepCount: nextStep,
         lastFailureReason: 'MISSING_SWITCH',
         lastFailureDetail: { code: 'INVALID_SWITCH' },
-        lastAnimEvent: { stepId: nextStep, type: 'COLLISION', junction },
+        lastAnimEvent: {
+          stepId: nextStep,
+          seq: nextSeq,
+          type: 'COLLISION',
+          junction,
+          ...getSwitchSnapshot(state.switches),
+        },
       };
     }
 
@@ -862,7 +920,13 @@ export function applySwitchyardAction(
         stepCount: nextStep,
         lastFailureReason: 'MISSING_SWITCH_B',
         lastFailureDetail: { code: 'INVALID_SWITCH' },
-        lastAnimEvent: { stepId: nextStep, type: 'COLLISION', junction },
+        lastAnimEvent: {
+          stepId: nextStep,
+          seq: nextSeq,
+          type: 'COLLISION',
+          junction,
+          ...getSwitchSnapshot(state.switches),
+        },
       };
     }
 
@@ -879,9 +943,11 @@ export function applySwitchyardAction(
       lastFailureDetail: undefined,
       lastAnimEvent: {
         stepId: nextStep,
+        seq: nextSeq,
         type: actionType,
         junction,
         direction: dir,
+        ...getSwitchSnapshot(nextSwitches),
       },
     };
   }
@@ -891,6 +957,8 @@ export function applySwitchyardAction(
   }
 
   if (actionType === 'SEND_NEXT') {
+    const swSnap = getSwitchSnapshot(state.switches);
+
     if (state.queue.length === 0) {
       return {
         ...state,
@@ -898,7 +966,7 @@ export function applySwitchyardAction(
         stepCount: nextStep,
         lastFailureReason: 'NO_ITEM_AT_SCANNER',
         lastFailureDetail: { code: 'QUEUE_EMPTY' },
-        lastAnimEvent: { stepId: nextStep, type: 'COLLISION' },
+        lastAnimEvent: { stepId: nextStep, seq: nextSeq, type: 'COLLISION', ...swSnap },
       };
     }
 
@@ -917,7 +985,15 @@ export function applySwitchyardAction(
         lastFailureReason: 'WRONG_DOCK',
         lastFailureDetail: { code: 'INVALID_SWITCH', dockId: targetDock },
         lastRoutedDock: targetDock,
-        lastAnimEvent: { stepId: nextStep, type: 'COLLISION', targetDock, switchesTraversed },
+        lastAnimEvent: {
+          stepId: nextStep,
+          seq: nextSeq,
+          type: 'COLLISION',
+          targetDock,
+          toDock: targetDock,
+          switchesTraversed,
+          ...swSnap,
+        },
       };
     }
 
@@ -933,14 +1009,19 @@ export function applySwitchyardAction(
         lastRoutedDock: targetDock,
         lastAnimEvent: {
           stepId: nextStep,
+          seq: nextSeq,
           type: 'COLLISION',
           item,
+          dispatchedItem: item,
           targetDock,
+          toDock: targetDock,
           switchesTraversed,
+          ...swSnap,
         },
       };
     }
 
+    const landedSlotIndex = dockObj.items.length;
     const nextDocks = state.docks.map((d) => {
       if (d.id !== targetDock) return d;
       const updated = [...d.items, item];
@@ -960,10 +1041,15 @@ export function applySwitchyardAction(
       lastFailureDetail: queueDone && !docksOk ? { code: 'QUOTA_MISMATCH' } : undefined,
       lastAnimEvent: {
         stepId: nextStep,
+        seq: nextSeq,
         type: 'SEND_NEXT',
         item,
+        dispatchedItem: item,
         targetDock,
+        toDock: targetDock,
+        targetSlotIndex: landedSlotIndex,
         switchesTraversed,
+        ...swSnap,
       },
     };
   }
