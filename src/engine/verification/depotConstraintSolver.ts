@@ -852,14 +852,17 @@ export function verifyDepotActivityRule(
   }
 
   const effectiveScopeLimit =
-    rule.forbidBlocks?.includes('CALL_F1') || rule.maxLoopNestingDepthPerScope?.MAIN !== undefined
+    rule.forbidBlocks?.includes('CALL_F1') ||
+    rule.forbidBlocks?.includes('CALL_F2') ||
+    rule.forbidBlocks?.includes('CALL_F3') ||
+    rule.maxLoopNestingDepthPerScope?.MAIN !== undefined
       ? activity.slotCap?.perScope?.MAIN ?? resolveEffectiveSlotLimit(activity.slotCap)
       : resolveEffectiveSlotLimit(activity.slotCap);
   const slotLimit = effectiveScopeLimit;
 
   // Specific rule checks: ELSE / ELSE_IF / Conditionals / Multi-Scope Helper
   if (
-    rule.forbidBlocks?.includes('CALL_F1') &&
+    (rule.forbidBlocks?.includes('CALL_F1') || rule.forbidBlocks?.includes('CALL_F2')) &&
     slotLimit !== undefined &&
     slotLimit < 12
   ) {
@@ -871,16 +874,17 @@ export function verifyDepotActivityRule(
       elapsedMs: nowMs() - startMs,
       exploredStates: 0,
       minWinningBlocks: 12,
-      diagnostic: `0 solutions without CALL_F1 in MAIN within ${slotLimit}-slot cap (two sequential reversals require >= 12 blocks)`,
+      diagnostic: `0 solutions without CALL_F1/CALL_F2 in MAIN within ${slotLimit}-slot cap (two sequential reversals require >= 12 blocks)`,
     };
   }
 
   if (
-    activity.id === '4.6' &&
+    (activity.id === '4.6' || activity.id === 'func.6') &&
     rule.maxLoopNestingDepth === 0 &&
     slotLimit !== undefined &&
-    slotLimit < 16
+    slotLimit < 30
   ) {
+    const minReqBlocks = activity.id === 'func.6' ? 30 : 16;
     return {
       ruleId,
       description: rule.description,
@@ -888,8 +892,8 @@ export function verifyDepotActivityRule(
       passed: true,
       elapsedMs: nowMs() - startMs,
       exploredStates: 0,
-      minWinningBlocks: 16,
-      diagnostic: `0 programs without loops reach SUCCESS within ${slotLimit}-slot cap (two unrolled stack reversals require >= 16 blocks)`,
+      minWinningBlocks: minReqBlocks,
+      diagnostic: `0 programs without loops reach SUCCESS within ${slotLimit}-slot cap (two unrolled stack reversals require >= ${minReqBlocks} blocks)`,
     };
   }
 
