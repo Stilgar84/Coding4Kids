@@ -225,19 +225,13 @@ describe('Commit 6: Padlock-Gated Ordered Waypoints (1 -> 2 -> Goal)', () => {
       expect(tick1.done).toBe(false);
       expect(tick1.nextGrid.flags.find((f: FlagObjective) => f.id === 'flag_2')?.collected).toBe(false);
 
-      // Step 2: Move East onto (2,0) = Goal while Flag 1 and Flag 2 are uncollected
+      // Step 2 (final block of ws): Move East onto (2,0) = locked Goal and finish cleanly as IDLE (not SUCCESS, not COLLISION)
       const tick2 = tickInterpreter(tick1.nextRuntime, ws, tick1.nextGrid);
       expect(tick2.nextGrid.robot.x).toBe(2);
       expect(tick2.nextGrid.robot.y).toBe(0);
-      expect(tick2.nextGrid.status).toBe('RUNNING');
-      expect(tick2.done).toBe(false);
-      expect(tick2.nextGrid.flags.find((f: FlagObjective) => f.id === 'goal_main')?.collected).toBe(false);
-
-      // Tick 3: End of program while standing on locked Goal -> finishes IDLE (not SUCCESS, not COLLISION)
-      const tick3 = tickInterpreter(tick2.nextRuntime, ws, tick2.nextGrid);
-      expect(tick3.done).toBe(true);
-      expect(tick3.nextGrid.status).toBe('IDLE');
-      expect(tick3.nextGrid.flags.every((f: FlagObjective) => !f.collected)).toBe(true);
+      expect(tick2.done).toBe(true);
+      expect(tick2.nextGrid.status).toBe('IDLE');
+      expect(tick2.nextGrid.flags.every((f: FlagObjective) => !f.collected)).toBe(true);
     });
 
     it('collecting 1 -> 2 -> Goal in order unlocks each stage and reaches SUCCESS', () => {

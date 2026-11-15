@@ -357,6 +357,8 @@ describe('Commit 14: Interactive World Items, Contextual Physics, Visuals & Sand
         floorSwitches: [{ id: 'sw_spawn', x: 1, y: 0, linkedGateId: 'g_spawn' }],
         lockedGates: [{ id: 'g_spawn', x: 2, y: 0, shape: 'circle', color: 'amber', linkedSwitchId: 'sw_spawn' }],
       });
+      expect(spawnOnSwitchMap.floorSwitches?.[0].active).toBe(true);
+      expect(spawnOnSwitchMap.lockedGates?.[0].unlocked).toBe(true);
       const directSynced = syncWorldSwitchesAndGates(
         spawnOnSwitchMap.floorSwitches,
         spawnOnSwitchMap.lockedGates,
