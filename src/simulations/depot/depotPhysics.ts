@@ -2,8 +2,10 @@ import { SimulationStatus } from '../../types';
 import {
   CrateColor,
   DEPOT_CRATE_COLORS,
+  DEPOT_DEFAULT_STACK_MASK,
   DEPOT_MAX_QUEUE_LENGTH,
   DEPOT_MAX_STACK_HEIGHT,
+  DEPOT_STATION_BITS,
   DepotFailureReason,
   DepotQueueItem,
   DepotSendGate,
@@ -12,16 +14,34 @@ import {
   DepotStationId,
 } from './types';
 
+export function normalizeCrateColor(raw: unknown): CrateColor {
+  if (raw === 'RED' || raw === 'BLUE' || raw === 'GREEN' || raw === 'AMBER') {
+    return raw;
+  }
+  const s = String(raw ?? '').trim().toUpperCase();
+  if (s === 'BLUE') return 'BLUE';
+  if (s === 'GREEN') return 'GREEN';
+  if (s === 'AMBER' || s === 'YELLOW') return 'AMBER';
+  return 'RED';
+}
+
+function cloneColorList(list?: readonly CrateColor[]): CrateColor[] {
+  return (list ?? []).map((c) => normalizeCrateColor(c));
+}
+
 export function cloneStacks(stacks?: DepotStacks): DepotStacks {
   return [
-    [...(stacks?.[0] ?? [])],
-    [...(stacks?.[1] ?? [])],
-    [...(stacks?.[2] ?? [])],
+    cloneColorList(stacks?.[0]),
+    cloneColorList(stacks?.[1]),
+    cloneColorList(stacks?.[2]),
   ];
 }
 
 export function cloneQueue(q?: DepotQueueItem[]): DepotQueueItem[] {
-  return (q ?? []).map((item) => ({ ...item }));
+  return (q ?? []).map((item) => ({
+    ...item,
+    color: normalizeCrateColor(item.color),
+  }));
 }
 
 export function normalizeDepotStation(raw: unknown): DepotStationId {
@@ -90,21 +110,123 @@ export const DEFAULT_SANDBOX_DEPOT_STACKS: DepotStacks = [
   [],
 ];
 
-export function createInitialDepotState(
-  overrides?: Partial<
-    Pick<
-      DepotState,
-      | 'stacks'
-      | 'initialStacks'
-      | 'targetStacks'
-      | 'targetOutput'
-      | 'workerStation'
-      | 'initialWorkerStation'
-      | 'queue'
-      | 'initialQueue'
-      | 'scrapCount'
-    >
+export const DEPOT_SANDBOX_DEFAULT_MASK =
+  DEPOT_DEFAULT_STACK_MASK | DEPOT_STATION_BITS.QUEUE | DEPOT_STATION_BITS.OUT;
+
+type DepotMaskInferenceInput = Partial<
+  Pick<
+    DepotState,
+    | 'targetOutput'
+    | 'output'
+    | 'queue'
+    | 'initialQueue'
+    | 'workerStation'
+    | 'initialWorkerStation'
+    | 'scrapCount'
   >
+>;
+
+/** Infers active station visibility bits from state payloads when activeStationsMask is omitted. */
+export function inferActiveStationsMask(state?: DepotMaskInferenceInput): number {
+  let mask = DEPOT_DEFAULT_STACK_MASK;
+  if (!state) return DEPOT_SANDBOX_DEFAULT_MASK;
+
+  const hasQueue =
+    (state.queue?.length ?? 0) > 0 ||
+    (state.initialQueue?.length ?? 0) > 0 ||
+    state.workerStation === 'QUEUE' ||
+    state.initialWorkerStation === 'QUEUE' ||
+    (state.scrapCount ?? 0) > 0;
+  if (hasQueue) mask |= DEPOT_STATION_BITS.QUEUE;
+
+  const hasOut = (state.targetOutput?.length ?? 0) > 0 || (state.output?.length ?? 0) > 0;
+  if (hasOut) mask |= DEPOT_STATION_BITS.OUT;
+
+  return mask;
+}
+
+/** Normalizes either a numeric bitmask or a station name list (e.g. ["STACK_1", "OUT"]) into DEPOT_STATION_BITS. */
+export function normalizeActiveStationsMask(
+  raw: unknown,
+  fallbackState?: DepotMaskInferenceInput
+): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const clean = Math.trunc(raw) & 0x7f;
+    return clean > 0 ? clean : DEPOT_DEFAULT_STACK_MASK;
+  }
+  if (Array.isArray(raw)) {
+    let mask = 0;
+    for (const entry of raw) {
+      const s = String(entry ?? '').trim().toUpperCase();
+      if (s === 'STACK_1' || s === 'S1' || s === '1') mask |= DEPOT_STATION_BITS.STACK_1;
+      else if (s === 'STACK_2' || s === 'S2' || s === '2') mask |= DEPOT_STATION_BITS.STACK_2;
+      else if (s === 'STACK_3' || s === 'S3' || s === '3') mask |= DEPOT_STATION_BITS.STACK_3;
+      else if (s === 'QUEUE' || s === 'Q') mask |= DEPOT_STATION_BITS.QUEUE;
+      else if (s === 'INPUT' || s === 'IN') mask |= DEPOT_STATION_BITS.INPUT;
+      else if (s === 'TAPE' || s === 'PHYSICAL_TAPE') mask |= DEPOT_STATION_BITS.PHYSICAL_TAPE;
+      else if (s === 'OUT' || s === 'OUTPUT') mask |= DEPOT_STATION_BITS.OUT;
+    }
+    if (mask > 0) return mask;
+  }
+  return inferActiveStationsMask(fallbackState);
+}
+
+/** Returns runtime active station bits, automatically keeping QUEUE/OUT visible if items arrive there. */
+export function getEffectiveActiveStationsMask(state: DepotState): number {
+  let mask =
+    state.activeStationsMask !== undefined
+      ? normalizeActiveStationsMask(state.activeStationsMask, state)
+      : inferActiveStationsMask(state);
+
+  if (state.output.length > 0 || (state.targetOutput?.length ?? 0) > 0) {
+    mask |= DEPOT_STATION_BITS.OUT;
+  }
+  if (
+    state.queue.length > 0 ||
+    state.initialQueue.length > 0 ||
+    state.workerStation === 'QUEUE' ||
+    state.scrapCount > 0
+  ) {
+    mask |= DEPOT_STATION_BITS.QUEUE;
+  }
+  return mask;
+}
+
+/** Returns ordered DepotStationId values permitted by an active-stations mask or state. */
+export function getActiveDepotStations(maskOrState?: number | DepotState): DepotStationId[] {
+  const mask =
+    typeof maskOrState === 'number'
+      ? normalizeActiveStationsMask(maskOrState)
+      : maskOrState
+        ? getEffectiveActiveStationsMask(maskOrState)
+        : DEPOT_SANDBOX_DEFAULT_MASK;
+
+  const out: DepotStationId[] = [];
+  if ((mask & DEPOT_STATION_BITS.STACK_1) !== 0) out.push('STACK_1');
+  if ((mask & DEPOT_STATION_BITS.STACK_2) !== 0) out.push('STACK_2');
+  if ((mask & DEPOT_STATION_BITS.STACK_3) !== 0) out.push('STACK_3');
+  if ((mask & DEPOT_STATION_BITS.QUEUE) !== 0) out.push('QUEUE');
+  return out.length > 0 ? out : ['STACK_1', 'STACK_2', 'STACK_3'];
+}
+
+export function createInitialDepotState(
+  overrides?: Omit<
+    Partial<
+      Pick<
+        DepotState,
+        | 'stacks'
+        | 'initialStacks'
+        | 'targetStacks'
+        | 'targetOutput'
+        | 'workerStation'
+        | 'initialWorkerStation'
+        | 'queue'
+        | 'initialQueue'
+        | 'scrapCount'
+      >
+    >,
+    never
+  > & { activeStationsMask?: number | readonly string[] }
 ): DepotState {
   const startStacks = cloneStacks(
     overrides?.initialStacks ?? overrides?.stacks ?? DEFAULT_SANDBOX_DEPOT_STACKS
@@ -113,13 +235,30 @@ export function createInitialDepotState(
     overrides?.initialWorkerStation ?? overrides?.workerStation ?? 'STACK_1'
   );
   const startQueue = cloneQueue(overrides?.initialQueue ?? overrides?.queue ?? []);
+  const stacks = cloneStacks(overrides?.stacks ?? startStacks);
+  const targetStacks = overrides?.targetStacks ? cloneStacks(overrides.targetStacks) : undefined;
+  const targetOutput = overrides?.targetOutput ? cloneColorList(overrides.targetOutput) : undefined;
+  const queue = cloneQueue(overrides?.queue ?? startQueue);
+  const scrapCount = overrides?.scrapCount ?? 0;
+
+  const activeStationsMask =
+    overrides === undefined
+      ? DEPOT_SANDBOX_DEFAULT_MASK
+      : normalizeActiveStationsMask(overrides.activeStationsMask, {
+          targetOutput,
+          queue,
+          initialQueue: startQueue,
+          workerStation: startStation,
+          initialWorkerStation: startStation,
+          scrapCount,
+        });
 
   return {
-    stacks: cloneStacks(overrides?.stacks ?? startStacks),
+    stacks,
     initialStacks: startStacks,
     output: [],
-    targetStacks: overrides?.targetStacks ? cloneStacks(overrides.targetStacks) : undefined,
-    targetOutput: overrides?.targetOutput ? [...overrides.targetOutput] : undefined,
+    targetStacks,
+    targetOutput,
     workerStation: startStation,
     initialWorkerStation: startStation,
     heldCrate: null,
@@ -127,9 +266,10 @@ export function createInitialDepotState(
     lastFailureReason: null,
     status: 'IDLE',
     stepCount: 0,
-    queue: cloneQueue(overrides?.queue ?? startQueue),
+    queue,
     initialQueue: startQueue,
-    scrapCount: overrides?.scrapCount ?? 0,
+    scrapCount,
+    activeStationsMask,
   };
 }
 
@@ -143,7 +283,7 @@ export function resetDepotState(state?: DepotState): DepotState {
     initialStacks: baseStacks,
     output: [],
     targetStacks: state.targetStacks ? cloneStacks(state.targetStacks) : undefined,
-    targetOutput: state.targetOutput ? [...state.targetOutput] : undefined,
+    targetOutput: state.targetOutput ? cloneColorList(state.targetOutput) : undefined,
     workerStation: baseStation,
     initialWorkerStation: baseStation,
     heldCrate: null,
@@ -154,6 +294,7 @@ export function resetDepotState(state?: DepotState): DepotState {
     queue: cloneQueue(baseQueue),
     initialQueue: baseQueue,
     scrapCount: 0,
+    activeStationsMask: state.activeStationsMask,
   };
 }
 

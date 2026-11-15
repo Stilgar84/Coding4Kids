@@ -15,6 +15,7 @@ import {
   createInitialDepotState,
   depotStateNeedsQueueVersion,
   indexToStation,
+  normalizeCrateColor,
   normalizeDepotStation,
   stationToCode,
   stationToIndex,
@@ -38,7 +39,7 @@ function isVarVal(val: unknown): boolean {
 }
 
 export function crateColorToByte(color: CrateColor): number {
-  return DEPOT_CRATE_COLORS[color]?.code ?? 0;
+  return DEPOT_CRATE_COLORS[normalizeCrateColor(color)]?.code ?? 0;
 }
 
 export function byteToCrateColor(byte: number): CrateColor {
