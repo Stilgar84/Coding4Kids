@@ -6,6 +6,7 @@ import {
   CURRICULUM_MODULES,
   ConditionExpr,
   CurriculumActivity,
+  CurriculumModule,
   resolveModuleIdAlias,
   resolveActivityIdAlias,
 } from '../src/data/curriculum';
@@ -60,6 +61,7 @@ import {
 import { SimulationTopLeftHud } from '../src/components/SimulationTopLeftHud';
 import { MultiRunPipsBarView } from '../src/components/MultiRunPipsBar';
 import { VariableWatchOverlay } from '../src/components/VariableWatchOverlay';
+import { BlockPalette } from '../src/components/BlockPalette';
 import { BlockSubpalette } from '../src/components/BlockSubpalette';
 import { ConditionBadge } from '../src/components/ConditionBadge';
 import { InteractiveControlsBar } from '../src/components/InteractiveControlsBar';
@@ -73,10 +75,22 @@ import {
 import { clearAllSavedPrograms, saveProgram } from '../src/services/localSaveService';
 import {
   DEFAULT_PROFILE_ID,
+  LEGACY_TO_SLUG_BADGE_MAP,
+  LEGACY_TO_SLUG_MODULE_MAP,
   ensureProfilesInitialized,
   exportProfileBackupToBinary,
+  getLessonAutosave,
+  getProfileProgress,
+  markLessonCompleted,
   resetAllProfileDataForTests,
+  sanitizeAutosaveWorkspace,
+  saveLessonAutosave,
 } from '../src/services/profileService';
+import {
+  clearPendingUpdateState,
+  consumeRestoredStateAfterUpdate,
+  saveStateBeforeUpdate,
+} from '../src/services/pwaStateRestoreService';
 import { SimulationStatus, TypedValue, VariableName, WorkspaceState } from '../src/types';
 
 function makeEmptyWorkspace(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
@@ -830,6 +844,267 @@ describe('Wave 3A: Phase 3 Platform (TypedValue, 0x30 CMP, Sensors, Interactive 
       );
       expect(policy.allowedCmpOps).toEqual(['=', '!=', '<', '<=', '>', '>=']);
       expect(policy.allowInteractiveEvents).toBe(true);
+    });
+
+    it('unlocks cmp ==> inter side-track DAG in markLessonCompleted, maps legacy module-5..8 badges, and preserves ON_* scopes in autosave & PWA restore', () => {
+      // Legacy module-5..8 and badge-module-5..8 mappings
+      expect(LEGACY_TO_SLUG_MODULE_MAP['module-5']).toBe('branch');
+      expect(LEGACY_TO_SLUG_MODULE_MAP['module-6']).toBe('var');
+      expect(LEGACY_TO_SLUG_MODULE_MAP['module-7']).toBe('cmp');
+      expect(LEGACY_TO_SLUG_MODULE_MAP['module-8']).toBe('inter');
+      expect(LEGACY_TO_SLUG_BADGE_MAP['badge-module-5']).toBe('badge-branch');
+      expect(LEGACY_TO_SLUG_BADGE_MAP['badge-module-6']).toBe('badge-var');
+      expect(LEGACY_TO_SLUG_BADGE_MAP['badge-module-7']).toBe('badge-cmp');
+      expect(LEGACY_TO_SLUG_BADGE_MAP['badge-module-8']).toBe('badge-inter');
+
+      // Autosave & PWA restore preserve non-empty ON_* scopes and Phase 3 terminal statuses
+      const eventWorkspace = makeEmptyWorkspace({
+        MAIN: [{ id: 'm1', type: 'FORWARD' }],
+        ON_TAP: [{ id: 't1', type: 'TURN_LEFT' }],
+        ON_KEY_LEFT: [{ id: 'kl1', type: 'TURN_RIGHT' }],
+        ON_KEY_RIGHT: [],
+      });
+      const sanitized = sanitizeAutosaveWorkspace(eventWorkspace);
+      expect(sanitized.ON_TAP).toHaveLength(1);
+      expect(sanitized.ON_TAP?.[0]?.type).toBe('TURN_LEFT');
+      expect(sanitized.ON_KEY_LEFT).toHaveLength(1);
+      expect(sanitized.ON_KEY_RIGHT).toBeUndefined();
+
+      saveLessonAutosave(DEFAULT_PROFILE_ID, 'inter.test', eventWorkspace, 1);
+      const loadedAutosave = getLessonAutosave(DEFAULT_PROFILE_ID, 'inter.test');
+      expect(loadedAutosave?.workspace.ON_TAP?.[0]?.type).toBe('TURN_LEFT');
+      expect(loadedAutosave?.workspace.ON_KEY_LEFT?.[0]?.type).toBe('TURN_RIGHT');
+
+      clearPendingUpdateState();
+      const s = useAppStore.getState();
+      const savedPwa = saveStateBeforeUpdate({
+        activeProfileId: DEFAULT_PROFILE_ID,
+        appMode: 'sandbox',
+        activeActivityId: '1.1',
+        activeActivityVersion: 1,
+        curriculumWorkspaces: {},
+        sandboxSnapshot: null,
+        activeSimId: 'grid',
+        currentLevel: 1,
+        workspace: eventWorkspace,
+        savedWorkspaces: {},
+        grid: s.grid,
+        turtleState: { ...s.turtleState, status: 'MATH_ERROR' },
+        beatState: s.beatState,
+        depotState: s.depotState,
+        switchyardState: s.switchyardState,
+        runtime: {
+          ...createInitialInterpreterState(),
+          activeScope: 'ON_KEY_LEFT',
+          status: 'TYPE_ERROR',
+        },
+        activeScope: 'ON_KEY_LEFT',
+        selectedBlockId: null,
+        speed: 400,
+        editorTool: 'NONE',
+        isSubpaletteCollapsed: false,
+        isMapHidden: false,
+        isFunctionBarOpen: true,
+        past: [],
+        future: [],
+      });
+      expect(savedPwa).toBe(true);
+      const restoredPwa = consumeRestoredStateAfterUpdate(s.grid);
+      expect(restoredPwa?.workspace.ON_TAP?.[0]?.type).toBe('TURN_LEFT');
+      expect(restoredPwa?.workspace.ON_KEY_LEFT?.[0]?.type).toBe('TURN_RIGHT');
+      expect(restoredPwa?.activeScope).toBe('ON_KEY_LEFT');
+      expect(restoredPwa?.turtleState.status).toBe('MATH_ERROR');
+      expect(restoredPwa?.runtime?.status).toBe('TYPE_ERROR');
+
+      // Side-Track DAG unlock in markLessonCompleted: cmp -> tape (linear) AND cmp ==> inter (side-track),
+      // while completing tape alone does NOT linearly unlock inter (since inter requires cmp).
+      const mockCmpMod: CurriculumModule = {
+        id: 'cmp',
+        order: 7,
+        icon: '⚖️',
+        title: 'Comparisons',
+        summary: 'Compare values',
+        activityIds: ['cmp.A'],
+        capstoneIds: ['cmp.A'],
+        badgeId: 'badge-cmp',
+        badgeIcon: '⚖️',
+        badgeTitle: 'Comparer',
+      };
+      const mockTapeMod: CurriculumModule = {
+        id: 'tape',
+        order: 8,
+        icon: '🎞️',
+        title: 'Tape',
+        summary: 'Tape ops',
+        activityIds: ['tape.A'],
+        capstoneIds: ['tape.A'],
+        badgeId: 'badge-tape',
+        badgeIcon: '🎞️',
+        badgeTitle: 'Tape Master',
+      };
+      const mockInterMod: CurriculumModule = {
+        id: 'inter',
+        order: 9,
+        icon: '🕹️',
+        title: 'Interactivity',
+        summary: 'Events & keys',
+        activityIds: ['inter.A'],
+        capstoneIds: ['inter.A'],
+        badgeId: 'badge-inter',
+        badgeIcon: '🕹️',
+        badgeTitle: 'Controller',
+      };
+      const mockActs: CurriculumActivity[] = [
+        {
+          id: 'cmp.A',
+          version: 1,
+          moduleId: 'cmp',
+          format: 'puzzle',
+          simId: 'turtle',
+          icon: '⚖️',
+          title: 'CMP Capstone',
+          concept: 'cmp',
+          palette: { allowedSimBlocks: ['FORWARD'] },
+        },
+        {
+          id: 'tape.A',
+          version: 1,
+          moduleId: 'tape',
+          format: 'puzzle',
+          simId: 'depot',
+          icon: '🎞️',
+          title: 'Tape Capstone',
+          concept: 'tape',
+          palette: { allowedSimBlocks: ['MOVE_LEFT'] },
+        },
+        {
+          id: 'inter.A',
+          version: 1,
+          moduleId: 'inter',
+          format: 'puzzle',
+          simId: 'turtle',
+          icon: '🕹️',
+          title: 'Inter Capstone',
+          concept: 'inter',
+          palette: { allowedSimBlocks: ['FORWARD'] },
+        },
+      ];
+
+      CURRICULUM_MODULES.push(mockCmpMod, mockTapeMod, mockInterMod);
+      CURRICULUM_ACTIVITIES.push(...mockActs);
+      try {
+        // Completing tape.A alone must NOT unlock inter because inter has prerequisite ['cmp']
+        const afterTape = markLessonCompleted(DEFAULT_PROFILE_ID, 'tape.A', 1);
+        expect(afterTape.progress.unlockedModules).not.toContain('inter');
+
+        // Completing cmp.A unlocks BOTH linear neighbor 'tape' AND side-track 'inter' (even across 'tape')
+        const afterCmp = markLessonCompleted(DEFAULT_PROFILE_ID, 'cmp.A', 1);
+        expect(afterCmp.progress.unlockedModules).toContain('tape');
+        expect(afterCmp.progress.unlockedModules).toContain('inter');
+        expect(getProfileProgress(DEFAULT_PROFILE_ID).unlockedModules).toContain('inter');
+      } finally {
+        for (const m of [mockCmpMod, mockTapeMod, mockInterMod]) {
+          const idx = CURRICULUM_MODULES.indexOf(m);
+          if (idx >= 0) CURRICULUM_MODULES.splice(idx, 1);
+        }
+        for (const a of mockActs) {
+          const idx = CURRICULUM_ACTIVITIES.indexOf(a);
+          if (idx >= 0) CURRICULUM_ACTIVITIES.splice(idx, 1);
+        }
+      }
+    });
+
+    it('renders zero-reading #301 rotary $tileDial & SensorVisual badges in BlockSubpalette formatOperandDisplay (no raw $sensorId or Dial text)', () => {
+      const s = useAppStore.getState();
+      s.setAppMode('sandbox');
+      s.setSimEnvironment('switchyard');
+      useAppStore.setState({
+        isSubpaletteCollapsed: false,
+        workspace: makeEmptyWorkspace({
+          MAIN: [
+            { id: 'va-dial', type: 'VAR_ASSIGN', params: { a: 'a', b: '$tileDial' } },
+            { id: 'va-d6', type: 'VAR_ASSIGN', params: { a: 'b', b: '$randD6' } },
+            { id: 'vo-sensors', type: 'VAR_OP', params: { a: 'c', b: '$tileDial', op: '+', c: '$itemWeight' } },
+          ],
+        }),
+        selectedBlockId: 'va-dial',
+      });
+      const assignDialHtml = renderToStaticMarkup(React.createElement(BlockSubpalette));
+      expect(assignDialHtml).toContain('data-testid="tile-dial-glyph"');
+      expect(assignDialHtml).not.toContain('🎯 Dial');
+
+      useAppStore.setState({ selectedBlockId: 'va-d6' });
+      const assignRandHtml = renderToStaticMarkup(React.createElement(BlockSubpalette));
+      expect(assignRandHtml).toContain('data-testid="sensor-badge-$randD6"');
+      expect(assignRandHtml).not.toContain('>$randD6<');
+
+      useAppStore.setState({ selectedBlockId: 'vo-sensors' });
+      const varOpHtml = renderToStaticMarkup(React.createElement(BlockSubpalette));
+      expect(varOpHtml).toContain('data-testid="tile-dial-glyph"');
+      expect(varOpHtml).toContain('data-testid="sensor-badge-$itemWeight"');
+      expect(varOpHtml).not.toContain('🎯 Dial');
+      expect(varOpHtml).not.toContain('>$itemWeight<');
+    });
+
+    it('renders zero-reading ON_* event scope tabs in BlockPalette and disables Toolbar Play on unclosed loops in ON_* scopes', () => {
+      // 1. Default Sandbox with empty ON_* scopes keeps only MAIN/F1..F3 scope tabs
+      const s = useAppStore.getState();
+      s.setAppMode('sandbox');
+      s.setSimEnvironment('turtle');
+      useAppStore.setState({
+        workspace: makeEmptyWorkspace(),
+        activeScope: 'MAIN',
+        isFunctionBarOpen: true,
+      });
+      const sandboxPaletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
+      expect(sandboxPaletteHtml).toContain('data-testid="palette-tab-main"');
+      expect(sandboxPaletteHtml).toContain('data-testid="palette-tab-f1"');
+      expect(sandboxPaletteHtml).not.toContain('data-testid="palette-tab-on_tap"');
+
+      // 2. Curriculum activity with ON_TAP & ON_KEY_LEFT in allowedScopes renders zero-reading tabs & toggle label
+      const interScopeAct: CurriculumActivity = {
+        id: 'inter.scopes.test',
+        version: 1,
+        moduleId: 'inter',
+        format: 'puzzle',
+        simId: 'turtle',
+        icon: '🕹️',
+        title: 'Event Scopes Test',
+        concept: 'events',
+        palette: {
+          allowedSimBlocks: ['FORWARD', 'TURN_LEFT'],
+          allowedControlBlocks: ['LOOP_START'],
+          allowedScopes: ['MAIN', 'ON_TAP', 'ON_KEY_LEFT'],
+        },
+      };
+      CURRICULUM_ACTIVITIES.push(interScopeAct);
+      try {
+        s.setCurriculumActivity('inter.scopes.test');
+        s.setActiveScope('ON_KEY_LEFT');
+        useAppStore.setState({ isFunctionBarOpen: true });
+
+        const interPaletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
+        expect(interPaletteHtml).toContain('data-testid="palette-tab-on_tap"');
+        expect(interPaletteHtml).toContain('data-testid="palette-tab-on_key_left"');
+        expect(interPaletteHtml).toContain('👆');
+        expect(interPaletteHtml).toContain('◀');
+        expect(interPaletteHtml).not.toContain('>ON_KEY_LEFT<');
+
+        // 3. Unclosed LOOP_START inside ON_TAP disables Toolbar Play button even when MAIN is valid
+        useAppStore.setState({
+          workspace: makeEmptyWorkspace({
+            MAIN: [{ id: 'm-ok', type: 'FORWARD' }],
+            ON_TAP: [{ id: 'bad-loop', type: 'LOOP_START', params: { count: 3 } }],
+          }),
+        });
+        const toolbarHtml = renderToStaticMarkup(React.createElement(Toolbar));
+        const playBtnMatch = toolbarHtml.match(/<button[^>]*data-testid="btn-play"[^>]*>/);
+        expect(playBtnMatch).not.toBeNull();
+        expect(playBtnMatch?.[0]).toContain('disabled=""');
+      } finally {
+        const idx = CURRICULUM_ACTIVITIES.indexOf(interScopeAct);
+        if (idx >= 0) CURRICULUM_ACTIVITIES.splice(idx, 1);
+      }
     });
   });
 });

@@ -167,11 +167,13 @@ const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.mem
     );
   }
 
-  const formatOperandDisplay = (v: any) => {
-    if (v === '$tileDial') return '🎯 Dial';
-    if (v === '$x') return '📍X';
-    if (v === '$y') return '📍Y';
-    if (v === '$heading') return '🧭∠';
+  const formatOperandDisplay = (v: any): React.ReactNode => {
+    if (v === '$tileDial') {
+      return <TileDialGlyphSvg compact className="inline-block align-middle" />;
+    }
+    if (typeof v === 'string' && v.startsWith('$')) {
+      return <SensorVisual sensorId={v} compact />;
+    }
     if (typeof v === 'string') return <span className="italic">{v}</span>;
     return v;
   };

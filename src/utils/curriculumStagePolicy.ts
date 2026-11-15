@@ -559,7 +559,18 @@ export function computeSlotBudget(
   slotCap?: SlotCapConfig
 ): SlotBudgetStatus {
   const scopeUsed = workspace[scope]?.length ?? 0;
-  const totalUsed = ALL_SCOPES.reduce((sum, s) => sum + (workspace[s]?.length ?? 0), 0);
+  const totalUsed = (
+    [
+      ...ALL_SCOPES,
+      'ON_TAP',
+      'ON_KEY_UP',
+      'ON_KEY_DOWN',
+      'ON_KEY_LEFT',
+      'ON_KEY_RIGHT',
+      'ON_KEY_A',
+      'ON_KEY_B',
+    ] as ScopeType[]
+  ).reduce((sum, s) => sum + (workspace[s]?.length ?? 0), 0);
 
   if (appMode !== 'curriculum' || !slotCap) {
     return {

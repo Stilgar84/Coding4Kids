@@ -196,30 +196,85 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
 
 const NUMBER_BADGES = [2, 3, 4, 5, 6, 7, 8, 9];
 
-const PALETTE_SCOPE_TABS = [
+const PALETTE_SCOPE_TABS: Array<{
+  id: ScopeType;
+  label: string;
+  ariaLabel?: string;
+  icon: React.ReactNode;
+  activeColor: string;
+}> = [
   {
-    id: 'MAIN' as ScopeType,
+    id: 'MAIN',
     label: 'Main',
     icon: <Sparkles className="w-3.5 h-3.5 text-yellow-300" />,
     activeColor: 'bg-indigo-600 border-indigo-400 text-white',
   },
   {
-    id: 'F1' as ScopeType,
+    id: 'F1',
     label: '1',
     icon: <span className="font-black text-xs">1</span>,
     activeColor: 'bg-emerald-600 border-emerald-400 text-white',
   },
   {
-    id: 'F2' as ScopeType,
+    id: 'F2',
     label: '2',
     icon: <span className="font-black text-xs">2</span>,
     activeColor: 'bg-blue-600 border-blue-400 text-white',
   },
   {
-    id: 'F3' as ScopeType,
+    id: 'F3',
     label: '3',
     icon: <span className="font-black text-xs">3</span>,
     activeColor: 'bg-rose-600 border-rose-400 text-white',
+  },
+  {
+    id: 'ON_TAP',
+    label: '👆',
+    ariaLabel: 'On Tap',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-amber-600 border-amber-300 text-white',
+  },
+  {
+    id: 'ON_KEY_UP',
+    label: '▲',
+    ariaLabel: 'On Key Up',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-sky-600 border-sky-300 text-white',
+  },
+  {
+    id: 'ON_KEY_DOWN',
+    label: '▼',
+    ariaLabel: 'On Key Down',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-sky-600 border-sky-300 text-white',
+  },
+  {
+    id: 'ON_KEY_LEFT',
+    label: '◀',
+    ariaLabel: 'On Key Left',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-sky-600 border-sky-300 text-white',
+  },
+  {
+    id: 'ON_KEY_RIGHT',
+    label: '▶',
+    ariaLabel: 'On Key Right',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-sky-600 border-sky-300 text-white',
+  },
+  {
+    id: 'ON_KEY_A',
+    label: 'A',
+    ariaLabel: 'On Key A',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-purple-600 border-purple-300 text-white',
+  },
+  {
+    id: 'ON_KEY_B',
+    label: 'B',
+    ariaLabel: 'On Key B',
+    icon: <span className="text-[10px] leading-none" aria-hidden="true">⚡</span>,
+    activeColor: 'bg-purple-600 border-purple-300 text-white',
   },
 ];
 
@@ -548,8 +603,10 @@ export const BlockPalette: React.FC = React.memo(() => {
   const visibleControlItems = CORE_CONTROL_ITEMS.filter((item) =>
     policy.allowedControlTypes.has(item.type)
   );
-  const visibleScopeTabs = PALETTE_SCOPE_TABS.filter((tab) =>
-    policy.allowedScopes.includes(tab.id)
+  const visibleScopeTabs = PALETTE_SCOPE_TABS.filter(
+    (tab) =>
+      policy.allowedScopes.includes(tab.id) ||
+      (tab.id.startsWith('ON_') && (workspace[tab.id]?.length ?? 0) > 0)
   );
   const showBadgeRow = policy.allowRepeatBadges || policy.paletteVariableBadges.length > 0;
 
@@ -975,6 +1032,8 @@ export const BlockPalette: React.FC = React.memo(() => {
                 ? 'bg-blue-600/30 border-blue-400 text-blue-100 shadow-sm'
                 : activeScope === 'F3'
                 ? 'bg-rose-600/30 border-rose-400 text-rose-100 shadow-sm'
+                : activeScope.startsWith('ON_')
+                ? 'bg-sky-600/30 border-sky-400 text-sky-100 shadow-sm'
                 : isFunctionBarOpen
                 ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-md ring-2 ring-indigo-400/40'
                 : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
@@ -982,7 +1041,11 @@ export const BlockPalette: React.FC = React.memo(() => {
           >
             <Layers className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-300 stroke-[2.2]" />
             <span className="font-bold text-[10px] md:text-xs tracking-tight">
-              {activeScope === 'MAIN' ? 'Main' : activeScope}
+              {activeScope === 'MAIN'
+                ? 'Main'
+                : activeScope.startsWith('ON_')
+                ? (PALETTE_SCOPE_TABS.find((t) => t.id === activeScope)?.label ?? '⚡')
+                : activeScope}
             </span>
           </button>
         )}
@@ -1164,8 +1227,12 @@ export const BlockPalette: React.FC = React.memo(() => {
                 aria-pressed={tabIsActive}
                 aria-label={
                   showTabPill
-                    ? `${tab.id === 'MAIN' ? 'Main' : tab.label} tab, ${tabBudget.counterUsed} of ${tabBudget.counterMax} slots used`
-                    : tab.id === 'MAIN' ? 'Main tab' : `Function ${tab.label} tab`
+                    ? `${tab.ariaLabel ?? (tab.id === 'MAIN' ? 'Main' : tab.label)} tab, ${tabBudget.counterUsed} of ${tabBudget.counterMax} slots used`
+                    : tab.ariaLabel
+                    ? `${tab.ariaLabel} tab`
+                    : tab.id === 'MAIN'
+                    ? 'Main tab'
+                    : `Function ${tab.label} tab`
                 }
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all active:scale-95 ${
                   tabIsActive

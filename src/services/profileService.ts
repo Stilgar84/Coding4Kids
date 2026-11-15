@@ -1,13 +1,31 @@
-import { CodeBlock, WorkspaceState } from '../types';
+import { CodeBlock, EventScopeType, WorkspaceState } from '../types';
 import * as CurriculumData from '../data/curriculum';
+import {
+  CURRICULUM_SIDE_TRACK_PREREQUISITES,
+  getModulePrerequisites,
+} from '../utils/curriculumStagePolicy';
 
 const { CURRICULUM_MODULES, getActivitiesForModule } = CurriculumData;
+
+const PROFILE_EVENT_SCOPE_KEYS: readonly EventScopeType[] = [
+  'ON_TAP',
+  'ON_KEY_UP',
+  'ON_KEY_DOWN',
+  'ON_KEY_LEFT',
+  'ON_KEY_RIGHT',
+  'ON_KEY_A',
+  'ON_KEY_B',
+];
 
 export const LEGACY_TO_SLUG_MODULE_MAP: Record<string, string> = {
   'module-1': 'seq',
   'module-2': 'param',
   'module-3': 'loop',
   'module-4': 'func',
+  'module-5': 'branch',
+  'module-6': 'var',
+  'module-7': 'cmp',
+  'module-8': 'inter',
 };
 
 export const LEGACY_TO_SLUG_BADGE_MAP: Record<string, string> = {
@@ -15,6 +33,10 @@ export const LEGACY_TO_SLUG_BADGE_MAP: Record<string, string> = {
   'badge-module-2': 'badge-param',
   'badge-module-3': 'badge-loop',
   'badge-module-4': 'badge-func',
+  'badge-module-5': 'badge-branch',
+  'badge-module-6': 'badge-var',
+  'badge-module-7': 'badge-cmp',
+  'badge-module-8': 'badge-inter',
 };
 
 export const LEGACY_TO_SLUG_ACTIVITY_MAP: Record<string, string> = {
@@ -462,12 +484,19 @@ function sanitizeBlockList(raw: unknown): CodeBlock[] {
 
 export function sanitizeAutosaveWorkspace(raw: unknown): WorkspaceState {
   const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  return {
+  const ws: WorkspaceState = {
     MAIN: sanitizeBlockList(src.MAIN),
     F1: sanitizeBlockList(src.F1),
     F2: sanitizeBlockList(src.F2),
     F3: sanitizeBlockList(src.F3),
   };
+  for (const sc of PROFILE_EVENT_SCOPE_KEYS) {
+    const sanitized = sanitizeBlockList(src[sc]);
+    if (sanitized.length > 0) {
+      ws[sc] = sanitized;
+    }
+  }
+  return ws;
 }
 
 /**
@@ -1026,6 +1055,7 @@ export function markLessonCompleted(
   const unlockedSet = new Set<string>(current.unlockedModules);
   const badgeSet = new Set<string>(current.earnedBadges);
   const newlyEarnedBadges: string[] = [];
+  const completedModuleIds = new Set<string>();
 
   for (let i = 0; i < CURRICULUM_MODULES.length; i++) {
     const mod = CURRICULUM_MODULES[i];
@@ -1043,13 +1073,35 @@ export function markLessonCompleted(
       );
 
     const hasModBadgeAlready = getBadgeIdVariants(mod.badgeId).some((b) => badgeSet.has(b));
+    const isModDone = allCapstonesDone || allRegisteredActivitiesDone || hasModBadgeAlready;
+    if (isModDone) {
+      completedModuleIds.add(CurriculumData.resolveModuleIdAlias(mod.id));
+    }
     if ((allCapstonesDone || allRegisteredActivitiesDone) && !hasModBadgeAlready) {
       badgeSet.add(mod.badgeId);
       newlyEarnedBadges.push(mod.badgeId);
     }
 
-    if ((allCapstonesDone || allRegisteredActivitiesDone) && CURRICULUM_MODULES[i + 1]) {
-      unlockedSet.add(CURRICULUM_MODULES[i + 1].id);
+    const nextMod = CURRICULUM_MODULES[i + 1];
+    if (
+      (allCapstonesDone || allRegisteredActivitiesDone) &&
+      nextMod &&
+      getModulePrerequisites(nextMod.id).length === 0
+    ) {
+      unlockedSet.add(nextMod.id);
+    }
+  }
+
+  for (const badgeId of badgeSet) {
+    const canonicalBadge = LEGACY_TO_SLUG_BADGE_MAP[badgeId] ?? badgeId;
+    if (canonicalBadge.startsWith('badge-')) {
+      completedModuleIds.add(CurriculumData.resolveModuleIdAlias(canonicalBadge.slice(6)));
+    }
+  }
+
+  for (const [sideTrackModId, prereqs] of Object.entries(CURRICULUM_SIDE_TRACK_PREREQUISITES)) {
+    if (prereqs.length > 0 && prereqs.every((req) => completedModuleIds.has(req))) {
+      unlockedSet.add(sideTrackModId);
     }
   }
 
