@@ -2,7 +2,7 @@ import React from 'react';
 import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
 import { ParamVisual } from './params/VisualParamBadges';
-import { BinaryOp } from '../types';
+import { BinaryOp, CodeBlock } from '../types';
 import {
   computeStagedPalettePolicy,
   getAllowedParamDefs,
@@ -13,27 +13,13 @@ const COMMON_NUMBERS = [0, 1, 2, 3, 5, 10, 45, 90, 180];
 const ALL_OPS: BinaryOp[] = ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'];
 
 export const BlockSubpalette: React.FC = React.memo(() => {
-  const {
-    appMode,
-    activeActivityId,
-    activeActivityVersion,
-    activeSimId,
-    activeScope,
-    workspace,
-    selectedBlockId,
-    updateBlockParams,
-    isSubpaletteCollapsed,
-  } = useAppStoreSelector((s) => ({
-    appMode: s.appMode,
-    activeActivityId: s.activeActivityId,
-    activeActivityVersion: s.activeActivityVersion,
-    activeSimId: s.activeSimId,
-    activeScope: s.activeScope,
-    workspace: s.workspace,
-    selectedBlockId: s.selectedBlockId,
-    updateBlockParams: s.updateBlockParams,
-    isSubpaletteCollapsed: s.isSubpaletteCollapsed,
-  }));
+  const { activeScope, workspace, selectedBlockId, isSubpaletteCollapsed } =
+    useAppStoreSelector((s) => ({
+      activeScope: s.activeScope,
+      workspace: s.workspace,
+      selectedBlockId: s.selectedBlockId,
+      isSubpaletteCollapsed: s.isSubpaletteCollapsed,
+    }));
 
   if (isSubpaletteCollapsed) {
     return null;
@@ -46,17 +32,38 @@ export const BlockSubpalette: React.FC = React.memo(() => {
     return null;
   }
 
-  const currentSimEnv = getSimEnvironment(activeSimId);
-  const simPaletteItems = currentSimEnv?.paletteItems || [];
-  const activeActivity = resolveActiveCurriculumActivity(
-    appMode,
-    activeActivityId,
-    activeActivityVersion
-  );
-  const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
-  const targetVarNames = policy.subpaletteVariableNames;
-  const operandVarNames =
-    policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
+  return <BlockSubpaletteContent selectedBlock={selectedBlock} />;
+});
+
+const BlockSubpaletteContent: React.FC<{ selectedBlock: CodeBlock }> = React.memo(
+  ({ selectedBlock }) => {
+    const {
+      appMode,
+      activeActivityId,
+      activeActivityVersion,
+      activeSimId,
+      activeScope,
+      updateBlockParams,
+    } = useAppStoreSelector((s) => ({
+      appMode: s.appMode,
+      activeActivityId: s.activeActivityId,
+      activeActivityVersion: s.activeActivityVersion,
+      activeSimId: s.activeSimId,
+      activeScope: s.activeScope,
+      updateBlockParams: s.updateBlockParams,
+    }));
+
+    const currentSimEnv = getSimEnvironment(activeSimId);
+    const simPaletteItems = currentSimEnv?.paletteItems || [];
+    const activeActivity = resolveActiveCurriculumActivity(
+      appMode,
+      activeActivityId,
+      activeActivityVersion
+    );
+    const policy = computeStagedPalettePolicy(appMode, activeActivity, simPaletteItems);
+    const targetVarNames = policy.subpaletteVariableNames;
+    const operandVarNames =
+      policy.isCurriculum && !policy.allowVariables ? [] : policy.subpaletteOperandVarNames;
 
   const availableSensors: Array<{ id: string; label: string; icon: string }> = React.useMemo(() => {
     if (policy.isCurriculum && !policy.allowVariables) return [];
