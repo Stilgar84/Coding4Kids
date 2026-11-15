@@ -4,16 +4,24 @@ import { BeatTriggerEvent } from './types';
 export type BeatAudioStatus = 'uninitialized' | 'running' | 'suspended' | 'unavailable';
 export type BeatSynthSource = 'main' | 'preview';
 
-// C4..C5 Major Scale frequencies (Hz) for Tier 2 PLAY_NOTE (1..8)
+// C4..D6 2-Octave C Major Scale frequencies (Hz) for PLAY_NOTE (1..16)
 export const BEAT_SCALE_FREQUENCIES: readonly number[] = [
-  261.63, // 1: C4
-  293.66, // 2: D4
-  329.63, // 3: E4
-  349.23, // 4: F4
-  392.0,  // 5: G4
-  440.0,  // 6: A4
-  493.88, // 7: B4
-  523.25, // 8: C5
+  261.63,  // 1: C4
+  293.66,  // 2: D4
+  329.63,  // 3: E4
+  349.23,  // 4: F4
+  392.0,   // 5: G4
+  440.0,   // 6: A4
+  493.88,  // 7: B4
+  523.25,  // 8: C5
+  587.33,  // 9: D5
+  659.25,  // 10: E5
+  698.46,  // 11: F5
+  783.99,  // 12: G5
+  880.0,   // 13: A5
+  987.77,  // 14: B5
+  1046.5,  // 15: C6
+  1174.66, // 16: D6
 ];
 
 interface StoppableNode {
@@ -67,7 +75,7 @@ export function getBeatNoteDurationSec(
   const speedMs = typeof speed === 'number' && Number.isFinite(speed) && speed > 0 ? speed : 400;
   const beatSec = Math.max(0.025, (speedMs / 1000) * 0.9);
   const mult = Number.isFinite(durationBeats) && durationBeats > 0 ? durationBeats : 1;
-  return Math.max(0.025, Math.min(2.0, beatSec * mult));
+  return Math.max(0.025, Math.min(4.0, beatSec * mult));
 }
 
 export function getBeatEventSoundDurationMs(
@@ -96,6 +104,8 @@ export function getBeatEventSoundDurationMs(
 
 export class BeatSynthEngine {
   private ctx: AudioContext | null = null;
+  private masterCompressor: DynamicsCompressorNode | null = null;
+  private masterCompressorCtx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private sampleCache = new Map<string, AudioBuffer>();
   private noteCacheKeys: string[] = [];
@@ -331,6 +341,49 @@ export class BeatSynthEngine {
     return t + (t < 0.05 ? 0.015 : 0.005);
   }
 
+  /**
+   * Routes synth voices through a master `DynamicsCompressorNode` soft limiter
+   * when supported by `AudioContext`, preventing clipping on fast multi-voice runs
+   * while falling back gracefully on minimal test mocks.
+   */
+  private getOutputDestination(ctx: AudioContext): AudioNode {
+    if (this.masterCompressor && this.masterCompressorCtx === ctx) {
+      return this.masterCompressor;
+    }
+    if (typeof (ctx as Partial<AudioContext>).createDynamicsCompressor === 'function') {
+      try {
+        const comp = ctx.createDynamicsCompressor();
+        const now = ctx.currentTime || 0;
+        if (comp.threshold && typeof comp.threshold.setValueAtTime === 'function') {
+          comp.threshold.setValueAtTime(-12, now);
+        }
+        if (comp.knee && typeof comp.knee.setValueAtTime === 'function') {
+          comp.knee.setValueAtTime(18, now);
+        }
+        if (comp.ratio && typeof comp.ratio.setValueAtTime === 'function') {
+          comp.ratio.setValueAtTime(6, now);
+        }
+        if (comp.attack && typeof comp.attack.setValueAtTime === 'function') {
+          comp.attack.setValueAtTime(0.003, now);
+        }
+        if (comp.release && typeof comp.release.setValueAtTime === 'function') {
+          comp.release.setValueAtTime(0.15, now);
+        }
+        comp.connect(ctx.destination);
+        this.masterCompressor = comp;
+        this.masterCompressorCtx = ctx;
+        return comp;
+      } catch {
+        // Fall through to ctx.destination
+      }
+    }
+    return ctx.destination;
+  }
+
+  getMasterCompressor(): DynamicsCompressorNode | null {
+    return this.masterCompressor;
+  }
+
   private getNoiseBuffer(ctx: AudioContext): AudioBuffer | null {
     if (this.noiseBuffer) return this.noiseBuffer;
     try {
@@ -438,7 +491,7 @@ export class BeatSynthEngine {
     const now = this.getScheduleStartTime(ctx);
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(ctx.destination);
+    src.connect(this.getOutputDestination(ctx));
     this.trackSource(src);
     src.start(now);
     src.stop(now + buffer.length / (ctx.sampleRate || 44100));
@@ -723,8 +776,10 @@ export class BeatSynthEngine {
       gain.gain.linearRampToValueAtTime(0.45, now + 0.005 * s);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2 * s);
 
+      const dest = this.getOutputDestination(ctx);
+
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(dest);
 
       this.trackSource(osc);
       osc.start(now);
@@ -741,7 +796,7 @@ export class BeatSynthEngine {
       clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03 * s);
 
       clickOsc.connect(clickGain);
-      clickGain.connect(ctx.destination);
+      clickGain.connect(dest);
 
       this.trackSource(clickOsc);
       clickOsc.start(now);
@@ -773,6 +828,8 @@ export class BeatSynthEngine {
       const now = this.getScheduleStartTime(ctx);
       const noiseBuf = this.getNoiseBuffer(ctx);
 
+      const dest = this.getOutputDestination(ctx);
+
       if (noiseBuf) {
         const noise = ctx.createBufferSource();
         noise.buffer = noiseBuf;
@@ -787,7 +844,7 @@ export class BeatSynthEngine {
 
         noise.connect(filter);
         filter.connect(noiseGain);
-        noiseGain.connect(ctx.destination);
+        noiseGain.connect(dest);
 
         this.trackSource(noise);
         noise.start(now);
@@ -804,7 +861,7 @@ export class BeatSynthEngine {
       bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09 * s);
 
       bodyOsc.connect(bodyGain);
-      bodyGain.connect(ctx.destination);
+      bodyGain.connect(dest);
 
       this.trackSource(bodyOsc);
       bodyOsc.start(now);
@@ -857,7 +914,7 @@ export class BeatSynthEngine {
 
       noise.connect(filter);
       filter.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(this.getOutputDestination(ctx));
 
       this.trackSource(noise);
       noise.start(now);
@@ -888,6 +945,8 @@ export class BeatSynthEngine {
       const now = this.getScheduleStartTime(ctx);
       const notes = [1046.5, 1318.51, 1567.98]; // C6, E6, G6
 
+      const dest = this.getOutputDestination(ctx);
+
       notes.forEach((freq, idx) => {
         const t0 = now + idx * 0.035 * s;
         const osc = ctx.createOscillator();
@@ -901,7 +960,7 @@ export class BeatSynthEngine {
         gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28 * s);
 
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(dest);
 
         this.trackSource(osc);
         osc.start(t0);
@@ -944,6 +1003,7 @@ export class BeatSynthEngine {
       }
 
       const now = this.getScheduleStartTime(ctx);
+      const dest = this.getOutputDestination(ctx);
 
       notes.forEach((freq, idx) => {
         const isLast = idx === notes.length - 1;
@@ -960,7 +1020,7 @@ export class BeatSynthEngine {
         gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
 
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(dest);
 
         this.trackSource(osc);
         osc.start(t0);
@@ -972,20 +1032,29 @@ export class BeatSynthEngine {
   }
 
   /**
-   * Plays a scale note (1..8 => C4..C5) for Tier 2 PLAY_NOTE.
+   * Plays a scale note (1..16 => C4..D6) for PLAY_NOTE.
+   * Fractional pitches are truncated (`Math.trunc`); out-of-range pitches (`<= 0` or `>= 17`)
+   * act as silent musical rests without spawning oscillators.
    */
   playNote(pitch: number = 1, durationSec: number = 0.28): void {
-    const ctx = this.getReadyContext(() => this.playNote(pitch, durationSec));
+    const rawPitch = Number(pitch);
+    if (!Number.isFinite(rawPitch)) return;
+    const truncPitch = Math.trunc(rawPitch);
+    if (truncPitch < 1 || truncPitch > BEAT_SCALE_FREQUENCIES.length) {
+      return;
+    }
+
+    const ctx = this.getReadyContext(() => this.playNote(truncPitch, durationSec));
     if (!ctx) return;
 
     try {
-      const clampedIdx = Math.max(0, Math.min(BEAT_SCALE_FREQUENCIES.length - 1, Math.round(pitch) - 1));
-      const freq = BEAT_SCALE_FREQUENCIES[clampedIdx];
-      const safeDur = Math.max(0.025, Math.min(2.0, durationSec));
+      const pitchIdx = truncPitch - 1;
+      const freq = BEAT_SCALE_FREQUENCIES[pitchIdx];
+      const safeDur = Math.max(0.025, Math.min(4.0, durationSec));
 
       if (this.sampleCacheEnabled) {
         const bucketMs = Math.max(60, Math.round((safeDur * 1000) / 20) * 20);
-        const noteKey = `note:${clampedIdx}:${bucketMs}`;
+        const noteKey = `note:${pitchIdx}:${bucketMs}`;
         const cached = this.getOrCreateCachedSample(
           ctx,
           noteKey,
@@ -1011,7 +1080,7 @@ export class BeatSynthEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, now + safeDur);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(this.getOutputDestination(ctx));
 
       this.trackSource(osc);
       osc.start(now);
@@ -1078,6 +1147,8 @@ export class BeatSynthEngine {
       }
     }
     this.ctx = null;
+    this.masterCompressor = null;
+    this.masterCompressorCtx = null;
     this.noiseBuffer = null;
     this.sampleCache.clear();
     this.noteCacheKeys = [];

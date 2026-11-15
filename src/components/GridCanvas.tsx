@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useAppStoreSelector, isLowQualityActive } from '../store/useAppStore';
-import { WallEdge, Direction, WorldItem, GridState } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAppStoreSelector, isLowQualityActive, isTerminalErrorStatus } from '../store/useAppStore';
+import {
+  WallEdge,
+  Direction,
+  WorldItem,
+  GridState,
+  SimulationStatus,
+  ScopeType,
+  VariableRuntimeValue,
+} from '../types';
 import { Trophy, Footprints, Maximize2, Minimize2, Eye } from 'lucide-react';
 import { GridOverlayLayer } from '../simulations/grid/components/GridOverlayLayer';
 import { FlagPadlockOverlay } from '../simulations/grid/components/FlagPadlockOverlay';
@@ -11,7 +19,14 @@ import {
   KEY_GATE_VISUALS,
   ShapeEmblemSvg,
 } from '../simulations/grid/components/WorldItemsLayer';
-import { BeaconAndDialLayer } from '../simulations/grid/components/BeaconAndDialLayer';
+import {
+  BeaconAndDialLayer,
+  resolveActiveDialReadTarget,
+} from '../simulations/grid/components/BeaconAndDialLayer';
+import {
+  applySandboxDialCell,
+  applySandboxStackCell,
+} from '../simulations/grid/editorToolPrefs';
 import { SimulationTopLeftHud } from './SimulationTopLeftHud';
 import { resolveActiveCurriculumActivity } from '../utils/curriculumStagePolicy';
 import {
@@ -468,7 +483,51 @@ const GridStaticBoardLayer = React.memo<GridStaticBoardLayerProps>(
   }
 );
 
-export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid }) => {
+export interface GridCanvasProps {
+  state?: GridState;
+  runtimeStatus?: SimulationStatus;
+  runtimeVariables?: Record<string, VariableRuntimeValue> | null;
+  activeBlockId?: string | null;
+  activeScope?: ScopeType;
+}
+
+const GRID_TERMINAL_BANNER_SPECS: Partial<
+  Record<SimulationStatus, { testId: string; glyph: string; bgClass: string }>
+> = {
+  TYPE_ERROR: {
+    testId: 'status-type-error',
+    glyph: '🎨≠#',
+    bgClass: 'bg-rose-600/95 shadow-rose-500/30',
+  },
+  MATH_ERROR: {
+    testId: 'status-math-error',
+    glyph: '🧮÷0',
+    bgClass: 'bg-orange-600/95 shadow-orange-500/30',
+  },
+  STACK_OVERFLOW: {
+    testId: 'status-stack-overflow',
+    glyph: '📚💥',
+    bgClass: 'bg-purple-600/95 shadow-purple-500/30',
+  },
+  STEP_LIMIT: {
+    testId: 'status-step-limit',
+    glyph: '⏳🔁',
+    bgClass: 'bg-amber-600/95 shadow-amber-500/30',
+  },
+  DEADLOCK: {
+    testId: 'status-deadlock',
+    glyph: '🔒💥',
+    bgClass: 'bg-red-700/95 shadow-red-500/30',
+  },
+};
+
+export const GridCanvas: React.FC<GridCanvasProps> = ({
+  state: propGrid,
+  runtimeStatus: propRuntimeStatus,
+  runtimeVariables: propRuntimeVariables,
+  activeBlockId: propActiveBlockId,
+  activeScope: propActiveScope,
+}) => {
   const {
     appMode,
     storeGrid,
@@ -675,7 +734,38 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
     }
   };
 
-  const { width, height, robot, barriers, flags, trace, status, showTrace, fitToView } = grid;
+  const { width, height, robot, barriers, flags, trace, status: gridStatus, showTrace, fitToView } = grid;
+  const candidateRuntimeStatus = propRuntimeStatus ?? runtime?.status;
+  const status: SimulationStatus = isTerminalErrorStatus(gridStatus)
+    ? gridStatus
+    : isTerminalErrorStatus(candidateRuntimeStatus)
+    ? (candidateRuntimeStatus as SimulationStatus)
+    : gridStatus === 'SUCCESS' || candidateRuntimeStatus === 'SUCCESS'
+    ? 'SUCCESS'
+    : gridStatus;
+  const isTerminalError = isTerminalErrorStatus(status);
+  const resolvedVariables = propRuntimeVariables ?? runtime?.variables;
+  const activeDialReadTarget = resolveActiveDialReadTarget(
+    runtime,
+    workspace,
+    propActiveBlockId,
+    propActiveScope
+  );
+  const handleBoardCellClick = useCallback(
+    (x: number, y: number) => {
+      if (isReadOnly) return;
+      if (editorTool === 'DIAL') {
+        applySandboxDialCell(x, y);
+        return;
+      }
+      if (editorTool === 'STACK_DEPOT') {
+        applySandboxStackCell(x, y);
+        return;
+      }
+      setCellContent(x, y);
+    },
+    [isReadOnly, editorTool, setCellContent]
+  );
   const isBarrierMode = editorTool === 'WALL';
   const isFitToView = Boolean(fitToView);
 
@@ -959,9 +1049,9 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
       className="relative w-full h-full overflow-hidden bg-slate-950/60 select-none"
     >
       {/* Top-Left Non-Overlapping HUD Stack: Runtime Variables */}
-      <SimulationTopLeftHud variables={runtime?.variables} />
+      <SimulationTopLeftHud variables={resolvedVariables} status={status} />
 
-      {/* Simulation status banner if collision or victory (shifted down below MultiRunPipsBar when active) */}
+      {/* Simulation status banner if collision, runtime terminal error, or victory (shifted down below MultiRunPipsBar when active) */}
       {status === 'COLLISION' && (
         <div
           data-testid="status-collision"
@@ -970,6 +1060,19 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
           <span className="text-xl">💥</span>
         </div>
       )}
+
+      {GRID_TERMINAL_BANNER_SPECS[status] && (() => {
+        const spec = GRID_TERMINAL_BANNER_SPECS[status]!;
+        return (
+          <div
+            data-testid={spec.testId}
+            data-terminal-status={status}
+            className={`absolute ${hasMultiVariant ? 'top-14' : 'top-4'} left-1/2 -translate-x-1/2 z-20 px-5 py-2 ${spec.bgClass} text-white rounded-full font-black shadow-lg ${isLowQuality ? '' : 'animate-bounce '}flex items-center gap-2 pointer-events-none`}
+          >
+            <span className="text-lg tracking-tight">{spec.glyph}</span>
+          </div>
+        );
+      })()}
 
       {status === 'SUCCESS' && (
         <div
@@ -1152,7 +1255,7 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
             barriers={barriers}
             isReadOnly={isReadOnly}
             isLowQuality={isLowQuality}
-            setCellContent={setCellContent}
+            setCellContent={handleBoardCellClick}
             handleCellMouseDown={handleCellMouseDown}
             handleCellMouseEnter={handleCellMouseEnter}
             handleEdgeMouseDown={handleEdgeMouseDown}
@@ -1167,7 +1270,14 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
             isInstant={isInstant}
             isReadOnly={isReadOnly}
             layer="under-robot"
-            beaconAndDialSlot={<BeaconAndDialLayer grid={grid} cellSize={CELL_SIZE} />}
+            beaconAndDialSlot={
+              <BeaconAndDialLayer
+                grid={grid}
+                cellSize={CELL_SIZE}
+                dialReadTarget={activeDialReadTarget}
+                isInstant={isInstant || isLowQuality}
+              />
+            }
             worldItemsSlot={
               <WorldItemsLayer
                 grid={grid}
@@ -1503,7 +1613,7 @@ export const GridCanvas: React.FC<{ state?: GridState }> = ({ state: propGrid })
               {/* Robot body base */}
               <circle
                 r={20}
-                fill={status === 'COLLISION' ? '#dc2626' : '#0ea5e9'}
+                fill={isTerminalError ? '#dc2626' : '#0ea5e9'}
                 stroke="#ffffff"
                 strokeWidth={3}
                 className={isLowQuality ? undefined : 'drop-shadow-md'}

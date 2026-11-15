@@ -34,7 +34,71 @@ import {
   Crosshair,
 } from 'lucide-react';
 
+import { TURTLE_COLOR_PALETTE } from '../../engine/serialization/types';
+
 export const DEFAULT_TURN_ANGLE = 90;
+
+const TURTLE_COLOR_NAME_MAP: Record<string, string> = {
+  black: '#0f172a',
+  slate: '#0f172a',
+  red: '#ef4444',
+  rose: '#ef4444',
+  blue: '#3b82f6',
+  green: '#10b981',
+  emerald: '#10b981',
+  amber: '#f59e0b',
+  yellow: '#f59e0b',
+  purple: '#8b5cf6',
+  violet: '#8b5cf6',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+  orange: '#f97316',
+  white: '#ffffff',
+};
+
+/**
+ * Resolves any Turtle `SET_PEN_COLOR` parameter representation (`TypedValue` `{ type: 'color', value }`,
+ * `'color:...'` string, canonical color name, `0..9` palette index, or `#hex` string) into a CSS hex color.
+ */
+export function resolveTurtlePenColor(rawColor: unknown, fallback = '#0f172a'): string {
+  if (rawColor === null || rawColor === undefined) return fallback;
+
+  if (typeof rawColor === 'object') {
+    const obj = rawColor as { type?: unknown; value?: unknown };
+    if (obj.type === 'color' && obj.value !== undefined) {
+      return resolveTurtlePenColor(obj.value, fallback);
+    }
+    return fallback;
+  }
+
+  if (typeof rawColor === 'number') {
+    if (!Number.isFinite(rawColor)) return fallback;
+    const idx = Math.max(0, Math.min(TURTLE_COLOR_PALETTE.length - 1, Math.trunc(rawColor)));
+    return TURTLE_COLOR_PALETTE[idx];
+  }
+
+  if (typeof rawColor === 'string') {
+    const trimmed = rawColor.trim();
+    if (!trimmed) return fallback;
+    if (trimmed.startsWith('#')) {
+      return trimmed;
+    }
+    const clean = (trimmed.startsWith('color:') ? trimmed.slice(6) : trimmed).trim().toLowerCase();
+    if (clean in TURTLE_COLOR_NAME_MAP) {
+      return TURTLE_COLOR_NAME_MAP[clean];
+    }
+    if (/^-?\d+$/.test(clean)) {
+      const idx = Math.max(
+        0,
+        Math.min(TURTLE_COLOR_PALETTE.length - 1, Math.trunc(Number(clean)))
+      );
+      return TURTLE_COLOR_PALETTE[idx];
+    }
+    return trimmed;
+  }
+
+  return fallback;
+}
 
 export function normalizeTurtleActionType(actionType: string): string {
   if (actionType === 'MOVE_FWD') return 'FORWARD';
@@ -81,12 +145,28 @@ export function createInitialTurtleState(
 }
 
 export function resetTurtleState(state: TurtleState): TurtleState {
+  if (state.mode === 'live' && state.clearBetweenFrames === false && state.status === 'RUNNING') {
+    return {
+      ...state,
+      activeAnimation: null,
+      status: 'IDLE',
+      instantMode: true,
+    };
+  }
+
   return {
     ...createInitialTurtleState(state.canvasBounds, state.showCanvasBounds),
     pan: state.pan,
     zoom: state.zoom,
     fitToView: state.fitToView,
     showTurtle: state.showTurtle,
+    ...(state.mode !== undefined ? { mode: state.mode } : {}),
+    ...(state.clearBetweenFrames !== undefined
+      ? { clearBetweenFrames: state.clearBetweenFrames }
+      : {}),
+    ...(state.totalFrames !== undefined ? { totalFrames: state.totalFrames } : {}),
+    ...(state.fps !== undefined ? { fps: state.fps } : {}),
+    ...(state.mode === 'live' ? { instantMode: true } : {}),
   };
 }
 
@@ -553,9 +633,13 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
   paletteItems: TURTLE_PALETTE_ITEMS,
 
   sensors: [
-    { id: '$x', label: 'X', icon: '📍X' },
-    { id: '$y', label: 'Y', icon: '📍Y' },
-    { id: '$heading', label: '∠', icon: '🧭∠' },
+    { id: '$x', label: 'X', icon: '📍X', shortLabel: 'x' },
+    { id: '$y', label: 'Y', icon: '📍Y', shortLabel: 'y' },
+    { id: '$heading', label: '∠', icon: '🧭∠', shortLabel: '∠' },
+    { id: '$pointerX', label: '👆X', icon: '👆X', shortLabel: '👆X' },
+    { id: '$pointerY', label: '👆Y', icon: '👆Y', shortLabel: '👆Y' },
+    { id: '$pointerDown', label: '👆⬇', icon: '👆⬇', shortLabel: '👆⬇' },
+    { id: '$randomColor', label: '🎲🎨', icon: '🎲🎨', shortLabel: '🎨' },
   ],
 
   readSensor: (sensorId: string, state: TurtleState): number => {
@@ -650,7 +734,7 @@ export const turtleSimulationEnvironment: SimulationEnvironment<TurtleState> = {
       }
 
       case 'SET_PEN_COLOR': {
-        const color = options?.params?.color ?? '#0f172a';
+        const color = resolveTurtlePenColor(options?.params?.color, nextState.penColor);
         nextState = { ...nextState, penColor: color };
         break;
       }

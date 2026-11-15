@@ -1,9 +1,19 @@
-import { CodeBlock, isVariableName } from '../../../types';
-import { BEAT_LED_PALETTE } from '../../../simulations/beat/types';
-import { presetIdToName, presetNameToId } from '../../../simulations/beat/presets';
+import { CodeBlock, WorkspaceState, isVariableName } from '../../../types';
+import {
+  BEAT_GRID_SIZE,
+  BEAT_LED_PALETTE,
+  BeatState,
+  DEFAULT_BEAT_LED_COLOR,
+} from '../../../simulations/beat/types';
+import {
+  createEmptyLedGrid,
+  presetIdToName,
+  presetNameToId,
+} from '../../../simulations/beat/presets';
 import { BinaryReader } from '../binaryReader';
 import { BinaryWriter } from '../binaryWriter';
 import {
+  ENV_VERSION_BEAT,
   OP_BEAT_DRUM_KICK,
   OP_BEAT_DRUM_SNARE,
   OP_BEAT_DRUM_CLAP,
@@ -24,6 +34,9 @@ import {
   decodeVarOrSensorIndex,
   isSensorRefString,
 } from '../types';
+
+export { ENV_VERSION_BEAT };
+export const ENV_VERSION_BEAT_V2 = 2;
 
 function isVarVal(val: unknown): boolean {
   return (
@@ -61,14 +74,94 @@ export function readBeatVarOrVLE(reader: BinaryReader, isVarFlag: boolean): numb
   return reader.readVLE();
 }
 
-export function beatColorToByte(color?: string | number): number {
-  if (typeof color === 'number') {
-    return Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(color)));
+// Maps canonical color names / TypedValue names to BEAT_LED_PALETTE index (0..9):
+// 0=Rose(#f43f5e), 1=Orange(#f97316), 2=Yellow(#fbbf24), 3=Emerald(#10b981), 4=Cyan(#06b6d4),
+// 5=Blue(#3b82f6), 6=Violet(#a855f7), 7=Pink(#ec4899), 8=White(#ffffff), 9=Off/Black(#0f172a)
+const BEAT_COLOR_NAME_TO_BYTE: Record<string, number> = {
+  red: 0,
+  rose: 0,
+  orange: 1,
+  amber: 2,
+  yellow: 2,
+  green: 3,
+  emerald: 3,
+  cyan: 4,
+  blue: 5,
+  purple: 6,
+  violet: 6,
+  pink: 7,
+  white: 8,
+  black: 9,
+  off: 9,
+  slate: 9,
+};
+
+const CANONICAL_INDEX_TO_BEAT_BYTE: readonly number[] = [
+  9, // 0: black -> #0f172a
+  0, // 1: red -> #f43f5e
+  5, // 2: blue -> #3b82f6
+  3, // 3: green -> #10b981
+  2, // 4: amber -> #fbbf24
+  6, // 5: purple -> #a855f7
+  7, // 6: pink -> #ec4899
+  4, // 7: cyan -> #06b6d4
+  1, // 8: orange -> #f97316
+  8, // 9: white -> #ffffff
+];
+
+export function beatColorToByte(color?: unknown): number {
+  if (color === null || color === undefined) return 0;
+
+  if (typeof color === 'object') {
+    const obj = color as { type?: unknown; value?: unknown };
+    if (obj.type === 'color' && obj.value !== undefined) {
+      if (typeof obj.value === 'number' && Number.isFinite(obj.value)) {
+        const idx = Math.max(
+          0,
+          Math.min(CANONICAL_INDEX_TO_BEAT_BYTE.length - 1, Math.trunc(obj.value))
+        );
+        return CANONICAL_INDEX_TO_BEAT_BYTE[idx];
+      }
+      return beatColorToByte(obj.value);
+    }
+    return 0;
   }
-  if (!color) return 0;
-  const lower = color.toLowerCase();
-  const idx = BEAT_LED_PALETTE.findIndex((s) => s.hex.toLowerCase() === lower);
-  return idx >= 0 ? idx : 0;
+
+  if (typeof color === 'number') {
+    if (!Number.isFinite(color)) return 0;
+    return Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.trunc(color)));
+  }
+
+  if (typeof color === 'string') {
+    const trimmed = color.trim();
+    if (!trimmed) return 0;
+    const lower = trimmed.toLowerCase();
+
+    if (lower === '#ef4444') return 0;
+    if (lower === '#f59e0b') return 2;
+    if (lower === '#22c55e') return 3;
+    if (lower === '#8b5cf6') return 6;
+    if (lower === '#000000') return 9;
+
+    const hexIdx = BEAT_LED_PALETTE.findIndex((s) => s.hex.toLowerCase() === lower);
+    if (hexIdx >= 0) return hexIdx;
+
+    const cleanName = lower.startsWith('color:') ? lower.slice(6).trim() : lower;
+    if (cleanName in BEAT_COLOR_NAME_TO_BYTE) {
+      return BEAT_COLOR_NAME_TO_BYTE[cleanName];
+    }
+    if (/^-?\d+$/.test(cleanName)) {
+      const n = Math.trunc(Number(cleanName));
+      if (lower.startsWith('color:')) {
+        return CANONICAL_INDEX_TO_BEAT_BYTE[
+          Math.max(0, Math.min(CANONICAL_INDEX_TO_BEAT_BYTE.length - 1, n))
+        ];
+      }
+      return Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, n));
+    }
+  }
+
+  return 0;
 }
 
 export function byteToBeatColor(byte: number): string {
@@ -137,7 +230,7 @@ export function getBeatParamVarFlags(
     case OP_BEAT_STAMP_PRESET:
       return { param0IsVar: isVarVal(params.preset ?? params.presetId), param1IsVar: false };
     case OP_BEAT_PLAY_NOTE:
-      return { param0IsVar: isVarVal(params.pitch), param1IsVar: false };
+      return { param0IsVar: isVarVal(params.pitch), param1IsVar: isVarVal(params.duration) };
     case OP_BEAT_SET_LED_COLOR:
       return { param0IsVar: isVarVal(params.color), param1IsVar: false };
     case OP_BEAT_LIGHT_ROW:
@@ -188,12 +281,26 @@ export function writeBeatParams(
       break;
     }
 
-    // Tier 2 (Module 2+) & Tier 3 (Module 3+ Cursor) Beat & Light opcodes
+    // Tier 2 (Module 2+), Tier 3 (Module 3+ Cursor) & Phase 3 Beat & Light opcodes
     case OP_BEAT_PLAY_NOTE: {
       writeBeatVarOrVLE(writer, params?.pitch, 1, (paramVarMask & 0x02) !== 0);
-      const dur = Number(params?.duration ?? 1);
-      const durCode = dur <= 0.5 ? 0 : dur >= 2 ? 2 : 1;
-      writer.writeUint8(durCode);
+      if ((paramVarMask & 0x04) !== 0) {
+        writer.writeUint8(encodeVarOrSensorIndex(String(params?.duration ?? 'a')));
+      } else {
+        const rawDur = Number(params?.duration ?? 1);
+        const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 1;
+        if (Math.abs(dur - 0.5) < 1e-6) {
+          writer.writeUint8(0);
+        } else if (Math.abs(dur - 1) < 1e-6) {
+          writer.writeUint8(1);
+        } else if (Math.abs(dur - 2) < 1e-6) {
+          writer.writeUint8(2);
+        } else {
+          // Extended Phase 3 literal duration (e.g. 0.125, 0.25, 4, 1.5): escape code 3 + milli-beats VLE
+          writer.writeUint8(3);
+          writer.writeVLE(Math.max(1, Math.round(dur * 1000)));
+        }
+      }
       break;
     }
 
@@ -295,8 +402,17 @@ export function readBeatBlock(
     // Forward-compatible decoding for Commit 13 & Commit 17 opcodes
     case OP_BEAT_PLAY_NOTE: {
       const pitch = readBeatVarOrVLE(reader, (paramVarMask & 0x02) !== 0);
-      const durCode = reader.readUint8();
-      const duration = durCode === 0 ? 0.5 : durCode === 2 ? 2 : 1;
+      let duration: number | string;
+      if ((paramVarMask & 0x04) !== 0) {
+        duration = decodeVarOrSensorIndex(reader.readUint8());
+      } else {
+        const durCode = reader.readUint8();
+        if (durCode === 3) {
+          duration = reader.readVLE() / 1000;
+        } else {
+          duration = durCode === 0 ? 0.5 : durCode === 2 ? 2 : 1;
+        }
+      }
       return { type: 'PLAY_NOTE', params: { pitch, duration } };
     }
     case OP_BEAT_SET_LED_COLOR: {
@@ -342,4 +458,147 @@ export function readBeatBlock(
     default:
       throw new Error(`Unknown Beat opcode: 0x${opcode.toString(16)}`);
   }
+}
+
+function workspaceUsesPhase3BeatNoteEncoding(workspace?: WorkspaceState | null): boolean {
+  if (!workspace) return false;
+  for (const blocks of Object.values(workspace)) {
+    if (!Array.isArray(blocks)) continue;
+    for (const b of blocks) {
+      if (b.type === 'PLAY_NOTE') {
+        const dur = b.params?.duration;
+        if (isVarVal(dur)) return true;
+        if (dur !== undefined) {
+          const num = Number(dur);
+          if (
+            Number.isFinite(num) &&
+            Math.abs(num - 0.5) >= 1e-6 &&
+            Math.abs(num - 1) >= 1e-6 &&
+            Math.abs(num - 2) >= 1e-6
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Determines the minimum Beat environment serialization version (`1` or `2`).
+ * Default `8x8` states with standard `stepDelayMultiplier === 1` and Tier 1/2 durations remain version `1`.
+ */
+export function getBeatSerializationVersion(
+  state?: Partial<BeatState> | null,
+  workspace?: WorkspaceState | null
+): number {
+  const hasCustomDims =
+    (typeof state?.width === 'number' && state.width !== BEAT_GRID_SIZE) ||
+    (typeof state?.height === 'number' && state.height !== BEAT_GRID_SIZE);
+  const hasCustomDelay =
+    typeof state?.stepDelayMultiplier === 'number' &&
+    Number.isFinite(state.stepDelayMultiplier) &&
+    Math.abs(state.stepDelayMultiplier - 1) > 1e-6;
+  if (hasCustomDims || hasCustomDelay || workspaceUsesPhase3BeatNoteEncoding(workspace)) {
+    return ENV_VERSION_BEAT_V2;
+  }
+  return ENV_VERSION_BEAT;
+}
+
+/**
+ * Writes Beat environment metadata payload (`v1` = 0 bytes; `v2` = `beatFlags` + optional `width`/`height`/`stepDelayMultiplier`).
+ */
+export function writeBeatState(
+  writer: BinaryWriter,
+  state?: Partial<BeatState> | null,
+  envVersion: number = getBeatSerializationVersion(state)
+): void {
+  if (envVersion < ENV_VERSION_BEAT_V2) {
+    return;
+  }
+
+  const width =
+    typeof state?.width === 'number' && state.width > 0 ? Math.round(state.width) : BEAT_GRID_SIZE;
+  const height =
+    typeof state?.height === 'number' && state.height > 0
+      ? Math.round(state.height)
+      : BEAT_GRID_SIZE;
+  const hasCustomDims = width !== BEAT_GRID_SIZE || height !== BEAT_GRID_SIZE;
+  const delayMult =
+    typeof state?.stepDelayMultiplier === 'number' && Number.isFinite(state.stepDelayMultiplier)
+      ? state.stepDelayMultiplier
+      : 1;
+  const hasCustomDelay = Math.abs(delayMult - 1) > 1e-6;
+
+  const beatFlags =
+    (hasCustomDims ? 0x01 : 0) |
+    (hasCustomDelay ? 0x02 : 0) |
+    (state?.isMuted ? 0x04 : 0);
+
+  writer.writeUint8(beatFlags);
+
+  if (hasCustomDims) {
+    writer.writeUint8(Math.min(255, Math.max(1, width)));
+    writer.writeUint8(Math.min(255, Math.max(1, height)));
+  }
+
+  if (hasCustomDelay) {
+    writer.writeVLE(Math.max(0, Math.round(delayMult * 100)));
+  }
+}
+
+function createBaseBeatState(isMuted: boolean = false): BeatState {
+  return {
+    leds: createEmptyLedGrid(),
+    activeColor: DEFAULT_BEAT_LED_COLOR,
+    isColorCustomized: false,
+    beatIndex: 0,
+    stepCount: 0,
+    lastTriggeredEvent: null,
+    cursor: { x: 1, y: 1, dir: 'EAST', visible: false },
+    edgeBonk: false,
+    edgeBonkPulse: 0,
+    isMuted,
+    stepDelayMultiplier: 1,
+    status: 'IDLE',
+  };
+}
+
+/**
+ * Reads Beat environment metadata payload (`v1` = default initial state; `v2` = `beatFlags` + optional `width`/`height`/`stepDelayMultiplier`).
+ */
+export function readBeatState(
+  reader: BinaryReader,
+  envVersion: number = ENV_VERSION_BEAT
+): BeatState {
+  if (envVersion < ENV_VERSION_BEAT_V2) {
+    return createBaseBeatState(false);
+  }
+
+  const beatFlags = reader.readUint8();
+  const hasCustomDims = (beatFlags & 0x01) !== 0;
+  const hasCustomDelay = (beatFlags & 0x02) !== 0;
+  const isMuted = (beatFlags & 0x04) !== 0;
+
+  const base = createBaseBeatState(isMuted);
+
+  let width: number | undefined;
+  let height: number | undefined;
+  if (hasCustomDims) {
+    width = reader.readUint8();
+    height = reader.readUint8();
+  }
+
+  let stepDelayMultiplier = base.stepDelayMultiplier;
+  if (hasCustomDelay) {
+    stepDelayMultiplier = reader.readVLE() / 100;
+  }
+
+  return {
+    ...base,
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    stepDelayMultiplier,
+  };
 }
