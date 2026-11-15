@@ -85,8 +85,8 @@ flowchart TD
     sort --> args["args: Parameterized Functions & Stored Programs\n(LOGO, Robot, Switchyard, Beat/Light, Depot, Tape)"]
     args --> rec["rec: Recursion, Hanoi, Fractals & Backtracking\n(Robot, LOGO, Depot)"]
 
-    var ==> inter["🕹️ Side Track — inter: Interactive Controls & Events\n(Beat/Light, LOGO Live Mode)"]
-    cmp ==> anim["🎬 Side Track — anim: Animation Studio\n(LOGO Flipbooks, Beat Frame Loops)"]
+    cmp ==> inter["🕹️ Side Track — inter: Interactive Controls & Events\n(Beat/Light, LOGO Live Mode)"]
+    tape ==> anim["🎬 Side Track — anim: Animation Studio\n(LOGO Flipbooks, Beat Frame Loops)"]
     args ==> conc["⚡ Side Track — conc: Concurrency, Sync & Parallel Sort\n(Beat/Light, LOGO, Robot, Depot, Tape)"]
     rec -.-> fp["λ Side Track — fp: Functional Programming (Placeholder)\n(Tape, Switchyard, Depot, LOGO)"]
 
@@ -107,8 +107,8 @@ flowchart TD
 | **`func`** | Helper tabs (`F1`–`F3`) | Procedural abstraction, state hygiene, double stack reversal = identity | 🤖 🐢 🎵 🏗️ |
 | **`branch`** | `If`, `If/Else`, `Else If`, `NOT/AND/OR`, `$input` | Categorization, hazard filtering, sequential-`If` vs. `If/Else` state-mutation hazard | 🚂 🤖 🐢 🎵 |
 | **`while`** | `While [cond]`, boundary sensors | **Queue (FIFO)** vs. Stack (LIFO), indefinite stream/corridor draining | 🤖 🚂 🏗️ 🐢 🎵 |
-| **`var`** | Variables (`a`–`z`), pose sensors, `🎲` | Named mutable state, sensor capture (`tileDial`, `$x`, `$y`), stepping counters | 🤖 🐢 🎵 |
-| **`cmp`** | `<`, `>`, `==`, `!=`, `/`, `%` | Running maximum (`$heldValue > $topValue`), quotas, modulo cycles/rhythms, `360 / n` polygons | 🚂 🤖 🐢 🎵 🏗️ |
+| **`var`** | Variables (`a`–`z`), `+`, `-`, `*`, `TELEPORT`, pose sensors, `🎲` | Named mutable state, sensor capture (`$tileDial`, `$x`, `$y`, `$heading`), stepping counters | 🤖 🐢 🎵 |
+| **`cmp`** | `<`, `>`, `<=`, `>=`, `==`, `!=`, `/`, `%` | Running maximum (`$heldValue > $topValue`), quotas, modulo cycles/rhythms, `360 / n` polygons | 🚂 🤖 🐢 🎵 🏗️ |
 | **`tape`** | `TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE` | **Sparse Tape (`1..10,000`)**, **bounds collisions**, **`number` vs `color` types**, linear search | 📼 across 🐢 🎵 🏗️ 🤖 |
 | **`sort`** | Two pointers (`l`, `h`), `⏱️` tick counter | **Palindrome symmetry**, **Insertion / Selection / Two-Way Merge sort**, step efficiency | 🏗️ 📼 |
 | **`args`** | Parameterized `F1(●, ▲, ■)` | **Local stack-frame sockets vs. shared globals/Tape**, **stored-program interpreter**, `TransferN` | 📼 🐢 🤖 🚂 🎵 🏗️ |
@@ -142,19 +142,19 @@ Must teach packaging reusable sub-tasks into `F1`, `F2`, `F3`, maintaining "stat
 
 #### [`branch` — Sensors & Branching: Making Decisions](./branch/overview.md)
 *Environments: 🚂 Switchyard, 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  
-Must teach reading live world sensors and the `🎛️ $input` scene selector widget to write adaptive branching rules (`If`, `If / Else`, `If / Else If / Else`, `NOT`/`AND`/`OR`) verified against **3–4 simultaneous variant maps/streams**, explicitly contrasting sequential `If` + `If` state-mutation bugs against `If / Else`, alongside `$input`-driven creative LOGO art and Beat jukeboxes.
+Must teach reading live world sensors and the `🎛️ $input` scene selector widget to write adaptive branching rules (`If`, `If / Else`, `If / Else If / Else`, `NOT`/`AND`/`OR`) verified against **3–4 simultaneous variant maps/streams**, explicitly contrasting sequential `If` + `If` state-mutation bugs (`branch.9`) against `If / Else`, progressing from 1-switch `SCRAP_ITEM` filtering (`branch.5a`) to 2-switch 3-dock routers (`branch.8`, `branch.A`), alongside `$input`-driven creative LOGO art (`branch.10`, `branch.B`) and consolidated Beat jukeboxes (`branch.C`).
 
 #### [`while` — Conditional Loops & FIFO Queues](./while/overview.md)
 *Environments: 🤖 Robot Grid, 🚂 Switchyard, 🏗️ Depot, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  
-Must teach indefinite repetition (`While [condition]`) across variable-length corridors and incoming train streams, boundary-driven creative loops (`insideCanvas` in LOGO, `cursorAtEdge` in Beat), and contrasting **First-In, First-Out (FIFO)** conveyor queues directly beside LIFO stacks in the Depot.
+Must teach indefinite repetition (`While [condition]`) across variable-length corridors and incoming train streams (plus premature-exit Fix-It `while.8`), boundary-driven creative loops (`insideCanvas` in LOGO `while.6`/`while.B`, soft-clamped `cursorAtEdge` in Beat `while.7`/`while.C`), and contrasting **First-In, First-Out (FIFO)** conveyor queues directly beside LIFO stacks in the Depot (`while.2`–`while.4`).
 
 #### [`var` — Variables, Pose Sensors & Stepping Counters](./var/overview.md)
 *Environments: 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix*  
-Must teach variables as named memory boxes—storing constants (`s = 60`), reading world, pose, and random sensors (`a = tileDial`, `a = $x`, `b = $y`, `🎲`), and stepping counters up/down inside loops (`a = a + 1`) to drive staircases, spirals, and generative melodies. Completing `var` unlocks Side Module **[`inter`](./inter/overview.md)** and **🔥 Mastery Set `var`**.
+Must teach variables (`a`–`z`) as named memory boxes—storing constants (`s = 100`), reading world, pose, and random sensors (`d = $tileDial`, `TELEPORT` + `$x`, `$y`, `$heading`, `🎲`, `$randomColor`), and stepping counters with 3-address `+`, `-`, `*` arithmetic (`a = a + 1`) to drive corridors, spirals, Beat DJs (`var.9`), and LOGO fireworks (`var.10`). Completing `var` unlocks **`cmp`** and **🔥 Mastery Set `var`**.
 
 #### [`cmp` — Comparisons, Quotas, Modulo & Computed Geometry](./cmp/overview.md)
 *Environments: 🚂 Switchyard, 🤖 Robot Grid, 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Depot*  
-Must teach combining variables with relational and arithmetic operators—comparing values (`<`, `>`, `==`, `!=`), tracking stack maximums (`$heldValue > $topValue`), enforcing dock quotas, splitting beat sequencers and LED checkerboards with modulo (`%`), and computing geometric angles (`360 / n`). Completing `cmp` unlocks Side Module **[`anim`](./anim/overview.md)** and **🔥 Mastery Set `cmp`**.
+Must teach combining variables with relational and division operators—comparing values (`<`, `>`, `<=`, `>=`, `==`, `!=`, boundary Fix-It `cmp.9`), tracking Depot toy-block maximums (`$heldValue > $topValue`), enforcing Switchyard dock quotas (`cmp.1a`, `cmp.A`), splitting Beat sequencers and LED checkerboards with modulo (`%`, `cmp.5a`), and computing full-scale geometric angles (`360 / n`, `cmp.5`, `cmp.C`). Completing `cmp` unlocks **`tape`**, Side Module **[`inter`](./inter/overview.md)**, and **🔥 Mastery Set `cmp`**.
 
 #### [`tape` — 📼 The Sparse Memory Tape & Typed Color Data](./tape/overview.md)
 *Environments: 🐢 Turtle LOGO, 🎵 Beat & Light Matrix, 🏗️ Depot, 🤖 Robot Grid*  
@@ -176,11 +176,11 @@ Must teach recursion in gentle, explicit steps: (1) tail call + base case, (2) c
 
 ### Parallel Side Modules (Thematic Expansion Tracks)
 
-#### [`inter` — 🕹️ Interactive Controls & Events](./inter/overview.md) *(Unlocks after `var`)*
+#### [`inter` — 🕹️ Interactive Controls & Events](./inter/overview.md) *(Unlocks after `cmp`)*
 *Environments: 🎵 Beat & Light Matrix (`8×8`–`32×32`), 🐢 Turtle LOGO (`♾️ Live Interactive Mode`)*  
 Must teach polling live pointer/tap coordinates (`$pointerX`, `$pointerY`, `$pointerDown`) and virtual D-Pad/action keys alongside **single-threaded queued event handlers** (`On Key` / `On Tap → F1`) and LOGO Live Interactive loops to build playable synths, reactive pixel toys, and mini-games without premature concurrency hazards.
 
-#### [`anim` — 🎬 Animation Studio: Flipbooks, Pacing & Physics](./anim/overview.md) *(Unlocks after `cmp`)*
+#### [`anim` — 🎬 Animation Studio: Flipbooks, Pacing & Physics](./anim/overview.md) *(Unlocks after `tape`)*
 *Environments: 🐢 Turtle LOGO (Flipbook Mode), 🎵 Beat & Light Matrix (Explicit Frame Loops), 📼 Sparse Memory Tape*  
 Must teach **LOGO Flipbook Animation Mode** (`MAIN` called once per frame with `$frame` & `$time`, persistent variables/Tape, first-pass stroke rendering, cached Timeline Scrubber, and optional trail mode) contrasted with **Beat & Light explicit hardware frame loops** (`SET_BEAT_DELAY [0]` + `CLEAR_LEDS` + `WAIT_BEAT`), cyclic modulo motion, and bouncing physics.
 
