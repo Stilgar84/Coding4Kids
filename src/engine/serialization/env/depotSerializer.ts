@@ -3,6 +3,8 @@ import {
   CrateColor,
   DEPOT_CRATE_COLORS,
   DEPOT_CRATE_PALETTE,
+  DEPOT_RING_PALETTE,
+  DEPOT_STATION_BITS,
   DepotQueueItem,
   DepotSendGate,
   DepotStacks,
@@ -14,6 +16,8 @@ import {
   codeToStation,
   createInitialDepotState,
   depotStateNeedsQueueVersion,
+  depotStateNeedsV4Version,
+  getEffectiveActiveStationsMask,
   indexToStation,
   normalizeCrateColor,
   normalizeDepotStation,
@@ -23,8 +27,10 @@ import {
 import { BinaryReader } from '../binaryReader';
 import { BinaryWriter } from '../binaryWriter';
 import {
+  ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_QUEUE,
   ENV_VERSION_DEPOT_STATE,
+  ENV_VERSION_DEPOT_V4,
   OP_DEPOT_GRAB,
   OP_DEPOT_MOVE_TO,
   OP_DEPOT_PLACE,
@@ -44,6 +50,21 @@ export function crateColorToByte(color: CrateColor): number {
 
 export function byteToCrateColor(byte: number): CrateColor {
   return DEPOT_CRATE_PALETTE[byte & 0x0f]?.id ?? 'RED';
+}
+
+export function ringColorToCanonicalByte(color: CrateColor): number {
+  return DEPOT_CRATE_COLORS[normalizeCrateColor(color)]?.paletteIndex ?? 1;
+}
+
+export function canonicalByteToRingColor(byte: number): CrateColor {
+  return DEPOT_RING_PALETTE[byte & 0x0f]?.id ?? 'RED';
+}
+
+export function getDepotSerializationVersion(state?: DepotState): number {
+  if (!state) return ENV_VERSION_DEPOT;
+  if (depotStateNeedsV4Version(state)) return ENV_VERSION_DEPOT_V4;
+  if (depotStateNeedsQueueVersion(state)) return ENV_VERSION_DEPOT_QUEUE;
+  return ENV_VERSION_DEPOT_STATE;
 }
 
 export function gateToCode(gate: unknown): number {
@@ -83,6 +104,73 @@ function readCrateList(reader: BinaryReader): CrateColor[] {
   return out;
 }
 
+function writeCanonicalColorList(writer: BinaryWriter, list: readonly CrateColor[]): void {
+  writer.writeVLE(list.length);
+  for (const ring of list) {
+    writer.writeUint8(ringColorToCanonicalByte(ring));
+  }
+}
+
+function readCanonicalColorList(reader: BinaryReader): CrateColor[] {
+  const len = reader.readVLE();
+  const out: CrateColor[] = [];
+  for (let i = 0; i < len; i++) {
+    out.push(canonicalByteToRingColor(reader.readUint8()));
+  }
+  return out;
+}
+
+function writeV4Item(writer: BinaryWriter, item: DepotQueueItem): void {
+  writer.writeUint8(ringColorToCanonicalByte(item.color));
+  if (item.value !== undefined) {
+    writer.writeUint8(0x01);
+    writer.writeSignedVLE(item.value);
+  } else {
+    writer.writeUint8(0x00);
+  }
+}
+
+function readV4Item(reader: BinaryReader): DepotQueueItem {
+  const color = canonicalByteToRingColor(reader.readUint8());
+  const valueFlags = reader.readUint8();
+  if ((valueFlags & 0x01) !== 0) {
+    const value = reader.readSignedVLE();
+    return { color, value };
+  }
+  return { color };
+}
+
+function writeV4ItemList(writer: BinaryWriter, list: readonly DepotQueueItem[]): void {
+  writer.writeVLE(list.length);
+  for (const item of list) {
+    writeV4Item(writer, item);
+  }
+}
+
+function readV4ItemList(reader: BinaryReader): DepotQueueItem[] {
+  const len = reader.readVLE();
+  const out: DepotQueueItem[] = [];
+  for (let i = 0; i < len; i++) {
+    out.push(readV4Item(reader));
+  }
+  return out;
+}
+
+function writeUtf8String(writer: BinaryWriter, text: string): void {
+  const bytes = new TextEncoder().encode(text);
+  writer.writeVLE(bytes.length);
+  writer.writeBytes(bytes);
+}
+
+function readUtf8String(reader: BinaryReader): string {
+  const len = reader.readVLE();
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = reader.readUint8();
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function writeQueueItemList(writer: BinaryWriter, list: readonly DepotQueueItem[]): void {
   writer.writeVLE(list.length);
   for (const item of list) {
@@ -104,6 +192,194 @@ function readQueueItemList(reader: BinaryReader): DepotQueueItem[] {
   return out;
 }
 
+function writeDepotStateV4(writer: BinaryWriter, state: DepotState): void {
+  const activeMask = getEffectiveActiveStationsMask(state);
+  const initStacks = cloneStacks(state.initialStacks ?? state.stacks);
+  const initQueue = cloneQueue(state.initialQueue ?? state.queue);
+  const initInput = cloneQueue(state.initialInput ?? state.input ?? []);
+  const hasExtendedRules =
+    state.mode !== undefined ||
+    state.requireEmptyStacks !== undefined ||
+    state.allowNonEmptyInput !== undefined ||
+    state.exactOutputCount !== undefined;
+
+  let v4Flags = 0;
+  if (state.targetStacks) v4Flags |= 0x01;
+  if (state.targetOutput && state.targetOutput.length > 0) v4Flags |= 0x02;
+  if (initQueue.length > 0) v4Flags |= 0x04;
+  if (initInput.length > 0) v4Flags |= 0x08;
+  if (state.enforceHanoiRule) v4Flags |= 0x20;
+  if (hasExtendedRules) v4Flags |= 0x80;
+
+  writer.writeUint8(v4Flags);
+  writer.writeUint8(activeMask & 0x7f);
+
+  // Claw descriptor(s) (1 claw in Phase 2)
+  writer.writeUint8(1);
+  writer.writeUint8(stationToCode(state.initialWorkerStation ?? state.workerStation));
+  if (state.heldCrate !== null) {
+    writer.writeUint8(1);
+    writeV4Item(writer, {
+      color: state.heldCrate,
+      ...(state.heldValue !== undefined ? { value: state.heldValue } : {}),
+    });
+  } else {
+    writer.writeUint8(0);
+  }
+
+  // Station payloads keyed by activeStationsMask bits (STACK_1..3, QUEUE, INPUT)
+  if ((activeMask & DEPOT_STATION_BITS.STACK_1) !== 0) {
+    writeCanonicalColorList(writer, initStacks[0]);
+  }
+  if ((activeMask & DEPOT_STATION_BITS.STACK_2) !== 0) {
+    writeCanonicalColorList(writer, initStacks[1]);
+  }
+  if ((activeMask & DEPOT_STATION_BITS.STACK_3) !== 0) {
+    writeCanonicalColorList(writer, initStacks[2]);
+  }
+  if ((activeMask & DEPOT_STATION_BITS.QUEUE) !== 0) {
+    writeV4ItemList(writer, initQueue);
+  }
+  if ((activeMask & DEPOT_STATION_BITS.INPUT) !== 0) {
+    writeV4ItemList(writer, initInput);
+  }
+
+  // Target configurations
+  if ((v4Flags & 0x01) !== 0 && state.targetStacks) {
+    for (let i = 0; i < 3; i++) {
+      writeCanonicalColorList(writer, state.targetStacks[i]);
+    }
+  }
+  if ((v4Flags & 0x02) !== 0 && state.targetOutput) {
+    writeCanonicalColorList(writer, state.targetOutput);
+  }
+
+  // Extended curriculum rule metadata
+  if ((v4Flags & 0x80) !== 0) {
+    let ruleBits = 0;
+    if (state.mode !== undefined) ruleBits |= 0x01;
+    if (state.exactOutputCount !== undefined) ruleBits |= 0x02;
+    if (state.requireEmptyStacks !== undefined) {
+      ruleBits |= 0x04;
+      if (state.requireEmptyStacks) ruleBits |= 0x08;
+    }
+    if (state.allowNonEmptyInput !== undefined) {
+      ruleBits |= 0x10;
+      if (state.allowNonEmptyInput) ruleBits |= 0x20;
+    }
+    writer.writeUint8(ruleBits);
+    if ((ruleBits & 0x01) !== 0 && state.mode !== undefined) {
+      writeUtf8String(writer, state.mode);
+    }
+    if ((ruleBits & 0x02) !== 0 && state.exactOutputCount !== undefined) {
+      writer.writeVLE(state.exactOutputCount);
+    }
+  }
+}
+
+function readDepotStateV4(reader: BinaryReader): DepotState {
+  const v4Flags = reader.readUint8();
+  const activeStationsMask = reader.readUint8();
+  const enforceHanoiRule = (v4Flags & 0x20) !== 0 ? true : undefined;
+
+  const clawCount = Math.max(1, reader.readUint8());
+  let startStation = normalizeDepotStation('STACK_1');
+  let heldItem: DepotQueueItem | null = null;
+  for (let c = 0; c < clawCount; c++) {
+    const st = codeToStation(reader.readUint8());
+    const hasHeld = reader.readUint8() !== 0;
+    const item = hasHeld ? readV4Item(reader) : null;
+    if (c === 0) {
+      startStation = st;
+      heldItem = item;
+    }
+  }
+
+  const stack0 =
+    (activeStationsMask & DEPOT_STATION_BITS.STACK_1) !== 0
+      ? readCanonicalColorList(reader)
+      : [];
+  const stack1 =
+    (activeStationsMask & DEPOT_STATION_BITS.STACK_2) !== 0
+      ? readCanonicalColorList(reader)
+      : [];
+  const stack2 =
+    (activeStationsMask & DEPOT_STATION_BITS.STACK_3) !== 0
+      ? readCanonicalColorList(reader)
+      : [];
+  const initialStacks: DepotStacks = [stack0, stack1, stack2];
+
+  const queue =
+    (activeStationsMask & DEPOT_STATION_BITS.QUEUE) !== 0 ? readV4ItemList(reader) : [];
+  const input =
+    (activeStationsMask & DEPOT_STATION_BITS.INPUT) !== 0 ? readV4ItemList(reader) : [];
+  if ((activeStationsMask & DEPOT_STATION_BITS.PHYSICAL_TAPE) !== 0) {
+    readV4ItemList(reader);
+  }
+
+  let targetStacks: DepotStacks | undefined;
+  if ((v4Flags & 0x01) !== 0) {
+    targetStacks = [
+      readCanonicalColorList(reader),
+      readCanonicalColorList(reader),
+      readCanonicalColorList(reader),
+    ];
+  }
+  let targetOutput: CrateColor[] | undefined;
+  if ((v4Flags & 0x02) !== 0) {
+    targetOutput = readCanonicalColorList(reader);
+  }
+
+  let mode: string | undefined;
+  let exactOutputCount: number | undefined;
+  let requireEmptyStacks: boolean | undefined;
+  let allowNonEmptyInput: boolean | undefined;
+  if ((v4Flags & 0x80) !== 0) {
+    const ruleBits = reader.readUint8();
+    if ((ruleBits & 0x01) !== 0) {
+      mode = readUtf8String(reader);
+    }
+    if ((ruleBits & 0x02) !== 0) {
+      exactOutputCount = reader.readVLE();
+    }
+    if ((ruleBits & 0x04) !== 0) {
+      requireEmptyStacks = (ruleBits & 0x08) !== 0;
+    }
+    if ((ruleBits & 0x10) !== 0) {
+      allowNonEmptyInput = (ruleBits & 0x20) !== 0;
+    }
+  }
+
+  const base = createInitialDepotState({
+    initialStacks,
+    stacks: initialStacks,
+    initialWorkerStation: startStation,
+    workerStation: startStation,
+    targetStacks,
+    targetOutput,
+    queue,
+    initialQueue: queue,
+    ...(input.length > 0 || (activeStationsMask & DEPOT_STATION_BITS.INPUT) !== 0
+      ? { input, initialInput: input }
+      : {}),
+    activeStationsMask,
+    ...(mode !== undefined ? { mode } : {}),
+    ...(enforceHanoiRule !== undefined ? { enforceHanoiRule } : {}),
+    ...(requireEmptyStacks !== undefined ? { requireEmptyStacks } : {}),
+    ...(allowNonEmptyInput !== undefined ? { allowNonEmptyInput } : {}),
+    ...(exactOutputCount !== undefined ? { exactOutputCount } : {}),
+  });
+
+  if (heldItem) {
+    return {
+      ...base,
+      heldCrate: heldItem.color,
+      ...(heldItem.value !== undefined ? { heldValue: heldItem.value } : {}),
+    };
+  }
+  return base;
+}
+
 export function writeDepotState(
   writer: BinaryWriter,
   state?: DepotState,
@@ -113,9 +389,11 @@ export function writeDepotState(
     writer.writeUint8(0x00);
     return;
   }
-  const version =
-    envVersion ??
-    (depotStateNeedsQueueVersion(state) ? ENV_VERSION_DEPOT_QUEUE : ENV_VERSION_DEPOT_STATE);
+  const version = envVersion ?? getDepotSerializationVersion(state);
+  if (version >= ENV_VERSION_DEPOT_V4) {
+    writeDepotStateV4(writer, state);
+    return;
+  }
 
   let flags = 0x01; // has state
   if (state.targetStacks) flags |= 0x02;
@@ -144,7 +422,7 @@ export function writeDepotState(
     writeCrateList(writer, state.targetOutput);
   }
 
-  // Version 3 (M5 FIFO Queue & Gate state)
+  // Version 3 (M5 FIFO Queue & legacy SCRAP compat)
   if (version >= ENV_VERSION_DEPOT_QUEUE) {
     const initQueue = cloneQueue(state.initialQueue ?? state.queue);
     writeQueueItemList(writer, initQueue);
@@ -156,6 +434,10 @@ export function readDepotState(
   reader: BinaryReader,
   envVersion: number = ENV_VERSION_DEPOT_STATE
 ): DepotState {
+  if (envVersion >= ENV_VERSION_DEPOT_V4) {
+    return readDepotStateV4(reader);
+  }
+
   const flags = reader.readUint8();
   if ((flags & 0x01) === 0) {
     return createInitialDepotState();

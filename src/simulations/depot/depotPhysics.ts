@@ -5,6 +5,7 @@ import {
   DEPOT_DEFAULT_STACK_MASK,
   DEPOT_MAX_QUEUE_LENGTH,
   DEPOT_MAX_STACK_HEIGHT,
+  DEPOT_RING_PALETTE,
   DEPOT_STATION_BITS,
   DepotActionTransition,
   DepotFailureReason,
@@ -15,15 +16,45 @@ import {
   DepotStationId,
 } from './types';
 
-export function normalizeCrateColor(raw: unknown): CrateColor {
-  if (raw === 'RED' || raw === 'BLUE' || raw === 'GREEN' || raw === 'AMBER') {
-    return raw;
+const EXTENDED_COLOR_SET = new Set<CrateColor>([
+  'BLACK',
+  'PURPLE',
+  'PINK',
+  'CYAN',
+  'ORANGE',
+  'WHITE',
+]);
+
+/** Attempts to parse a Workshop color token (handles all 10 PALETTE_COLORS, 'color:*' literals, and 'YELLOW' <-> 'AMBER'). */
+export function tryNormalizeCrateColor(raw: unknown): CrateColor | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const idx = Math.trunc(raw);
+    return DEPOT_RING_PALETTE[idx]?.id ?? null;
   }
-  const s = String(raw ?? '').trim().toUpperCase();
-  if (s === 'BLUE') return 'BLUE';
-  if (s === 'GREEN') return 'GREEN';
-  if (s === 'AMBER' || s === 'YELLOW') return 'AMBER';
-  return 'RED';
+  const s = String(raw ?? '')
+    .replace(/^color:/i, '')
+    .trim()
+    .toUpperCase();
+  if (!s) return null;
+  if (s === 'YELLOW' || s === 'AMBER') return 'AMBER';
+  if (
+    s === 'BLACK' ||
+    s === 'RED' ||
+    s === 'BLUE' ||
+    s === 'GREEN' ||
+    s === 'PURPLE' ||
+    s === 'PINK' ||
+    s === 'CYAN' ||
+    s === 'ORANGE' ||
+    s === 'WHITE'
+  ) {
+    return s;
+  }
+  return null;
+}
+
+export function normalizeCrateColor(raw: unknown): CrateColor {
+  return tryNormalizeCrateColor(raw) ?? 'RED';
 }
 
 function cloneColorList(list?: readonly CrateColor[]): CrateColor[] {
@@ -38,19 +69,22 @@ export function cloneStacks(stacks?: DepotStacks): DepotStacks {
   ];
 }
 
-export function cloneQueue(q?: DepotQueueItem[]): DepotQueueItem[] {
+export function cloneQueue(q?: readonly DepotQueueItem[]): DepotQueueItem[] {
   return (q ?? []).map((item) => ({
     ...item,
     color: normalizeCrateColor(item.color),
+    ...(item.value !== undefined ? { value: item.value } : {}),
   }));
 }
 
 export function normalizeDepotStation(raw: unknown): DepotStationId {
   if (typeof raw === 'string') {
     const up = raw.trim().toUpperCase();
-    if (up === 'STACK_2' || up === '2') return 'STACK_2';
-    if (up === 'STACK_3' || up === '3') return 'STACK_3';
-    if (up === 'QUEUE' || up === 'Q') return 'QUEUE';
+    if (up === 'STACK_2' || up === 'S2' || up === '2') return 'STACK_2';
+    if (up === 'STACK_3' || up === 'S3' || up === '3') return 'STACK_3';
+    if (up === 'QUEUE' || up === 'Q' || up === '4') return 'QUEUE';
+    if (up === 'INPUT' || up === 'IN' || up === '5') return 'INPUT';
+    if (up === 'TAPE' || up === 'PHYSICAL_TAPE' || up === '6') return 'TAPE';
     return 'STACK_1';
   }
   if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -58,6 +92,8 @@ export function normalizeDepotStation(raw: unknown): DepotStationId {
     if (n === 2) return 'STACK_2';
     if (n === 3) return 'STACK_3';
     if (n === 4) return 'QUEUE';
+    if (n === 5) return 'INPUT';
+    if (n === 6) return 'TAPE';
     return 'STACK_1';
   }
   return 'STACK_1';
@@ -74,15 +110,23 @@ export function indexToStation(idx: number): DepotStationId {
   if (idx === 1) return 'STACK_2';
   if (idx === 2) return 'STACK_3';
   if (idx === 3) return 'QUEUE';
+  if (idx === 4) return 'INPUT';
+  if (idx === 5) return 'TAPE';
   return 'STACK_1';
 }
 
+/**
+ * Station opcode byte encoding for DEPOT_MOVE_TO (0x10) per docs/binary_format.md §7.6:
+ * 0=STACK_1, 1=STACK_2, 2=STACK_3, 3=QUEUE, 4=PHYSICAL_TAPE, 5=INPUT.
+ */
 export function stationToCode(station: DepotStationId): number {
   switch (station) {
     case 'STACK_1': return 0;
     case 'STACK_2': return 1;
     case 'STACK_3': return 2;
     case 'QUEUE':   return 3;
+    case 'TAPE':    return 4;
+    case 'INPUT':   return 5;
   }
 }
 
@@ -91,6 +135,8 @@ export function codeToStation(code: number): DepotStationId {
     case 1: return 'STACK_2';
     case 2: return 'STACK_3';
     case 3: return 'QUEUE';
+    case 4: return 'TAPE';
+    case 5: return 'INPUT';
     default: return 'STACK_1';
   }
 }
@@ -102,6 +148,63 @@ export function depotStateNeedsQueueVersion(state: DepotState): boolean {
     state.initialQueue.length > 0 ||
     state.scrapCount > 0 ||
     state.heldDamaged
+  );
+}
+
+function hasExtendedDepotColorsOrValues(state: DepotState): boolean {
+  const lists: Array<readonly CrateColor[] | undefined> = [
+    state.stacks[0],
+    state.stacks[1],
+    state.stacks[2],
+    state.initialStacks[0],
+    state.initialStacks[1],
+    state.initialStacks[2],
+    state.targetStacks?.[0],
+    state.targetStacks?.[1],
+    state.targetStacks?.[2],
+    state.output,
+    state.targetOutput,
+  ];
+  for (const list of lists) {
+    if (!list) continue;
+    for (const c of list) {
+      if (EXTENDED_COLOR_SET.has(normalizeCrateColor(c))) return true;
+    }
+  }
+  if (state.heldCrate && EXTENDED_COLOR_SET.has(normalizeCrateColor(state.heldCrate))) {
+    return true;
+  }
+  for (const item of [
+    ...state.queue,
+    ...state.initialQueue,
+    ...(state.input ?? []),
+    ...(state.initialInput ?? []),
+  ]) {
+    if (EXTENDED_COLOR_SET.has(normalizeCrateColor(item.color)) || item.value !== undefined) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Returns true when state uses ENV_VERSION_DEPOT_V4 features (INPUT, 10-color rings, v4 rules). */
+export function depotStateNeedsV4Version(state: DepotState): boolean {
+  const mask = state.activeStationsMask ?? 0;
+  return (
+    (state.input?.length ?? 0) > 0 ||
+    (state.initialInput?.length ?? 0) > 0 ||
+    state.workerStation === 'INPUT' ||
+    state.initialWorkerStation === 'INPUT' ||
+    state.workerStation === 'TAPE' ||
+    state.initialWorkerStation === 'TAPE' ||
+    (mask & (DEPOT_STATION_BITS.INPUT | DEPOT_STATION_BITS.PHYSICAL_TAPE)) !== 0 ||
+    state.mode !== undefined ||
+    Boolean(state.enforceHanoiRule) ||
+    Boolean(state.requireEmptyStacks) ||
+    state.allowNonEmptyInput !== undefined ||
+    state.exactOutputCount !== undefined ||
+    state.heldValue !== undefined ||
+    hasExtendedDepotColorsOrValues(state)
   );
 }
 
@@ -121,6 +224,8 @@ type DepotMaskInferenceInput = Partial<
     | 'output'
     | 'queue'
     | 'initialQueue'
+    | 'input'
+    | 'initialInput'
     | 'workerStation'
     | 'initialWorkerStation'
     | 'scrapCount'
@@ -139,6 +244,13 @@ export function inferActiveStationsMask(state?: DepotMaskInferenceInput): number
     state.initialWorkerStation === 'QUEUE' ||
     (state.scrapCount ?? 0) > 0;
   if (hasQueue) mask |= DEPOT_STATION_BITS.QUEUE;
+
+  const hasInput =
+    (state.input?.length ?? 0) > 0 ||
+    (state.initialInput?.length ?? 0) > 0 ||
+    state.workerStation === 'INPUT' ||
+    state.initialWorkerStation === 'INPUT';
+  if (hasInput) mask |= DEPOT_STATION_BITS.INPUT;
 
   const hasOut = (state.targetOutput?.length ?? 0) > 0 || (state.output?.length ?? 0) > 0;
   if (hasOut) mask |= DEPOT_STATION_BITS.OUT;
@@ -172,7 +284,7 @@ export function normalizeActiveStationsMask(
   return inferActiveStationsMask(fallbackState);
 }
 
-/** Returns runtime active station bits, automatically keeping QUEUE/OUT visible if items arrive there. */
+/** Returns runtime active station bits, automatically keeping QUEUE/INPUT/OUT visible if items arrive there. */
 export function getEffectiveActiveStationsMask(state: DepotState): number {
   let mask =
     state.activeStationsMask !== undefined
@@ -189,6 +301,13 @@ export function getEffectiveActiveStationsMask(state: DepotState): number {
     state.scrapCount > 0
   ) {
     mask |= DEPOT_STATION_BITS.QUEUE;
+  }
+  if (
+    (state.input?.length ?? 0) > 0 ||
+    (state.initialInput?.length ?? 0) > 0 ||
+    state.workerStation === 'INPUT'
+  ) {
+    mask |= DEPOT_STATION_BITS.INPUT;
   }
   return mask;
 }
@@ -207,6 +326,7 @@ export function getActiveDepotStations(maskOrState?: number | DepotState): Depot
   if ((mask & DEPOT_STATION_BITS.STACK_2) !== 0) out.push('STACK_2');
   if ((mask & DEPOT_STATION_BITS.STACK_3) !== 0) out.push('STACK_3');
   if ((mask & DEPOT_STATION_BITS.QUEUE) !== 0) out.push('QUEUE');
+  if ((mask & DEPOT_STATION_BITS.INPUT) !== 0) out.push('INPUT');
   return out.length > 0 ? out : ['STACK_1', 'STACK_2', 'STACK_3'];
 }
 
@@ -223,7 +343,14 @@ export function createInitialDepotState(
         | 'initialWorkerStation'
         | 'queue'
         | 'initialQueue'
+        | 'input'
+        | 'initialInput'
         | 'scrapCount'
+        | 'mode'
+        | 'enforceHanoiRule'
+        | 'requireEmptyStacks'
+        | 'allowNonEmptyInput'
+        | 'exactOutputCount'
       >
     >,
     never
@@ -236,10 +363,14 @@ export function createInitialDepotState(
     overrides?.initialWorkerStation ?? overrides?.workerStation ?? 'STACK_1'
   );
   const startQueue = cloneQueue(overrides?.initialQueue ?? overrides?.queue ?? []);
+  const hasExplicitInput =
+    overrides?.initialInput !== undefined || overrides?.input !== undefined;
+  const startInput = cloneQueue(overrides?.initialInput ?? overrides?.input ?? []);
   const stacks = cloneStacks(overrides?.stacks ?? startStacks);
   const targetStacks = overrides?.targetStacks ? cloneStacks(overrides.targetStacks) : undefined;
   const targetOutput = overrides?.targetOutput ? cloneColorList(overrides.targetOutput) : undefined;
   const queue = cloneQueue(overrides?.queue ?? startQueue);
+  const input = cloneQueue(overrides?.input ?? startInput);
   const scrapCount = overrides?.scrapCount ?? 0;
 
   const activeStationsMask =
@@ -249,10 +380,15 @@ export function createInitialDepotState(
           targetOutput,
           queue,
           initialQueue: startQueue,
+          input,
+          initialInput: startInput,
           workerStation: startStation,
           initialWorkerStation: startStation,
           scrapCount,
         });
+
+  const keepInputArrays =
+    hasExplicitInput || (activeStationsMask & DEPOT_STATION_BITS.INPUT) !== 0;
 
   return {
     stacks,
@@ -270,6 +406,12 @@ export function createInitialDepotState(
     queue,
     initialQueue: startQueue,
     scrapCount,
+    ...(keepInputArrays ? { input, initialInput: startInput } : {}),
+    ...(overrides?.mode !== undefined ? { mode: overrides.mode } : {}),
+    ...(overrides?.enforceHanoiRule !== undefined ? { enforceHanoiRule: overrides.enforceHanoiRule } : {}),
+    ...(overrides?.requireEmptyStacks !== undefined ? { requireEmptyStacks: overrides.requireEmptyStacks } : {}),
+    ...(overrides?.allowNonEmptyInput !== undefined ? { allowNonEmptyInput: overrides.allowNonEmptyInput } : {}),
+    ...(overrides?.exactOutputCount !== undefined ? { exactOutputCount: overrides.exactOutputCount } : {}),
     activeStationsMask,
   };
 }
@@ -279,6 +421,11 @@ export function resetDepotState(state?: DepotState): DepotState {
   const baseStacks = cloneStacks(state.initialStacks ?? DEFAULT_SANDBOX_DEPOT_STACKS);
   const baseStation = normalizeDepotStation(state.initialWorkerStation ?? 'STACK_1');
   const baseQueue = cloneQueue(state.initialQueue ?? []);
+  const hasInput =
+    state.initialInput !== undefined ||
+    state.input !== undefined ||
+    ((state.activeStationsMask ?? 0) & DEPOT_STATION_BITS.INPUT) !== 0;
+  const baseInput = cloneQueue(state.initialInput ?? []);
   return {
     stacks: cloneStacks(baseStacks),
     initialStacks: baseStacks,
@@ -289,12 +436,19 @@ export function resetDepotState(state?: DepotState): DepotState {
     initialWorkerStation: baseStation,
     heldCrate: null,
     heldDamaged: false,
+    heldValue: undefined,
     lastFailureReason: null,
     status: 'IDLE',
     stepCount: 0,
     queue: cloneQueue(baseQueue),
     initialQueue: baseQueue,
     scrapCount: 0,
+    ...(hasInput ? { input: cloneQueue(baseInput), initialInput: baseInput } : {}),
+    ...(state.mode !== undefined ? { mode: state.mode } : {}),
+    ...(state.enforceHanoiRule !== undefined ? { enforceHanoiRule: state.enforceHanoiRule } : {}),
+    ...(state.requireEmptyStacks !== undefined ? { requireEmptyStacks: state.requireEmptyStacks } : {}),
+    ...(state.allowNonEmptyInput !== undefined ? { allowNonEmptyInput: state.allowNonEmptyInput } : {}),
+    ...(state.exactOutputCount !== undefined ? { exactOutputCount: state.exactOutputCount } : {}),
     activeStationsMask: state.activeStationsMask,
     lastAction: undefined,
   };
@@ -323,14 +477,27 @@ export function evaluateDepotCompletion(state: DepotState): SimulationStatus {
 
   const hasStackGoal = state.targetStacks !== undefined;
   const hasOutputGoal = state.targetOutput !== undefined && state.targetOutput.length > 0;
-  if (!hasStackGoal && !hasOutputGoal) {
+  const hasRuleGoal = state.requireEmptyStacks === true || state.exactOutputCount !== undefined;
+  if (!hasStackGoal && !hasOutputGoal && !hasRuleGoal) {
     return 'IDLE';
   }
 
   const stacksOk = !hasStackGoal || stacksEqual(state.stacks, state.targetStacks!);
   const outputOk = !hasOutputGoal || arraysEqual(state.output, state.targetOutput!);
-  // Must also not still be holding an unplaced required crate if goal matches
-  return stacksOk && outputOk && state.heldCrate === null ? 'SUCCESS' : 'IDLE';
+  const emptyStacksOk =
+    !state.requireEmptyStacks ||
+    (state.stacks[0].length === 0 && state.stacks[1].length === 0 && state.stacks[2].length === 0);
+  const exactOutOk =
+    state.exactOutputCount === undefined || state.output.length === state.exactOutputCount;
+  const inputOk =
+    state.allowNonEmptyInput === true ||
+    (state.initialInput?.length ?? 0) === 0 ||
+    (state.input?.length ?? 0) === 0;
+
+  // Must also not still be holding an unplaced required item if goal matches
+  return stacksOk && outputOk && emptyStacksOk && exactOutOk && inputOk && state.heldCrate === null
+    ? 'SUCCESS'
+    : 'IDLE';
 }
 
 export interface DepotStepOutcome {
@@ -377,47 +544,81 @@ function normalizeGate(raw: unknown): DepotSendGate {
   return 'OUT';
 }
 
+export interface DepotSensorQueryParams {
+  stationParam?: number;
+  station?: string;
+  colorIdx?: number;
+  color?: string;
+  canonicalColorIdx?: number;
+}
+
+function resolveSensorStation(state: DepotState, params?: DepotSensorQueryParams): DepotStationId {
+  if (params?.station !== undefined) {
+    const up = String(params.station).trim().toUpperCase();
+    if (!up || up === 'CURRENT') return state.workerStation;
+    return normalizeDepotStation(up);
+  }
+  // STATION_CODES order from docs/binary_format.md §7.1.2:
+  // 0=CURRENT, 1=STACK_1, 2=STACK_2, 3=STACK_3, 4=QUEUE, 5=INPUT, 6=PHYSICAL_TAPE
+  const sp = params?.stationParam ?? 0;
+  switch (sp) {
+    case 0: return state.workerStation;
+    case 1: return 'STACK_1';
+    case 2: return 'STACK_2';
+    case 3: return 'STACK_3';
+    case 4: return 'QUEUE';
+    case 5: return 'INPUT';
+    case 6: return 'TAPE';
+    default: return 'STACK_1';
+  }
+}
+
+function matchesSensorColor(actual: CrateColor, params?: DepotSensorQueryParams): boolean {
+  const normActual = normalizeCrateColor(actual);
+  if (params?.color !== undefined) {
+    const target = tryNormalizeCrateColor(params.color);
+    return target !== null && normActual === target;
+  }
+  const meta = DEPOT_CRATE_COLORS[normActual];
+  if (params?.canonicalColorIdx !== undefined) {
+    return meta.paletteIndex === params.canonicalColorIdx;
+  }
+  return meta.code === (params?.colorIdx ?? 0);
+}
+
 /**
- * Evaluate a Depot boolean sensor for use in IF/WHILE conditions (M5).
+ * Evaluate a Depot boolean sensor for use in IF/WHILE conditions.
  * Returns `true` / `false`. Unknown sensors return `false`.
  *
- * sensorCode mapping (ConditionExpr §3.1 Depot boolean sensors 0x18..0x1C):
- *   0x18 = stationEmpty  (stationParam: 0=CURRENT, 1=STACK_1, 2=STACK_2, 3=STACK_3, 4=QUEUE, 5=INPUT)
+ * sensorCode mapping (ConditionExpr §7.1.2 Depot boolean sensors 0x18..0x1C):
+ *   0x18 = stationEmpty  (stationParam: 0=CURRENT, 1=STACK_1, 2=STACK_2, 3=STACK_3, 4=QUEUE, 5=INPUT, 6=TAPE)
  *   0x19 = hasItem
- *   0x1A = itemDamaged
- *   0x1B = heldColor     (colorIdx param)
- *   0x1C = topColor      (colorIdx param)
+ *   0x1A = itemDamaged   (legacy M5 decode/test compat)
+ *   0x1B = heldColor     (color name string OR legacy colorIdx 0..3 / canonicalColorIdx 0..9)
+ *   0x1C = topColor      (non-destructive peek at worker's station: stack top, QUEUE[0], or INPUT[0])
  */
 export function evaluateDepotSensor(
   sensorCode: number,
   state: DepotState,
-  params?: { stationParam?: number; colorIdx?: number }
+  params?: DepotSensorQueryParams
 ): boolean {
   switch (sensorCode) {
-    case 0x18: { // stationEmpty(stationParam)
-      const sp = params?.stationParam ?? 0; // 0=CURRENT
-      let station: DepotStationId;
-      if (sp === 0) {
-        station = state.workerStation;
-      } else {
-        station = codeToStation(sp - 1);
-      }
+    case 0x18: { // stationEmpty(stationParam | station)
+      const station = resolveSensorStation(state, params);
       return depotStationIsEmpty(state, station);
     }
     case 0x19: // hasItem
       return state.heldCrate !== null;
-    case 0x1a: // itemDamaged
+    case 0x1a: // itemDamaged (legacy M5 compat)
       return state.heldCrate !== null && state.heldDamaged;
-    case 0x1b: { // heldColor == colorIdx
+    case 0x1b: { // heldColor
       if (state.heldCrate === null) return false;
-      const meta = DEPOT_CRATE_COLORS[state.heldCrate];
-      return meta.code === (params?.colorIdx ?? 0);
+      return matchesSensorColor(state.heldCrate, params);
     }
-    case 0x1c: { // topColor == colorIdx (non-destructive peek at worker's station)
+    case 0x1c: { // topColor (non-destructive peek at worker's station)
       const topColor = getTopColorAtStation(state, state.workerStation);
       if (topColor === null) return false;
-      const meta = DEPOT_CRATE_COLORS[topColor];
-      return meta.code === (params?.colorIdx ?? 0);
+      return matchesSensorColor(topColor, params);
     }
     default:
       return false;
@@ -427,6 +628,8 @@ export function evaluateDepotSensor(
 /** Returns true when the given station has no items. */
 function depotStationIsEmpty(state: DepotState, station: DepotStationId): boolean {
   if (station === 'QUEUE') return state.queue.length === 0;
+  if (station === 'INPUT') return (state.input?.length ?? 0) === 0;
+  if (station === 'TAPE') return true;
   const idx = stationToIndex(station);
   return state.stacks[idx].length === 0;
 }
@@ -435,6 +638,13 @@ function depotStationIsEmpty(state: DepotState, station: DepotStationId): boolea
 function getTopColorAtStation(state: DepotState, station: DepotStationId): CrateColor | null {
   if (station === 'QUEUE') {
     return state.queue.length > 0 ? state.queue[0].color : null;
+  }
+  if (station === 'INPUT') {
+    const curInput = state.input ?? [];
+    return curInput.length > 0 ? curInput[0].color : null;
+  }
+  if (station === 'TAPE') {
+    return null;
   }
   const idx = stationToIndex(station);
   const stack = state.stacks[idx];
@@ -508,6 +718,7 @@ export function applyDepotAction(
           queue: newQueue,
           heldCrate: front.color,
           heldDamaged: damaged,
+          heldValue: front.value,
           lastFailureReason: null,
           stepCount: nextStepCount,
           status: 'RUNNING',
@@ -528,6 +739,45 @@ export function applyDepotAction(
         };
       }
 
+      if (state.workerStation === 'INPUT') {
+        // One-way supply dispenser: dequeue from front of input[]
+        const curInput = state.input ?? [];
+        if (curInput.length === 0) {
+          return failStep(state, 'EMPTY_STACK');
+        }
+        const newInput = [...curInput];
+        const front = newInput.shift()!;
+        const damaged = front.damaged ?? false;
+        const candidate: DepotState = {
+          ...state,
+          input: newInput,
+          heldCrate: front.color,
+          heldDamaged: damaged,
+          heldValue: front.value,
+          lastFailureReason: null,
+          stepCount: nextStepCount,
+          status: 'RUNNING',
+          lastAction: {
+            stepId: nextStepCount,
+            type: 'GRAB',
+            fromStation: 'INPUT',
+            toStation: 'INPUT',
+            color: front.color,
+            damaged,
+            inputIndex: 0,
+          },
+        };
+        return {
+          nextState: candidate,
+          isCollision: false,
+          isSuccess: false,
+        };
+      }
+
+      if (state.workerStation === 'TAPE') {
+        return failStep(state, 'INVALID_STATION');
+      }
+
       // LIFO stack
       const stackIdx = stationToIndex(state.workerStation);
       const stack = state.stacks[stackIdx];
@@ -542,6 +792,7 @@ export function applyDepotAction(
         stacks: nextStacks,
         heldCrate: grabbed,
         heldDamaged: false,
+        heldValue: undefined,
         lastFailureReason: null,
         stepCount: nextStepCount,
         status: 'RUNNING',
@@ -568,6 +819,21 @@ export function applyDepotAction(
         return failStep(state, 'CLAW_EMPTY');
       }
 
+      if (state.workerStation === 'INPUT') {
+        // One-way guard: never drop rings back into INPUT dispenser
+        return failStep(state, 'INPUT_READ_ONLY', {
+          color: state.heldCrate,
+          damaged: state.heldDamaged,
+        });
+      }
+
+      if (state.workerStation === 'TAPE') {
+        return failStep(state, 'INVALID_STATION', {
+          color: state.heldCrate,
+          damaged: state.heldDamaged,
+        });
+      }
+
       if (state.workerStation === 'QUEUE') {
         // Enqueue at back
         if (state.queue.length >= DEPOT_MAX_QUEUE_LENGTH) {
@@ -578,15 +844,21 @@ export function applyDepotAction(
         }
         const placedColor = state.heldCrate;
         const placedDamaged = state.heldDamaged;
+        const placedValue = state.heldValue;
         const newQueue: DepotQueueItem[] = [
           ...state.queue,
-          { color: placedColor, damaged: placedDamaged || undefined },
+          {
+            color: placedColor,
+            ...(placedValue !== undefined ? { value: placedValue } : {}),
+            ...(placedDamaged ? { damaged: true } : {}),
+          },
         ];
         const candidate: DepotState = {
           ...state,
           queue: newQueue,
           heldCrate: null,
           heldDamaged: false,
+          heldValue: undefined,
           lastFailureReason: null,
           stepCount: nextStepCount,
           status: 'RUNNING',
@@ -609,7 +881,7 @@ export function applyDepotAction(
         };
       }
 
-      // LIFO stack: damaged crate → COLLISION
+      // LIFO stack: legacy damaged crate → COLLISION
       const stackIdx = stationToIndex(state.workerStation);
       if (state.heldDamaged) {
         return failStep(state, 'DAMAGED_TO_STACK', {
@@ -635,6 +907,7 @@ export function applyDepotAction(
         stacks: nextStacks,
         heldCrate: null,
         heldDamaged: false,
+        heldValue: undefined,
         lastFailureReason: null,
         stepCount: nextStepCount,
         status: 'RUNNING',
@@ -708,12 +981,13 @@ function applyDepotSendGate(
         damaged: false,
       });
     }
-    // Send damaged crate to scrap
+    // Send damaged crate to scrap (legacy M5)
     const candidate: DepotState = {
       ...state,
       scrapCount: state.scrapCount + 1,
       heldCrate: null,
       heldDamaged: false,
+      heldValue: undefined,
       lastFailureReason: null,
       stepCount: nextStepCount,
       status: 'RUNNING',
@@ -750,6 +1024,7 @@ function applyDepotSendGate(
           output: nextOutput,
           heldCrate: null,
           heldDamaged: false,
+          heldValue: undefined,
         },
         'WRONG_OUTPUT_ORDER',
         {
@@ -766,6 +1041,7 @@ function applyDepotSendGate(
     output: nextOutput,
     heldCrate: null,
     heldDamaged: false,
+    heldValue: undefined,
     lastFailureReason: null,
     stepCount: nextStepCount,
     status: 'RUNNING',

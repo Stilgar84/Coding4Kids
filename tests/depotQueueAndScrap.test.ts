@@ -1,6 +1,10 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   CrateColor,
+  DEPOT_DEFAULT_STACK_MASK,
+  DEPOT_STATION_BITS,
   DepotState,
   DepotQueueItem,
 } from '../src/simulations/depot/types';
@@ -8,24 +12,53 @@ import {
   applyDepotAction,
   createInitialDepotState,
   depotStateNeedsQueueVersion,
+  depotStateNeedsV4Version,
+  evaluateDepotCompletion,
   evaluateDepotSensor,
+  getActiveDepotStations,
+  normalizeCrateColor,
   resetDepotState,
 } from '../src/simulations/depot/depotPhysics';
+import {
+  DEPOT_GATE_PARAM_DEF,
+  DEPOT_SENSORS,
+  DEPOT_STATION_PARAM_DEF,
+  depotSimulationEnvironment,
+} from '../src/simulations/depot/depotEnvironment';
+import { DepotCanvas } from '../src/simulations/depot/components/DepotCanvas';
+import { DepotToolbarTools } from '../src/simulations/depot/components/DepotToolbarTools';
+import { renderDepotWorkshopSvg } from '../src/simulations/depot/depotThumbnail';
 import {
   exportToBinary,
   exportToString,
   importFromBinary,
   importFromString,
 } from '../src/engine/serialization/codeSerializer';
+import { BinaryReader } from '../src/engine/serialization/binaryReader';
+import { BinaryWriter } from '../src/engine/serialization/binaryWriter';
+import {
+  getDepotSerializationVersion,
+  readDepotBlock,
+  readDepotState,
+  writeDepotParams,
+  writeDepotState,
+} from '../src/engine/serialization/env/depotSerializer';
 import {
   ENV_ID_DEPOT,
   ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_QUEUE,
   ENV_VERSION_DEPOT_STATE,
+  ENV_VERSION_DEPOT_V4,
   OP_DEPOT_MOVE_TO,
   OP_DEPOT_SEND_GATE,
   OP_DEPOT_SEND_OUT,
 } from '../src/engine/serialization/types';
+import {
+  checkDepotReferenceSolution,
+  verifyDepotActivityRule,
+} from '../src/engine/verification/depotConstraintSolver';
+import { useAppStore } from '../src/store/useAppStore';
+import { CurriculumActivity } from '../src/data/curriculum/types';
 import { WorkspaceState } from '../src/types';
 
 describe('Commit 24: Depot M5 (FIFO Queue, Damaged Crates, Gates, Sensors & v3 Binary)', () => {
@@ -393,6 +426,396 @@ describe('Commit 24: Depot M5 (FIFO Queue, Damaged Crates, Gates, Sensors & v3 B
       expect(dec.envId).toBe('depot');
       expect(dec.depotState?.queue).toEqual([{ color: 'GREEN', damaged: true }]);
       expect(dec.workspace?.MAIN[1].params?.gate).toBe('ACCEPT');
+    });
+  });
+
+  describe('6. Depot v4: INPUT Dispenser, 10-Color Rings & Active Palette', () => {
+    it('dequeues from front of INPUT dispenser on DEPOT_GRAB and preserves lastAction', () => {
+      const state = createInitialDepotState({
+        stacks: [[], [], []],
+        input: [{ color: 'PURPLE' }, { color: 'CYAN' }, { color: 'WHITE' }],
+        workerStation: 'INPUT',
+      });
+
+      expect(getActiveDepotStations(state)).toContain('INPUT');
+      const g1 = applyDepotAction('DEPOT_GRAB', state);
+      expect(g1.isCollision).toBe(false);
+      expect(g1.nextState.heldCrate).toBe('PURPLE');
+      expect(g1.nextState.input).toEqual([{ color: 'CYAN' }, { color: 'WHITE' }]);
+      expect(g1.nextState.lastAction?.type).toBe('GRAB');
+      expect(g1.nextState.lastAction?.fromStation).toBe('INPUT');
+      expect(g1.nextState.lastAction?.toStation).toBe('INPUT');
+      expect(g1.nextState.lastAction?.inputIndex).toBe(0);
+
+      const m1 = applyDepotAction('DEPOT_MOVE_TO', g1.nextState, { station: 'STACK_1' });
+      const p1 = applyDepotAction('DEPOT_PLACE', m1.nextState);
+      expect(p1.isCollision).toBe(false);
+      expect(p1.nextState.stacks[0]).toEqual(['PURPLE']);
+    });
+
+    it('rejects DEPOT_PLACE at INPUT with INPUT_READ_ONLY COLLISION and restores input on reset', () => {
+      const base = createInitialDepotState({
+        input: [{ color: 'PINK' }, { color: 'ORANGE' }],
+        workerStation: 'INPUT',
+      });
+      const grabbed = applyDepotAction('DEPOT_GRAB', base).nextState;
+      expect(grabbed.heldCrate).toBe('PINK');
+
+      const dropAttempt = applyDepotAction('DEPOT_PLACE', grabbed);
+      expect(dropAttempt.isCollision).toBe(true);
+      expect(dropAttempt.nextState.lastFailureReason).toBe('INPUT_READ_ONLY');
+      expect(dropAttempt.nextState.lastAction?.type).toBe('COLLISION');
+      expect(dropAttempt.nextState.lastAction?.failureReason).toBe('INPUT_READ_ONLY');
+      expect(dropAttempt.nextState.input).toEqual([{ color: 'ORANGE' }]);
+
+      const reset = resetDepotState(dropAttempt.nextState);
+      expect(reset.input).toEqual([{ color: 'PINK' }, { color: 'ORANGE' }]);
+      expect(reset.heldCrate).toBeNull();
+    });
+
+    it('keeps workerStation invariant on DEPOT_SEND_OUT and enforces v4 completion rules', () => {
+      const state = createInitialDepotState({
+        stacks: [['RED'], [], []],
+        input: [{ color: 'BLACK' }],
+        workerStation: 'INPUT',
+        requireEmptyStacks: true,
+        exactOutputCount: 2,
+        allowNonEmptyInput: false,
+      });
+
+      // Grab BLACK from INPUT and send OUT while parked at INPUT
+      const g1 = applyDepotAction('DEPOT_GRAB', state).nextState;
+      const out1 = applyDepotAction('DEPOT_SEND_OUT', g1);
+      expect(out1.nextState.workerStation).toBe('INPUT');
+      expect(out1.isSuccess).toBe(false); // Stack 1 not empty yet & exactOutputCount = 2
+
+      // Grab RED from STACK_1 and send OUT
+      const m1 = applyDepotAction('DEPOT_MOVE_TO', out1.nextState, { station: 'STACK_1' }).nextState;
+      const g2 = applyDepotAction('DEPOT_GRAB', m1).nextState;
+      const out2 = applyDepotAction('DEPOT_SEND_OUT', g2);
+      expect(out2.nextState.workerStation).toBe('STACK_1');
+      expect(out2.isSuccess).toBe(true);
+      expect(evaluateDepotCompletion(out2.nextState)).toBe('SUCCESS');
+    });
+
+    it('supports all 10 PALETTE_COLORS (yellow<->amber alias) & string stationEmpty/heldColor/topColor', () => {
+      const colors: Array<[string, CrateColor]> = [
+        ['black', 'BLACK'],
+        ['red', 'RED'],
+        ['blue', 'BLUE'],
+        ['green', 'GREEN'],
+        ['amber', 'AMBER'],
+        ['yellow', 'AMBER'],
+        ['purple', 'PURPLE'],
+        ['pink', 'PINK'],
+        ['cyan', 'CYAN'],
+        ['orange', 'ORANGE'],
+        ['white', 'WHITE'],
+      ];
+      for (const [token, expected] of colors) {
+        expect(normalizeCrateColor(token)).toBe(expected);
+      }
+
+      const state = createInitialDepotState({
+        stacks: [['PURPLE'], [], []],
+        queue: [{ color: 'CYAN' }],
+        input: [{ color: 'AMBER' }],
+        workerStation: 'INPUT',
+      });
+
+      // stationEmpty string params including CURRENT, STACK_1..3, QUEUE, INPUT (stationCode 5)
+      expect(depotSimulationEnvironment.evaluateSensor!('stationEmpty', state, 'CURRENT')).toBe(false);
+      expect(depotSimulationEnvironment.evaluateSensor!('stationEmpty', state, 'INPUT')).toBe(false);
+      expect(depotSimulationEnvironment.evaluateSensor!('stationEmpty', state, 'QUEUE')).toBe(false);
+      expect(depotSimulationEnvironment.evaluateSensor!('stationEmpty', state, 'STACK_2')).toBe(true);
+      expect(evaluateDepotSensor(0x18, state, { stationParam: 5 })).toBe(false);
+      expect(evaluateDepotSensor(0x18, { ...state, input: [] }, { stationParam: 5 })).toBe(true);
+
+      // topColor peeks INPUT[0] = AMBER (matches both 'amber' and 'yellow')
+      expect(depotSimulationEnvironment.evaluateSensor!('$topColor', state, 'yellow')).toBe(true);
+      expect(depotSimulationEnvironment.evaluateSensor!('$topColor', state, 'amber')).toBe(true);
+      expect(depotSimulationEnvironment.evaluateSensor!('$topColor', state, 'purple')).toBe(false);
+
+      // Move to QUEUE -> topColor sees CYAN; grab -> heldColor sees CYAN
+      const atQueue = applyDepotAction('DEPOT_MOVE_TO', state, { station: 'QUEUE' }).nextState;
+      expect(depotSimulationEnvironment.evaluateSensor!('$topColor', atQueue, 'cyan')).toBe(true);
+      const grabbed = applyDepotAction('DEPOT_GRAB', atQueue).nextState;
+      expect(depotSimulationEnvironment.evaluateSensor!('$heldColor', grabbed, 'cyan')).toBe(true);
+      expect(depotSimulationEnvironment.evaluateSensor!('hasItem', grabbed)).toBe(true);
+    });
+
+    it('retires SCRAP and itemDamaged from active palette & sensor definitions', () => {
+      expect(DEPOT_STATION_PARAM_DEF.options.some((o) => o.value === 'INPUT')).toBe(true);
+      expect(DEPOT_GATE_PARAM_DEF.options.some((o) => o.value === 'SCRAP')).toBe(false);
+      expect(DEPOT_GATE_PARAM_DEF.options.map((o) => o.value)).toEqual(['OUT', 'ACCEPT', 'REJECT']);
+      expect(DEPOT_SENSORS.some((s) => s.id === 'itemDamaged')).toBe(false);
+      expect(DEPOT_SENSORS.map((s) => s.id)).toEqual([
+        '$stack1',
+        '$stack2',
+        '$stack3',
+        '$out',
+        'stationEmpty',
+        'hasItem',
+        '$heldColor',
+        '$topColor',
+      ]);
+    });
+  });
+
+  describe('7. Depot v4 Binary Serialization (ENV_VERSION_DEPOT_V4 = 4)', () => {
+    it('selects version 2 for stack-only, 3 for queue/scrap, and 4 for INPUT / 10-color rings', () => {
+      const v2 = createInitialDepotState({ stacks: [['RED'], ['BLUE'], []] });
+      expect(getDepotSerializationVersion(v2)).toBe(ENV_VERSION_DEPOT_STATE);
+
+      const v3 = createInitialDepotState({ queue: [{ color: 'GREEN' }] });
+      expect(getDepotSerializationVersion(v3)).toBe(ENV_VERSION_DEPOT_QUEUE);
+
+      const v4Input = createInitialDepotState({ input: [{ color: 'RED' }] });
+      expect(depotStateNeedsV4Version(v4Input)).toBe(true);
+      expect(getDepotSerializationVersion(v4Input)).toBe(ENV_VERSION_DEPOT_V4);
+
+      const v4Color = createInitialDepotState({ stacks: [['PURPLE'], ['WHITE'], ['BLACK']] });
+      expect(getDepotSerializationVersion(v4Color)).toBe(ENV_VERSION_DEPOT_V4);
+    });
+
+    it('round-trips full Depot v4 state and INPUT MOVE_TO params losslessly', () => {
+      const v4State = createInitialDepotState({
+        stacks: [['BLACK', 'WHITE'], ['PURPLE'], ['PINK', 'CYAN', 'ORANGE']],
+        targetStacks: [['ORANGE'], [], ['BLACK']],
+        queue: [{ color: 'AMBER', value: 7 }, { color: 'GREEN' }],
+        input: [{ color: 'RED', value: -3 }, { color: 'BLUE' }],
+        targetOutput: ['PURPLE', 'WHITE'],
+        workerStation: 'INPUT',
+        activeStationsMask:
+          DEPOT_DEFAULT_STACK_MASK |
+          DEPOT_STATION_BITS.QUEUE |
+          DEPOT_STATION_BITS.INPUT |
+          DEPOT_STATION_BITS.OUT,
+        mode: 'while_sort',
+        enforceHanoiRule: true,
+        requireEmptyStacks: true,
+        allowNonEmptyInput: false,
+        exactOutputCount: 2,
+      });
+
+      const writer = new BinaryWriter();
+      writeDepotState(writer, v4State, ENV_VERSION_DEPOT_V4);
+      const reader = new BinaryReader(writer.getBytes());
+      const decoded = readDepotState(reader, ENV_VERSION_DEPOT_V4);
+
+      expect(decoded.workerStation).toBe('INPUT');
+      expect(decoded.stacks).toEqual([
+        ['BLACK', 'WHITE'],
+        ['PURPLE'],
+        ['PINK', 'CYAN', 'ORANGE'],
+      ]);
+      expect(decoded.targetStacks).toEqual([['ORANGE'], [], ['BLACK']]);
+      expect(decoded.queue).toEqual([{ color: 'AMBER', value: 7 }, { color: 'GREEN' }]);
+      expect(decoded.input).toEqual([{ color: 'RED', value: -3 }, { color: 'BLUE' }]);
+      expect(decoded.targetOutput).toEqual(['PURPLE', 'WHITE']);
+      expect(decoded.mode).toBe('while_sort');
+      expect(decoded.enforceHanoiRule).toBe(true);
+      expect(decoded.requireEmptyStacks).toBe(true);
+      expect(decoded.allowNonEmptyInput).toBe(false);
+      expect(decoded.exactOutputCount).toBe(2);
+
+      // DEPOT_MOVE_TO INPUT param byte round-trip (§7.6 stationCode 5)
+      const pWriter = new BinaryWriter();
+      writeDepotParams(pWriter, OP_DEPOT_MOVE_TO, { station: 'INPUT' }, 0);
+      const pBytes = pWriter.getBytes();
+      expect(pBytes[0]).toBe(5);
+      const pReader = new BinaryReader(pBytes);
+      const blk = readDepotBlock(pReader, OP_DEPOT_MOVE_TO, 0);
+      expect(blk.params?.station).toBe('INPUT');
+    });
+  });
+
+  describe('8. DepotCanvas v4, DepotToolbarTools & Workshop Thumbnail', () => {
+    it('renders INPUT dispenser, 10-color rings, sensor beam spotlight, and zero-reading INPUT barrier', () => {
+      const state = createInitialDepotState({
+        stacks: [['PURPLE'], ['CYAN'], ['BLACK']],
+        queue: [{ color: 'PINK' }],
+        input: [{ color: 'ORANGE' }, { color: 'WHITE' }],
+        workerStation: 'INPUT',
+        activeStationsMask:
+          DEPOT_DEFAULT_STACK_MASK |
+          DEPOT_STATION_BITS.QUEUE |
+          DEPOT_STATION_BITS.INPUT |
+          DEPOT_STATION_BITS.OUT,
+      });
+
+      const collided = applyDepotAction(
+        'DEPOT_PLACE',
+        applyDepotAction('DEPOT_GRAB', state).nextState
+      ).nextState;
+
+      const html = renderToStaticMarkup(
+        React.createElement(DepotCanvas, {
+          state: collided,
+          spotlightsOverride: ['sensor-beam'],
+        })
+      );
+      expect(html).toContain('data-testid="depot-input-dispenser"');
+      expect(html).toContain('data-testid="depot-queue-belt"');
+      expect(html).toContain('data-testid="depot-input-barrier"');
+      expect(html).toContain('>⛔<');
+      expect(html).toContain('data-testid="depot-sensor-beam"');
+      expect(html).not.toContain('>INPUT_READ_ONLY<');
+
+      // Thumbnail includes daylight backdrop, birch bench, and IN bay
+      const svg = renderDepotWorkshopSvg(state);
+      expect(svg).toContain('#edf4fb');
+      expect(svg).toContain('#e4be8b');
+      expect(svg).toContain('>IN<');
+    });
+
+    it('renders radar and claw halo spotlights for active IF/WHILE sensor blocks', () => {
+      const ws: WorkspaceState = {
+        MAIN: [
+          {
+            id: 'while_blk',
+            type: 'WHILE',
+            params: { condition: { kind: 'sensor', sensor: 'stationEmpty', param: 'INPUT' } },
+          },
+          {
+            id: 'if_blk',
+            type: 'IF',
+            params: { condition: { kind: 'sensor', sensor: 'hasItem' } },
+          },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      useAppStore.setState({ workspace: ws });
+      const state = createInitialDepotState({
+        input: [{ color: 'PURPLE' }],
+        workerStation: 'INPUT',
+      });
+
+      const radarHtml = renderToStaticMarkup(
+        React.createElement(DepotCanvas, { state, activeBlockId: 'while_blk' })
+      );
+      expect(radarHtml).toContain('data-testid="depot-radar-spotlight"');
+
+      const haloHtml = renderToStaticMarkup(
+        React.createElement(DepotCanvas, { state, activeBlockId: 'if_blk' })
+      );
+      expect(haloHtml).toContain('data-testid="depot-claw-halo"');
+    });
+
+    it('renders clean intact stacked-ring DepotToolbarTools with >= 36px/44px touch targets and zero damaged crates', () => {
+      const prevMode = useAppStore.getState().appMode;
+      useAppStore.setState({ appMode: 'sandbox' });
+      try {
+        const html = renderToStaticMarkup(
+          React.createElement(DepotToolbarTools, { state: createInitialDepotState() })
+        );
+        expect(html).toContain('data-testid="tool-depot-cycle-preset"');
+        expect(html).toContain('data-testid="tool-depot-add-queue"');
+        expect(html).toContain('min-w-[36px]');
+        expect(html).toContain('md:min-w-[44px]');
+        expect(html).not.toContain('⚡');
+        expect(html).not.toContain('damaged');
+      } finally {
+        useAppStore.setState({ appMode: prevMode });
+      }
+    });
+  });
+
+  describe('9. Depot Constraint Solver v4 (activeStationsMask pruning & multi-variant < 200ms)', () => {
+    it('validates WHILE/IF/ELSE_IF/ELSE + INPUT solutions and solves multi-variant rule check < 200ms', () => {
+      const activity: CurriculumActivity = {
+        id: 'test-depot-v4-sort',
+        module: 'while',
+        title: 'Test Depot v4 Sort',
+        lessonNumber: 'while.test',
+        simId: 'depot',
+        format: 'challenge',
+        prompt: 'Sort INPUT red/blue rings into OUT and Stack 1.',
+        palette: {
+          allowedSimBlocks: ['DEPOT_MOVE_TO', 'DEPOT_GRAB', 'DEPOT_PLACE', 'DEPOT_SEND_OUT'],
+          allowedControlBlocks: ['WHILE', 'END_WHILE', 'IF', 'ELSE', 'END_IF'],
+          allowedSensors: ['stationEmpty', '$heldColor'],
+          allowedScopes: ['MAIN'],
+          allowRepeatBadges: false,
+        },
+        slotCap: { maxTotal: 11 },
+        depot: createInitialDepotState({
+          stacks: [[], [], []],
+          input: [{ color: 'RED' }, { color: 'BLUE' }, { color: 'RED' }],
+          targetStacks: [['BLUE'], [], []],
+          targetOutput: ['RED', 'RED'],
+          workerStation: 'INPUT',
+          activeStationsMask:
+            DEPOT_STATION_BITS.STACK_1 | DEPOT_STATION_BITS.INPUT | DEPOT_STATION_BITS.OUT,
+        }),
+        depotVariants: [
+          createInitialDepotState({
+            stacks: [[], [], []],
+            input: [{ color: 'RED' }, { color: 'BLUE' }, { color: 'RED' }],
+            targetStacks: [['BLUE'], [], []],
+            targetOutput: ['RED', 'RED'],
+            workerStation: 'INPUT',
+            activeStationsMask:
+              DEPOT_STATION_BITS.STACK_1 | DEPOT_STATION_BITS.INPUT | DEPOT_STATION_BITS.OUT,
+          }),
+          createInitialDepotState({
+            stacks: [[], [], []],
+            input: [{ color: 'BLUE' }, { color: 'RED' }, { color: 'BLUE' }],
+            targetStacks: [['BLUE', 'BLUE'], [], []],
+            targetOutput: ['RED'],
+            workerStation: 'INPUT',
+            activeStationsMask:
+              DEPOT_STATION_BITS.STACK_1 | DEPOT_STATION_BITS.INPUT | DEPOT_STATION_BITS.OUT,
+          }),
+        ],
+        referenceSolution: {
+          MAIN: [
+            {
+              id: 'w1',
+              type: 'WHILE',
+              params: {
+                condition: {
+                  kind: 'not',
+                  operand: { kind: 'sensor', sensor: 'stationEmpty', param: 'INPUT' },
+                },
+              },
+            },
+            { id: 'm1', type: 'DEPOT_MOVE_TO', params: { station: 'INPUT' } },
+            { id: 'g1', type: 'DEPOT_GRAB' },
+            {
+              id: 'i1',
+              type: 'IF',
+              params: { condition: { kind: 'sensor', sensor: 'heldColor', param: 'red' } },
+            },
+            { id: 'o1', type: 'DEPOT_SEND_OUT' },
+            { id: 'e1', type: 'ELSE' },
+            { id: 'm2', type: 'DEPOT_MOVE_TO', params: { station: 'STACK_1' } },
+            { id: 'p1', type: 'DEPOT_PLACE' },
+            { id: 'ei1', type: 'END_IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+        antiBypassRules: [
+          {
+            id: 'require-while',
+            description: 'Must work across both INPUT variants without straight-line hardcoding',
+            forbidBlocks: ['WHILE', 'IF'],
+          },
+        ],
+      };
+
+      const refCheck = checkDepotReferenceSolution(activity);
+      expect(refCheck.paletteViolations).toEqual([]);
+      expect(refCheck.passed).toBe(true);
+
+      const ruleCheck = verifyDepotActivityRule(activity, activity.antiBypassRules![0], 0);
+      expect(ruleCheck.passed).toBe(true);
+      expect(ruleCheck.elapsedMs).toBeLessThan(200);
     });
   });
 });

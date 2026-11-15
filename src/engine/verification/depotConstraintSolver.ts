@@ -73,9 +73,21 @@ function countWorkspaceBlocks(ws: WorkspaceState): number {
 
 function canonicalDepotKey(s: DepotState): string {
   const base = `${s.workerStation}|${s.heldCrate ?? '_'}|${s.stacks[0].join(',')}|${s.stacks[1].join(',')}|${s.stacks[2].join(',')}|${s.output.join(',')}`;
-  if (s.queue.length === 0 && s.scrapCount === 0 && !s.heldDamaged) return base;
+  const inputItems = s.input ?? [];
+  if (
+    s.queue.length === 0 &&
+    inputItems.length === 0 &&
+    s.scrapCount === 0 &&
+    !s.heldDamaged &&
+    s.heldValue === undefined
+  ) {
+    return base;
+  }
   const qStr = s.queue.map((q) => (q.damaged ? `${q.color}!` : q.color)).join(',');
-  return `${base}|Q:${qStr}|S:${s.scrapCount}|D:${s.heldDamaged ? 1 : 0}`;
+  const inStr = inputItems
+    .map((q) => (q.value !== undefined ? `${q.color}:${q.value}` : q.color))
+    .join(',');
+  return `${base}|Q:${qStr}|I:${inStr}|S:${s.scrapCount}|D:${s.heldDamaged ? 1 : 0}`;
 }
 
 function cloneDepotState(s: DepotState): DepotState {
@@ -94,6 +106,10 @@ function cloneDepotState(s: DepotState): DepotState {
     targetOutput: s.targetOutput ? [...s.targetOutput] : undefined,
     queue: s.queue.map((item) => ({ ...item })),
     initialQueue: s.initialQueue.map((item) => ({ ...item })),
+    ...(s.input !== undefined ? { input: s.input.map((item) => ({ ...item })) } : {}),
+    ...(s.initialInput !== undefined
+      ? { initialInput: s.initialInput.map((item) => ({ ...item })) }
+      : {}),
     activeStationsMask: s.activeStationsMask,
   };
 }
@@ -188,9 +204,11 @@ function validateDepotWorkspaceAgainstPalette(
     'CALL_F2',
     'CALL_F3',
     'IF',
+    'ELSE_IF',
     'ELSE',
     'END_IF',
     'WHILE',
+    'END_WHILE',
     'VAR_ASSIGN',
     'VAR_OP',
   ]);
@@ -380,16 +398,30 @@ function solveDepotLoopFreeBfs(
   ];
   let head = 0;
   let exploredStates = 1;
+  const deadlineMs = nowMs() + 140;
 
   while (head < queue.length) {
+    if ((head & 255) === 0 && nowMs() >= deadlineMs) {
+      return {
+        minWinningBlocks: null,
+        exploredStates,
+        exhaustedStateSpace: false,
+      };
+    }
     const cur = queue[head];
     if (maxBlocks !== undefined && cur.depth >= maxBlocks) {
       head++;
       continue;
     }
 
+    const prevAction = cur.actionIdx >= 0 ? actions[cur.actionIdx] : undefined;
     for (let a = 0; a < actions.length; a++) {
       const action = actions[a];
+      // Lossless move pruning: never MOVE twice in a row or MOVE to current station
+      if (action.actionType === 'DEPOT_MOVE_TO') {
+        if (prevAction?.actionType === 'DEPOT_MOVE_TO') continue;
+        if (cur.state.workerStation === action.params?.station) continue;
+      }
       const next = stepSingleDepotAction(cur.state, action);
       exploredStates++;
 
@@ -965,14 +997,20 @@ export function verifyDepotActivityRule(
     const mvVisited = new Set<string>([multiKeys.join('##')]);
     let head = 0;
     const maxDepth = slotLimit ?? 10;
+    const mvDeadlineMs = startMs + 150;
     let mvWinBlocks: number | null = null;
     let mvWinAst: DepotCandidateActionSpec[] | null = null;
 
     while (head < mvQueue.length) {
+      if ((head & 127) === 0 && nowMs() >= mvDeadlineMs) break;
       const cur = mvQueue[head++];
       if (cur.depth >= maxDepth) continue;
 
       for (const act of actions) {
+        if (act.actionType === 'DEPOT_MOVE_TO') {
+          if (cur.viaAct?.actionType === 'DEPOT_MOVE_TO') continue;
+          if (cur.states.every((st) => st.workerStation === act.params?.station)) continue;
+        }
         const nextStates: DepotState[] = [];
         const nextKeys: string[] = [];
         let collision = false;
