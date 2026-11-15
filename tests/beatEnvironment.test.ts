@@ -1,3 +1,5 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WorkspaceState } from '../src/types';
 import {
@@ -7,16 +9,21 @@ import {
 import {
   BEAT_PRESETS,
   countLitLeds,
+  createEmptyLedGrid,
   createPresetLedGrid,
+  isBeatLedOffHex as isPresetBeatLedOffHex,
   presetIdToName,
   presetNameToId,
 } from '../src/simulations/beat/presets';
 import {
+  BEAT_DELAY_PARAM_DEF,
   BEAT_PALETTE_ITEMS,
   beatSimulationEnvironment,
   createInitialBeatState,
+  isBeatLedOffHex,
   resetBeatState,
 } from '../src/simulations/beat/beatEnvironment';
+import { BeatCanvas } from '../src/simulations/beat/components/BeatCanvas';
 import { BeatSynthEngine, beatSynth } from '../src/simulations/beat/beatSynth';
 import {
   ENV_ID_BEAT,
@@ -883,6 +890,211 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
       useAppStore.getState().reset();
       expect(useAppStore.getState().beatState.beatIndex).toBe(0);
       expect(createEmptyWorkspace().MAIN).toEqual([]);
+    });
+  });
+
+  describe('Phase 1: Canonical LED-Off (#0f172a/#000000 -> null), SET_BEAT_DELAY Alias & Zero-Reading BeatCanvas (#304)', () => {
+    it('exports isBeatLedOffHex (case-insensitive) and normalizes #0f172a and #000000 to null in presets and paint blocks', () => {
+      expect(isBeatLedOffHex).toBe(isPresetBeatLedOffHex);
+      expect(isBeatLedOffHex('#0f172a')).toBe(true);
+      expect(isBeatLedOffHex('#0F172A')).toBe(true);
+      expect(isBeatLedOffHex('#000000')).toBe(true);
+      expect(isBeatLedOffHex(' #000000 ')).toBe(true);
+      expect(isBeatLedOffHex('#ffffff')).toBe(false);
+      expect(isBeatLedOffHex('#06b6d4')).toBe(false);
+      expect(isBeatLedOffHex(null)).toBe(false);
+      expect(isBeatLedOffHex(undefined)).toBe(false);
+      expect(isBeatLedOffHex('')).toBe(false);
+
+      // createPresetLedGrid normalizes LED-off overrides to null (equal to untouched empty grid)
+      expect(createPresetLedGrid('HEART', '#0f172a')).toEqual(createEmptyLedGrid());
+      expect(createPresetLedGrid('HEART', '#000000')).toEqual(createEmptyLedGrid());
+      expect(createPresetLedGrid('STAR', '#0F172A')).toEqual(createEmptyLedGrid());
+
+      // countLitLeds ignores raw #0f172a / #000000 entries
+      const rawOffGrid = createEmptyLedGrid();
+      rawOffGrid[0][0] = '#0f172a';
+      rawOffGrid[1][1] = '#000000';
+      rawOffGrid[2][2] = '#ffffff';
+      expect(countLitLeds(rawOffGrid)).toBe(1);
+
+      // Erasing lit cells with #0f172a or #000000 leaves leds structurally equal to untouched null cells
+      let painted = createInitialBeatState(true);
+      painted = beatSimulationEnvironment.executeAction('SET_LED_COLOR', painted, {
+        params: { color: '#06b6d4' },
+      }).nextState;
+      painted = beatSimulationEnvironment.executeAction('LIGHT_ROW', painted, {
+        params: { y: 2 },
+      }).nextState;
+      painted = beatSimulationEnvironment.executeAction('SET_LED_COLOR', painted, {
+        params: { color: '#0f172a' },
+      }).nextState;
+      painted = beatSimulationEnvironment.executeAction('LIGHT_PIXEL', painted, {
+        params: { x: 3, y: 2 },
+      }).nextState;
+      expect(painted.leds[1][2]).toBeNull();
+
+      painted = beatSimulationEnvironment.executeAction('SET_LED_COLOR', painted, {
+        params: { color: '#000000' },
+      }).nextState;
+      painted = beatSimulationEnvironment.executeAction('LIGHT_COL', painted, {
+        params: { x: 1 },
+      }).nextState;
+      expect(painted.leds[1][0]).toBeNull();
+
+      // Stamping a preset while #000000 is active paints null (off)
+      painted = beatSimulationEnvironment.executeAction('STAMP_HEART', painted).nextState;
+      expect(painted.leds).toEqual(createEmptyLedGrid());
+
+      // Light all of row 2 except cols 1 and 3 from scratch -> matches erased goal grid identically
+      let target = createInitialBeatState(true);
+      target = beatSimulationEnvironment.executeAction('SET_LED_COLOR', target, {
+        params: { color: '#06b6d4' },
+      }).nextState;
+      for (const x of [2, 4, 5, 6, 7, 8]) {
+        target = beatSimulationEnvironment.executeAction('LIGHT_PIXEL', target, {
+          params: { x, y: 2 },
+        }).nextState;
+      }
+
+      let erased = createInitialBeatState(true);
+      erased = beatSimulationEnvironment.executeAction('SET_LED_COLOR', erased, {
+        params: { color: '#06b6d4' },
+      }).nextState;
+      erased = beatSimulationEnvironment.executeAction('LIGHT_ROW', erased, {
+        params: { y: 2 },
+      }).nextState;
+      erased = beatSimulationEnvironment.executeAction('SET_LED_COLOR', erased, {
+        params: { color: '#0f172a' },
+      }).nextState;
+      erased = beatSimulationEnvironment.executeAction('LIGHT_PIXEL', erased, {
+        params: { x: 1, y: 2 },
+      }).nextState;
+      erased = beatSimulationEnvironment.executeAction('SET_LED_COLOR', erased, {
+        params: { color: '#000000' },
+      }).nextState;
+      erased = beatSimulationEnvironment.executeAction('LIGHT_PIXEL', erased, {
+        params: { x: 3, y: 2 },
+      }).nextState;
+      expect(erased.leds).toEqual(target.leds);
+    });
+
+    it('supports delay and multiplier fallback on SET_BEAT_DELAY while preserving defaultValue 0 and initial 1x speed', () => {
+      expect(createInitialBeatState().stepDelayMultiplier).toBe(1);
+      expect(BEAT_DELAY_PARAM_DEF.defaultValue).toBe(0);
+      expect(beatSimulationEnvironment.ToolsComponent).toBeUndefined();
+
+      const base = createInitialBeatState(true);
+      const viaDelay = beatSimulationEnvironment.executeAction('SET_BEAT_DELAY', base, {
+        params: { delay: 0.25 },
+      }).nextState;
+      expect(viaDelay.stepDelayMultiplier).toBe(0.25);
+
+      const viaMultiplier = beatSimulationEnvironment.executeAction('SET_BEAT_DELAY', base, {
+        params: { multiplier: 0.5 },
+      }).nextState;
+      expect(viaMultiplier.stepDelayMultiplier).toBe(0.5);
+
+      const delayZeroBeatsMultiplier = beatSimulationEnvironment.executeAction(
+        'SET_BEAT_DELAY',
+        base,
+        { params: { delay: 0, multiplier: 2 } }
+      ).nextState;
+      expect(delayZeroBeatsMultiplier.stepDelayMultiplier).toBe(0);
+
+      const defaultFallback = beatSimulationEnvironment.executeAction('SET_BEAT_DELAY', base)
+        .nextState;
+      expect(defaultFallback.stepDelayMultiplier).toBe(0);
+    });
+
+    it('renders zero-reading 🎵 #N counter, gates tool-beat-active-color, shows #304 ⊘ erase swatch, and mounts SimulationTopLeftHud below header', () => {
+      const store = useAppStore.getState();
+
+      // 1. Sandbox mode: renders tool-beat-active-color and 🎵 #N counter
+      store.setAppMode('sandbox');
+      store.setSimEnvironment('beat');
+      const stateWithBeats = {
+        ...createInitialBeatState(true),
+        beatIndex: 4,
+        activeColor: '#06b6d4',
+      };
+      const sandboxHtml = renderToStaticMarkup(
+        React.createElement(BeatCanvas, { state: stateWithBeats })
+      );
+      expect(sandboxHtml).toMatch(/<span data-testid="beat-step-counter"[^>]*>🎵 #4<\/span>/);
+      expect(sandboxHtml).not.toContain('Step 4');
+      expect(sandboxHtml).toContain('data-testid="tool-beat-active-color"');
+      expect(sandboxHtml).toContain('data-led-off="false"');
+      expect(sandboxHtml).not.toContain('data-testid="beat-active-color-erase-cue"');
+      expect(sandboxHtml).not.toContain('data-testid="simulation-top-left-hud"');
+
+      // 2. Curriculum lesson without SET_LED_COLOR (1.8) hides tool-beat-active-color
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('1.8');
+      const hiddenToolHtml = renderToStaticMarkup(
+        React.createElement(BeatCanvas, { state: stateWithBeats })
+      );
+      expect(hiddenToolHtml).not.toContain('data-testid="tool-beat-active-color"');
+
+      // 3. Curriculum lesson with SET_LED_COLOR (2.5) shows tool-beat-active-color
+      store.setCurriculumActivity('2.5');
+      const visibleToolHtml = renderToStaticMarkup(
+        React.createElement(BeatCanvas, { state: stateWithBeats })
+      );
+      expect(visibleToolHtml).toContain('data-testid="tool-beat-active-color"');
+
+      // 4. #304 LED-Off (#0f172a and #000000) renders recessed shaded off-pad + ⊘ erase cue, and BeatLedCell treats raw #0f172a/#000000 as unlit
+      store.setAppMode('sandbox');
+      for (const offHex of ['#0f172a', '#000000']) {
+        const leds = createEmptyLedGrid();
+        leds[0][0] = offHex;
+        leds[0][1] = '#ffffff';
+        const offState = {
+          ...createInitialBeatState(true),
+          activeColor: offHex,
+          leds,
+        };
+        const offHtml = renderToStaticMarkup(
+          React.createElement(BeatCanvas, { state: offState })
+        );
+        expect(offHtml).toContain('data-testid="tool-beat-active-color" data-led-off="true"');
+        expect(offHtml).toContain('data-testid="beat-active-color-erase-cue"');
+        expect(offHtml).toContain('bg-slate-800/85');
+        expect(offHtml).not.toContain(`background-color:${offHex}`);
+        expect(offHtml).toContain(
+          'data-testid="beat-led-0-0" data-coord="1,1" data-lit="false" data-color=""'
+        );
+        expect(offHtml).toContain(
+          'data-testid="beat-led-1-0" data-coord="2,1" data-lit="true" data-color="#ffffff"'
+        );
+      }
+
+      // 5. White (#ffffff) stays lit swatch without ⊘ erase cue
+      const whiteHtml = renderToStaticMarkup(
+        React.createElement(BeatCanvas, {
+          state: { ...createInitialBeatState(true), activeColor: '#ffffff' },
+        })
+      );
+      expect(whiteHtml).toContain('data-testid="tool-beat-active-color" data-led-off="false"');
+      expect(whiteHtml).not.toContain('data-testid="beat-active-color-erase-cue"');
+
+      // 6. runtimeVariables mounts SimulationTopLeftHud inside beat-matrix-stage below beat-canvas-header
+      const hudHtml = renderToStaticMarkup(
+        React.createElement(BeatCanvas, {
+          state: stateWithBeats,
+          runtimeVariables: { a: 3, b: 7 },
+        })
+      );
+      const headerIdx = hudHtml.indexOf('data-testid="beat-canvas-header"');
+      const stageIdx = hudHtml.indexOf('data-testid="beat-matrix-stage"');
+      const hudIdx = hudHtml.indexOf('data-testid="simulation-top-left-hud"');
+      expect(headerIdx).toBeGreaterThan(-1);
+      expect(stageIdx).toBeGreaterThan(headerIdx);
+      expect(hudIdx).toBeGreaterThan(stageIdx);
+      expect(hudHtml).toContain('top-3 left-3');
+      expect(hudHtml).toContain('data-testid="toolbar-variables"');
+      expect(hudHtml).toContain('a=3');
+      expect(hudHtml).toContain('b=7');
     });
   });
 });

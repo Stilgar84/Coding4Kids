@@ -31,9 +31,11 @@ import {
   createEmptyLedGrid,
   createPresetLedGrid,
   getPresetDef,
+  isBeatLedOffHex,
 } from './presets';
 import { BeatCanvas } from './components/BeatCanvas';
-import { BeatToolbarTools } from './components/BeatToolbarTools';
+
+export { isBeatLedOffHex };
 
 export function createInitialBeatState(isMuted: boolean = false): BeatState {
   return {
@@ -772,8 +774,9 @@ function turnBeatCursor(
 
 const BEAT_LED_OFF_HEX = '#0f172a';
 
-function resolvePaintLedCell(color: string): string | null {
-  return color.toLowerCase() === BEAT_LED_OFF_HEX ? null : color;
+function resolvePaintLedCell(color?: string | null): string | null {
+  if (!color || isBeatLedOffHex(color)) return null;
+  return color;
 }
 
 function resolveLedColor(rawColor: unknown, fallback: string): string {
@@ -1058,8 +1061,6 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
   evaluateCompletion: () => 'IDLE',
 
   Renderer: BeatCanvas,
-
-  ToolsComponent: BeatToolbarTools,
 };
 
 // Self-register so getSimEnvironment('beat') is always populated regardless of import order
