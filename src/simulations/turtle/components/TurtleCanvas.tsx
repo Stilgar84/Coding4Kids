@@ -1,53 +1,257 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { TurtleState } from '../types';
+import React, { useRef, useState, useEffect, useId } from 'react';
+import { TurtleActiveAnimation, TurtleState } from '../types';
 import { getArcSvgPath } from '../physics';
 import { SimulationStatus } from '../../../types';
 import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
-import { Eye, EyeOff, Infinity as InfinityIcon } from 'lucide-react';
+import { Infinity as InfinityIcon } from 'lucide-react';
 
 interface TurtleCanvasProps {
   state: TurtleState;
   runtimeStatus?: SimulationStatus;
 }
 
-const TurtleCommittedPaths = React.memo<{ paths: TurtleState['paths'] }>(({ paths }) => (
-  <>
-    {paths.map((p, idx) => {
-      if (p.type === 'LINE') {
-        return (
-          <line
-            key={`line-${idx}`}
-            data-testid={`turtle-line-${idx}`}
-            x1={p.fromX}
-            y1={p.fromY}
-            x2={p.toX}
-            y2={p.toY}
-            stroke={p.color}
-            strokeWidth={p.width}
-            strokeLinecap="round"
-          />
-        );
-      }
-      if (p.type === 'ARC') {
-        const d = getArcSvgPath(p);
+const AIR_TRAIL_FADE_MS = 1000;
 
-        return (
-          <path
-            key={`arc-${idx}`}
-            data-testid={`turtle-arc-${idx}`}
-            d={d}
-            fill="none"
-            stroke={p.color}
-            strokeWidth={p.width}
-            strokeLinecap="round"
-          />
-        );
-      }
-      return null;
-    })}
-  </>
-));
+interface InkStrokeDescriptor {
+  key: string;
+  testId: string;
+  type: 'LINE' | 'ARC';
+  color: string;
+  width: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  radius?: number;
+  startHeading?: number;
+  sweepAngle?: number;
+}
+
+interface FadingAirTrail {
+  id: number;
+  type: 'LINE' | 'ARC';
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  radius?: number;
+  startHeading?: number;
+  sweepAngle?: number;
+}
+
+interface PenUpAnimSnapshot {
+  anim: TurtleActiveAnimation;
+  type: 'LINE' | 'ARC';
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  radius?: number;
+  startHeading?: number;
+  sweepAngle?: number;
+}
+
+function isWhiteInkColor(color: string): boolean {
+  const normalized = color.trim().toLowerCase();
+  return normalized === '#ffffff' || normalized === '#fff';
+}
+
+function renderInkStroke(
+  stroke: InkStrokeDescriptor,
+  overrideColor?: string,
+  isEraserMaskStroke?: boolean
+): React.ReactNode {
+  const strokeColor = overrideColor ?? stroke.color;
+  const eraserAttr = isEraserMaskStroke ? 'true' : undefined;
+
+  if (stroke.type === 'LINE') {
+    return (
+      <line
+        key={stroke.key}
+        data-testid={stroke.testId}
+        data-ink-color={stroke.color}
+        data-ink-eraser={eraserAttr}
+        x1={stroke.fromX}
+        y1={stroke.fromY}
+        x2={stroke.toX}
+        y2={stroke.toY}
+        stroke={strokeColor}
+        strokeWidth={stroke.width}
+        strokeLinecap="round"
+      />
+    );
+  }
+
+  const d = getArcSvgPath({
+    fromX: stroke.fromX,
+    fromY: stroke.fromY,
+    toX: stroke.toX,
+    toY: stroke.toY,
+    radius: stroke.radius ?? 0,
+    startHeading: stroke.startHeading ?? 0,
+    sweepAngle: stroke.sweepAngle ?? 0,
+  });
+
+  return (
+    <path
+      key={stroke.key}
+      data-testid={stroke.testId}
+      data-ink-color={stroke.color}
+      data-ink-eraser={eraserAttr}
+      d={d}
+      fill="none"
+      stroke={strokeColor}
+      strokeWidth={stroke.width}
+      strokeLinecap="round"
+    />
+  );
+}
+
+const TurtleInkLayer = React.memo<{
+  paths: TurtleState['paths'];
+  activeAnim: TurtleActiveAnimation | null;
+  maskIdPrefix: string;
+}>(({ paths, activeAnim, maskIdPrefix }) => {
+  const strokes: InkStrokeDescriptor[] = [];
+
+  for (let idx = 0; idx < paths.length; idx++) {
+    const p = paths[idx];
+    if (p.type === 'LINE') {
+      strokes.push({
+        key: `line-${idx}`,
+        testId: `turtle-line-${idx}`,
+        type: 'LINE',
+        color: p.color,
+        width: p.width,
+        fromX: p.fromX,
+        fromY: p.fromY,
+        toX: p.toX,
+        toY: p.toY,
+      });
+    } else if (p.type === 'ARC') {
+      strokes.push({
+        key: `arc-${idx}`,
+        testId: `turtle-arc-${idx}`,
+        type: 'ARC',
+        color: p.color,
+        width: p.width,
+        fromX: p.fromX,
+        fromY: p.fromY,
+        toX: p.toX,
+        toY: p.toY,
+        radius: p.radius,
+        startHeading: p.startHeading,
+        sweepAngle: p.sweepAngle,
+      });
+    }
+  }
+
+  if (activeAnim && activeAnim.penDown) {
+    if (activeAnim.type === 'LINE') {
+      strokes.push({
+        key: 'active-line',
+        testId: 'turtle-active-line',
+        type: 'LINE',
+        color: activeAnim.penColor,
+        width: activeAnim.penWidth,
+        fromX: activeAnim.fromPose.x,
+        fromY: activeAnim.fromPose.y,
+        toX: activeAnim.currentPose.x,
+        toY: activeAnim.currentPose.y,
+      });
+    } else if (
+      activeAnim.type === 'ARC' &&
+      activeAnim.radius !== undefined &&
+      activeAnim.currentSweep !== undefined
+    ) {
+      strokes.push({
+        key: 'active-arc',
+        testId: 'turtle-active-arc',
+        type: 'ARC',
+        color: activeAnim.penColor,
+        width: activeAnim.penWidth,
+        fromX: activeAnim.fromPose.x,
+        fromY: activeAnim.fromPose.y,
+        toX: activeAnim.currentPose.x,
+        toY: activeAnim.currentPose.y,
+        radius: activeAnim.radius,
+        startHeading: activeAnim.fromPose.heading,
+        sweepAngle: activeAnim.currentSweep,
+      });
+    }
+  }
+
+  if (strokes.length === 0) {
+    return null;
+  }
+
+  const hasWhiteEraser = strokes.some((s) => isWhiteInkColor(s.color));
+  if (!hasWhiteEraser) {
+    return <g data-testid="turtle-ink-layer">{strokes.map((s) => renderInkStroke(s))}</g>;
+  }
+
+  // Group strokes into alternating paint / erase runs so `#ffffff` selectively
+  // erases ONLY prior strokes via SVG mask compositing (exact strokeWidth,
+  // preserving grid/axes underneath and allowing subsequent colored strokes on top).
+  const runs: Array<{ isEraser: boolean; items: InkStrokeDescriptor[] }> = [];
+  for (const stroke of strokes) {
+    const isEraser = isWhiteInkColor(stroke.color);
+    const prevRun = runs[runs.length - 1];
+    if (prevRun && prevRun.isEraser === isEraser) {
+      prevRun.items.push(stroke);
+    } else {
+      runs.push({ isEraser, items: [stroke] });
+    }
+  }
+
+  const masks: React.ReactNode[] = [];
+  let accumulatedLayer: React.ReactNode = null;
+  let maskCounter = 0;
+
+  runs.forEach((run, runIndex) => {
+    if (!run.isEraser) {
+      const paintGroup = <g key={`paint-${runIndex}`}>{run.items.map((s) => renderInkStroke(s))}</g>;
+      accumulatedLayer = accumulatedLayer ? (
+        <React.Fragment key={`acc-${runIndex}`}>
+          {accumulatedLayer}
+          {paintGroup}
+        </React.Fragment>
+      ) : (
+        paintGroup
+      );
+      return;
+    }
+
+    const maskId = `${maskIdPrefix}-${maskCounter++}`;
+    masks.push(
+      <mask
+        key={maskId}
+        id={maskId}
+        maskUnits="userSpaceOnUse"
+        x="-100000"
+        y="-100000"
+        width="200000"
+        height="200000"
+      >
+        <rect x="-100000" y="-100000" width="200000" height="200000" fill="#ffffff" />
+        {run.items.map((s) => renderInkStroke(s, '#000000', true))}
+      </mask>
+    );
+    accumulatedLayer = (
+      <g key={`masked-${runIndex}`} mask={`url(#${maskId})`}>
+        {accumulatedLayer}
+      </g>
+    );
+  });
+
+  return (
+    <g data-testid="turtle-ink-layer">
+      <defs>{masks}</defs>
+      {accumulatedLayer}
+    </g>
+  );
+});
 
 export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) => {
   const {
@@ -69,8 +273,11 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   }));
   const state = propState || turtleState;
   const isInstant = speed === 'instant' || (speed as any) === 0 || state.instantMode;
+  const rawMaskId = useId();
+  const maskIdPrefix = `turtle-erase-mask-${rawMaskId.replace(/[^a-zA-Z0-9_-]/g, '') || '0'}`;
 
   const activeAnim = state.activeAnimation;
+  const isPenDown = activeAnim ? activeAnim.penDown : state.penDown;
   let teleportScale = 1;
   let teleportOpacity = 1;
   if (activeAnim?.type === 'TELEPORT') {
@@ -79,6 +286,81 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     teleportScale = Math.max(0.05, phase);
     teleportOpacity = Math.max(0, phase);
   }
+
+  const [fadingAirTrails, setFadingAirTrails] = useState<FadingAirTrail[]>([]);
+  const airTrailIdRef = useRef(0);
+  const prevPenUpAnimRef = useRef<PenUpAnimSnapshot | null>(null);
+  const prevPathsLenRef = useRef(state.paths.length);
+  const airTrailTimersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const timers = airTrailTimersRef.current;
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+      timers.length = 0;
+    };
+  }, []);
+
+  useEffect(() => {
+    const wasCleared = prevPathsLenRef.current > 0 && state.paths.length === 0;
+    prevPathsLenRef.current = state.paths.length;
+
+    if (wasCleared) {
+      airTrailTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      airTrailTimersRef.current = [];
+      prevPenUpAnimRef.current = null;
+      setFadingAirTrails([]);
+      return;
+    }
+
+    const prevSnapshot = prevPenUpAnimRef.current;
+    const isCurrentPenUpMove =
+      !!activeAnim &&
+      !activeAnim.penDown &&
+      (activeAnim.type === 'LINE' || activeAnim.type === 'ARC');
+
+    if (prevSnapshot && (!isCurrentPenUpMove || activeAnim !== prevSnapshot.anim)) {
+      const dist = Math.hypot(
+        prevSnapshot.toX - prevSnapshot.fromX,
+        prevSnapshot.toY - prevSnapshot.fromY
+      );
+      if (dist > 0.5 || Math.abs(prevSnapshot.sweepAngle ?? 0) > 0.5) {
+        const trailId = ++airTrailIdRef.current;
+        const completedTrail: FadingAirTrail = {
+          id: trailId,
+          type: prevSnapshot.type,
+          fromX: prevSnapshot.fromX,
+          fromY: prevSnapshot.fromY,
+          toX: prevSnapshot.toX,
+          toY: prevSnapshot.toY,
+          radius: prevSnapshot.radius,
+          startHeading: prevSnapshot.startHeading,
+          sweepAngle: prevSnapshot.sweepAngle,
+        };
+        setFadingAirTrails((prev) => [...prev, completedTrail]);
+        const timerId = window.setTimeout(() => {
+          setFadingAirTrails((prev) => prev.filter((item) => item.id !== trailId));
+          airTrailTimersRef.current = airTrailTimersRef.current.filter((id) => id !== timerId);
+        }, AIR_TRAIL_FADE_MS);
+        airTrailTimersRef.current.push(timerId);
+      }
+      prevPenUpAnimRef.current = null;
+    }
+
+    if (isCurrentPenUpMove && activeAnim) {
+      prevPenUpAnimRef.current = {
+        anim: activeAnim,
+        type: activeAnim.type as 'LINE' | 'ARC',
+        fromX: activeAnim.fromPose.x,
+        fromY: activeAnim.fromPose.y,
+        toX: activeAnim.currentPose.x,
+        toY: activeAnim.currentPose.y,
+        radius: activeAnim.radius,
+        startHeading: activeAnim.fromPose.heading,
+        sweepAngle: activeAnim.currentSweep,
+      };
+    }
+  }, [activeAnim, state.paths.length]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 600 });
@@ -287,6 +569,9 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           <pattern id="turtle-grid" width="50" height="50" patternUnits="userSpaceOnUse">
             <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#e2e8f0" strokeWidth="1" strokeOpacity="0.8" />
           </pattern>
+          {fadingAirTrails.length > 0 && !isLowQuality && (
+            <style>{`@keyframes turtleAirTrailFade { from { opacity: 0.85; } to { opacity: 0; } }`}</style>
+          )}
         </defs>
 
         <rect width="100%" height="100%" fill="#ffffff" />
@@ -299,38 +584,97 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
           <circle cx="0" cy="0" r="3" fill="#94a3b8" opacity="0.8" />
 
-          {/* Render Committed Paths (Lines and Arcs) */}
-          <TurtleCommittedPaths paths={state.paths} />
+          {/* Composited Ink Layer: Committed Paths + Active Pen-Down Stroke (#ffffff erases prior ink cleanly) */}
+          <TurtleInkLayer
+            paths={state.paths}
+            activeAnim={activeAnim ?? null}
+            maskIdPrefix={maskIdPrefix}
+          />
 
-          {/* Active In-Progress Drawing Segment */}
-          {state.activeAnimation && state.activeAnimation.penDown && (
-            state.activeAnimation.type === 'LINE' ? (
+          {/* Ephemeral Animated PEN_UP Air-Trails (fading ~1s; never persisted to state.paths or SVG thumbnails) */}
+          {fadingAirTrails.map((trail) => {
+            const fadeStyle: React.CSSProperties = isLowQuality
+              ? { opacity: 0.45 }
+              : { animation: `turtleAirTrailFade ${AIR_TRAIL_FADE_MS}ms ease-out forwards` };
+            if (trail.type === 'LINE') {
+              return (
+                <line
+                  key={`air-trail-${trail.id}`}
+                  data-testid={`turtle-air-trail-fading-${trail.id}`}
+                  x1={trail.fromX}
+                  y1={trail.fromY}
+                  x2={trail.toX}
+                  y2={trail.toY}
+                  fill="none"
+                  stroke="#94a3b8"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  strokeLinecap="round"
+                  style={fadeStyle}
+                />
+              );
+            }
+            if (trail.radius !== undefined && trail.sweepAngle !== undefined) {
+              return (
+                <path
+                  key={`air-trail-${trail.id}`}
+                  data-testid={`turtle-air-trail-fading-${trail.id}`}
+                  d={getArcSvgPath({
+                    fromX: trail.fromX,
+                    fromY: trail.fromY,
+                    toX: trail.toX,
+                    toY: trail.toY,
+                    radius: trail.radius,
+                    startHeading: trail.startHeading ?? 0,
+                    sweepAngle: trail.sweepAngle,
+                  })}
+                  fill="none"
+                  stroke="#94a3b8"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  strokeLinecap="round"
+                  style={fadeStyle}
+                />
+              );
+            }
+            return null;
+          })}
+
+          {activeAnim && !activeAnim.penDown && (
+            activeAnim.type === 'LINE' ? (
               <line
-                data-testid="turtle-active-line"
-                x1={state.activeAnimation.fromPose.x}
-                y1={state.activeAnimation.fromPose.y}
-                x2={state.activeAnimation.currentPose.x}
-                y2={state.activeAnimation.currentPose.y}
-                stroke={state.activeAnimation.penColor}
-                strokeWidth={state.activeAnimation.penWidth}
+                data-testid="turtle-air-trail"
+                x1={activeAnim.fromPose.x}
+                y1={activeAnim.fromPose.y}
+                x2={activeAnim.currentPose.x}
+                y2={activeAnim.currentPose.y}
+                fill="none"
+                stroke="#94a3b8"
+                strokeWidth={2}
+                strokeDasharray="4 4"
                 strokeLinecap="round"
+                opacity={0.85}
               />
-            ) : state.activeAnimation.type === 'ARC' && state.activeAnimation.radius !== undefined && state.activeAnimation.currentSweep !== undefined ? (
+            ) : activeAnim.type === 'ARC' &&
+              activeAnim.radius !== undefined &&
+              activeAnim.currentSweep !== undefined ? (
               <path
-                data-testid="turtle-active-arc"
+                data-testid="turtle-air-trail"
                 d={getArcSvgPath({
-                  fromX: state.activeAnimation.fromPose.x,
-                  fromY: state.activeAnimation.fromPose.y,
-                  toX: state.activeAnimation.currentPose.x,
-                  toY: state.activeAnimation.currentPose.y,
-                  radius: state.activeAnimation.radius,
-                  startHeading: state.activeAnimation.fromPose.heading,
-                  sweepAngle: state.activeAnimation.currentSweep,
+                  fromX: activeAnim.fromPose.x,
+                  fromY: activeAnim.fromPose.y,
+                  toX: activeAnim.currentPose.x,
+                  toY: activeAnim.currentPose.y,
+                  radius: activeAnim.radius,
+                  startHeading: activeAnim.fromPose.heading,
+                  sweepAngle: activeAnim.currentSweep,
                 })}
                 fill="none"
-                stroke={state.activeAnimation.penColor}
-                strokeWidth={state.activeAnimation.penWidth}
+                stroke="#94a3b8"
+                strokeWidth={2}
+                strokeDasharray="4 4"
                 strokeLinecap="round"
+                opacity={0.85}
               />
             ) : null
           )}
@@ -339,54 +683,92 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           {state.showTurtle !== false && (
             <g
               data-testid="turtle-robot"
+              data-pen-down={isPenDown ? 'true' : 'false'}
               transform={`translate(${robotPose.x}, ${robotPose.y}) rotate(${robotPose.heading}) scale(${teleportScale})`}
               opacity={teleportOpacity}
             >
-            {/* Pulsing selection aura (disabled in Instant or Lite mode) */}
-            <circle
-              r={22}
-              fill="#38bdf8"
-              opacity="0.15"
-              className={isInstant || isLowQuality ? '' : 'animate-pulse'}
-            />
+              {/* Soft ground shadow when PEN_UP lifted */}
+              {!isPenDown && (
+                <ellipse
+                  data-testid="turtle-lift-shadow"
+                  cx="0"
+                  cy="0"
+                  rx="19"
+                  ry="18"
+                  transform={`rotate(${-robotPose.heading}) translate(3, 6)`}
+                  fill="#0f172a"
+                  opacity="0.22"
+                />
+              )}
 
-            {/* Turtle Shell / Body */}
-            <circle r={18} fill="#0284c7" stroke="#38bdf8" strokeWidth={2.5} className="shadow-lg" />
+              <g
+                data-testid="turtle-sprite-body"
+                transform={isPenDown ? undefined : 'scale(1.12)'}
+              >
+                {/* Pulsing selection aura (disabled in Instant or Lite mode) */}
+                <circle
+                  r={22}
+                  fill="#38bdf8"
+                  opacity="0.15"
+                  className={isInstant || isLowQuality ? '' : 'animate-pulse'}
+                />
 
-            {/* Front Head */}
-            <ellipse cx="0" cy="-19" rx="6" ry="8" fill="#38bdf8" />
+                {/* Turtle Shell / Body */}
+                <circle r={18} fill="#0284c7" stroke="#38bdf8" strokeWidth={2.5} className="shadow-lg" />
 
-            {/* Flipper Legs */}
-            <ellipse cx="-16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(-30 -16 -10)" />
-            <ellipse cx="16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(30 16 -10)" />
-            <ellipse cx="-15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(-40 -15 12)" />
-            <ellipse cx="15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(40 15 12)" />
+                {/* Front Head */}
+                <ellipse cx="0" cy="-19" rx="6" ry="8" fill="#38bdf8" />
 
-            {/* Turtle Shell Pattern */}
-            <circle r={11} fill="#0369a1" stroke="#0ea5e9" strokeWidth="1.5" />
-            <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#0284c7" />
+                {/* Flipper Legs */}
+                <ellipse cx="-16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(-30 -16 -10)" />
+                <ellipse cx="16" cy="-10" rx="4" ry="7" fill="#0369a1" transform="rotate(30 16 -10)" />
+                <ellipse cx="-15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(-40 -15 12)" />
+                <ellipse cx="15" cy="12" rx="3.5" ry="6" fill="#0369a1" transform="rotate(40 15 12)" />
 
-            {/* Eyes */}
-            <circle cx="-3" cy="-21" r="1.5" fill="#0f172a" />
-            <circle cx="3" cy="-21" r="1.5" fill="#0f172a" />
+                {/* Turtle Shell Pattern */}
+                <circle r={11} fill="#0369a1" stroke="#0ea5e9" strokeWidth="1.5" />
+                <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#0284c7" />
 
-            {/* Active Pen Indicator in center */}
-            <circle
-              r={state.penDown ? 5.5 : 4}
-              fill={state.penColor}
-              stroke="#ffffff"
-              strokeWidth={1.5}
-              className={state.penDown ? 'shadow-md' : 'opacity-60'}
-            />
-            {!state.penDown && (
-              <line x1="-3" y1="-3" x2="3" y2="3" stroke="#ef4444" strokeWidth="1.5" />
-            )}
+                {/* Eyes */}
+                <circle cx="-3" cy="-21" r="1.5" fill="#0f172a" />
+                <circle cx="3" cy="-21" r="1.5" fill="#0f172a" />
+
+                {/* Active Pen Nib Cue: Solid Ink Dot (PEN_DOWN) vs Hollow Lifted Nib (PEN_UP) */}
+                {isPenDown ? (
+                  <circle
+                    data-testid="turtle-pen-nib"
+                    data-pen-state="down"
+                    r={5.5}
+                    fill={state.penColor}
+                    stroke={isWhiteInkColor(state.penColor) ? '#94a3b8' : '#ffffff'}
+                    strokeWidth={1.5}
+                    className="shadow-md"
+                  />
+                ) : (
+                  <g data-testid="turtle-pen-nib" data-pen-state="up">
+                    <circle
+                      r={5}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth={1.75}
+                      strokeDasharray="2.5 2"
+                      opacity={0.95}
+                    />
+                    <circle
+                      r={2.5}
+                      fill="none"
+                      stroke={isWhiteInkColor(state.penColor) ? '#94a3b8' : state.penColor}
+                      strokeWidth={1.25}
+                    />
+                  </g>
+                )}
+              </g>
             </g>
           )}
         </g>
       </svg>
 
-      {/* Top-Right HUD: Show/Hide Turtle & Loop Playback */}
+      {/* Top-Right HUD: Show/Hide Turtle (🐢👁️) & Loop Playback */}
       <div
         className={`absolute top-3 right-3 z-20 flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-lg ${
           isLowQuality ? '' : 'backdrop-blur'
@@ -400,17 +782,32 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           aria-pressed={state.showTurtle === false}
           title={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
           aria-label={state.showTurtle === false ? 'Show Turtle' : 'Hide Turtle'}
-          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+          className={`relative flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 px-1.5 sm:px-2 rounded-lg border transition-all active:scale-95 cursor-pointer ${
             state.showTurtle === false
               ? 'bg-sky-600 hover:bg-sky-500 border-sky-300 text-white shadow-md'
               : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 hover:text-white'
           }`}
         >
-          {state.showTurtle === false ? (
-            <EyeOff className="w-4 h-4 stroke-[2.5]" />
-          ) : (
-            <Eye className="w-4 h-4 stroke-[2.25]" />
-          )}
+          <span
+            className="relative inline-flex items-center justify-center gap-0.5 text-sm sm:text-base leading-none select-none"
+            aria-hidden="true"
+          >
+            <span>🐢</span>
+            <span className={state.showTurtle === false ? 'opacity-65' : ''}>👁️</span>
+            {state.showTurtle === false && (
+              <svg
+                data-testid="toggle-turtle-hidden-slash"
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute inset-0 w-full h-full text-red-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.75"
+                strokeLinecap="round"
+              >
+                <line x1="3" y1="21" x2="21" y2="3" />
+              </svg>
+            )}
+          </span>
         </button>
         <button
           type="button"
@@ -419,13 +816,13 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
           aria-pressed={isLoopPlayback}
           title={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
           aria-label={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
-          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+          className={`flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border transition-all active:scale-95 cursor-pointer ${
             isLoopPlayback
               ? 'bg-amber-500 hover:bg-amber-400 border-amber-300 text-slate-950 shadow-md'
               : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
           }`}
         >
-          <InfinityIcon className={`w-4 h-4 ${isLoopPlayback ? 'stroke-[2.5]' : 'stroke-[2.25]'}`} />
+          <InfinityIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${isLoopPlayback ? 'stroke-[2.5]' : 'stroke-[2.25]'}`} />
         </button>
       </div>
 

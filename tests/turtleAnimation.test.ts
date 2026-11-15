@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   BASE_LINEAR_SPEED,
   BASE_ANGULAR_SPEED,
@@ -16,6 +18,8 @@ import {
 } from '../src/simulations/turtle/physics';
 import { useAppStore } from '../src/store/useAppStore';
 import { TurtlePose } from '../src/simulations/turtle/types';
+import { TurtleCanvas } from '../src/simulations/turtle/components/TurtleCanvas';
+import { TurtleToolbarTools } from '../src/simulations/turtle/components/TurtleToolbarTools';
 
 describe('Constant-Speed Turtle Drawing Animation', () => {
   describe('1. Speed & Duration Physics', () => {
@@ -348,6 +352,117 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       expect(state.activeAnimation).toBeNull();
       expect(state.paths.length).toBe(2);
       expect(useAppStore.getState().isPlaying).toBe(false);
+    });
+
+    it('renders PEN_UP visual lift and ephemeral dashed air-trail during animated playback without polluting paths', () => {
+      const store = useAppStore.getState();
+      store.addBlock('MAIN', 'PEN_UP');
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { distance: 100 });
+
+      store.play();
+      const midStart = useAppStore.getState().turtleState.activeAnimation!.startTime;
+      const midCb = rafCallbacks.pop()!;
+      midCb(midStart + 250); // 50% progress of 100px move
+
+      const midState = useAppStore.getState().turtleState;
+      expect(midState.penDown).toBe(false);
+      expect(midState.paths).toHaveLength(0);
+      expect(midState.activeAnimation?.penDown).toBe(false);
+
+      const activeHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: midState })
+      );
+      expect(activeHtml).toContain('data-pen-down="false"');
+      expect(activeHtml).toContain('data-testid="turtle-lift-shadow"');
+      expect(activeHtml).toContain('data-testid="turtle-sprite-body" transform="scale(1.12)"');
+      expect(activeHtml).toContain('data-testid="turtle-pen-nib" data-pen-state="up"');
+      expect(activeHtml).toContain('fill="none"');
+      expect(activeHtml).toContain('data-testid="turtle-air-trail"');
+      expect(activeHtml).toContain('stroke="#94a3b8"');
+      expect(activeHtml).toContain('stroke-dasharray="4 4"');
+      expect(activeHtml).not.toContain('data-testid="turtle-active-line"');
+
+      // Complete animation -> paths remains 0 and static canvas stays free of persistent paths or trails
+      const endCb = rafCallbacks.pop()!;
+      endCb(midStart + 500);
+      const finishedState = useAppStore.getState().turtleState;
+      expect(finishedState.activeAnimation).toBeNull();
+      expect(finishedState.paths).toHaveLength(0);
+      expect(finishedState.robot.y).toBeCloseTo(-100);
+
+      const staticHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: finishedState })
+      );
+      expect(staticHtml).not.toContain('data-testid="turtle-air-trail"');
+      expect(staticHtml).toContain('data-pen-down="false"');
+      expect(staticHtml).toContain('data-testid="turtle-lift-shadow"');
+
+      // Animated PEN_UP ARC also draws an ephemeral dashed air-trail without polluting paths
+      store.clearWorkspace();
+      store.addBlock('MAIN', 'PEN_UP');
+      store.addBlock('MAIN', 'ARC_RIGHT', undefined, undefined, { radius: 60, angle: 90 });
+      store.play();
+
+      const arcActiveBeforeStep = useAppStore.getState().turtleState.activeAnimation!;
+      const arcCb = rafCallbacks.pop()!;
+      arcCb(arcActiveBeforeStep.startTime + arcActiveBeforeStep.duration * 0.5);
+
+      const arcMidState = useAppStore.getState().turtleState;
+      expect(arcMidState.activeAnimation?.type).toBe('ARC');
+      expect(arcMidState.activeAnimation?.penDown).toBe(false);
+      expect(arcMidState.paths).toHaveLength(0);
+
+      const arcHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: arcMidState })
+      );
+      expect(arcHtml).toContain('data-testid="turtle-air-trail"');
+      expect(arcHtml).toContain('stroke="#94a3b8"');
+      expect(arcHtml).toContain('stroke-dasharray="4 4"');
+      expect(arcHtml).not.toContain('data-testid="turtle-active-arc"');
+
+      // PEN_DOWN restores unscaled solid nib without drop shadow or air trail
+      const downState = { ...finishedState, penDown: true };
+      const downHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: downState })
+      );
+      expect(downHtml).toContain('data-pen-down="true"');
+      expect(downHtml).not.toContain('data-testid="turtle-lift-shadow"');
+      expect(downHtml).not.toContain('transform="scale(1.12)"');
+      expect(downHtml).not.toContain('data-testid="turtle-air-trail"');
+      expect(downHtml).toContain('data-testid="turtle-pen-nib" data-pen-state="down"');
+    });
+
+    it('enforces 🐢👁️ toggle cue and >=36px mobile / >=44px desktop touch targets on HUD & toolbar controls', () => {
+      const store = useAppStore.getState();
+      const visibleHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: store.turtleState })
+      );
+      const toggleVisibleMatch = visibleHtml.match(/<button[^>]*data-testid="tool-toggle-turtle"[^>]*>[\s\S]*?<\/button>/);
+      expect(toggleVisibleMatch).not.toBeNull();
+      expect(toggleVisibleMatch![0]).toContain('🐢');
+      expect(toggleVisibleMatch![0]).toContain('👁️');
+      expect(toggleVisibleMatch![0]).toContain('min-h-9');
+      expect(toggleVisibleMatch![0]).toContain('min-w-9');
+      expect(toggleVisibleMatch![0]).toContain('sm:min-h-11');
+      expect(toggleVisibleMatch![0]).toContain('sm:min-w-11');
+      expect(toggleVisibleMatch![0]).not.toContain('toggle-turtle-hidden-slash');
+
+      const hiddenHtml = renderToStaticMarkup(
+        React.createElement(TurtleCanvas, { state: { ...store.turtleState, showTurtle: false } })
+      );
+      expect(hiddenHtml).toContain('data-testid="toggle-turtle-hidden-slash"');
+      expect(hiddenHtml).not.toContain('data-testid="turtle-robot"');
+
+      const loopMatch = visibleHtml.match(/<button[^>]*data-testid="tool-loop-playback"[^>]*>/);
+      expect(loopMatch).not.toBeNull();
+      expect(loopMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+
+      const toolbarHtml = renderToStaticMarkup(React.createElement(TurtleToolbarTools));
+      for (const id of ['tool-zoom-in', 'tool-zoom-out', 'tool-fit-content', 'tool-reset-view']) {
+        const btnMatch = toolbarHtml.match(new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`));
+        expect(btnMatch).not.toBeNull();
+        expect(btnMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+      }
     });
   });
 });
