@@ -396,4 +396,88 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     });
     expect(headerOverflow).toBeLessThanOrEqual(0);
   });
+
+  test('7. animates Depot crane move, grab, place, and sky-chute send-out at 4x speed with flying ring & invariant crane station', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="grid-canvas"]');
+
+    // Switch to Sandbox Depot via LessonPickerModal
+    await page.getByTestId('btn-lesson-picker').click();
+    await page.getByTestId('sim-tab-depot').click();
+    await expect(page.getByTestId('depot-canvas')).toBeVisible();
+
+    const crane = page.getByTestId('depot-worker-crane');
+    const getCraneLeftPct = () =>
+      crane.evaluate((el) => parseFloat((el as HTMLElement).style.left));
+    const getCraneTransitionMs = () =>
+      crane.evaluate((el) => parseFloat((el as HTMLElement).style.transitionDuration));
+
+    const initialLeftPct = await getCraneLeftPct();
+    expect(initialLeftPct).toBeCloseTo((0.5 / 4.5) * 100, 1);
+
+    // Program: DEPOT_MOVE_TO(STACK_2) -> DEPOT_GRAB -> DEPOT_MOVE_TO(STACK_3) -> DEPOT_PLACE -> DEPOT_GRAB -> DEPOT_SEND_OUT
+    await page.getByTestId('palette-depot-move-to').click();
+    await page.getByTestId('subpalette-param-station-STACK_2').click();
+    await page.getByTestId('palette-depot-grab').click();
+    await page.getByTestId('palette-depot-move-to').click();
+    await page.getByTestId('subpalette-param-station-STACK_3').click();
+    await page.getByTestId('palette-depot-place').click();
+    await page.getByTestId('palette-depot-grab').click();
+    await page.getByTestId('palette-depot-send-out').click();
+
+    // Switch from 1x to 4x speed (100ms/step, 88ms choreography animation duration)
+    await page.getByTestId('btn-speed').click();
+
+    await expect(page.getByTestId('depot-flying-ring')).toHaveCount(0);
+    await expect(page.getByTestId('depot-output-slot-0').locator('[data-damaged]')).toHaveCount(0);
+
+    // Step 1: DEPOT_MOVE_TO(STACK_2) moves crane smoothly to STACK_2
+    await page.getByTestId('btn-step').click();
+    expect(await getCraneLeftPct()).toBeCloseTo((1.5 / 4.5) * 100, 1);
+    expect(await getCraneTransitionMs()).toBe(88);
+
+    // Step 2: DEPOT_GRAB picks up GREEN ring from STACK_2
+    await page.getByTestId('btn-step').click();
+    await expect(page.getByTestId('depot-claw-held-crate')).toBeVisible();
+
+    // Step 3: DEPOT_MOVE_TO(STACK_3) carries ring horizontally to STACK_3
+    await page.getByTestId('btn-step').click();
+    const stack3LeftPct = await getCraneLeftPct();
+    expect(stack3LeftPct).toBeCloseTo((2.5 / 4.5) * 100, 1);
+    await expect(page.getByTestId('depot-claw-held-crate')).toBeVisible();
+
+    // Step 4: DEPOT_PLACE deposits GREEN ring onto STACK_3
+    await page.getByTestId('btn-step').click();
+    await expect(page.getByTestId('depot-stack-3-crate-0')).toBeVisible();
+    await expect(page.getByTestId('depot-claw-held-crate')).toHaveCount(0);
+
+    // Step 5: DEPOT_GRAB lifts GREEN ring back up at STACK_3
+    await page.getByTestId('btn-step').click();
+    await expect(page.getByTestId('depot-claw-held-crate')).toBeVisible();
+    await expect(page.getByTestId('depot-stack-3-crate-0')).toHaveCount(0);
+
+    // Step 6: DEPOT_SEND_OUT launches sky-chute flying ring while crane stays stationary above STACK_3
+    await page.getByTestId('btn-step').click();
+    const flyingRing = page.getByTestId('depot-flying-ring');
+    await expect(flyingRing).toBeAttached();
+    await expect(flyingRing).toHaveAttribute('data-from-station', 'STACK_3');
+    await expect(flyingRing).toHaveAttribute('data-output-slot', '0');
+    expect(await getCraneLeftPct()).toBeCloseTo(stack3LeftPct, 2);
+    await expect(page.getByTestId('depot-claw-held-crate')).toHaveCount(0);
+    await expect(page.getByTestId('depot-output-slot-0').locator('[data-damaged]')).toHaveCount(1);
+
+    // Also verify full 4x Play execution emits depot-flying-ring and populates depot-output-slot-0 cleanly
+    await page.getByTestId('btn-reset').click();
+    await expect(page.getByTestId('depot-flying-ring')).toHaveCount(0);
+    await expect(page.getByTestId('depot-output-slot-0').locator('[data-damaged]')).toHaveCount(0);
+
+    await page.getByTestId('btn-play').click();
+    await expect(page.getByTestId('depot-output-slot-0').locator('[data-damaged]')).toHaveCount(1, {
+      timeout: 5000,
+    });
+    await expect(page.getByTestId('depot-flying-ring')).toHaveAttribute('data-from-station', 'STACK_3');
+    expect(await getCraneLeftPct()).toBeCloseTo((2.5 / 4.5) * 100, 1);
+  });
 });

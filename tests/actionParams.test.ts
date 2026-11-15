@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { useAppStore } from '../src/store/useAppStore';
 import { getSimEnvironment } from '../src/engine/simulation/registry';
 import { computePopoverCoords } from '../src/components/params/ParamSelectionPopover';
-import { getArcSvgPath } from '../src/simulations/turtle/physics';
+import { DEFAULT_STEP_DISTANCE, getArcSvgPath } from '../src/simulations/turtle/physics';
 import {
   RotationVisual,
   RadiusVisual,
@@ -105,13 +105,13 @@ describe('Action Parameters & Subpalette System', () => {
     expect(forward?.paramDefs).toHaveLength(1);
     expect(forward?.paramDefs?.[0].id).toBe('length');
     expect(forward?.paramDefs?.[0].type).toBe('length');
-    expect(forward?.paramDefs?.[0].defaultValue).toBe(50);
+    expect(forward?.paramDefs?.[0].defaultValue).toBe(DEFAULT_STEP_DISTANCE);
 
     const backward = sim?.paletteItems.find((p) => p.actionType === 'BACKWARD');
     expect(backward).toBeDefined();
     expect(backward?.paramDefs).toHaveLength(1);
     expect(backward?.paramDefs?.[0].id).toBe('length');
-    expect(backward?.paramDefs?.[0].defaultValue).toBe(50);
+    expect(backward?.paramDefs?.[0].defaultValue).toBe(DEFAULT_STEP_DISTANCE);
 
     const turnLeft = sim?.paletteItems.find((p) => p.actionType === 'TURN_LEFT');
     expect(turnLeft).toBeDefined();
@@ -147,7 +147,7 @@ describe('Action Parameters & Subpalette System', () => {
     const fwdBlockId = useAppStore.getState().workspace.MAIN[0].id;
     const turnBlockId = useAppStore.getState().workspace.MAIN[1].id;
 
-    expect(useAppStore.getState().turtleState.robot.y).toBe(-50);
+    expect(useAppStore.getState().turtleState.robot.y).toBe(-DEFAULT_STEP_DISTANCE);
     expect(useAppStore.getState().turtleState.robot.heading).toBe(270);
 
     // Update forward length to 150 -> y should be -150

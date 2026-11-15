@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { solveAdultMathGate } from './helpers';
 
 test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholders, LOGO Variations & Beat Matrix', () => {
   test('C2 + C7: enforces staged palette & 4-slot physical tray on seq.1 and runs Ghost-Step Preview without mutating workspace', async ({
@@ -28,9 +29,10 @@ test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholder
     expect(trashBox).not.toBeNull();
     expect(Math.abs(counterBox!.y - trashBox!.y)).toBeLessThan(8);
 
-    // Trigger Tier 1 Ghost-Step Preview from Two-Tier Help Modal -> workspace blocks remain 0
+    // Trigger Tier 1 Ghost-Step Preview from Two-Tier Help Modal -> ungated & workspace blocks remain 0
     await page.getByTestId('btn-solution').click();
     await expect(page.getByTestId('tier1-ghost-card')).toBeVisible();
+    await expect(page.getByTestId('adult-math-gate')).toHaveCount(0);
     await page.getByTestId('btn-trigger-ghost-preview').click();
     await expect(page.getByTestId('solution-modal')).toHaveCount(0);
     await expect(page.getByTestId('ghost-step-overlay')).toBeAttached();
@@ -104,9 +106,17 @@ test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholder
     await expect(page.getByTestId('goal-shutter-progress')).toContainText('0/2');
     await expect(page.locator('[data-testid^="padlock-"]')).toHaveCount(2);
 
-    // Load full reference solution via Two-Tier Help Modal (auto-closes modal) and run at 16x to unlock & win
+    // Two-Tier Help Modal: Tier 1 starter stays ungated; Tier 2 full answer is gated by Grown-Up Math Check
     await page.getByTestId('btn-solution').click();
+    await expect(page.getByTestId('tier1-scaffold-card')).toBeVisible();
+    await expect(page.getByTestId('btn-load-scaffold')).toBeEnabled();
+    await expect(page.getByTestId('adult-math-gate')).toHaveCount(0);
+
     await page.getByTestId('btn-reveal-full-solution').click();
+    await expect(page.getByTestId('adult-math-gate')).toBeVisible();
+    await expect(page.getByTestId('btn-load-solution')).toHaveCount(0);
+    await solveAdultMathGate(page);
+
     await page.getByTestId('btn-load-solution').click();
     await expect(page.getByTestId('solution-modal')).toHaveCount(0);
 

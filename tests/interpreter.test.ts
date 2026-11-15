@@ -7,6 +7,7 @@ import {
 } from '../src/engine/interpreter';
 import { GridState, WorkspaceState, CodeBlock } from '../src/types';
 import { useAppStore } from '../src/store/useAppStore';
+import { DEFAULT_STEP_DISTANCE } from '../src/simulations/turtle/physics';
 
 function createMockGrid(overrides?: Partial<GridState>): GridState {
   return {
@@ -275,7 +276,7 @@ describe('Lockstep Interpreter & Physics Engine', () => {
 
     // Step 1: Forward
     store.step();
-    expect(useAppStore.getState().turtleState.robot.y).toBeCloseTo(-50);
+    expect(useAppStore.getState().turtleState.robot.y).toBeCloseTo(-DEFAULT_STEP_DISTANCE);
     expect(useAppStore.getState().turtleState.paths).toHaveLength(1);
 
     // Step 2, 3, 4: Turn right 30° three times (total 90°)

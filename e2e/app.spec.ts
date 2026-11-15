@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { evaluateAdultMathPrompt, solveAdultMathGate } from './helpers';
 
 async function selectSandboxLevel(page: Page, level: 1 | 2 | 3) {
   await page.getByTestId('btn-lesson-picker').click();
@@ -283,7 +284,21 @@ test.describe('Robot Emulator E2E Suite', () => {
     const modal = page.getByTestId('solution-modal');
     await expect(modal).toBeVisible();
 
+    // Grown-Up Math Check gates sandbox Load Solution until solved
     const loadBtn = page.getByTestId('btn-load-solution');
+    await expect(page.getByTestId('adult-math-gate')).toBeVisible();
+    await expect(loadBtn).toHaveCount(0);
+
+    // Wrong answer keeps solution locked and shows friendly feedback
+    const promptText = (await page.getByTestId('adult-math-prompt').innerText()).trim();
+    const wrongAnswer = evaluateAdultMathPrompt(promptText) + 1;
+    await page.getByTestId('adult-math-input').fill(String(wrongAnswer));
+    await page.getByTestId('btn-adult-math-submit').click();
+    await expect(page.getByTestId('adult-math-error')).toBeVisible();
+    await expect(loadBtn).toHaveCount(0);
+
+    // Correct answer unlocks Load Solution
+    await solveAdultMathGate(page);
     await expect(loadBtn).toBeVisible();
     await loadBtn.click();
 
@@ -780,7 +795,7 @@ test.describe('Robot Emulator E2E Suite', () => {
 
     await expect(page.getByTestId('turtle-line-0')).toBeAttached({ timeout: 5000 });
     const infoPill = page.getByTestId('turtle-info-pill');
-    await expect(infoPill).toContainText('Y: -50');
+    await expect(infoPill).toContainText('Y: -100');
 
     // Toggle Hide/Show Turtle (🐢👁️)
     const toggleTurtleBtn = page.getByTestId('tool-toggle-turtle');
