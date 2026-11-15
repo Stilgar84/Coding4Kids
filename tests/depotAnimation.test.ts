@@ -411,13 +411,14 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       expect(stackGrabHtml).toContain('data-testid="depot-claw-held-crate"');
       expect(stackGrabHtml).toContain('depotHeldRingGrabLift 1350ms');
 
-      // GRAB from QUEUE (remaining tokens slide left + rollers spin)
+      // GRAB from QUEUE (front ring lifts to jaws, remaining tokens advance around U-belt + rollers spin)
       const atQueue = applyDepotAction('DEPOT_MOVE_TO', s0, { station: 'QUEUE' }).nextState;
       const queueGrabbed = applyDepotAction('DEPOT_GRAB', atQueue).nextState;
       const queueGrabHtml = renderDepot(queueGrabbed);
       expect(queueGrabHtml).toContain('depotHeldRingGrabLiftQueue 1350ms');
-      expect(queueGrabHtml).toContain('depotQueueSlideLeft 1350ms');
+      expect(queueGrabHtml).toContain('depotQueueAdvanceUp 1350ms');
       expect(queueGrabHtml).toContain('depotRollerSpin 1350ms');
+      expect(queueGrabHtml).toContain('depotUBeltTread 1350ms');
       expect(queueGrabHtml).toContain('data-testid="depot-queue-crate-0"');
 
       // PLACE onto stack
@@ -431,11 +432,13 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       expect(stackPlaceHtml).toContain('depotStackRingDrop 1350ms');
       expect(stackPlaceHtml).toContain('data-testid="depot-stack-2-crate-0"');
 
-      // PLACE onto QUEUE
+      // PLACE onto QUEUE (drops into right entry funnel and rides around U-belt to tail)
       const queuePlaced = applyDepotAction('DEPOT_PLACE', queueGrabbed).nextState;
       const queuePlaceHtml = renderDepot(queuePlaced);
-      expect(queuePlaceHtml).toContain('depotQueueRingDrop 1350ms');
+      expect(queuePlaceHtml).toContain('depotPlaceQueueEntry 1350ms');
+      expect(queuePlaceHtml).toContain('depotQueuePlaceRideAroundU 1350ms');
       expect(queuePlaceHtml).toContain('depotFunnelPulse 1350ms');
+      expect(queuePlaceHtml).toContain('depotRollerSpin 1350ms');
 
       // SEND_OUT (invariant workerStation, sky-chute glow, flying ring + synchronized output slot)
       const sentOut = applyDepotAction('DEPOT_SEND_OUT', atStack2).nextState;
@@ -538,6 +541,88 @@ describe('Depot Choreography, lastAction Metadata & Speed-Aware Canvas SSR', () 
       // Unused QUEUE and OUT bays hidden by activeStationsMask
       expect(html).not.toContain('data-testid="depot-queue-belt"');
       expect(html).not.toContain('data-testid="depot-output-bay"');
+    });
+
+    it('renders all 8 U-belt queue slots without clipping and emits per-segment grab advance and entry-to-tail place keyframes', () => {
+      const eightItems: DepotQueueItem[] = [
+        { color: 'RED' },
+        { color: 'BLUE' },
+        { color: 'GREEN' },
+        { color: 'AMBER' },
+        { color: 'PURPLE' },
+        { color: 'PINK' },
+        { color: 'CYAN' },
+        { color: 'ORANGE' },
+      ];
+      const fullQueueState = createInitialDepotState({
+        queue: eightItems,
+        workerStation: 'QUEUE',
+      });
+      const fullHtml = renderDepot(fullQueueState);
+      expect(fullHtml).not.toContain('overflow-x-auto');
+      for (let i = 0; i < 8; i++) {
+        expect(fullHtml).toContain(`data-depot-queue-slot="${i}"`);
+        expect(fullHtml).toContain(`data-testid="depot-queue-crate-${i}"`);
+      }
+
+      // GRAB from a 6-item queue: remaining items 0..4 animate up, around turn, and down right lane
+      const sixQueueState = createInitialDepotState({
+        queue: eightItems.slice(0, 6),
+        workerStation: 'QUEUE',
+      });
+      const grabbed6 = applyDepotAction('DEPOT_GRAB', sixQueueState).nextState;
+      const grabbed6Html = renderDepot(grabbed6);
+      expect(grabbed6Html).toContain('--depot-grab-x:-30px');
+      expect(grabbed6Html).toContain('depotHeldRingGrabLiftQueue 1350ms');
+      expect(grabbed6Html).toContain('depotQueueAdvanceUp 1350ms');
+      expect(grabbed6Html).toContain('depotQueueAdvanceTurn 1350ms');
+      expect(grabbed6Html).toContain('depotQueueAdvanceDown 1350ms');
+
+      // PLACE at queueIndex <= 3 rides around the U-turn
+      const placedIdx1 = applyDepotAction('DEPOT_PLACE', {
+        ...createInitialDepotState({ queue: eightItems.slice(0, 1), workerStation: 'QUEUE' }),
+        heldCrate: 'WHITE',
+      }).nextState;
+      expect(renderDepot(placedIdx1)).toContain('depotQueuePlaceRideAroundU 1350ms');
+
+      // PLACE at 4 <= queueIndex <= 6 rides down the right lane
+      const placedIdx5 = applyDepotAction('DEPOT_PLACE', {
+        ...createInitialDepotState({ queue: eightItems.slice(0, 5), workerStation: 'QUEUE' }),
+        heldCrate: 'WHITE',
+      }).nextState;
+      const placedIdx5Html = renderDepot(placedIdx5);
+      expect(placedIdx5Html).toContain('depotPlaceQueueEntry 1350ms');
+      expect(placedIdx5Html).toContain('depotQueuePlaceRideRight 1350ms');
+
+      // PLACE at queueIndex === 7 drops directly into top-right entry mouth
+      const placedIdx7 = applyDepotAction('DEPOT_PLACE', {
+        ...createInitialDepotState({ queue: eightItems.slice(0, 7), workerStation: 'QUEUE' }),
+        heldCrate: 'WHITE',
+      }).nextState;
+      const placedIdx7Html = renderDepot(placedIdx7);
+      expect(placedIdx7Html).toContain('depotPlaceQueueEntry 1350ms');
+      expect(placedIdx7Html).toContain('depotQueueRingDrop 1350ms');
+
+      // Instant & Lite modes disable queue animations while keeping DOM testids intact
+      for (const mode of ['instant', 'lowQuality'] as const) {
+        if (mode === 'instant') {
+          useAppStore.setState({ speed: 'instant', performanceMode: 'high' });
+        } else {
+          useAppStore.setState({ speed: 400, performanceMode: 'low' });
+        }
+        const disabledGrabHtml = renderDepot(grabbed6);
+        expect(disabledGrabHtml).not.toContain('depotQueueAdvanceUp');
+        expect(disabledGrabHtml).not.toContain('depotQueueAdvanceTurn');
+        expect(disabledGrabHtml).not.toContain('depotQueueAdvanceDown');
+        expect(disabledGrabHtml).not.toContain('depotUBeltTread');
+        expect(disabledGrabHtml).toContain('data-testid="depot-queue-crate-0"');
+        expect(disabledGrabHtml).toContain('data-testid="depot-queue-crate-4"');
+
+        const disabledPlaceHtml = renderDepot(placedIdx5);
+        expect(disabledPlaceHtml).not.toContain('depotPlaceQueueEntry');
+        expect(disabledPlaceHtml).not.toContain('depotQueuePlaceRideRight');
+        expect(disabledPlaceHtml).toContain('data-testid="depot-queue-crate-5"');
+      }
     });
   });
 });

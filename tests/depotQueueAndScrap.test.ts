@@ -667,6 +667,24 @@ describe('Commit 24: Depot M5 (FIFO Queue, Damaged Crates, Gates, Sensors & v3 B
       expect(svg).toContain('#edf4fb');
       expect(svg).toContain('#e4be8b');
       expect(svg).toContain('>IN<');
+
+      // U-shaped queue thumbnail renders all 8 rings along its two lanes
+      const fullQueueSvg = renderDepotWorkshopSvg(
+        createInitialDepotState({
+          queue: [
+            { color: 'RED' },
+            { color: 'BLUE' },
+            { color: 'GREEN' },
+            { color: 'AMBER' },
+            { color: 'PURPLE' },
+            { color: 'PINK' },
+            { color: 'CYAN' },
+            { color: 'ORANGE' },
+          ],
+          workerStation: 'QUEUE',
+        })
+      );
+      expect((fullQueueSvg.match(/height="6\.5"/g) ?? []).length).toBe(8);
     });
 
     it('renders radar and claw halo spotlights for active IF/WHILE sensor blocks', () => {

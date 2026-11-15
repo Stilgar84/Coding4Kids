@@ -222,23 +222,44 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
     );
   }
 
-  // Optional FIFO Conveyor Belt (QUEUE)
+  // Optional Upright 8-Slot U-Shaped FIFO Conveyor Belt (QUEUE)
   if (showQueue) {
+    const leftLaneX = queueX + queueW * 0.28;
+    const rightLaneX = queueX + queueW * 0.72;
+    const midX = queueX + queueW / 2;
+    const trackW = Math.max(8, Math.floor(queueW * 0.34));
+    const turnRx = (queueW * 0.22).toFixed(1);
+    const uPath = `M ${rightLaneX.toFixed(1)} 52 L ${rightLaneX.toFixed(1)} 95 A ${turnRx} 10 0 0 1 ${leftLaneX.toFixed(1)} 95 L ${leftLaneX.toFixed(1)} 52`;
+
     parts.push(
-      `<rect x="${queueX}" y="76" width="${queueW}" height="32" rx="4" fill="rgba(255,255,255,0.72)" stroke="${
+      `<rect x="${queueX}" y="46" width="${queueW}" height="62" rx="4" fill="rgba(255,255,255,0.72)" stroke="${
         isQueueWorker ? '#10b981' : '#94a3b8'
       }" stroke-width="${isQueueWorker ? '1.8' : '1.2'}" />`
     );
     parts.push(
-      `<rect x="${queueX + 2}" y="97" width="${queueW - 4}" height="8" rx="4" fill="#cbd5e1" />`
+      `<path d="${uPath}" fill="none" stroke="#94a3b8" stroke-opacity="0.45" stroke-width="${trackW + 2}" stroke-linecap="round" stroke-linejoin="round" />`
     );
+    parts.push(
+      `<path d="${uPath}" fill="none" stroke="#cbd5e1" stroke-width="${trackW}" stroke-linecap="round" stroke-linejoin="round" />`
+    );
+    parts.push(
+      `<line x1="${midX.toFixed(1)}" y1="51" x2="${midX.toFixed(1)}" y2="88" stroke="#ffffff" stroke-width="2" stroke-linecap="round" />`
+    );
+
     const qItems = depot.queue ?? [];
-    for (let i = 0; i < qItems.length && i < 3; i++) {
-      const qx = queueX + 4 + i * 11;
-      if (qx + 9 > queueX + queueW - 2) break;
+    const ringW = Math.max(6, Math.floor(queueW * 0.3));
+    const ringH = 6.5;
+    for (let i = 0; i < qItems.length && i < 8; i++) {
+      const isLeftLane = i < 4;
+      const rowIdx = isLeftLane ? i : 7 - i;
+      const qx = (isLeftLane ? leftLaneX : rightLaneX) - ringW / 2;
+      const qy = 53 + rowIdx * 10;
       const qHex = ringColorHex(qItems[i].color);
       parts.push(
-        `<rect x="${qx}" y="86" width="9" height="8" rx="4" fill="${qHex}" stroke="#ffffff" stroke-width="0.8" />`
+        `<rect x="${qx.toFixed(1)}" y="${qy}" width="${ringW}" height="${ringH}" rx="3" fill="${qHex}" stroke="${ringStrokeHex(
+          qItems[i].color,
+          i === 0 ? '#10b981' : '#ffffff'
+        )}" stroke-width="${i === 0 ? '1.1' : '0.7'}" />`
       );
     }
     parts.push(

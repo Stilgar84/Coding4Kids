@@ -69,30 +69,33 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
     });
 
     it('computes deep pickup and placement travel distances across INPUT, STACK_1..3, and QUEUE', () => {
-      expect(
-        computeDepotStationTravelPx({
-          type: 'GRAB',
-          stepId: 1,
-          fromStation: 'INPUT',
-          inputIndex: 0,
-          color: 'RED',
-        }).grabDistPx
-      ).toBe(178);
+      const inputGrab = computeDepotStationTravelPx({
+        type: 'GRAB',
+        stepId: 1,
+        fromStation: 'INPUT',
+        toStation: 'INPUT',
+        inputIndex: 0,
+        color: 'RED',
+      });
+      expect(inputGrab.grabDistPx).toBe(178);
+      expect(inputGrab.grabDxPx).toBe(0);
 
-      expect(
-        computeDepotStationTravelPx({
-          type: 'GRAB',
-          stepId: 2,
-          fromStation: 'QUEUE',
-          queueIndex: 0,
-          color: 'BLUE',
-        }).grabDistPx
-      ).toBe(166);
+      const queueGrab = computeDepotStationTravelPx({
+        type: 'GRAB',
+        stepId: 2,
+        fromStation: 'QUEUE',
+        toStation: 'QUEUE',
+        queueIndex: 0,
+        color: 'BLUE',
+      });
+      expect(queueGrab.grabDistPx).toBe(96);
+      expect(queueGrab.grabDxPx).toBe(-30);
 
       const bottomSlot = computeDepotStationTravelPx({
         type: 'GRAB',
         stepId: 3,
         fromStation: 'STACK_1',
+        toStation: 'STACK_1',
         stackIndex: 0,
         stackSlotIndex: 0,
         color: 'GREEN',
@@ -101,23 +104,26 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
         type: 'GRAB',
         stepId: 4,
         fromStation: 'STACK_1',
+        toStation: 'STACK_1',
         stackIndex: 0,
         stackSlotIndex: 3,
         color: 'GREEN',
       });
       expect(bottomSlot.grabDistPx).toBe(182);
+      expect(bottomSlot.grabDxPx).toBe(0);
       expect(highSlot.grabDistPx).toBe(116);
       expect(bottomSlot.grabDistPx).toBeGreaterThan(highSlot.grabDistPx);
 
       const queuePlace = computeDepotStationTravelPx({
         type: 'PLACE',
         stepId: 5,
+        fromStation: 'QUEUE',
         toStation: 'QUEUE',
         queueIndex: 2,
         color: 'AMBER',
       });
-      expect(queuePlace.placeDistPx).toBe(166);
-      expect(queuePlace.placeDxPx).toBe(24);
+      expect(queuePlace.placeDistPx).toBe(96);
+      expect(queuePlace.placeDxPx).toBe(30);
     });
   });
 
@@ -153,14 +159,16 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
       expect(stackHtml).toContain('depotHeldRingGrabLift 1350ms linear both');
       expect(stackHtml).toContain('depotSpringPlunge 1350ms linear both');
 
-      // GRAB from QUEUE
+      // GRAB from QUEUE (top-left pickup cradle + U-belt advance + rollers/tread spin)
       const atQueue = applyDepotAction('DEPOT_MOVE_TO', s0, { station: 'QUEUE' }).nextState;
       const grabbedQueue = applyDepotAction('DEPOT_GRAB', atQueue).nextState;
       const queueHtml = renderDepot(grabbedQueue);
-      expect(queueHtml).toContain('--depot-grab-dist:166px');
+      expect(queueHtml).toContain('--depot-grab-dist:96px');
+      expect(queueHtml).toContain('--depot-grab-x:-30px');
       expect(queueHtml).toContain('depotHeldRingGrabLiftQueue 1350ms linear both');
-      expect(queueHtml).toContain('depotQueueSlideLeft 1350ms cubic-bezier(0.22, 1, 0.36, 1) both');
+      expect(queueHtml).toContain('depotQueueAdvanceUp 1350ms cubic-bezier(0.22, 1, 0.36, 1) both');
       expect(queueHtml).toContain('depotRollerSpin 1350ms linear both');
+      expect(queueHtml).toContain('depotUBeltTread 1350ms linear both');
     });
 
     it('renders in-flight ring traveling down from gripper on PLACE to STACK_2 and QUEUE while delaying destination reveal', () => {
@@ -190,17 +198,19 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
       expect(placeStackHtml).toContain('data-depot-slot="STACK_2-0"');
       expect(placeStackHtml).toContain('data-testid="depot-stack-2-crate-0"');
 
-      // PLACE onto QUEUE (index 1 -> placeDxPx = 0, placeDistPx = 166)
+      // PLACE onto QUEUE (index 1 -> drops into right entry mouth and rides around U-belt)
       const heldStack1 = applyDepotAction('DEPOT_GRAB', { ...s0, workerStation: 'STACK_1' }).nextState;
       const atQueue = applyDepotAction('DEPOT_MOVE_TO', heldStack1, { station: 'QUEUE' }).nextState;
       const placedQueue = applyDepotAction('DEPOT_PLACE', atQueue).nextState;
 
       const placeQueueHtml = renderDepot(placedQueue);
       expect(placeQueueHtml).toContain('data-testid="depot-inflight-place-ring"');
-      expect(placeQueueHtml).toContain('--depot-place-dist:166px');
-      expect(placeQueueHtml).toContain('depotPlaceRingTravel 1350ms linear both');
-      expect(placeQueueHtml).toContain('depotQueueRingDrop 1350ms ease-out both');
+      expect(placeQueueHtml).toContain('--depot-place-dist:96px');
+      expect(placeQueueHtml).toContain('--depot-place-x:30px');
+      expect(placeQueueHtml).toContain('depotPlaceQueueEntry 1350ms linear both');
+      expect(placeQueueHtml).toContain('depotQueuePlaceRideAroundU 1350ms linear both');
       expect(placeQueueHtml).toContain('depotFunnelPulse 1350ms ease-out both');
+      expect(placeQueueHtml).toContain('depotRollerSpin 1350ms linear both');
       expect(placeQueueHtml).toContain('data-depot-queue-belt="true"');
     });
 

@@ -13,7 +13,7 @@ Experiencing all three containers side by side in the Depot teaches **why differ
 | Entity | Physical Constraint | What the Learner Discovers |
 | :--- | :--- | :--- |
 | 🏗️ **Stack** (`1..3` towers) | Open-top acrylic glass chute + center peg; only the top ring/block glows while lower ones are recessed behind diagonal glare lines | "I can only grab the top one — and they come out backwards!" → **LIFO** |
-| 📦 **Queue** (conveyor belt) | Spoked roller belt with low side guard rails; items enter exclusively at the Right Back Funnel and exit exclusively from the Left Front Cradle | "First in line goes out first!" → **FIFO** |
+| 📦 **Queue** (U-shaped belt) | Upright 8-slot U-shaped roller conveyor (`∪`): items drop into the Top-Right Entry Funnel (`⬇`), ride around the bottom spoked-roller U-turn, and exit exclusively from the Top-Left Pickup Cradle (`▲`) | "First in line goes out first — and all 8 slots stay visible!" → **FIFO** |
 | 📼 **Tape** (`TapeDock` vs. Peg Rail) | Electronic sliding laser heads (`▲1`, `▲2`) in the `Top Dock` jump directly to any cell `1..N`, strictly distinct from optional in-canvas recessed Physical Peg Sockets | "I can jump straight to cell #50 or #500 — and digital copies keep my ring in the claw!" → **Random access & conservation** |
 
 ### 1.1 Playful Toy-Crane Workshop Identity
@@ -44,14 +44,13 @@ Every item uses canonical 10-color `PALETTE_COLORS` (`0..9`: `black`, `red`, `bl
             │  (Telescoping spring cable + optical scan lens)
             ▼
   ┌───────────┐   ┌────────┐ ┌────────┐ ┌────────┐   ┌──────────────────┐   ┌──────────┐
-  │  INPUT    │   │STACK 1 │ │STACK 2 │ │STACK 3 │   │  QUEUE (Belt)    │   │ OUTPUT   │
-  │ Dispenser │   │  ┌──┐  │ │  ┌──┐  │ │  ┌──┐  │   │ [FRONT]   [BACK] │   │  ┌────┐  │
-  │ [🔵]      │   │  │🔴│  │ │  │  │  │ │  │  │  │   │  ┌──┐       ▼   │   │  │OUT │  │
-  │ [🟢]      │   │  │🔵│  │ │  │  │  │ │  │  │  │   │  │🟠│◀──🟣◀─🔵  │   │  │ or │  │
-  │ [🟡] ◀──  │   │  │🟢│  │ │  │  │  │ │  │  │  │   │  └──┘  (rollers) │   │  │✅/❌│  │
-  │ (Grab ▲)  │   │ ═╧══╧═ │ │ ═╧══╧═ │ │ ═╧══╧═ │   │  ⊙ ── ⊙ ── ⊙ ── │   │  └────┘  │
-  └───────────┘   │  [ 1 ] │ │  [ 2 ] │ │  [ 3 ] │   │   ◀── FIFO ◀──   │   │  Target  │
-                  └────────┘ └────────┘ └────────┘   └──────────────────┘   └──────────┘
+  │  INPUT    │   │STACK 1 │ │STACK 2 │ │STACK 3 │   │  QUEUE (U-Belt)  │   │ OUTPUT   │
+  │ Dispenser │   │  ┌──┐  │ │  ┌──┐  │ │  ┌──┐  │   │ [▲ 0]      [7 ⬇] │   │  ┌────┐  │
+  │ [🔵]      │   │  │🔴│  │ │  │  │  │ │  │  │  │   │  │🟠│  ││  │🟣│  │   │  │OUT │  │
+  │ [🟢]      │   │  │🔵│  │ │  │  │  │ │  │  │  │   │  │🔵│▲ ││ ▼│🟢│  │   │  │ or │  │
+  │ [🟡] ◀──  │   │  │🟢│  │ │  │  │  │ │  │  │  │   │  ╰─ ⊙ ◀ ⊙ ─╯     │   │  │✅/❌│  │
+  │ (Grab ▲)  │   │ ═╧══╧═ │ │ ═╧══╧═ │ │ ═╧══╧═ │   │    [ ↺ FIFO ]    │   │  └────┘  │
+  └───────────┘   │  [ 1 ] │ │  [ 2 ] │ │  [ 3 ] │   └──────────────────┘   └──────────┘
   [Optional Workbench Floor: Recessed Physical Peg Sockets ⌼1 ⌼2 ⌼3 ... (peg-mode only)]
 ```
 *(Electronic Memory Tape **`TapeDock`** (`◀ [1] … [N] ▶`, optical heads `▲1`, `▲2`, and optional `🛡️` Crystal Shield read-only highlights) sits directly above this canvas inside the standardized **`Top Dock (shrink-0)`**—never overlapping the overhead gantry rail or workbench floor.)*
@@ -69,7 +68,7 @@ Stations not used by a lesson are hidden cleanly (`activeStationsMask`) so early
 - **`STACK 1..3` Open-Top Acrylic Chutes (Center-Left):** Flared open top mouth + vertical center peg + bold numeric pedestal `[ 1 ] [ 2 ] [ 3 ]` (or color-coded bin pedestals `[ 1 🔴 ] [ 2 🔵 ] [ 3 🟢 ]` in `tape.A`).
   - **Top vs. Lower Items:** Only the top item shows full saturation + pulsing grab-halo (+ `▲` chevron when hovered); lower items render behind diagonal translucent acrylic glare lines at ~75% brightness.
   - **Zero-Reading Target Blueprints:** Empty target stacks render translucent (~25%) dashed ghost silhouettes (`bottom → top`) that pop `✓` as matching rings arrive; stacks that start non-empty render a compact **Mini Goal Stack Preview** beside/below the pedestal base.
-- **`QUEUE` Conveyor Belt (Center-Right):** Horizontal belt with spinning spoked rollers, scrolling `◀  ◀  ◀` chevrons, low translucent side guard rails, flared **Right Back-In Entry Funnel (`⬅️`)** for `DEPOT_PLACE`, and glowing **Left Front-Out Pickup Cradle** highlighting ONLY the frontmost item for `DEPOT_GRAB` / `$topColor` / `$topValue`. As the front item lifts, remaining belt items smoothly scroll left one slot.
+- **`QUEUE` U-Shaped Conveyor Belt (Center-Right):** Upright 8-slot U-shaped conveyor (`∪`) matching stack bay height so all `0..8` queue items remain visible without clipping or scrolling. Features a **Top-Right Entry Funnel (`⬇`)** for `DEPOT_PLACE`, a **Right Entry Lane (`Slots 7 → 4 ▼`)**, a **Bottom Spoked-Roller U-Turn (`╰─ ⊙ ◀ ⊙ ─╯`)**, a **Left Exit Lane (`Slots 3 → 0 ▲`)**, and a stationary **Top-Left Pickup Cradle (`▲`, `Slot 0`)** highlighting ONLY the frontmost item for `DEPOT_GRAB` / `$topColor` / `$topValue`. As the front item lifts into the claw, remaining belt items smoothly glide forward one slot along their segment (up the left lane, around the bottom turn, and down the right lane). When placing onto the queue, the item drops into the Top-Right Entry Funnel and rides along the U-track to join the tail.
 - **`OUTPUT` Delivery Dock (Right):**
   - **Standard `OUT` Mode:** Transparent overhead curved sky-chute feeding a horizontal target tray with ghost slots `[1][2][3]...`.
   - **Verdict Gate Mode (`ACCEPT` / `REJECT`, e.g., `sort.0–1`, `args.M3`):** Twin arched chutes—emerald **`✅ ACCEPT`** and coral-red **`❌ REJECT`**—with animated flap doors.
@@ -83,8 +82,8 @@ All 4 Depot action blocks preserve M1–M6 opcode slots (`0x10..0x14`) and execu
 | Block | Icon | Parameters & Wire Codes | Behavior & Visual Choreography |
 | :--- | :--- | :--- | :--- |
 | `DEPOT_MOVE_TO` | Arrow → station | `STACK_1` (`0`), `STACK_2` (`1`), `STACK_3` (`2`), `QUEUE` (`3`), `TAPE` (`4`), `INPUT` (`5`); stacks also accept a numeric variable (`a`–`z`) or shape socket (`●`, `▲`, `■` -> `1..3`) | Trolley rolls smoothly along gantry rail (`easeInOutCubic`), cable tilts subtly `±4°` then settles plumb, station pedestal lights up in worker's color. Dynamic vars/sockets ride as a `[2]` index pill onto the trolley; values `< 1` or `> 3` slam into the striped end-bumper (`COLLISION`). |
-| `DEPOT_GRAB` | Claw ↑ | None | Cable extends into top of Stack / Front Pickup Cradle of Queue / Pickup Cradle of Input / occupied Physical Peg Socket (`TAPE` peg-mode only). Jaws grip item cleanly and lift **full-size into the claw jaws** (Queue scrolls left; Input drops next). Errors (`COLLISION`) on empty bay, full claw, or non-peg `TAPE`. |
-| `DEPOT_PLACE` | Claw ↓ | None | At `QUEUE`, trolley centers over the **Right Back-In Funnel**; otherwise lowers at current station. Releases held item gently onto Stack top / Queue tail / empty Physical Peg Socket. Errors (`COLLISION`) on empty claw, `INPUT` one-way gate, non-peg `TAPE`, or Hanoi `$heldValue > $topValue` violation (`enforceHanoiRule = true`). |
+| `DEPOT_GRAB` | Claw ↑ | None | Cable extends into top of Stack / Top-Left Pickup Cradle (`Slot 0`) of Queue / Pickup Cradle of Input / occupied Physical Peg Socket (`TAPE` peg-mode only). Jaws grip item cleanly and lift **full-size into the claw jaws** (Queue items advance around the U-belt — up the left lane, around the bottom turn, and down the right lane; Input drops next). Errors (`COLLISION`) on empty bay, full claw, or non-peg `TAPE`. |
+| `DEPOT_PLACE` | Claw ↓ | None | At `QUEUE`, claw dips over the **Top-Right Entry Funnel (`Slot 7`)**, drops the held item into the mouth, and the conveyor rides it down the right lane (and around the U-turn when `queueIndex <= 3`) to the queue tail; otherwise lowers at current station onto Stack top or empty Physical Peg Socket. Errors (`COLLISION`) on empty claw, `INPUT` one-way gate, non-peg `TAPE`, or Hanoi `$heldValue > $topValue` violation (`enforceHanoiRule = true`). |
 | `DEPOT_SEND_OUT` / `DEPOT_SEND_GATE` | Arrow → `↪` / `✅` / `❌` | Parameterless `OUT` (`0x13`) or `DEPOT_SEND_GATE` (`0x14`: `0 = OUT` `↪`, `2 = ACCEPT` `✅`, `3 = REJECT` `❌`) | **Logical Station Invariance:** Claw remains anchored at `workerStation` while jaws open and launch the item through an overhead transparent sky-chute arc into `OUT`, `✅ ACCEPT`, or `❌ REJECT` (flashing `✓` or `✗` against expected target). Empty claw triggers `COLLISION` (`args.M3` uses `🎫` Verdict Token). |
 
 > **Physical Peg Slots vs. Electronic Tape Memory:** To avoid confusing conserved physical items (`DEPOT_GRAB` / `DEPOT_PLACE`) with electronic memory copies (`$cellValue`, `$cellColor`, `TAPE_WRITE`), electronic Tape puzzles (`tape.5–8`, `sort.0–1`, `conc.B`, `fp`) use strictly the glowing `Top Dock` `TapeDock` blocks/sensors (`TAPE_SEEK`, `TAPE_STEP`, `TAPE_WRITE`, `$cellValue`, `$cellColor`, `cellEmpty`). Writing `TAPE_WRITE [$heldColor]` fires a **magenta/cyan electronic copy beam** from the held item up into `TapeDock` while keeping the physical object untouched in the claw. Only layouts configured with physical-peg mode render floor sockets (`⌼ 1..N`) and allow `DEPOT_MOVE_TO [TAPE]` + `DEPOT_GRAB`/`DEPOT_PLACE`.
