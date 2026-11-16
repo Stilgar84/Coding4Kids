@@ -91,7 +91,12 @@ test.describe('Curriculum V2 Phase 3: 8-Module Catalog (123 Activities), Sandbox
     await expect(page.getByTestId('tool-dial')).toBeVisible();
     await expect(page.getByTestId('tool-stack-depot')).toBeVisible();
     await page.getByTestId('tool-dial').click();
+    await expect(page.getByTestId('dial-value-picker')).toBeVisible();
+    // Close popover while keeping DIAL selected so it does not intercept cell-1-2 clicks
+    await page.getByTestId('tool-world-items-menu').click();
+    await expect(page.getByTestId('world-items-popover')).toHaveCount(0);
     await page.getByTestId('cell-1-2').click();
+    await expect(page.getByTestId('dial-tile-1-2')).toBeAttached();
 
     // Switch to Turtle Sandbox via LessonPickerModal Sandbox tab
     await page.getByTestId('btn-lesson-picker').click();
@@ -136,13 +141,14 @@ test.describe('Curriculum V2 Phase 3: 8-Module Catalog (123 Activities), Sandbox
 
     await page.getByTestId('btn-step').click();
     await expect(page.getByTestId('toolbar-variables')).toBeVisible();
-    await expect(page.getByTestId('var-badge-s')).toBeVisible();
+    await expect(page.getByTestId('toolbar-variables').getByTestId('var-badge-s')).toBeVisible();
 
     await page.getByTestId('demo-tab-2').click();
     await page.waitForSelector('[data-testid="grid-canvas"]');
     await page.getByTestId('btn-step').click();
     await page.getByTestId('btn-step').click();
-    await expect(page.getByTestId('var-badge-d')).toBeVisible();
+    await expect(page.getByTestId('toolbar-variables')).toBeVisible();
+    await expect(page.getByTestId('toolbar-variables').getByTestId('var-badge-d')).toBeVisible();
 
     // Continue from Tab 2 -> Tab 3 -> var.1
     await page.getByTestId('btn-explanation-continue').click();
@@ -161,13 +167,12 @@ test.describe('Curriculum V2 Phase 3: 8-Module Catalog (123 Activities), Sandbox
     await page.getByTestId('palette-move-fwd').click();
     await page.getByTestId('palette-number-var-d').click();
 
-    // Cycle speed 1x -> 4x -> 16x -> Instant (⚡)
-    await page.getByTestId('btn-speed').click();
+    // Cycle speed 1x -> 4x -> 16x (2 clicks; avoid Instant live auto-eval before btn-play)
     await page.getByTestId('btn-speed').click();
     await page.getByTestId('btn-speed').click();
 
     await page.getByTestId('btn-play').click();
-    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 15000 });
     await page.getByTestId('victory-modal').click({ position: { x: 10, y: 10 } });
     await expect(page.getByTestId('victory-modal')).toHaveCount(0);
   });
@@ -199,13 +204,12 @@ test.describe('Curriculum V2 Phase 3: 8-Module Catalog (123 Activities), Sandbox
     await page.locator('[data-block-type="END_IF"]').click();
     await page.getByTestId('palette-switchyard-send-next').click();
 
-    // Cycle speed 1x -> 4x -> 16x -> Instant (⚡)
-    await page.getByTestId('btn-speed').click();
+    // Cycle speed 1x -> 4x -> 16x (2 clicks; avoid Instant live auto-eval suppressing victory-modal)
     await page.getByTestId('btn-speed').click();
     await page.getByTestId('btn-speed').click();
 
     await page.getByTestId('btn-play').click();
-    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('victory-modal')).toBeVisible({ timeout: 15000 });
     await page.getByTestId('victory-modal').click({ position: { x: 10, y: 10 } });
     await expect(page.getByTestId('victory-modal')).toHaveCount(0);
 
