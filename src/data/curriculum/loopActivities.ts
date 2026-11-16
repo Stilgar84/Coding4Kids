@@ -763,10 +763,10 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
     title: 'Bridge Builder Loop',
     concept: 'Repeating Pick Up, Drop, Cross & Retrieve-From-Ahead Across 3 Moats',
     description:
-      'Pick up the single Plank, then repeat a Loop ×3 that bridges the river, walks across, turns around to retrieve the Plank, and faces East again.',
-    hint: 'Inside Loop ×3: Drop -> Forward ×2 -> Turn Right ×2 -> Pick Up -> Turn Right ×2!',
+      'Step onto the single Plank and pick it up, then repeat a Loop ×3 that bridges the river, walks across, turns around to retrieve the Plank, and faces East again.',
+    hint: 'First Move Forward + Pick Up, then inside Loop ×3: Drop -> Forward ×2 -> Turn Right ×2 -> Pick Up -> Turn Right ×2!',
     grid: {
-      width: 7,
+      width: 8,
       height: 3,
       robot: { x: 0, y: 1, dir: 'EAST' },
       barriers: [
@@ -777,6 +777,7 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
         { x: 4, y: 1, orientation: 'H' },
         { x: 5, y: 1, orientation: 'H' },
         { x: 6, y: 1, orientation: 'H' },
+        { x: 7, y: 1, orientation: 'H' },
         { x: 0, y: 2, orientation: 'H' },
         { x: 1, y: 2, orientation: 'H' },
         { x: 2, y: 2, orientation: 'H' },
@@ -784,14 +785,15 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
         { x: 4, y: 2, orientation: 'H' },
         { x: 5, y: 2, orientation: 'H' },
         { x: 6, y: 2, orientation: 'H' },
+        { x: 7, y: 2, orientation: 'H' },
       ],
       waterCells: [
-        { x: 1, y: 1 },
-        { x: 3, y: 1 },
-        { x: 5, y: 1 },
+        { x: 2, y: 1 },
+        { x: 4, y: 1 },
+        { x: 6, y: 1 },
       ],
-      worldItems: [{ id: 'plank-1', type: 'plank', x: 0, y: 1 }],
-      flags: [{ id: 'G_loop5', x: 6, y: 1, isGoal: true, order: 1, collected: false }],
+      worldItems: [{ id: 'plank-1', type: 'plank', x: 1, y: 1 }],
+      flags: [{ id: 'G_loop5', x: 7, y: 1, isGoal: true, order: 1, collected: false }],
       strictInteractionCollision: true,
       requireAllItemsCollected: false,
       requireEmptyBackpackAtGoal: false,
@@ -805,11 +807,12 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { maxTotal: 8, perScope: { MAIN: 8 } },
+    slotCap: { maxTotal: 9, perScope: { MAIN: 9 } },
     starterWorkspace: makeMainWorkspace([]),
     partialHelp: {
       mode: 'scaffold',
       scaffoldWorkspace: makeMainWorkspace([
+        block('MOVE_FWD', undefined, undefined, 'scaf_loop5'),
         block('PICK_UP', undefined, undefined, 'scaf_loop5'),
         block('LOOP_START', 3, undefined, 'scaf_loop5'),
         block('USE_DROP', undefined, undefined, 'scaf_loop5'),
@@ -821,6 +824,7 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
       ]),
     },
     referenceSolution: makeMainWorkspace([
+      block('MOVE_FWD', undefined, undefined, 'ref_loop5'),
       block('PICK_UP', undefined, undefined, 'ref_loop5'),
       block('LOOP_START', 3, undefined, 'ref_loop5'),
       block('USE_DROP', undefined, undefined, 'ref_loop5'),
@@ -833,7 +837,7 @@ export const LOOP_ACTIVITIES: CurriculumActivity[] = [
     antiBypassRules: [
       {
         id: 'loop.5-require-loop',
-        description: 'Cannot cross 3 rivers without loops inside 8 slots',
+        description: 'Cannot cross 3 rivers without loops inside 9 slots',
         maxLoopNestingDepth: 0,
       },
       {

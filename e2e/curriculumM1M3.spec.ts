@@ -7,9 +7,10 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.goto('/?mode=curriculum&activity=loop.5');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    // Read-only curriculum map on loop.5 (7 × 3): editor tools & resize handles hidden
+    // Read-only curriculum map on loop.5 (8 × 3): editor tools & resize handles hidden, plank visible ahead
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('7 × 3');
+    await expect(page.getByTestId('grid-size-indicator')).toHaveText('8 × 3');
+    await expect(page.getByTestId('world-item-plank-1-1')).toBeVisible();
     await expect(page.getByTestId('tool-wall')).toHaveCount(0);
     await expect(page.getByTestId('tool-world-items-menu')).toHaveCount(0);
     await expect(page.getByTestId('resize-handle-right')).toHaveCount(0);
@@ -23,7 +24,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.getByTestId('btn-next-lesson').click();
     await expect(page.getByTestId('grid-size-indicator')).toHaveText('3 × 3');
     await page.getByTestId('btn-prev-lesson').click();
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('7 × 3');
+    await expect(page.getByTestId('grid-size-indicator')).toHaveText('8 × 3');
     await expect(page.locator('[data-block-type]')).toHaveCount(3);
 
     // Create a second learner profile (Owl) -> starts with 0 blocks on loop.5
@@ -41,44 +42,45 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.getByTestId('profile-card-default').click();
     await expect(page.locator('[data-block-type]')).toHaveCount(3);
 
-    // Open Copy in Sandbox -> clones 7 × 3 map + 3 blocks with full editing tools enabled
+    // Open Copy in Sandbox -> clones 8 × 3 map + 3 blocks with full editing tools enabled
     await page.getByTestId('btn-hamburger-menu').click();
     await page.getByTestId('drawer-btn-open-copy-sandbox').click();
     await expect(page.getByTestId('grid-readonly-badge')).toHaveCount(0);
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('7 × 3');
+    await expect(page.getByTestId('grid-size-indicator')).toHaveText('8 × 3');
     await expect(page.locator('[data-block-type]')).toHaveCount(3);
     await expect(page.getByTestId('tool-wall')).toBeVisible();
     await expect(page.getByTestId('tool-world-items-menu')).toBeVisible();
 
-    // Mutate cloned Sandbox board size -> original loop.5 curriculum map stays pristine 7 × 3
+    // Mutate cloned Sandbox board size -> original loop.5 curriculum map stays pristine 8 × 3
     await page.getByTestId('btn-resize-right-plus').click();
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('8 × 3');
+    await expect(page.getByTestId('grid-size-indicator')).toHaveText('9 × 3');
 
     await page.goto('/?mode=curriculum&activity=loop.5');
     await page.waitForSelector('[data-testid="grid-canvas"]');
-    await expect(page.getByTestId('grid-size-indicator')).toHaveText('7 × 3');
+    await expect(page.getByTestId('grid-size-indicator')).toHaveText('8 × 3');
     await expect(page.getByTestId('grid-readonly-badge')).toBeVisible();
   });
 
-  test('2. enforces 8-slot tray & ? placeholder pause/replacement on loop.5 (Bridge Builder Loop)', async ({
+  test('2. enforces 9-slot tray & ? placeholder pause/replacement on loop.5 (Bridge Builder Loop)', async ({
     page,
   }) => {
     await page.goto('/?mode=curriculum&activity=loop.5&dev=1');
     await page.waitForSelector('[data-testid="grid-canvas"]');
 
-    // Physical 8-slot tray starts at 0 / 8
+    // Physical 9-slot tray starts at 0 / 9
     await expect(page.getByTestId('workspace-slot-counter')).toBeVisible();
-    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 8');
-    await expect(page.getByTestId('workspace-empty-slot')).toHaveCount(8);
+    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('0 / 9');
+    await expect(page.getByTestId('workspace-empty-slot')).toHaveCount(9);
 
-    // Open Hint modal -> verify Dev Constraint Proofs pass, then load Tier 1 ? scaffold (8 / 8 slots, 2 ? placeholders)
+    // Open Hint modal -> verify Dev Constraint Proofs pass, then load Tier 1 ? scaffold (9 / 9 slots, 2 ? placeholders)
     await page.getByTestId('btn-solution').click();
     await expect(page.getByTestId('constraint-overall-badge')).toContainText('Verified');
     await page.getByTestId('btn-load-scaffold').click();
-    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('8 / 8');
+    await expect(page.getByTestId('workspace-slot-count-label')).toHaveText('9 / 9');
     await expect(page.locator('[data-block-type="PLACEHOLDER"]')).toHaveCount(2);
 
     // Step into the loop until execution pauses cleanly on the first ? placeholder block
+    await page.getByTestId('btn-step').click(); // MOVE_FWD onto plank
     await page.getByTestId('btn-step').click(); // PICK_UP
     await page.getByTestId('btn-step').click(); // LOOP_START ×3
     await page.getByTestId('btn-step').click(); // USE_DROP

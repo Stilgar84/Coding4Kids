@@ -9,7 +9,7 @@ Combine **item carry/place workflows** (`Pick Up` + `Use / Drop`) with counted r
 <details>
 <summary>📖 Parent / Teacher Tip</summary>
 
-There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick Up` the plank at the start tile (watch it appear on the robot's shoulder gripper!). Inside `Loop Start [×3]`, `Use / Drop` the plank onto the river ahead, walk `Move Forward [×2]` onto solid ground, `Turn Right [×2]` to face back toward the plank you just crossed, `Pick Up` the plank behind you, and `Turn Right [×2]` again to face the next river! *(Tip: use the `[×2]` repeat badge on `Turn Right` so everything fits inside 8 slots!)*
+There are **3 rivers**, but the robot only has **1 wooden plank**! First `Move Forward` onto the plank and `Pick Up` the plank (watch it appear on the robot's shoulder gripper!). Inside `Loop Start [×3]`, `Use / Drop` the plank onto the river ahead, walk `Move Forward [×2]` onto solid ground, `Turn Right [×2]` to face back toward the plank you just crossed, `Pick Up` the plank behind you, and `Turn Right [×2]` again to face the next river! *(Tip: use the `[×2]` repeat badge on `Turn Right` so everything fits inside 9 slots!)*
 
 </details>
 
@@ -17,8 +17,8 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
 
 - **Zero Reading**: Visual river water tiles, single wooden plank item icon, and shoulder gripper indicator (`no BackpackHud` `🎒`).
 - **Enabled Scope Tabs**: `[MAIN]` only (`allowRecursion: false`, `allowVariables: false`).
-- **Slot Cap**: `slotCap.maxTotal = 8` (exact flat closer-inclusive match: `1` pre-loop `PICK_UP` + `Loop Start`/`End` `2` + `5` body blocks). **Edit-Delta**: `8` (`2` `?` turn replacements in Partial Help).
-- **Anti-Bypass Guardrail**: Strict interaction rules (`strictInteractionCollision: true`), single plank (`cannot bridge all 3 rivers at once without retrieving it`), and `slotCap.maxTotal = 8`.
+- **Slot Cap**: `slotCap.maxTotal = 9` (exact flat closer-inclusive match: `2` pre-loop setup blocks `MOVE_FWD` + `PICK_UP` + `Loop Start`/`End` `2` + `5` body blocks). **Edit-Delta**: `8` palette insertions / `9` flat blocks (`2` `?` turn replacements in Partial Help).
+- **Anti-Bypass Guardrail**: Strict interaction rules (`strictInteractionCollision: true`), single plank (`cannot bridge all 3 rivers at once without retrieving it`), and `slotCap.maxTotal = 9`.
 
 ## Palette & Capabilities
 
@@ -32,7 +32,7 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
   "allowedBlockParams": [],
   "allowVariables": false,
   "allowRecursion": false,
-  "slotCap": { "maxTotal": 8 },
+  "slotCap": { "maxTotal": 9 },
   "antiBypassRules": [
     {
       "id": "single-depth-loop-only",
@@ -54,38 +54,38 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
 }
 ```
 
-*(Note: `requireEmptyBackpackAtGoal: false` ensures completing the final retrieval cleanly or reaching `(6, 1)` Goal succeeds without punishing carrying the single reusable plank.)*
+*(Note: `requireEmptyBackpackAtGoal: false` ensures completing the final retrieval cleanly or reaching `(7, 1)` Goal succeeds without punishing carrying the single reusable plank.)*
 
-## Grid Setup (`7 × 3`, `x = 0..6`, `y = 0..2`)
+## Grid Setup (`8 × 3`, `x = 0..7`, `y = 0..2`)
 
 - **Start Pose**: `(0, 1)` facing **`EAST`**
-- **Goal**: `(6, 1)` (`isGoal: true`)
-- **Water Cells**: `(1, 1)`, `(3, 1)`, `(5, 1)`
-- **Items**: `[{ "id": "plank-1", "kind": "plank", "x": 0, "y": 1 }]` *(only 1 plank)*
+- **Goal**: `(7, 1)` (`isGoal: true`)
+- **Water Cells**: `(2, 1)`, `(4, 1)`, `(6, 1)`
+- **Items**: `[{ "id": "plank-1", "kind": "plank", "x": 1, "y": 1 }]` *(only 1 plank)*
 
 ```text
-     0   1   2   3   4   5   6
-   +---+---+---+---+---+---+---+
- 0 |   |   |   |   |   |   |   |
-   +---+---+---+---+---+---+---+
- 1 |🤖🪵| ~ | . | ~ | . | ~ |🏁G|
-   +---+---+---+---+---+---+---+
- 2 |   |   |   |   |   |   |   |
-   +---+---+---+---+---+---+---+
+     0   1   2   3   4   5   6   7
+   +---+---+---+---+---+---+---+---+
+ 0 |   |   |   |   |   |   |   |   |
+   +---+---+---+---+---+---+---+---+
+ 1 |🤖 |🪵 | ~ | . | ~ | . | ~ |🏁G|
+   +---+---+---+---+---+---+---+---+
+ 2 |   |   |   |   |   |   |   |   |
+   +---+---+---+---+---+---+---+---+
 ```
 
 ```json
 {
-  "gridWidth": 7,
+  "gridWidth": 8,
   "gridHeight": 3,
   "start": { "x": 0, "y": 1, "dir": "EAST" },
-  "goal": { "x": 6, "y": 1 },
+  "goal": { "x": 7, "y": 1 },
   "waterCells": [
-    { "x": 1, "y": 1 },
-    { "x": 3, "y": 1 },
-    { "x": 5, "y": 1 }
+    { "x": 2, "y": 1 },
+    { "x": 4, "y": 1 },
+    { "x": 6, "y": 1 }
   ],
-  "items": [{ "id": "plank-1", "kind": "plank", "x": 0, "y": 1 }],
+  "items": [{ "id": "plank-1", "kind": "plank", "x": 1, "y": 1 }],
   "barriers": [
     { "orientation": "H", "x": 0, "y": 1 },
     { "orientation": "H", "x": 1, "y": 1 },
@@ -94,13 +94,15 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
     { "orientation": "H", "x": 4, "y": 1 },
     { "orientation": "H", "x": 5, "y": 1 },
     { "orientation": "H", "x": 6, "y": 1 },
+    { "orientation": "H", "x": 7, "y": 1 },
     { "orientation": "H", "x": 0, "y": 2 },
     { "orientation": "H", "x": 1, "y": 2 },
     { "orientation": "H", "x": 2, "y": 2 },
     { "orientation": "H", "x": 3, "y": 2 },
     { "orientation": "H", "x": 4, "y": 2 },
     { "orientation": "H", "x": 5, "y": 2 },
-    { "orientation": "H", "x": 6, "y": 2 }
+    { "orientation": "H", "x": 6, "y": 2 },
+    { "orientation": "H", "x": 7, "y": 2 }
   ]
 }
 ```
@@ -119,6 +121,7 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
 {
   "mode": "scaffold",
   "MAIN": [
+    { "op": "MOVE_FWD" },
     { "op": "PICK_UP" },
     {
       "op": "LOOP_START",
@@ -135,11 +138,12 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
 }
 ```
 
-### Canonical Solution (`referenceSolution` — `8` flat closer-inclusive blocks)
+### Canonical Solution (`referenceSolution` — `9` flat closer-inclusive blocks)
 
 ```json
 {
   "MAIN": [
+    { "op": "MOVE_FWD" },
     { "op": "PICK_UP" },
     {
       "op": "LOOP_START",
@@ -160,7 +164,7 @@ There are **3 rivers**, but the robot only has **1 wooden plank**! First `Pick U
 
 | Step | Action | Robot Pose | Shoulder Gripper | Rivers Bridged |
 | :--- | :--- | :--- | :---: | :---: |
-| Init | `PICK_UP` | `(0,1) E` | `🪵 plank-1` | `—` |
-| `1/3` | `USE_DROP` → `FWD×2` → `TR×2` → `PICK_UP` → `TR×2` | `(2,1) E` | `🪵 plank-1` | `(1,1)` bridged then picked back up |
-| `2/3` | `USE_DROP` → `FWD×2` → `TR×2` → `PICK_UP` → `TR×2` | `(4,1) E` | `🪵 plank-1` | `(3,1)` bridged then picked back up |
-| `3/3` | `USE_DROP` → `FWD×2` **`🏁`** → `TR×2` → `PICK_UP` → `TR×2` | `(6,1) E` | `🪵 plank-1` | **`🏁 Goal reached!`** |
+| Init | `MOVE_FWD` → `PICK_UP` | `(1,1) E` | `🪵 plank-1` | `—` |
+| `1/3` | `USE_DROP` → `FWD×2` → `TR×2` → `PICK_UP` → `TR×2` | `(3,1) E` | `🪵 plank-1` | `(2,1)` bridged then picked back up |
+| `2/3` | `USE_DROP` → `FWD×2` → `TR×2` → `PICK_UP` → `TR×2` | `(5,1) E` | `🪵 plank-1` | `(4,1)` bridged then picked back up |
+| `3/3` | `USE_DROP` → `FWD×2` **`🏁`** → `TR×2` → `PICK_UP` → `TR×2` | `(7,1) E` | `🪵 plank-1` | **`🏁 Goal reached!`** |

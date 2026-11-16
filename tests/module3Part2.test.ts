@@ -247,13 +247,17 @@ describe('Phase 1 V2: Loop Activities (loop.5–loop.C) & Full 56-Activity Catal
   });
 
   describe('2. Robot Puzzles & Capstone (loop.5, loop.6, loop.A): Reference Solutions, ? Scaffolds, Anti-Bypass & Binary Sync', () => {
-    it('solves loop.5 (Bridge Builder Loop) in 8 blocks <= 8 slots, pauses on ? scaffold, and passes anti-bypass rules', () => {
+    it('solves loop.5 (Bridge Builder Loop) in 9 blocks <= 9 slots, pauses on ? scaffold, and passes anti-bypass rules', () => {
       const activity = getActivityLatest('loop.5')!;
       expect(activity).toBeDefined();
-      expect(activity.slotCap?.maxTotal).toBe(8);
-      expect(activity.grid?.width).toBe(7);
+      expect(activity.slotCap?.maxTotal).toBe(9);
+      expect(activity.grid?.width).toBe(8);
       expect(activity.grid?.waterCells).toHaveLength(3);
-      expect(activity.referenceSolution!.MAIN).toHaveLength(8);
+      expect(activity.grid?.worldItems).toEqual([{ id: 'plank-1', type: 'plank', x: 1, y: 1 }]);
+      expect(
+        activity.grid?.robot.x === 1 && activity.grid?.robot.y === 1
+      ).toBe(false);
+      expect(activity.referenceSolution!.MAIN).toHaveLength(9);
 
       const initialGrid = createCurriculumGridState(activity.grid!);
       const refRun = runHeadlessSimulation(activity.referenceSolution!, 'grid', initialGrid, 300);
@@ -261,14 +265,14 @@ describe('Phase 1 V2: Loop Activities (loop.5–loop.C) & Full 56-Activity Catal
       const solvedGrid = refRun.finalState as GridState;
       expect(solvedGrid.worldItems).toHaveLength(0);
       expect(solvedGrid.flags.every((f) => f.collected)).toBe(true);
-      expect(solvedGrid.robot.x).toBe(6);
+      expect(solvedGrid.robot.x).toBe(7);
       expect(solvedGrid.robot.y).toBe(1);
 
-      // Scaffold pauses cleanly on first PLACEHOLDER (index 4) and succeeds after completing both turn slots
+      // Scaffold pauses cleanly on first PLACEHOLDER (index 5) and succeeds after completing both turn slots
       const scaffoldWs = activity.partialHelp!.scaffoldWorkspace!;
       const pausedRun = runHeadlessSimulation(scaffoldWs, 'grid', initialGrid, 300);
       expect(pausedRun.status).toBe('PAUSED');
-      expect(pausedRun.finalRuntime.activeBlockId).toBe(scaffoldWs.MAIN[4].id);
+      expect(pausedRun.finalRuntime.activeBlockId).toBe(scaffoldWs.MAIN[5].id);
 
       const store = useAppStore.getState();
       store.setCurriculumActivity('loop.5');
@@ -279,9 +283,9 @@ describe('Phase 1 V2: Loop Activities (loop.5–loop.C) & Full 56-Activity Catal
         .map((b) => b.id);
       expect(phIds5).toHaveLength(2);
       expect(store.replacePlaceholderBlock('MAIN', phIds5[0], 'TURN_RIGHT')).toBe(true);
-      store.updateBlockRepeat('MAIN', useAppStore.getState().workspace.MAIN[4].id, 2);
+      store.updateBlockRepeat('MAIN', useAppStore.getState().workspace.MAIN[5].id, 2);
       expect(store.replacePlaceholderBlock('MAIN', phIds5[1], 'TURN_RIGHT')).toBe(true);
-      store.updateBlockRepeat('MAIN', useAppStore.getState().workspace.MAIN[6].id, 2);
+      store.updateBlockRepeat('MAIN', useAppStore.getState().workspace.MAIN[7].id, 2);
 
       const completedScaffoldRun = runHeadlessSimulation(
         useAppStore.getState().workspace,

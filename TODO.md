@@ -3,14 +3,13 @@
 end icon for if should just spell END instead of the arrow
 also if and all multiblock structure should use the line under block system that loop use.
 
-
 in loop.5 bot start on plank, making it invisible
 
 in multi map lesson, reseting should keep current map.
 
 add button to change random seed on click (and start/restart drawing)
 
-next to try a variation add a reset to initial button
+next to try a variation add a reset to initial button or show it in the variation
 
 
 for condition, each selection should be independent. e.g. not show color or position in first selector, only station empty, top or held color icon
