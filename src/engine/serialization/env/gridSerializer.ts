@@ -138,6 +138,7 @@ export function getGridSerializationVersion(grid?: GridState): number {
     Boolean(grid.strictInteractionCollision) ||
     Boolean(grid.requireAllItemsCollected) ||
     Boolean(grid.requireEmptyBackpackAtGoal) ||
+    (grid.floorSwitches && grid.floorSwitches.some((sw) => (sw.requiredCount ?? 1) > 1)) ||
     (grid.worldItems && grid.worldItems.some((it) => (it.count ?? 1) > 1)) ||
     (grid.initialWorldItems && grid.initialWorldItems.some((it) => (it.count ?? 1) > 1));
   if (hasV3) {
@@ -242,13 +243,18 @@ export function writeGridState(
     const hasLinkedGate = linkedGateIdx >= 0;
     const hasExplicitReq = typeof sw.requiredForGoal === 'boolean';
     const reqVal = Boolean(sw.requiredForGoal);
+    const hasReqCount = resolvedVersion >= ENV_VERSION_GRID_V3 && (sw.requiredCount ?? 1) > 1;
     const flagsByte =
       (hasLinkedGate ? 0x01 : 0x00) |
       (hasExplicitReq ? 0x02 : 0x00) |
-      (reqVal ? 0x04 : 0x00);
+      (reqVal ? 0x04 : 0x00) |
+      (hasReqCount ? 0x08 : 0x00);
     writer.writeUint8(flagsByte);
     if (hasLinkedGate) {
       writer.writeVLE(linkedGateIdx);
+    }
+    if (hasReqCount) {
+      writer.writeVLE(sw.requiredCount!);
     }
   }
 
@@ -451,6 +457,7 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
     const hasLinkedGate = (flagsByte & 0x01) !== 0;
     const hasExplicitReq = (flagsByte & 0x02) !== 0;
     const reqVal = (flagsByte & 0x04) !== 0;
+    const hasReqCount = (flagsByte & 0x08) !== 0;
 
     let linkedGateId: string | undefined;
     if (hasLinkedGate) {
@@ -460,6 +467,7 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
         rawGates[gateIdx].linkedSwitchId = `switch_${coord.x}_${coord.y}_${i}`;
       }
     }
+    const requiredCount = hasReqCount ? reader.readVLE() : undefined;
 
     rawSwitches.push({
       id: `switch_${coord.x}_${coord.y}_${i}`,
@@ -467,6 +475,7 @@ export function readGridState(reader: BinaryReader, envVersion = ENV_VERSION_GRI
       y: coord.y,
       ...(linkedGateId ? { linkedGateId } : {}),
       ...(hasExplicitReq ? { requiredForGoal: reqVal } : {}),
+      ...(requiredCount !== undefined && requiredCount > 1 ? { requiredCount } : {}),
       active: false,
     });
   }

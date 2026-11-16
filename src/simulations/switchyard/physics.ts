@@ -4,21 +4,25 @@ import {
   SwitchyardItemDef,
   SwitchyardSwitchDef,
 } from '../../data/curriculum/types';
-import { SimulationStatus } from '../../types';
+import { PaletteColor, SimulationStatus, TypedValue } from '../../types';
 import {
   DockExpectedItemSpec,
   DockId,
   DockSpec,
   DockState,
+  EXTENDED_COLOR_TO_PALETTE_IDX,
   EXTENDED_ITEM_COLORS,
   ITEM_COLOR_FROM_INDEX,
   ITEM_ICON_FROM_INDEX,
   ItemColor,
   ItemIcon,
   SwitchDirection,
+  SwitchJunctionId,
   SwitchState,
   SwitchyardFailureDetail,
   SwitchyardItem,
+  SwitchyardMode,
+  SwitchyardParitySlot,
   SwitchyardScrapRule,
   SwitchyardState,
 } from './types';
@@ -70,6 +74,34 @@ export function normalizeSwitchyardColor(raw?: string | null): ItemColor | undef
 }
 
 /**
+ * Maps canonical Switchyard ItemColor to canonical Phase 3 PaletteColor ('amber' for YELLOW).
+ */
+export function itemColorToPaletteColor(color: ItemColor): PaletteColor {
+  switch (color) {
+    case 'RED':
+      return 'red';
+    case 'BLUE':
+      return 'blue';
+    case 'GREEN':
+      return 'green';
+    case 'YELLOW':
+      return 'amber';
+    case 'PURPLE':
+      return 'purple';
+    case 'PINK':
+      return 'pink';
+    case 'CYAN':
+      return 'cyan';
+    case 'ORANGE':
+      return 'orange';
+    case 'WHITE':
+      return 'white';
+    case 'BLACK':
+      return 'black';
+  }
+}
+
+/**
  * Normalizes lowercase, semantic, and uppercase icon strings to canonical ItemIcon.
  * Supports aliases such as 'gem'/'diamond' -> 'CRYSTAL' and 'box' -> 'CRATE'.
  */
@@ -96,21 +128,39 @@ export function normalizeSwitchyardIcon(raw?: string | null): ItemIcon | undefin
   }
 }
 
+export function normalizeParitySlot(raw: unknown): SwitchyardParitySlot | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'number') {
+    if (raw === 1) return 'odd';
+    if (raw === 0 || raw === 2) return 'even';
+    return undefined;
+  }
+  if (typeof raw === 'string') {
+    const k = raw.trim().toLowerCase();
+    if (k === 'odd' || k === '1') return 'odd';
+    if (k === 'even' || k === '0' || k === '2') return 'even';
+  }
+  return undefined;
+}
+
 export function normalizeDockId(raw?: string | null): Exclude<DockId, 'SCRAP'> {
   const upper = String(raw ?? 'A').trim().toUpperCase();
-  if (upper === 'B' || upper === 'DOCK_B' || upper === 'DOCK-B') return 'DOCK_B';
-  if (upper === 'C' || upper === 'DOCK_C' || upper === 'DOCK-C') return 'DOCK_C';
+  if (upper === 'B' || upper === 'DOCK_B' || upper === 'DOCK-B' || upper === '1') return 'DOCK_B';
+  if (upper === 'C' || upper === 'DOCK_C' || upper === 'DOCK-C' || upper === '2') return 'DOCK_C';
   return 'DOCK_A';
 }
 
 export function normalizeSwitchTarget(
   raw?: string | null,
-  preferSwitchB = false
+  preferSwitchB = false,
+  preferSwitchC = false
 ): string | undefined {
   if (!raw || typeof raw !== 'string') return undefined;
   const upper = raw.trim().toUpperCase();
   if (upper === 'SWITCH_B' || upper === 'SW_B' || upper === 'SWITCH-B') return 'SWITCH_B';
+  if (upper === 'SWITCH_C' || upper === 'SW_C' || upper === 'SWITCH-C') return 'SWITCH_C';
   if (preferSwitchB && upper === 'B') return 'SWITCH_B';
+  if (preferSwitchC && upper === 'C') return 'SWITCH_C';
   if (upper === 'SCRAP' || upper === 'SCRAP_CHUTE') return 'SCRAP';
   if (upper === 'A' || upper === 'DOCK_A' || upper === 'DOCK-A') return 'DOCK_A';
   if (upper === 'B' || upper === 'DOCK_B' || upper === 'DOCK-B') return 'DOCK_B';
@@ -165,23 +215,43 @@ function getDefaultDockSpecsForSwitchCount(
   ];
 }
 
+function parseSeqNum(raw: any): number | undefined {
+  if (typeof raw?.seqNum === 'number' && Number.isFinite(raw.seqNum)) {
+    return Math.round(raw.seqNum);
+  }
+  if (typeof raw?.seq === 'number' && Number.isFinite(raw.seq)) {
+    return Math.round(raw.seq);
+  }
+  if (typeof raw?.seqTag === 'string') {
+    const m = /^#?(\d+)$/.exec(raw.seqTag.trim());
+    if (m) return Number(m[1]);
+  }
+  return undefined;
+}
+
 function normalizeQueueItem(raw: SwitchyardItem | SwitchyardItemDef | any, idx: number): SwitchyardItem {
   const color = normalizeSwitchyardColor(raw?.color) ?? 'RED';
   const icon = normalizeSwitchyardIcon(raw?.icon) ?? 'CRATE';
+  const seqNum = parseSeqNum(raw);
   return {
     id: typeof raw?.id === 'string' && raw.id.length > 0 ? raw.id : `item_${idx + 1}`,
     color,
     icon,
     damaged: Boolean(raw?.damaged),
-    ...(typeof raw?.weight === 'number' ? { weight: raw.weight } : {}),
+    ...(typeof raw?.weight === 'number' && Number.isFinite(raw.weight) ? { weight: raw.weight } : {}),
+    ...(seqNum !== undefined ? { seqNum } : {}),
+    ...(typeof raw?.seqTag === 'string' ? { seqTag: raw.seqTag } : {}),
   };
 }
 
 function normalizeExpectedItem(raw: any): DockExpectedItemSpec {
+  const seqNum = parseSeqNum(raw);
   return {
     ...(raw?.color ? { color: normalizeSwitchyardColor(raw.color) } : {}),
     ...(raw?.icon ? { icon: normalizeSwitchyardIcon(raw.icon) } : {}),
     ...(raw?.damaged !== undefined ? { damaged: Boolean(raw.damaged) } : {}),
+    ...(typeof raw?.weight === 'number' && Number.isFinite(raw.weight) ? { weight: raw.weight } : {}),
+    ...(seqNum !== undefined ? { seqNum } : {}),
   };
 }
 
@@ -208,9 +278,21 @@ function normalizeDockSpec(
       ? expectedItemsRaw.map(normalizeExpectedItem)
       : undefined;
 
-  const quota = typeof (src as any).quota === 'number' ? (src as any).quota : undefined;
-  const minWeight = typeof (src as any).minWeight === 'number' ? (src as any).minWeight : undefined;
-  const maxWeight = typeof (src as any).maxWeight === 'number' ? (src as any).maxWeight : undefined;
+  const quota =
+    typeof (src as any).quota === 'number' && Number.isFinite((src as any).quota)
+      ? (src as any).quota
+      : undefined;
+  const minWeight =
+    typeof (src as any).minWeight === 'number' && Number.isFinite((src as any).minWeight)
+      ? (src as any).minWeight
+      : undefined;
+  const maxWeight =
+    typeof (src as any).maxWeight === 'number' && Number.isFinite((src as any).maxWeight)
+      ? (src as any).maxWeight
+      : undefined;
+  const paritySlot = normalizeParitySlot((src as any).paritySlot ?? (src as any).parity);
+  const isReturnBayRaw = (src as any).isReturnBay ?? (src as any).returnBay;
+  const isReturnBay = isReturnBayRaw !== undefined ? Boolean(isReturnBayRaw) : undefined;
 
   return {
     dockId,
@@ -221,16 +303,20 @@ function normalizeDockSpec(
     ...(quota !== undefined ? { quota } : {}),
     ...(minWeight !== undefined ? { minWeight } : {}),
     ...(maxWeight !== undefined ? { maxWeight } : {}),
+    ...(paritySlot !== undefined ? { paritySlot } : {}),
+    ...(isReturnBay !== undefined ? { isReturnBay } : {}),
   };
 }
 
 function normalizeSwitchState(
   raw: SwitchState | SwitchyardSwitchDef | any,
   idx: number,
-  hasSwitchB = false
+  hasSwitchB = false,
+  hasSwitchC = false
 ): SwitchState {
-  const id: 'A' | 'B' =
-    String(raw?.id ?? (idx === 1 ? 'B' : 'A')).trim().toUpperCase() === 'B' ? 'B' : 'A';
+  const defaultId: SwitchJunctionId = idx === 2 ? 'C' : idx === 1 ? 'B' : 'A';
+  const rawId = String(raw?.id ?? defaultId).trim().toUpperCase();
+  const id: SwitchJunctionId = rawId === 'C' ? 'C' : rawId === 'B' ? 'B' : 'A';
   const initDir: SwitchDirection =
     String(raw?.initialDirection ?? raw?.direction ?? 'LEFT').trim().toUpperCase() === 'RIGHT'
       ? 'RIGHT'
@@ -238,8 +324,9 @@ function normalizeSwitchState(
   const dir: SwitchDirection =
     String(raw?.direction ?? initDir).trim().toUpperCase() === 'RIGHT' ? 'RIGHT' : 'LEFT';
   const preferSwitchB = id === 'A' && hasSwitchB;
-  const leftTarget = normalizeSwitchTarget(raw?.leftTarget, preferSwitchB);
-  const rightTarget = normalizeSwitchTarget(raw?.rightTarget, preferSwitchB);
+  const preferSwitchC = (id === 'A' || id === 'B') && hasSwitchC;
+  const leftTarget = normalizeSwitchTarget(raw?.leftTarget, preferSwitchB, preferSwitchC);
+  const rightTarget = normalizeSwitchTarget(raw?.rightTarget, preferSwitchB, preferSwitchC);
   return {
     id,
     direction: dir,
@@ -269,7 +356,26 @@ function makeDockState(spec: DockSpec, items: SwitchyardItem[] = []): DockState 
     ...(spec.quota !== undefined ? { quota: spec.quota } : {}),
     ...(spec.minWeight !== undefined ? { minWeight: spec.minWeight } : {}),
     ...(spec.maxWeight !== undefined ? { maxWeight: spec.maxWeight } : {}),
+    ...(spec.paritySlot !== undefined ? { paritySlot: spec.paritySlot } : {}),
+    ...(spec.isReturnBay !== undefined ? { isReturnBay: spec.isReturnBay } : {}),
   };
+}
+
+/**
+ * Computes live Twin-Scale Fulcrum Balance Beam metrics from Dock A (left pan) & Dock B (right pan).
+ */
+export function computeSwitchyardScaleMetrics(docks: readonly DockState[]): {
+  leftWeightSum: number;
+  rightWeightSum: number;
+  beamTiltDeg: number;
+} {
+  const leftDock = docks.find((d) => d.id === 'DOCK_A') ?? docks[0];
+  const rightDock = docks.find((d) => d.id === 'DOCK_B') ?? docks[1];
+  const leftWeightSum = (leftDock?.items ?? []).reduce((sum, it) => sum + (it.weight ?? 1), 0);
+  const rightWeightSum = (rightDock?.items ?? []).reduce((sum, it) => sum + (it.weight ?? 1), 0);
+  const delta = rightWeightSum - leftWeightSum;
+  const beamTiltDeg = Math.max(-15, Math.min(15, Number((delta * 1.5).toFixed(2))));
+  return { leftWeightSum, rightWeightSum, beamTiltDeg };
 }
 
 /**
@@ -297,6 +403,7 @@ export function normalizeSwitchyardDefinition(
       scrap: [],
       scrapRule: 'damaged_only',
       scrapExpectedDamagedOnly: true,
+      dispatchedCount: 0,
       status: 'IDLE',
       stepCount: 0,
     };
@@ -321,17 +428,22 @@ export function normalizeSwitchyardDefinition(
         ))
   );
 
-  // 1. Switches (supports 0, 1, or 2 switches)
+  // 1. Switches (supports 0, 1, 2, or 3 switches)
   let switches: SwitchState[];
   if (Array.isArray(raw.switches)) {
-    const sliced = raw.switches.slice(0, 2);
+    const sliced = raw.switches.slice(0, 3);
     const hasSwitchB = sliced.some(
       (sw: any, idx: number) => String(sw?.id ?? (idx === 1 ? 'B' : 'A')).trim().toUpperCase() === 'B'
     );
-    switches = sliced.map((sw: any, idx: number) => normalizeSwitchState(sw, idx, hasSwitchB));
+    const hasSwitchC = sliced.some(
+      (sw: any, idx: number) => String(sw?.id ?? (idx === 2 ? 'C' : 'A')).trim().toUpperCase() === 'C'
+    );
+    switches = sliced.map((sw: any, idx: number) =>
+      normalizeSwitchState(sw, idx, hasSwitchB, hasSwitchC)
+    );
   } else if (Array.isArray(raw.initialSwitchDirections)) {
-    switches = raw.initialSwitchDirections.slice(0, 2).map((dir: SwitchDirection, idx: number) => ({
-      id: idx === 0 ? 'A' : 'B',
+    switches = raw.initialSwitchDirections.slice(0, 3).map((dir: SwitchDirection, idx: number) => ({
+      id: idx === 2 ? 'C' : idx === 1 ? 'B' : 'A',
       direction: dir === 'RIGHT' ? 'RIGHT' : 'LEFT',
       initialDirection: dir === 'RIGHT' ? 'RIGHT' : 'LEFT',
     }));
@@ -379,32 +491,55 @@ export function normalizeSwitchyardDefinition(
   }
 
   // 4. Scrap Rules & Pile
-  const rawScrapSource = raw.scrapRules ?? raw.scrapRule;
+  const rawScrapSource = raw.scrapRules ?? raw.scrapRule ?? raw.scrapChute?.rule;
   const rawScrapToken = Array.isArray(rawScrapSource)
     ? rawScrapSource[0]
     : typeof rawScrapSource === 'object' && rawScrapSource !== null
-    ? rawScrapSource.kind ?? rawScrapSource.mode
+    ? rawScrapSource.kind ?? rawScrapSource.mode ?? rawScrapSource.rule
     : rawScrapSource;
   const normalizedScrapToken =
     typeof rawScrapToken === 'string' ? rawScrapToken.trim().toLowerCase() : undefined;
 
+  const explicitScrapMaxWeight =
+    typeof raw.scrapMaxWeight === 'number' && Number.isFinite(raw.scrapMaxWeight)
+      ? raw.scrapMaxWeight
+      : typeof rawScrapSource === 'object' &&
+        rawScrapSource !== null &&
+        typeof rawScrapSource.maxWeight === 'number' &&
+        Number.isFinite(rawScrapSource.maxWeight)
+      ? rawScrapSource.maxWeight
+      : typeof raw.scrapChute?.maxWeight === 'number' && Number.isFinite(raw.scrapChute.maxWeight)
+      ? raw.scrapChute.maxWeight
+      : undefined;
+
   let scrapRule: SwitchyardScrapRule = 'damaged_only';
   if (
+    normalizedScrapToken === 'damaged_or_overweight' ||
+    raw.scrapChute?.acceptOverweight === true ||
+    explicitScrapMaxWeight !== undefined
+  ) {
+    scrapRule = 'damaged_or_overweight';
+  } else if (
     normalizedScrapToken === 'any' ||
     normalizedScrapToken === 'none' ||
     normalizedScrapToken === 'damaged_only'
   ) {
     scrapRule = normalizedScrapToken;
+  } else if (normalizedScrapToken === 'never') {
+    scrapRule = 'none';
   } else if (raw.scrapChute?.expectedDamagedOnly === false) {
     scrapRule = 'any';
   }
+
+  const scrapMaxWeight =
+    scrapRule === 'damaged_or_overweight' ? explicitScrapMaxWeight ?? 20 : undefined;
 
   const scrapExpectedDamagedOnly =
     raw.scrapChute?.expectedDamagedOnly !== undefined
       ? Boolean(raw.scrapChute.expectedDamagedOnly)
       : raw.scrapExpectedDamagedOnly !== undefined
       ? Boolean(raw.scrapExpectedDamagedOnly)
-      : scrapRule !== 'any';
+      : scrapRule === 'damaged_only';
 
   const rawScrapped = Array.isArray(raw.scrapped)
     ? raw.scrapped
@@ -413,6 +548,35 @@ export function normalizeSwitchyardDefinition(
     : [];
   const scrapped = rawScrapped.map(normalizeQueueItem);
 
+  // 5. Mode & Balance Scale
+  let mode: SwitchyardMode | undefined;
+  const rawMode = typeof raw.mode === 'string' ? raw.mode.trim().toLowerCase() : undefined;
+  if (
+    rawMode === 'balance_scale' ||
+    raw.balanceScale === true ||
+    raw.balanceMode === true
+  ) {
+    mode = 'balance_scale';
+  } else if (
+    rawMode === 'order_manifest' ||
+    rawMode === 'strategy_filter' ||
+    rawMode === 'standard'
+  ) {
+    mode = rawMode;
+  }
+
+  const balanceTolerance =
+    typeof raw.balanceTolerance === 'number' && Number.isFinite(raw.balanceTolerance)
+      ? raw.balanceTolerance
+      : typeof raw.scaleTolerance === 'number' && Number.isFinite(raw.scaleTolerance)
+      ? raw.scaleTolerance
+      : mode === 'balance_scale'
+      ? 0
+      : undefined;
+
+  const scaleMetrics =
+    mode === 'balance_scale' ? computeSwitchyardScaleMetrics(docks) : undefined;
+
   const validStatuses: SimulationStatus[] = [
     'IDLE',
     'RUNNING',
@@ -420,8 +584,17 @@ export function normalizeSwitchyardDefinition(
     'SUCCESS',
     'COLLISION',
     'STEP_LIMIT',
+    'STACK_OVERFLOW',
+    'MATH_ERROR',
+    'TYPE_ERROR',
+    'DEADLOCK',
   ];
   const status: SimulationStatus = validStatuses.includes(raw.status) ? raw.status : 'IDLE';
+
+  const defaultDispatched =
+    typeof raw.dispatchedCount === 'number' && Number.isFinite(raw.dispatchedCount)
+      ? raw.dispatchedCount
+      : Math.max(0, initialQueue.length - queue.length);
 
   const KNOWN_INPUT_KEYS = new Set([
     'queue',
@@ -435,8 +608,19 @@ export function normalizeSwitchyardDefinition(
     'scrap',
     'scrapRule',
     'scrapRules',
+    'scrapMaxWeight',
     'scrapExpectedDamagedOnly',
     'scrapChute',
+    'mode',
+    'balanceScale',
+    'balanceMode',
+    'balanceTolerance',
+    'scaleTolerance',
+    'leftWeightSum',
+    'rightWeightSum',
+    'beamTiltDeg',
+    'dispatchedCount',
+    'tape',
     'status',
     'stepCount',
     'lastFailureReason',
@@ -463,7 +647,13 @@ export function normalizeSwitchyardDefinition(
     scrapped,
     scrap: scrapped,
     scrapRule,
+    ...(scrapMaxWeight !== undefined ? { scrapMaxWeight } : {}),
     scrapExpectedDamagedOnly,
+    ...(mode !== undefined ? { mode } : {}),
+    ...(balanceTolerance !== undefined ? { balanceTolerance } : {}),
+    ...(scaleMetrics ? scaleMetrics : {}),
+    dispatchedCount: defaultDispatched,
+    ...(raw.tape && typeof raw.tape === 'object' ? { tape: { ...raw.tape } } : {}),
     status,
     stepCount: typeof raw.stepCount === 'number' && Number.isFinite(raw.stepCount) ? raw.stepCount : 0,
     ...(raw.lastFailureReason ? { lastFailureReason: raw.lastFailureReason } : {}),
@@ -484,11 +674,14 @@ export function resetSwitchyardState(state: SwitchyardState): SwitchyardState {
   const baseSpecs = state.initialDockSpecs?.length
     ? cloneDockSpecs(state.initialDockSpecs)
     : getDefaultDockSpecsForSwitchCount(state.switches?.length ?? 1, false);
+  const docks = baseSpecs.map((spec) => makeDockState(spec));
+  const scaleMetrics =
+    state.mode === 'balance_scale' ? computeSwitchyardScaleMetrics(docks) : undefined;
 
   return {
     queue: cloneQueue(initialQueue),
     initialQueue,
-    docks: baseSpecs.map((spec) => makeDockState(spec)),
+    docks,
     initialDockSpecs: baseSpecs,
     switches: (state.switches ?? []).map((s) => ({
       ...s,
@@ -497,7 +690,14 @@ export function resetSwitchyardState(state: SwitchyardState): SwitchyardState {
     scrapped: [],
     scrap: [],
     scrapRule: state.scrapRule ?? 'damaged_only',
-    scrapExpectedDamagedOnly: state.scrapExpectedDamagedOnly ?? state.scrapRule !== 'any',
+    ...(state.scrapMaxWeight !== undefined ? { scrapMaxWeight: state.scrapMaxWeight } : {}),
+    scrapExpectedDamagedOnly:
+      state.scrapExpectedDamagedOnly ?? (state.scrapRule ?? 'damaged_only') === 'damaged_only',
+    ...(state.mode !== undefined ? { mode: state.mode } : {}),
+    ...(state.balanceTolerance !== undefined ? { balanceTolerance: state.balanceTolerance } : {}),
+    ...(scaleMetrics ? scaleMetrics : {}),
+    dispatchedCount: 0,
+    ...(state.tape ? { tape: { ...state.tape } } : {}),
     status: 'IDLE',
     stepCount: 0,
     lastFailureReason: undefined,
@@ -509,12 +709,12 @@ export function resetSwitchyardState(state: SwitchyardState): SwitchyardState {
 
 /**
  * Resolves which dock/chute a car would route to given current switch settings,
- * supporting 0, 1, or 2 switch topologies and explicit leftTarget/rightTarget overrides.
+ * supporting 0, 1, 2, or 3 switch topologies and explicit leftTarget/rightTarget overrides.
  */
 export function resolveSwitchyardRoute(
   switches: readonly SwitchState[],
   docks: readonly DockState[]
-): { targetDock: DockId; switchesTraversed: Array<'A' | 'B'> } {
+): { targetDock: DockId; switchesTraversed: SwitchJunctionId[] } {
   if (switches.length === 0) {
     return {
       targetDock: docks[0]?.id ?? 'DOCK_A',
@@ -524,11 +724,12 @@ export function resolveSwitchyardRoute(
 
   const swA = switches.find((s) => s.id === 'A') ?? switches[0];
   const swB = switches.length >= 2 ? switches.find((s) => s.id === 'B') ?? switches[1] : undefined;
+  const swC = switches.length >= 3 ? switches.find((s) => s.id === 'C') ?? switches[2] : undefined;
 
   const explicitA =
     swA.direction === 'LEFT'
-      ? normalizeSwitchTarget(swA.leftTarget, Boolean(swB))
-      : normalizeSwitchTarget(swA.rightTarget, Boolean(swB));
+      ? normalizeSwitchTarget(swA.leftTarget, Boolean(swB), Boolean(swC))
+      : normalizeSwitchTarget(swA.rightTarget, Boolean(swB), Boolean(swC));
 
   const defaultA = swA.direction === 'LEFT' ? 'DOCK_A' : swB ? 'SWITCH_B' : 'DOCK_B';
   const firstHop = explicitA ?? defaultA;
@@ -537,15 +738,39 @@ export function resolveSwitchyardRoute(
     if (swB) {
       const explicitB =
         swB.direction === 'LEFT'
-          ? normalizeSwitchTarget(swB.leftTarget)
-          : normalizeSwitchTarget(swB.rightTarget);
-      const defaultB = swB.direction === 'LEFT' ? 'DOCK_B' : 'DOCK_C';
+          ? normalizeSwitchTarget(swB.leftTarget, false, Boolean(swC))
+          : normalizeSwitchTarget(swB.rightTarget, false, Boolean(swC));
+      const defaultB = swB.direction === 'LEFT' ? 'DOCK_B' : swC ? 'SWITCH_C' : 'DOCK_C';
+      const secondHop = explicitB ?? defaultB;
+      if (secondHop === 'SWITCH_C' && swC) {
+        const explicitC =
+          swC.direction === 'LEFT'
+            ? normalizeSwitchTarget(swC.leftTarget)
+            : normalizeSwitchTarget(swC.rightTarget);
+        const defaultC = swC.direction === 'LEFT' ? 'DOCK_B' : 'DOCK_C';
+        return {
+          targetDock: (explicitC ?? defaultC) as DockId,
+          switchesTraversed: ['A', 'B', 'C'],
+        };
+      }
       return {
-        targetDock: (explicitB ?? defaultB) as DockId,
+        targetDock: secondHop as DockId,
         switchesTraversed: ['A', 'B'],
       };
     }
     return { targetDock: 'DOCK_B', switchesTraversed: ['A'] };
+  }
+
+  if (firstHop === 'SWITCH_C' && swC) {
+    const explicitC =
+      swC.direction === 'LEFT'
+        ? normalizeSwitchTarget(swC.leftTarget)
+        : normalizeSwitchTarget(swC.rightTarget);
+    const defaultC = swC.direction === 'LEFT' ? 'DOCK_B' : 'DOCK_C';
+    return {
+      targetDock: (explicitC ?? defaultC) as DockId,
+      switchesTraversed: ['A', 'C'],
+    };
   }
 
   return {
@@ -625,32 +850,118 @@ export function evaluateSwitchyardSensor(
   }
 }
 
-export function readSwitchyardNumericSensor(sensor: string, state: SwitchyardState): number {
-  const head = state.queue[0];
-  switch (sensor) {
-    case 'itemWeight':
-    case '$itemWeight':
-      return head ? (head.weight ?? 1) : 0;
-    case 'queueCount':
-    case 'remainingCount':
-    case '$queueCount':
-      return state.queue.length;
-    case 'dockACount':
-      return state.docks.find((d) => d.id === 'DOCK_A')?.items.length ?? 0;
-    case 'dockBCount':
-      return state.docks.find((d) => d.id === 'DOCK_B')?.items.length ?? 0;
-    case 'dockCCount':
-      return state.docks.find((d) => d.id === 'DOCK_C')?.items.length ?? 0;
-    case 'scrapCount':
-      return state.scrapped.length;
-    default:
-      return 0;
+export function resolveSwitchyardDockByToken(
+  docks: readonly DockState[],
+  token?: string
+): DockState | undefined {
+  if (!token || token.trim() === '' || token.trim() === '0') {
+    return docks.find((d) => d.id === 'DOCK_A') ?? docks[0];
   }
+  const upper = token.trim().toUpperCase();
+  if (upper === 'A' || upper === 'DOCK_A' || upper === 'DOCK-A') {
+    return docks.find((d) => d.id === 'DOCK_A') ?? docks[0];
+  }
+  if (upper === '1' || upper === 'B' || upper === 'DOCK_B' || upper === 'DOCK-B') {
+    return docks.find((d) => d.id === 'DOCK_B') ?? docks[1];
+  }
+  if (upper === '2' || upper === 'C' || upper === 'DOCK_C' || upper === 'DOCK-C') {
+    return docks.find((d) => d.id === 'DOCK_C') ?? docks[2];
+  }
+  const parsed = Number(upper);
+  if (Number.isInteger(parsed) && parsed >= 0) {
+    return docks[parsed];
+  }
+  return undefined;
 }
 
-function validateItemForDock(
+/**
+ * Evaluates typed Switchyard value sensors ($itemWeight 0xA8, $itemColor 0xA9,
+ * $dockQuota[i] 0xAA, $dockCount[i] 0xAB) aligned with interpreter.ts.
+ * Returns `undefined` when `$itemWeight` or `$itemColor` is read on an empty queue
+ * so unguarded reads trigger runtime TYPE_ERROR cleanly.
+ */
+export function readSwitchyardTypedSensor(
+  sensor: string,
+  state: SwitchyardState
+): TypedValue | number | undefined {
+  const head = state.queue[0];
+
+  if (sensor === '$itemWeight' || sensor === 'itemWeight') {
+    if (!head) return undefined;
+    return head.weight ?? 1;
+  }
+
+  if (sensor === '$itemColor') {
+    if (!head) return undefined;
+    return { type: 'color', value: itemColorToPaletteColor(head.color) };
+  }
+
+  const quotaMatch = /^\$?dockQuota(?:\[([^\]]+)\])?$/.exec(sensor);
+  if (quotaMatch) {
+    const dock = resolveSwitchyardDockByToken(state.docks, quotaMatch[1]);
+    return dock?.spec?.quota ?? dock?.quota ?? 0;
+  }
+  if (sensor === 'dockAQuota') {
+    return resolveSwitchyardDockByToken(state.docks, 'A')?.spec?.quota ?? 0;
+  }
+  if (sensor === 'dockBQuota') {
+    return resolveSwitchyardDockByToken(state.docks, 'B')?.spec?.quota ?? 0;
+  }
+  if (sensor === 'dockCQuota') {
+    return resolveSwitchyardDockByToken(state.docks, 'C')?.spec?.quota ?? 0;
+  }
+
+  const countMatch = /^\$?dockCount(?:\[([^\]]+)\])?$/.exec(sensor);
+  if (countMatch) {
+    const dock = resolveSwitchyardDockByToken(state.docks, countMatch[1]);
+    // Strictly delivered car count (never overloaded as weight sum)
+    return dock?.items?.length ?? 0;
+  }
+  if (sensor === 'dockACount') {
+    return resolveSwitchyardDockByToken(state.docks, 'A')?.items?.length ?? 0;
+  }
+  if (sensor === 'dockBCount') {
+    return resolveSwitchyardDockByToken(state.docks, 'B')?.items?.length ?? 0;
+  }
+  if (sensor === 'dockCCount') {
+    return resolveSwitchyardDockByToken(state.docks, 'C')?.items?.length ?? 0;
+  }
+
+  if (sensor === 'queueCount' || sensor === 'remainingCount' || sensor === '$queueCount') {
+    return state.queue.length;
+  }
+  if (sensor === 'scrapCount' || sensor === '$scrapCount') {
+    return state.scrapped.length;
+  }
+
+  return undefined;
+}
+
+export function readSwitchyardNumericSensor(sensor: string, state: SwitchyardState): number {
+  const head = state.queue[0];
+  if (sensor === '$itemColor') {
+    return head ? (EXTENDED_COLOR_TO_PALETTE_IDX[head.color] ?? 0) : 0;
+  }
+  if (sensor === 'leftWeightSum' || sensor === '$leftWeightSum') {
+    return computeSwitchyardScaleMetrics(state.docks).leftWeightSum;
+  }
+  if (sensor === 'rightWeightSum' || sensor === '$rightWeightSum') {
+    return computeSwitchyardScaleMetrics(state.docks).rightWeightSum;
+  }
+  const typed = readSwitchyardTypedSensor(sensor, state);
+  if (typeof typed === 'number') return typed;
+  if (typed && typeof typed === 'object' && typed.type === 'number') return typed.value;
+  return 0;
+}
+
+/**
+ * Checks whether an item satisfies a dock's intrinsic acceptance criteria (ignoring capacity quota).
+ */
+function validateItemIntrinsicForDock(
   item: SwitchyardItem,
-  dock: DockState
+  effectiveSeq: number,
+  dock: DockState,
+  state: SwitchyardState
 ): { reason: string; detail: SwitchyardFailureDetail } | null {
   const spec = dock.spec;
   const dockId = dock.id;
@@ -660,26 +971,38 @@ function validateItemForDock(
       (exp) =>
         (exp.damaged === undefined || Boolean(item.damaged) === Boolean(exp.damaged)) &&
         (!exp.color || item.color === exp.color) &&
-        (!exp.icon || item.icon === exp.icon)
+        (!exp.icon || item.icon === exp.icon) &&
+        (exp.weight === undefined || (item.weight ?? 1) === exp.weight) &&
+        (exp.seqNum === undefined || effectiveSeq === exp.seqNum)
     );
     if (!matchesAnyExpected) {
       const firstExp = spec.expectedItems[0];
       const hasDamagedMismatch =
         firstExp.damaged !== undefined && Boolean(item.damaged) !== Boolean(firstExp.damaged);
       const hasColorMismatch = Boolean(firstExp.color && item.color !== firstExp.color);
+      const hasIconMismatch = Boolean(firstExp.icon && item.icon !== firstExp.icon);
+      const hasWeightMismatch =
+        firstExp.weight !== undefined && (item.weight ?? 1) !== firstExp.weight;
       return {
-        reason: 'WRONG_DOCK',
+        reason: hasWeightMismatch ? 'WEIGHT_LIMIT_VIOLATED' : 'WRONG_DOCK',
         detail: {
           code: hasDamagedMismatch
             ? 'DAMAGED_REJECTED'
             : hasColorMismatch
             ? 'WRONG_COLOR'
-            : 'WRONG_ICON',
+            : hasIconMismatch
+            ? 'WRONG_ICON'
+            : hasWeightMismatch
+            ? 'WEIGHT_MISMATCH'
+            : 'PARITY_MISMATCH',
           dockId,
           ...(firstExp.color ? { expectedColor: firstExp.color, actualColor: item.color } : {}),
           ...(firstExp.icon ? { expectedIcon: firstExp.icon, actualIcon: item.icon } : {}),
           ...(firstExp.damaged !== undefined
             ? { expectedDamaged: Boolean(firstExp.damaged), actualDamaged: Boolean(item.damaged) }
+            : {}),
+          ...(firstExp.weight !== undefined
+            ? { actualWeight: item.weight ?? 1, maxWeight: firstExp.weight }
             : {}),
         },
       };
@@ -722,13 +1045,6 @@ function validateItemForDock(
     };
   }
 
-  if (spec.quota !== undefined && dock.items.length + 1 > spec.quota) {
-    return {
-      reason: 'DOCK_QUOTA_EXCEEDED',
-      detail: { code: 'QUOTA_MISMATCH', dockId },
-    };
-  }
-
   const weight = item.weight ?? 1;
   if (
     (spec.minWeight !== undefined && weight < spec.minWeight) ||
@@ -736,32 +1052,176 @@ function validateItemForDock(
   ) {
     return {
       reason: 'WEIGHT_LIMIT_VIOLATED',
-      detail: { code: 'WEIGHT_MISMATCH', dockId },
+      detail: {
+        code: 'WEIGHT_MISMATCH',
+        dockId,
+        actualWeight: weight,
+        ...(spec.minWeight !== undefined ? { minWeight: spec.minWeight } : {}),
+        ...(spec.maxWeight !== undefined ? { maxWeight: spec.maxWeight } : {}),
+      },
     };
+  }
+
+  // When scrapRule === 'damaged_or_overweight', overweight items (> scrapMaxWeight) must be scrapped
+  // rather than parked in normal docks unless a dock explicitly accepts heavy items via minWeight/maxWeight.
+  if (state.scrapRule === 'damaged_or_overweight') {
+    const scrapMax = state.scrapMaxWeight ?? 20;
+    const dockExplicitlyAllowsOverweight =
+      (spec.maxWeight !== undefined && spec.maxWeight > scrapMax) ||
+      (spec.minWeight !== undefined && spec.minWeight > scrapMax);
+    if (!dockExplicitlyAllowsOverweight && weight > scrapMax) {
+      return {
+        reason: 'WEIGHT_LIMIT_VIOLATED',
+        detail: {
+          code: 'WEIGHT_MISMATCH',
+          dockId,
+          actualWeight: weight,
+          maxWeight: scrapMax,
+        },
+      };
+    }
+  }
+
+  if (spec.paritySlot !== undefined) {
+    const expectedOdd = spec.paritySlot === 'odd';
+    const actualOdd = Math.abs(effectiveSeq) % 2 === 1;
+    if (expectedOdd !== actualOdd) {
+      return {
+        reason: 'PARITY_SLOT_VIOLATED',
+        detail: {
+          code: 'PARITY_MISMATCH',
+          dockId,
+          expectedParity: spec.paritySlot,
+          actualSeqNum: effectiveSeq,
+        },
+      };
+    }
   }
 
   return null;
 }
 
-function areAllDocksSatisfied(docks: readonly DockState[]): boolean {
-  return docks.every((d) => {
-    if (d.spec.quota !== undefined && d.items.length !== d.spec.quota) return false;
-    return true;
-  });
+function validateItemForDock(
+  item: SwitchyardItem,
+  dock: DockState,
+  state: SwitchyardState,
+  effectiveSeq: number
+): { reason: string; detail: SwitchyardFailureDetail } | null {
+  const spec = dock.spec;
+  const dockId = dock.id;
+
+  // Check capacity quota gate (`✓ FULL`) after basic damaged/color/icon checks or immediately on full bay
+  const intrinsic = validateItemIntrinsicForDock(item, effectiveSeq, dock, state);
+  if (
+    intrinsic &&
+    (intrinsic.detail.code === 'DAMAGED_REJECTED' ||
+      intrinsic.detail.code === 'WRONG_COLOR' ||
+      intrinsic.detail.code === 'WRONG_ICON')
+  ) {
+    return intrinsic;
+  }
+
+  if (spec.quota !== undefined && dock.items.length + 1 > spec.quota) {
+    return {
+      reason: 'DOCK_QUOTA_EXCEEDED',
+      detail: {
+        code: 'QUOTA_MISMATCH',
+        dockId,
+        quota: spec.quota,
+        actualCount: dock.items.length + 1,
+      },
+    };
+  }
+
+  return intrinsic;
+}
+
+/**
+ * Computes the expected target count for a dock with `spec.quota`:
+ * normally `spec.quota`, or `Math.min(spec.quota, eligibleCountInInitialStream)` when a stream
+ * contains fewer eligible items than the dock's quota capacity (e.g. cmp.9 Variant #3).
+ */
+function getRequiredQuotaCountForDock(dock: DockState, state?: SwitchyardState): number | undefined {
+  const quota = dock.spec.quota;
+  if (quota === undefined) return undefined;
+  if (quota <= 0 || !state) return Math.max(0, quota);
+
+  const sourceItems =
+    state.initialQueue && state.initialQueue.length > 0
+      ? state.initialQueue
+      : [...state.docks.flatMap((d) => d.items), ...state.scrapped];
+
+  if (sourceItems.length === 0) return quota;
+
+  let eligibleCount = 0;
+  for (let i = 0; i < sourceItems.length; i++) {
+    const it = sourceItems[i];
+    const seq = it.seqNum ?? i + 1;
+    if (validateItemIntrinsicForDock(it, seq, dock, state) === null) {
+      eligibleCount++;
+    }
+  }
+
+  return Math.min(quota, eligibleCount);
+}
+
+function findUnsatisfiedQuotaDock(
+  docks: readonly DockState[],
+  state?: SwitchyardState
+): { dock: DockState; required: number } | null {
+  for (const d of docks) {
+    if (d.spec.quota === undefined) continue;
+    if (d.items.length > d.spec.quota) {
+      return { dock: d, required: d.spec.quota };
+    }
+    const req = getRequiredQuotaCountForDock(d, state) ?? d.spec.quota;
+    if (d.items.length !== req) {
+      return { dock: d, required: req };
+    }
+  }
+  return null;
+}
+
+function areAllDocksSatisfied(docks: readonly DockState[], state?: SwitchyardState): boolean {
+  return findUnsatisfiedQuotaDock(docks, state) === null;
+}
+
+function evaluateScaleBalanceFailure(
+  docks: readonly DockState[],
+  state: SwitchyardState
+): { reason: string; detail: SwitchyardFailureDetail } | null {
+  if (state.mode !== 'balance_scale') return null;
+  const { leftWeightSum, rightWeightSum } = computeSwitchyardScaleMetrics(docks);
+  const tolerance = state.balanceTolerance ?? 0;
+  if (Math.abs(leftWeightSum - rightWeightSum) > tolerance) {
+    return {
+      reason: 'SCALE_IMBALANCED',
+      detail: {
+        code: 'BALANCE_MISMATCH',
+        leftWeightSum,
+        rightWeightSum,
+        balanceTolerance: tolerance,
+      },
+    };
+  }
+  return null;
 }
 
 function getSwitchSnapshot(switches: readonly SwitchState[]): {
   switchCount: number;
   switchADir?: SwitchDirection;
   switchBDir?: SwitchDirection;
+  switchCDir?: SwitchDirection;
 } {
   const switchCount = switches.length;
   const swA = switches.find((s) => s.id === 'A') ?? switches[0];
   const swB = switchCount >= 2 ? switches.find((s) => s.id === 'B') ?? switches[1] : undefined;
+  const swC = switchCount >= 3 ? switches.find((s) => s.id === 'C') ?? switches[2] : undefined;
   return {
     switchCount,
     ...(swA ? { switchADir: swA.direction } : {}),
     ...(swB ? { switchBDir: swB.direction } : {}),
+    ...(swC ? { switchCDir: swC.direction } : {}),
   };
 }
 
@@ -844,20 +1304,70 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
     };
   }
 
+  if (rule === 'damaged_or_overweight') {
+    const maxWeight = state.scrapMaxWeight ?? 20;
+    const weight = item.weight ?? 1;
+    if (!item.damaged && weight <= maxWeight) {
+      return {
+        ...state,
+        status: 'COLLISION',
+        stepCount: nextStep,
+        lastFailureReason: 'GOOD_ITEM_SCRAPPED',
+        lastFailureDetail: {
+          code: 'GOOD_SCRAPPED',
+          dockId: 'SCRAP',
+          expectedDamaged: true,
+          actualDamaged: false,
+          actualWeight: weight,
+          maxWeight,
+        },
+        lastRoutedDock: 'SCRAP',
+        lastAnimEvent: {
+          stepId: nextStep,
+          seq: nextSeq,
+          type: 'COLLISION',
+          item,
+          dispatchedItem: item,
+          targetDock: 'SCRAP',
+          toDock: 'SCRAP',
+          ...swSnap,
+        },
+      };
+    }
+  }
+
   const nextScrap = [...state.scrapped, item];
+  const nextDispatched = (state.dispatchedCount ?? 0) + 1;
   const queueDone = remainingQueue.length === 0;
-  const docksOk = !queueDone || areAllDocksSatisfied(state.docks);
+  const quotaFailure = queueDone ? findUnsatisfiedQuotaDock(state.docks, state) : null;
+  const balanceFailure =
+    queueDone && !quotaFailure ? evaluateScaleBalanceFailure(state.docks, state) : null;
+  const allOk = !quotaFailure && !balanceFailure;
 
   return {
     ...state,
     queue: remainingQueue,
     scrapped: nextScrap,
     scrap: nextScrap,
-    status: queueDone ? (docksOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
+    dispatchedCount: nextDispatched,
+    status: queueDone ? (allOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
     stepCount: nextStep,
     lastRoutedDock: 'SCRAP',
-    lastFailureReason: queueDone && !docksOk ? 'DOCK_QUOTA_EXCEEDED' : undefined,
-    lastFailureDetail: queueDone && !docksOk ? { code: 'QUOTA_MISMATCH' } : undefined,
+    lastFailureReason: quotaFailure
+      ? 'DOCK_QUOTA_EXCEEDED'
+      : balanceFailure
+      ? balanceFailure.reason
+      : undefined,
+    lastFailureDetail: quotaFailure
+      ? {
+          code: 'QUOTA_MISMATCH',
+          dockId: quotaFailure.dock.id,
+          quota: quotaFailure.required,
+          actualCount: quotaFailure.dock.items.length,
+        }
+      : balanceFailure
+      ? balanceFailure.detail
+      : undefined,
     lastAnimEvent: {
       stepId: nextStep,
       seq: nextSeq,
@@ -882,7 +1392,14 @@ export function applySwitchyardAction(
   state: SwitchyardState,
   options?: { repeatCount?: number; params?: Record<string, any> }
 ): SwitchyardState {
-  if (state.status === 'COLLISION' || state.status === 'SUCCESS' || state.status === 'STEP_LIMIT') {
+  if (
+    state.status === 'COLLISION' ||
+    state.status === 'STEP_LIMIT' ||
+    state.status === 'STACK_OVERFLOW' ||
+    state.status === 'MATH_ERROR' ||
+    state.status === 'TYPE_ERROR' ||
+    state.status === 'DEADLOCK'
+  ) {
     return state;
   }
 
@@ -891,8 +1408,11 @@ export function applySwitchyardAction(
   const activeStatus: SimulationStatus = state.status === 'IDLE' ? 'IDLE' : 'RUNNING';
 
   if (actionType === 'SWITCH_LEFT' || actionType === 'SWITCH_RIGHT') {
-    const rawJunction = options?.params?.junction ?? options?.params?.switchId ?? 'A';
-    const junction: 'A' | 'B' = String(rawJunction).trim().toUpperCase() === 'B' ? 'B' : 'A';
+    const rawJunction = String(options?.params?.junction ?? options?.params?.switchId ?? 'A')
+      .trim()
+      .toUpperCase();
+    const junction: SwitchJunctionId =
+      rawJunction === 'C' ? 'C' : rawJunction === 'B' ? 'B' : 'A';
     const dir: SwitchDirection = actionType === 'SWITCH_LEFT' ? 'LEFT' : 'RIGHT';
 
     if (state.switches.length === 0) {
@@ -918,7 +1438,7 @@ export function applySwitchyardAction(
         ...state,
         status: 'COLLISION',
         stepCount: nextStep,
-        lastFailureReason: 'MISSING_SWITCH_B',
+        lastFailureReason: junction === 'B' ? 'MISSING_SWITCH_B' : 'MISSING_SWITCH',
         lastFailureDetail: { code: 'INVALID_SWITCH' },
         lastAnimEvent: {
           stepId: nextStep,
@@ -998,7 +1518,8 @@ export function applySwitchyardAction(
     }
 
     const [item, ...remainingQueue] = state.queue;
-    const mismatch = validateItemForDock(item, dockObj);
+    const effectiveSeq = item.seqNum ?? (state.dispatchedCount ?? 0) + 1;
+    const mismatch = validateItemForDock(item, dockObj, state, effectiveSeq);
     if (mismatch) {
       return {
         ...state,
@@ -1027,18 +1548,39 @@ export function applySwitchyardAction(
       const updated = [...d.items, item];
       return { ...d, items: updated, received: updated };
     });
+    const nextDispatched = (state.dispatchedCount ?? 0) + 1;
+    const scaleMetrics =
+      state.mode === 'balance_scale' ? computeSwitchyardScaleMetrics(nextDocks) : undefined;
     const queueDone = remainingQueue.length === 0;
-    const docksOk = !queueDone || areAllDocksSatisfied(nextDocks);
+    const quotaFailure = queueDone ? findUnsatisfiedQuotaDock(nextDocks, state) : null;
+    const balanceFailure =
+      queueDone && !quotaFailure ? evaluateScaleBalanceFailure(nextDocks, state) : null;
+    const allOk = !quotaFailure && !balanceFailure;
 
     return {
       ...state,
       queue: remainingQueue,
       docks: nextDocks,
-      status: queueDone ? (docksOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
+      dispatchedCount: nextDispatched,
+      ...(scaleMetrics ? scaleMetrics : {}),
+      status: queueDone ? (allOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
       stepCount: nextStep,
       lastRoutedDock: targetDock,
-      lastFailureReason: queueDone && !docksOk ? 'DOCK_QUOTA_EXCEEDED' : undefined,
-      lastFailureDetail: queueDone && !docksOk ? { code: 'QUOTA_MISMATCH' } : undefined,
+      lastFailureReason: quotaFailure
+        ? 'DOCK_QUOTA_EXCEEDED'
+        : balanceFailure
+        ? balanceFailure.reason
+        : undefined,
+      lastFailureDetail: quotaFailure
+        ? {
+            code: 'QUOTA_MISMATCH',
+            dockId: quotaFailure.dock.id,
+            quota: quotaFailure.required,
+            actualCount: quotaFailure.dock.items.length,
+          }
+        : balanceFailure
+        ? balanceFailure.detail
+        : undefined,
       lastAnimEvent: {
         stepId: nextStep,
         seq: nextSeq,
@@ -1059,7 +1601,7 @@ export function applySwitchyardAction(
 
 /**
  * Computes structured failure reason & detail for a collided or incomplete Switchyard state,
- * falling back cleanly to STRANDED_CARS when the program ended with unsorted items remaining.
+ * falling back cleanly to STRANDED_CARS, QUOTA_MISMATCH, or BALANCE_MISMATCH.
  */
 export function deriveSwitchyardFailureDiagnostic(
   state: SwitchyardState
@@ -1079,17 +1621,34 @@ export function deriveSwitchyardFailureDiagnostic(
       },
     };
   }
-  if (!areAllDocksSatisfied(state.docks)) {
+  const quotaFailure = findUnsatisfiedQuotaDock(state.docks, state);
+  if (quotaFailure) {
     return {
       reason: 'DOCK_QUOTA_EXCEEDED',
-      detail: { code: 'QUOTA_MISMATCH' },
+      detail: {
+        code: 'QUOTA_MISMATCH',
+        dockId: quotaFailure.dock.id,
+        quota: quotaFailure.required,
+        actualCount: quotaFailure.dock.items.length,
+      },
     };
+  }
+  const balanceFailure = evaluateScaleBalanceFailure(state.docks, state);
+  if (balanceFailure) {
+    return balanceFailure;
   }
   return {};
 }
 
 export function evaluateSwitchyardCompletion(state: SwitchyardState): SimulationStatus {
-  if (state.status === 'COLLISION' || state.status === 'STEP_LIMIT') {
+  if (
+    state.status === 'COLLISION' ||
+    state.status === 'STEP_LIMIT' ||
+    state.status === 'STACK_OVERFLOW' ||
+    state.status === 'MATH_ERROR' ||
+    state.status === 'TYPE_ERROR' ||
+    state.status === 'DEADLOCK'
+  ) {
     if (state.status === 'COLLISION' && !state.lastFailureReason && !Object.isFrozen(state)) {
       const diag = deriveSwitchyardFailureDiagnostic(state);
       if (diag.reason) state.lastFailureReason = diag.reason;
@@ -1098,7 +1657,10 @@ export function evaluateSwitchyardCompletion(state: SwitchyardState): Simulation
     return state.status;
   }
 
-  if (state.queue.length === 0 && areAllDocksSatisfied(state.docks)) {
+  const docksOk = areAllDocksSatisfied(state.docks, state);
+  const balanceFailure = docksOk ? evaluateScaleBalanceFailure(state.docks, state) : null;
+
+  if (state.queue.length === 0 && docksOk && !balanceFailure) {
     return 'SUCCESS';
   }
 
@@ -1110,8 +1672,19 @@ export function evaluateSwitchyardCompletion(state: SwitchyardState): Simulation
         remainingCount: state.queue.length,
       };
     } else if (!state.lastFailureReason) {
-      state.lastFailureReason = 'DOCK_QUOTA_EXCEEDED';
-      state.lastFailureDetail = { code: 'QUOTA_MISMATCH' };
+      const quotaFailure = findUnsatisfiedQuotaDock(state.docks, state);
+      if (quotaFailure) {
+        state.lastFailureReason = 'DOCK_QUOTA_EXCEEDED';
+        state.lastFailureDetail = {
+          code: 'QUOTA_MISMATCH',
+          dockId: quotaFailure.dock.id,
+          quota: quotaFailure.required,
+          actualCount: quotaFailure.dock.items.length,
+        };
+      } else if (balanceFailure) {
+        state.lastFailureReason = balanceFailure.reason;
+        state.lastFailureDetail = balanceFailure.detail;
+      }
     }
   }
 

@@ -178,6 +178,15 @@ export function createDefaultGridState(): GridState {
   };
 }
 
+const GRID_TERMINAL_ERROR_STATUSES = new Set<string>([
+  'COLLISION',
+  'TYPE_ERROR',
+  'MATH_ERROR',
+  'STACK_OVERFLOW',
+  'STEP_LIMIT',
+  'DEADLOCK',
+]);
+
 export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
   id: 'grid',
   name: 'Grid World',
@@ -187,7 +196,9 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
 
   createInitialState: createDefaultGridState,
 
-  resetState: (state: GridState): GridState => resetGridInteractiveState(state),
+  resetState: (state: GridState): GridState => {
+    return resetGridInteractiveState(state);
+  },
 
   executeAction: (
     actionType: string,
@@ -275,7 +286,7 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
   },
 
   evaluateCompletion: (state: GridState) => {
-    if (state.status === 'COLLISION') {
+    if (GRID_TERMINAL_ERROR_STATUSES.has(state.status as string)) {
       return 'IDLE';
     }
     const onGoal = state.flags.some(
@@ -295,12 +306,32 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
     const emptyBackpackOk =
       !state.requireEmptyBackpackAtGoal ||
       (!state.robot.carriedItem && (state.robot.carriedCount ?? 0) === 0);
-    return onGoal && allCollected && switchesOk && allItemsCollectedOk && emptyBackpackOk
+    return (
+      onGoal &&
+      allCollected &&
+      switchesOk &&
+      allItemsCollectedOk &&
+      emptyBackpackOk
+    )
       ? 'SUCCESS'
       : 'IDLE';
   },
 
-  Renderer: ({ state }: SimulationRendererProps<GridState>) => <GridCanvas state={state} />,
+  Renderer: ({
+    state,
+    runtimeStatus,
+    runtimeVariables,
+    activeBlockId,
+    activeScope,
+  }: SimulationRendererProps<GridState>) => (
+    <GridCanvas
+      state={state}
+      runtimeStatus={runtimeStatus}
+      runtimeVariables={runtimeVariables}
+      activeBlockId={activeBlockId}
+      activeScope={activeScope}
+    />
+  ),
 
   ToolsComponent: GridToolbarTools,
 };

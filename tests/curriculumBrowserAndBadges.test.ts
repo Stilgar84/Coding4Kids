@@ -283,7 +283,7 @@ describe('Commit 12: Hierarchical Curriculum Browser, Victory Celebrations & Col
       const html = renderToStaticMarkup(React.createElement(BadgeCollectionModal));
       expect(html).toContain('data-testid="badge-collection-modal"');
       expect(html).toContain('data-testid="badge-collection-count"');
-      expect(html).toContain('1/6');
+      expect(html).toContain('1/8');
 
       // seq earned; param & loop unearned (func also shown locked)
       expect(html).toContain(

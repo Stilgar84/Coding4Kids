@@ -13,7 +13,6 @@ import {
   FORMAT_VERSION,
   ENV_VERSION_GRID,
   ENV_VERSION_TURTLE,
-  ENV_VERSION_BEAT,
   ENV_VERSION_DEPOT,
   ENV_VERSION_DEPOT_STATE,
   ENV_VERSION_SWITCHYARD,
@@ -34,6 +33,18 @@ import {
   writeGridState,
   readGridState,
 } from './env/gridSerializer';
+import {
+  ENV_VERSION_TURTLE_V2,
+  getTurtleSerializationVersion,
+  writeTurtleState,
+  readTurtleState,
+} from './env/turtleSerializer';
+import {
+  ENV_VERSION_BEAT_V2,
+  getBeatSerializationVersion,
+  writeBeatState,
+  readBeatState,
+} from './env/beatSerializer';
 import {
   getDepotSerializationVersion,
   writeDepotState,
@@ -83,8 +94,10 @@ export function exportToBinary(
       ? envState && 'width' in envState
         ? getGridSerializationVersion(envState as GridState)
         : ENV_VERSION_GRID
+      : envId === 'turtle'
+      ? getTurtleSerializationVersion(envState as TurtleState | undefined)
       : envId === 'beat'
-      ? ENV_VERSION_BEAT
+      ? getBeatSerializationVersion(envState as BeatState | undefined, workspace)
       : envId === 'depot'
       ? envState && 'stacks' in envState
         ? getDepotSerializationVersion(envState as DepotState)
@@ -96,9 +109,13 @@ export function exportToBinary(
       : ENV_VERSION_TURTLE;
   writer.writeUint8(envVersion);
 
-  // 2. Environment State (if Grid, parameterized Depot, or Switchyard)
+  // 2. Environment State (if Grid, Turtle v2+, Beat v2+, parameterized Depot, or Switchyard)
   if (envByte === ENV_ID_GRID && envState && 'width' in envState) {
     writeGridState(writer, envState as GridState, envVersion);
+  } else if (envByte === ENV_ID_TURTLE && envVersion >= ENV_VERSION_TURTLE_V2) {
+    writeTurtleState(writer, envState as TurtleState | undefined, envVersion);
+  } else if (envByte === ENV_ID_BEAT && envVersion >= ENV_VERSION_BEAT_V2) {
+    writeBeatState(writer, envState as BeatState | undefined, envVersion);
   } else if (envByte === ENV_ID_DEPOT && envState && 'stacks' in envState) {
     writeDepotState(writer, envState as DepotState, envVersion);
   } else if (envByte === ENV_ID_SWITCHYARD && envState && 'switches' in envState) {
@@ -303,9 +320,9 @@ export function importFromBinary(bytes: Uint8Array): ImportResult {
     if (envByte === ENV_ID_GRID) {
       gridState = readGridState(reader, envVersion);
     } else if (envByte === ENV_ID_TURTLE) {
-      turtleState = createInitialTurtleState();
+      turtleState = readTurtleState(reader, envVersion);
     } else if (envByte === ENV_ID_BEAT) {
-      beatState = createInitialBeatState();
+      beatState = readBeatState(reader, envVersion);
     } else if (envByte === ENV_ID_DEPOT) {
       depotState =
         envVersion >= ENV_VERSION_DEPOT_STATE ? readDepotState(reader, envVersion) : undefined;

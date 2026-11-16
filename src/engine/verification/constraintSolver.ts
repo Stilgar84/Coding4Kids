@@ -30,6 +30,11 @@ import {
 import { ALL_SCOPES, computeSlotBudget } from '../../utils/curriculumStagePolicy';
 import { gridSimulationEnvironment } from '../../simulations/grid/gridEnvironment';
 import {
+  beatSimulationEnvironment,
+  createCurriculumBeatState,
+} from '../../simulations/beat/beatEnvironment';
+import type { BeatState } from '../../simulations/beat/types';
+import {
   checkDepotReferenceSolution,
   checkDepotScaffoldWorkspace,
   verifyDepotActivityConstraints,
@@ -416,7 +421,8 @@ export function canonicalizeGridState(
         it.keyId ??
           (it.color || it.shape ? `${it.color ?? ''}-${it.shape ?? ''}` : (it.colorId ?? it.size ?? ''))
       );
-      activeEntries.push(`${kind}:${variant}@${it.x},${it.y}`);
+      const countSuffix = typeof it.count === 'number' && it.count > 1 ? `x${it.count}` : '';
+      activeEntries.push(`${kind}:${variant}${countSuffix}@${it.x},${it.y}`);
     }
     activeEntries.sort();
     key += `|i:${activeEntries.join(';')}`;
@@ -438,7 +444,14 @@ export function canonicalizeGridState(
         ci.keyId ??
           (ci.color || ci.shape ? `${ci.color ?? ''}-${ci.shape ?? ''}` : (ci.colorId ?? ci.size ?? ''))
       );
-      key += `|c:${kind}:${variant}`;
+      const rawCarriedCount =
+        typeof rawRobot.carriedCount === 'number'
+          ? rawRobot.carriedCount
+          : typeof ci.count === 'number'
+            ? ci.count
+            : 1;
+      const countSuffix = rawCarriedCount > 1 ? `x${rawCarriedCount}` : '';
+      key += `|c:${kind}:${variant}${countSuffix}`;
     }
   } else if (
     rawRobot.carriedItem !== undefined ||
@@ -981,6 +994,9 @@ export function checkReferenceSolution(
   if (activity.simId === 'switchyard') {
     return checkSwitchyardReferenceSolution(activity);
   }
+  if (activity.simId === 'beat') {
+    return checkBeatReferenceSolution(activity);
+  }
   const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
   const variants = getActivityVariants(activity, 'grid');
 
@@ -1192,6 +1208,9 @@ export function checkScaffoldWorkspace(
   }
   if (activity.simId === 'switchyard') {
     return checkSwitchyardScaffoldWorkspace(activity);
+  }
+  if (activity.simId === 'beat') {
+    return checkBeatScaffoldWorkspace(activity);
   }
   const scaffold = activity.partialHelp?.scaffoldWorkspace;
   if (activity.partialHelp?.mode !== 'scaffold' || !scaffold) {
@@ -3297,17 +3316,34 @@ function checkStarterEditDistanceRule(
     };
   }
 
-  const initialGrid = buildSolverInitialGridState(activity.grid!, simEnv);
+  const gridVariants = getActivityVariants(activity, 'grid');
+  const initialGrids = (
+    gridVariants.length > 0
+      ? gridVariants.map((v) => (v.grid ?? activity.grid)!)
+      : [activity.grid!]
+  ).map((g) => buildSolverInitialGridState(g, simEnv));
+
   const requiredMinEdits = Math.max(
     rule.unmodifiedStarterMustFail ? 1 : 0,
     rule.minStarterEditDistance ?? 0
   );
 
-  // Distance 0: check unmodified starterWorkspace directly
-  const starterExec = executeWorkspaceOnEnv(starter, initialGrid, simEnv);
-  let explored = 1;
+  let explored = 0;
+  const solvesAllVariants = (ws: WorkspaceState): { solved: boolean; firstStatus: SimulationStatus } => {
+    for (let vi = 0; vi < initialGrids.length; vi++) {
+      explored++;
+      const exec = executeWorkspaceOnEnv(ws, initialGrids[vi], simEnv);
+      if (exec.status !== 'SUCCESS') {
+        return { solved: false, firstStatus: exec.status };
+      }
+    }
+    return { solved: true, firstStatus: 'SUCCESS' };
+  };
 
-  if (starterExec.status === 'SUCCESS') {
+  // Distance 0: check unmodified starterWorkspace directly across all variants
+  const starterCheck = solvesAllVariants(starter);
+
+  if (starterCheck.solved) {
     return {
       ruleId,
       description: rule.description,
@@ -3331,15 +3367,50 @@ function checkStarterEditDistanceRule(
       elapsedMs: nowMs() - startMs,
       exploredStates: explored,
       minWinningBlocks: null,
-      diagnostic: `Unmodified starterWorkspace failed as required (status: ${starterExec.status})`,
+      diagnostic: `Unmodified starterWorkspace failed as required (status: ${starterCheck.firstStatus})`,
     };
+  }
+
+  if (activity.referenceSolution) {
+    let refDist = 0;
+    for (const sc of ALL_SCOPES) {
+      const a = (starter[sc] || []).map(canonicalBlockSignature);
+      const b = (activity.referenceSolution[sc] || []).map(canonicalBlockSignature);
+      const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+        Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+      );
+      for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+          dp[i][j] =
+            a[i - 1] === b[j - 1]
+              ? dp[i - 1][j - 1]
+              : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+      refDist += dp[a.length][b.length];
+    }
+    if (refDist < requiredMinEdits) {
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: false,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: explored,
+        minWinningBlocks: countWorkspaceBlocks(activity.referenceSolution),
+        counterexampleWorkspace: activity.referenceSolution,
+        formattedCounterexample: formatWorkspaceCompact(activity.referenceSolution),
+        diagnostic: `referenceSolution is at edit distance ${refDist} (< required minStarterEditDistance ${requiredMinEdits})`,
+      };
+    }
   }
 
   // Enumerate Levenshtein edit ball of radius `1 .. requiredMinEdits - 1`
   const maxAllowedEdits = requiredMinEdits - 1;
   const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
+  const primaryGridDef = (gridVariants[0]?.grid ?? activity.grid)!;
   const { actions, loopsAllowed, loopCounts } = buildCandidateActions(
-    activity.grid!,
+    primaryGridDef,
     activity.palette,
     simEnv,
     rule
@@ -3373,14 +3444,17 @@ function checkStarterEditDistanceRule(
 
   const visited = new Set<string>([workspaceSig(starter)]);
   let frontier: WorkspaceState[] = [starter];
+  const editDeadlineMs = startMs + 150;
 
-  for (let dist = 1; dist <= maxAllowedEdits; dist++) {
+  for (let dist = 1; dist <= maxAllowedEdits && (dist === 1 || nowMs() < editDeadlineMs); dist++) {
     const nextFrontier: WorkspaceState[] = [];
 
     for (const curWs of frontier) {
+      if (dist >= 2 && nowMs() >= editDeadlineMs) break;
       const curTotal = countWorkspaceBlocks(curWs);
 
       for (const scope of allowedScopes) {
+        if (dist >= 2 && nowMs() >= editDeadlineMs) break;
         const blocks = curWs[scope] || [];
 
         // 1. Delete 1 block
@@ -3390,9 +3464,7 @@ function checkStarterEditDistanceRule(
           const sig = workspaceSig(cand);
           if (visited.has(sig)) continue;
           visited.add(sig);
-          explored++;
-          const exec = executeWorkspaceOnEnv(cand, initialGrid, simEnv);
-          if (exec.status === 'SUCCESS') {
+          if (solvesAllVariants(cand).solved) {
             return {
               ruleId,
               description: rule.description,
@@ -3411,6 +3483,7 @@ function checkStarterEditDistanceRule(
 
         // 2. Replace 1 block
         for (let i = 0; i < blocks.length; i++) {
+          if (dist >= 2 && nowMs() >= editDeadlineMs) break;
           for (const rep of replacementBlocks) {
             if (canonicalBlockSignature(blocks[i]) === canonicalBlockSignature(rep)) {
               continue;
@@ -3421,9 +3494,7 @@ function checkStarterEditDistanceRule(
             const sig = workspaceSig(cand);
             if (visited.has(sig)) continue;
             visited.add(sig);
-            explored++;
-            const exec = executeWorkspaceOnEnv(cand, initialGrid, simEnv);
-            if (exec.status === 'SUCCESS') {
+            if (solvesAllVariants(cand).solved) {
               return {
                 ruleId,
                 description: rule.description,
@@ -3444,6 +3515,7 @@ function checkStarterEditDistanceRule(
         // 3. Insert 1 block (if within slotCap)
         if (slotLimit === undefined || curTotal + 1 <= slotLimit) {
           for (let i = 0; i <= blocks.length; i++) {
+            if (dist >= 2 && nowMs() >= editDeadlineMs) break;
             for (const ins of replacementBlocks) {
               const nextBlocks = [
                 ...blocks.slice(0, i),
@@ -3457,9 +3529,7 @@ function checkStarterEditDistanceRule(
               const sig = workspaceSig(cand);
               if (visited.has(sig)) continue;
               visited.add(sig);
-              explored++;
-              const exec = executeWorkspaceOnEnv(cand, initialGrid, simEnv);
-              if (exec.status === 'SUCCESS') {
+              if (solvesAllVariants(cand).solved) {
                 return {
                   ruleId,
                   description: rule.description,
@@ -3684,6 +3754,9 @@ export function verifyActivityRule(
       options?.extraBfsDepthBeyondCap ?? 20
     );
   }
+  if (activity.simId === 'beat') {
+    return verifyBeatActivityRule(activity, rule, ruleIndex);
+  }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;
   const ruleId = rule.id ?? `${activity.id}-rule-${ruleIndex + 1}`;
@@ -3721,42 +3794,16 @@ export function verifyActivityRule(
   let totalExplored = 0;
 
   if (hasStarterRule) {
-    if (variants.length > 1 && rule.unmodifiedStarterMustFail && activity.starterWorkspace) {
-      let starterPassesAll = true;
-      for (const v of variants) {
-        const initG = buildSolverInitialGridState(v.grid as any, simEnv);
-        const exec = executeWorkspaceOnEnv(activity.starterWorkspace, initG, simEnv);
-        if (exec.status !== 'SUCCESS') {
-          starterPassesAll = false;
-          break;
-        }
-      }
-      if (starterPassesAll) {
-        return {
-          ruleId,
-          description: rule.description,
-          rule,
-          passed: false,
-          elapsedMs: nowMs() - startMs,
-          exploredStates: variants.length,
-          minWinningBlocks: countWorkspaceBlocks(activity.starterWorkspace),
-          counterexampleWorkspace: activity.starterWorkspace,
-          formattedCounterexample: formatWorkspaceCompact(activity.starterWorkspace),
-          diagnostic: 'Unmodified starter workspace already solves all variants',
-        };
-      }
-    } else {
-      const starterRes = checkStarterEditDistanceRule(
-        activity,
-        rule,
-        simEnv,
-        startMs,
-        ruleId
-      );
-      totalExplored += starterRes.exploredStates;
-      if (!starterRes.passed || (!hasDirectLockRule && !hasSearchRestriction)) {
-        return starterRes;
-      }
+    const starterRes = checkStarterEditDistanceRule(
+      activity,
+      rule,
+      simEnv,
+      startMs,
+      ruleId
+    );
+    totalExplored += starterRes.exploredStates;
+    if (!starterRes.passed || (!hasDirectLockRule && !hasSearchRestriction)) {
+      return starterRes;
     }
   }
 
@@ -4492,6 +4539,322 @@ export function verifyActivityRule(
  * 2. Positive `?` `scaffoldWorkspace` completion check (when `partialHelp.mode === 'scaffold'`).
  * 3. Every `AntiBypassRule` in `activity.antiBypassRules` must yield **0 winning bypass programs**.
  */
+function checkBeatReferenceSolution(activity: CurriculumActivity): ReferenceSolutionCheckResult {
+  const slotLimit = resolveEffectiveSlotLimit(activity.slotCap);
+  const variants = getActivityVariants(activity, 'beat');
+  if (variants.length === 0) {
+    return {
+      passed: false,
+      reason: 'Activity has no beat definition or beatVariants',
+      blockCount: 0,
+      slotLimit,
+      paletteViolations: [],
+    };
+  }
+  if (!activity.referenceSolution) {
+    return {
+      passed: false,
+      reason: 'Activity has no referenceSolution',
+      blockCount: 0,
+      slotLimit,
+      paletteViolations: [],
+    };
+  }
+  const blockCount = countWorkspaceBlocks(activity.referenceSolution);
+  const paletteViolations = validateWorkspaceAgainstPalette(
+    activity.referenceSolution,
+    activity.palette,
+    beatSimulationEnvironment as unknown as SimulationEnvironment<GridState>,
+    false
+  );
+  const slotError = validateWorkspaceAgainstSlotCap(activity.referenceSolution, activity.slotCap);
+  if (slotError) {
+    return {
+      passed: false,
+      reason: slotError,
+      blockCount,
+      slotLimit,
+      paletteViolations,
+    };
+  }
+  if (paletteViolations.length > 0) {
+    return {
+      passed: false,
+      reason: paletteViolations[0],
+      blockCount,
+      slotLimit,
+      paletteViolations,
+    };
+  }
+
+  const variantResults: VariantCheckResult[] = [];
+  let allPassed = true;
+  let firstFailReason: string | undefined;
+  let firstFailStatus: SimulationStatus | undefined;
+
+  for (let idx = 0; idx < variants.length; idx++) {
+    const v = variants[idx];
+    const initBeat = createCurriculumBeatState(v.beat ?? activity.beat, true);
+    const exec = executeWorkspaceOnEnv(
+      activity.referenceSolution,
+      initBeat as unknown as GridState,
+      beatSimulationEnvironment as unknown as SimulationEnvironment<GridState>
+    );
+    const passed = exec.status === 'SUCCESS';
+    variantResults.push({
+      variantIndex: idx,
+      label: v.label ?? `Variant ${idx + 1}`,
+      passed,
+      status: exec.status,
+      reason: passed ? undefined : `Variant ${idx + 1} finished with status '${exec.status}'`,
+    });
+    if (!passed && allPassed) {
+      allPassed = false;
+      firstFailReason = `Variant ${idx + 1} finished with status '${exec.status}' instead of 'SUCCESS'`;
+      firstFailStatus = exec.status;
+    }
+  }
+
+  return {
+    passed: allPassed,
+    status: allPassed ? 'SUCCESS' : firstFailStatus,
+    reason: firstFailReason,
+    blockCount,
+    slotLimit,
+    paletteViolations: [],
+    variantResults,
+  };
+}
+
+function checkBeatScaffoldWorkspace(activity: CurriculumActivity): ScaffoldCheckResult {
+  const scaffold = activity.partialHelp?.scaffoldWorkspace;
+  if (activity.partialHelp?.mode !== 'scaffold' || !scaffold) {
+    return {
+      applicable: false,
+      passed: true,
+      blockCount: 0,
+      placeholderCount: 0,
+    };
+  }
+  const blockCount = countWorkspaceBlocks(scaffold);
+  const slotError = validateWorkspaceAgainstSlotCap(scaffold, activity.slotCap);
+  if (slotError) {
+    return {
+      applicable: true,
+      passed: false,
+      reason: `scaffoldWorkspace violates slotCap: ${slotError}`,
+      blockCount,
+      placeholderCount: 0,
+    };
+  }
+  let placeholderCount = 0;
+  for (const sc of ALL_SCOPES) {
+    for (const blk of scaffold[sc] || []) {
+      if (blk.type === 'PLACEHOLDER') placeholderCount++;
+    }
+  }
+  if (placeholderCount === 0) {
+    return {
+      applicable: true,
+      passed: false,
+      reason: 'scaffoldWorkspace has mode="scaffold" but contains 0 PLACEHOLDER blocks',
+      blockCount,
+      placeholderCount: 0,
+    };
+  }
+  if (!activity.referenceSolution) {
+    return {
+      applicable: true,
+      passed: false,
+      reason: 'Activity has no referenceSolution to validate Beat scaffold against',
+      blockCount,
+      placeholderCount,
+    };
+  }
+
+  const paletteCatMap = new Map<string, string | undefined>();
+  for (const item of beatSimulationEnvironment.paletteItems) {
+    paletteCatMap.set(item.actionType, item.category);
+  }
+  for (const sc of ALL_SCOPES) {
+    const scBlocks = scaffold[sc] || [];
+    const refBlocks = activity.referenceSolution[sc] || [];
+    if (scBlocks.length !== refBlocks.length) {
+      return {
+        applicable: true,
+        passed: false,
+        reason: `scaffoldWorkspace scope ${sc} length (${scBlocks.length}) does not align with referenceSolution (${refBlocks.length})`,
+        blockCount,
+        placeholderCount,
+      };
+    }
+    for (let i = 0; i < scBlocks.length; i++) {
+      if (scBlocks[i].type === 'PLACEHOLDER') {
+        const hint = getPlaceholderHintCategory(scBlocks[i]);
+        const refBlk = refBlocks[i];
+        if (!doesBlockMatchHintCategory(refBlk.type, paletteCatMap.get(refBlk.type), hint)) {
+          return {
+            applicable: true,
+            passed: false,
+            reason: `PLACEHOLDER at ${sc}[${i}] hintCategory '${hint}' does not match '${refBlk.type}'`,
+            blockCount,
+            placeholderCount,
+          };
+        }
+      } else if (canonicalBlockSignature(scBlocks[i]) !== canonicalBlockSignature(refBlocks[i])) {
+        return {
+          applicable: true,
+          passed: false,
+          reason: `scaffoldWorkspace block at ${sc}[${i}] differs from referenceSolution`,
+          blockCount,
+          placeholderCount,
+        };
+      }
+    }
+  }
+
+  const refCheck = checkBeatReferenceSolution(activity);
+  if (!refCheck.passed) {
+    return {
+      applicable: true,
+      passed: false,
+      reason: refCheck.reason ?? 'Completed Beat scaffold failed reference check',
+      blockCount,
+      placeholderCount,
+    };
+  }
+
+  return {
+    applicable: true,
+    passed: true,
+    blockCount,
+    placeholderCount,
+    completedWorkspace: activity.referenceSolution,
+  };
+}
+
+function verifyBeatActivityRule(
+  activity: CurriculumActivity,
+  rule: AntiBypassRule,
+  ruleIndex = 0
+): RuleCheckResult {
+  const startMs = nowMs();
+  const ruleId = rule.id ?? `${activity.id}-rule-${ruleIndex + 1}`;
+  const variants = getActivityVariants(activity, 'beat');
+  if (variants.length === 0) {
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: false,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: 0,
+      minWinningBlocks: null,
+      diagnostic: 'Activity has no beat definition or beatVariants',
+    };
+  }
+  const initialBeats: BeatState[] = variants.map((v) =>
+    createCurriculumBeatState(v.beat ?? activity.beat, true)
+  );
+  let explored = 0;
+  const solvesAllBeat = (ws: WorkspaceState): boolean => {
+    for (const initB of initialBeats) {
+      explored++;
+      const exec = executeWorkspaceOnEnv(
+        ws,
+        initB as unknown as GridState,
+        beatSimulationEnvironment as unknown as SimulationEnvironment<GridState>
+      );
+      if (exec.status !== 'SUCCESS') return false;
+    }
+    return true;
+  };
+
+  if (
+    (rule.unmodifiedStarterMustFail || (rule.minStarterEditDistance ?? 0) > 0) &&
+    activity.starterWorkspace
+  ) {
+    const starter = activity.starterWorkspace;
+    if (solvesAllBeat(starter)) {
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: false,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: explored,
+        minWinningBlocks: countWorkspaceBlocks(starter),
+        counterexampleWorkspace: starter,
+        formattedCounterexample: formatWorkspaceCompact(starter),
+        diagnostic: 'Unmodified starterWorkspace already solves all Beat variants',
+      };
+    }
+
+    const reqEdits = Math.max(
+      rule.unmodifiedStarterMustFail ? 1 : 0,
+      rule.minStarterEditDistance ?? 0
+    );
+    if (reqEdits > 1 && activity.referenceSolution) {
+      let refDist = 0;
+      for (const sc of ALL_SCOPES) {
+        const a = (starter[sc] || []).map(canonicalBlockSignature);
+        const b = (activity.referenceSolution[sc] || []).map(canonicalBlockSignature);
+        const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+          Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+        );
+        for (let i = 1; i <= a.length; i++) {
+          for (let j = 1; j <= b.length; j++) {
+            dp[i][j] =
+              a[i - 1] === b[j - 1]
+                ? dp[i - 1][j - 1]
+                : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+          }
+        }
+        refDist += dp[a.length][b.length];
+      }
+      if (refDist < reqEdits) {
+        return {
+          ruleId,
+          description: rule.description,
+          rule,
+          passed: false,
+          elapsedMs: nowMs() - startMs,
+          exploredStates: explored,
+          minWinningBlocks: countWorkspaceBlocks(activity.referenceSolution),
+          counterexampleWorkspace: activity.referenceSolution,
+          formattedCounterexample: formatWorkspaceCompact(activity.referenceSolution),
+          diagnostic: `referenceSolution is at edit distance ${refDist} (< minStarterEditDistance ${reqEdits})`,
+        };
+      }
+    }
+
+    return {
+      ruleId,
+      description: rule.description,
+      rule,
+      passed: true,
+      elapsedMs: nowMs() - startMs,
+      exploredStates: explored,
+      minWinningBlocks: null,
+      diagnostic:
+        reqEdits > 1
+          ? `Starter fails and requires >= ${reqEdits} edits`
+          : 'Unmodified starterWorkspace fails as required',
+    };
+  }
+
+  return {
+    ruleId,
+    description: rule.description,
+    rule,
+    passed: true,
+    elapsedMs: nowMs() - startMs,
+    exploredStates: explored,
+    minWinningBlocks: null,
+    diagnostic: 'Beat puzzle anti-bypass rule verified',
+  };
+}
+
 export function verifyActivityConstraints(
   activity: CurriculumActivity,
   options?: SolverOptions
@@ -4501,6 +4864,31 @@ export function verifyActivityConstraints(
   }
   if (activity.simId === 'switchyard') {
     return verifySwitchyardActivityConstraints(activity, options?.extraBfsDepthBeyondCap ?? 20);
+  }
+  if (activity.simId === 'beat') {
+    const startMs = nowMs();
+    const slotCap = resolveEffectiveSlotLimit(activity.slotCap);
+    const referenceCheck = checkBeatReferenceSolution(activity);
+    const scaffoldCheck = checkBeatScaffoldWorkspace(activity);
+    const ruleResults = (activity.antiBypassRules ?? []).map((rule, idx) =>
+      verifyBeatActivityRule(activity, rule, idx)
+    );
+    const variants = getActivityVariants(activity, 'beat');
+    return {
+      activityId: activity.id,
+      activityTitle: activity.title,
+      passed:
+        referenceCheck.passed &&
+        scaffoldCheck.passed &&
+        ruleResults.every((r) => r.passed),
+      elapsedMs: nowMs() - startMs,
+      slotCap,
+      referenceCheck,
+      scaffoldCheck,
+      ruleResults,
+      variantCount: variants.length > 0 ? variants.length : undefined,
+      variantResults: referenceCheck.variantResults,
+    };
   }
   const startMs = nowMs();
   const simEnv = options?.simEnv ?? gridSimulationEnvironment;

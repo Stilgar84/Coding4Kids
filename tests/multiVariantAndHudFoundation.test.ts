@@ -92,8 +92,8 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
   });
 
   describe('Module 4-6 & 5-Tier Challenge Metadata', () => {
-    it('supports Phase 2 (6 slug modules) and optional 5-tier mastery challenge metadata', () => {
-      expect(CURRICULUM_MODULES).toHaveLength(6);
+    it('supports Phase 3 (8 slug modules) and optional 5-tier mastery challenge metadata', () => {
+      expect(CURRICULUM_MODULES).toHaveLength(8);
       expect(CURRICULUM_MODULES.map((m) => m.id)).toEqual([
         'seq',
         'param',
@@ -101,8 +101,10 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
         'func',
         'branch',
         'while',
+        'var',
+        'cmp',
       ]);
-      expect(CURRICULUM_MODULES.map((m) => m.number)).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(CURRICULUM_MODULES.map((m) => m.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 
       if (MASTERY_CHALLENGE_TIERS.length === 0) {
         expect(MASTERY_CHALLENGE_TIERS).toEqual([]);

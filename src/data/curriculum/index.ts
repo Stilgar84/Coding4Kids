@@ -11,6 +11,8 @@ import { LOOP_ACTIVITIES } from './loopActivities';
 import { FUNC_ACTIVITIES } from './funcActivities';
 import { BRANCH_ACTIVITIES } from './branchActivities';
 import { WHILE_ACTIVITIES } from './whileActivities';
+import { VAR_ACTIVITIES } from './varActivities';
+import { CMP_ACTIVITIES } from './cmpActivities';
 
 export { SEQ_ACTIVITIES, SEQ_0_DEMO_TABS, SEQ_BEAT_ALLOWED_BLOCKS } from './seqActivities';
 export {
@@ -49,6 +51,8 @@ export {
   WHILE_A_GRID_VARIANTS,
   WHILE_ACTIVITIES,
 } from './whileActivities';
+export { VAR_ACTIVITIES } from './varActivities';
+export { CMP_ACTIVITIES } from './cmpActivities';
 
 /**
  * One-way backward-compatibility aliases from V1 numeric module IDs
@@ -152,26 +156,33 @@ export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   '5A': 'branch.A',
   '5B': 'branch.B',
   '5C': 'branch.C',
+  // Module 6 -> var
   '6.0': 'var.0',
   '6.1': 'var.1',
   '6.2': 'var.2',
   '6.3': 'var.3',
   '6.4': 'var.4',
+  '6.4a': 'var.4a',
   '6.5': 'var.5',
   '6.6': 'var.6',
   '6.7': 'var.7',
   '6.8': 'var.8',
+  '6.9': 'var.9',
+  '6.10': 'var.10',
   '6A': 'var.A',
   '6B': 'var.B',
   '6C': 'var.C',
-  'C6.1': 'var.A',
-  'C6.2': 'var.B',
+  'C6.1': 'var.M1',
+  'C6.2': 'var.M2',
+  // Module 7 -> cmp
   '7.0': 'cmp.0',
   '7.1': 'cmp.1',
+  '7.1a': 'cmp.1a',
   '7.2': 'cmp.2',
   '7.3': 'cmp.3',
   '7.4': 'cmp.4',
   '7.5': 'cmp.5',
+  '7.5a': 'cmp.5a',
   '7.6': 'cmp.6',
   '7.7': 'cmp.7',
   '7.8': 'cmp.8',
@@ -179,6 +190,9 @@ export const LEGACY_ACTIVITY_ID_ALIASES: Record<string, string> = {
   '7A': 'cmp.A',
   '7B': 'cmp.B',
   '7C': 'cmp.C',
+  'C7.1': 'cmp.M1',
+  'C7.2': 'cmp.M2',
+  'C7.3': 'cmp.M3',
 };
 
 export function resolveModuleIdAlias(moduleId: string): string {
@@ -258,6 +272,28 @@ export const CURRICULUM_MODULES: CurriculumModule[] = [
     badgeTitle: 'Sentinel Strategist',
     badgeIcon: '⏳',
     capstoneIds: ['while.A', 'while.B', 'while.C'],
+  },
+  {
+    id: 'var',
+    number: 7,
+    title: 'Variables — Memory Boxes, Sensors & Arithmetic',
+    shortTitle: 'var',
+    icon: '📦',
+    badgeId: 'badge-var',
+    badgeTitle: 'Variable Inventor',
+    badgeIcon: '📦',
+    capstoneIds: ['var.A', 'var.B'],
+  },
+  {
+    id: 'cmp',
+    number: 8,
+    title: 'Comparisons — Thresholds, Parity & Exact Geometry',
+    shortTitle: 'cmp',
+    icon: '⚖️',
+    badgeId: 'badge-cmp',
+    badgeTitle: 'Scale & Parity Master',
+    badgeIcon: '⚖️',
+    capstoneIds: ['cmp.A', 'cmp.B', 'cmp.C'],
   },
 ];
 
@@ -451,7 +487,7 @@ export function sortCurriculumActivities(
 }
 
 /**
- * Aggregated Phase 2 curriculum activities (`89` total across `seq`, `param`, `loop`, `func`, `branch`, `while`)
+ * Aggregated Phase 3 curriculum activities (`123` total across `seq`, `param`, `loop`, `func`, `branch`, `while`, `var`, `cmp`)
  * ordered in canonical play order via `sortCurriculumActivities`.
  */
 export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivities([
@@ -461,6 +497,8 @@ export const CURRICULUM_ACTIVITIES: CurriculumActivity[] = sortCurriculumActivit
   ...FUNC_ACTIVITIES,
   ...BRANCH_ACTIVITIES,
   ...WHILE_ACTIVITIES,
+  ...VAR_ACTIVITIES,
+  ...CMP_ACTIVITIES,
 ]);
 
 export function getCurriculumModules(): CurriculumModule[] {
@@ -541,8 +579,12 @@ export function getActivityAtVersion(
     switchyard: historical.switchyard ?? latest.switchyard,
     switchyardVariants: historical.switchyardVariants,
     turtle: historical.turtle ?? latest.turtle,
+    beat: historical.beat ?? latest.beat,
+    beatVariants: historical.beatVariants ?? latest.beatVariants,
     beatRules: historical.beatRules ?? latest.beatRules,
     inputConfig: historical.inputConfig ?? latest.inputConfig,
+    coPilotCard: latest.coPilotCard,
+    initialVars: latest.initialVars,
     defaultLoopPlayback: historical.defaultLoopPlayback,
     starterWorkspace: historical.starterWorkspace,
     palette: historical.palette,

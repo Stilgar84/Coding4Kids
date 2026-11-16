@@ -71,8 +71,25 @@ function countWorkspaceBlocks(ws: WorkspaceState): number {
   return ALL_SCOPES.reduce((sum, sc) => sum + (ws[sc]?.length || 0), 0);
 }
 
+function formatStackKey(colors: readonly string[], values?: ReadonlyArray<number | undefined>): string {
+  if (!values || values.every((v) => v === undefined)) {
+    return colors.join(',');
+  }
+  return colors.map((c, idx) => (values[idx] !== undefined ? `${c}:${values[idx]}` : c)).join(',');
+}
+
 function canonicalDepotKey(s: DepotState): string {
-  const base = `${s.workerStation}|${s.heldCrate ?? '_'}|${s.stacks[0].join(',')}|${s.stacks[1].join(',')}|${s.stacks[2].join(',')}|${s.output.join(',')}`;
+  const s0 = formatStackKey(s.stacks[0], s.stackValues?.[0]);
+  const s1 = formatStackKey(s.stacks[1], s.stackValues?.[1]);
+  const s2 = formatStackKey(s.stacks[2], s.stackValues?.[2]);
+  const out = formatStackKey(s.output, s.outputValues);
+  const held =
+    s.heldCrate === null
+      ? '_'
+      : s.heldValue !== undefined
+      ? `${s.heldCrate}:${s.heldValue}${s.heldColorless ? '!' : ''}`
+      : s.heldCrate;
+  const base = `${s.workerStation}|${held}|${s0}|${s1}|${s2}|${out}`;
   const inputItems = s.input ?? [];
   if (
     s.queue.length === 0 &&
@@ -83,7 +100,12 @@ function canonicalDepotKey(s: DepotState): string {
   ) {
     return base;
   }
-  const qStr = s.queue.map((q) => (q.damaged ? `${q.color}!` : q.color)).join(',');
+  const qStr = s.queue
+    .map((q) => {
+      const val = q.value !== undefined ? `:${q.value}` : '';
+      return q.damaged ? `${q.color}${val}!` : `${q.color}${val}`;
+    })
+    .join(',');
   const inStr = inputItems
     .map((q) => (q.value !== undefined ? `${q.color}:${q.value}` : q.color))
     .join(',');
@@ -99,11 +121,34 @@ function cloneDepotState(s: DepotState): DepotState {
       [...s.initialStacks[1]],
       [...s.initialStacks[2]],
     ],
+    ...(s.stackValues
+      ? { stackValues: [[...s.stackValues[0]], [...s.stackValues[1]], [...s.stackValues[2]]] }
+      : {}),
+    ...(s.initialStackValues
+      ? {
+          initialStackValues: [
+            [...s.initialStackValues[0]],
+            [...s.initialStackValues[1]],
+            [...s.initialStackValues[2]],
+          ],
+        }
+      : {}),
     output: [...s.output],
+    ...(s.outputValues ? { outputValues: [...s.outputValues] } : {}),
     targetStacks: s.targetStacks
       ? [[...s.targetStacks[0]], [...s.targetStacks[1]], [...s.targetStacks[2]]]
       : undefined,
+    ...(s.targetStackValues
+      ? {
+          targetStackValues: [
+            [...s.targetStackValues[0]],
+            [...s.targetStackValues[1]],
+            [...s.targetStackValues[2]],
+          ],
+        }
+      : {}),
     targetOutput: s.targetOutput ? [...s.targetOutput] : undefined,
+    ...(s.targetOutputValues ? { targetOutputValues: [...s.targetOutputValues] } : {}),
     queue: s.queue.map((item) => ({ ...item })),
     initialQueue: s.initialQueue.map((item) => ({ ...item })),
     ...(s.input !== undefined ? { input: s.input.map((item) => ({ ...item })) } : {}),
@@ -232,9 +277,23 @@ function validateDepotWorkspaceAgainstPalette(
       }
 
       if (blk.type === 'DEPOT_MOVE_TO') {
-        const station = blk.params?.station as DepotStationId | undefined;
-        if (!station || !DEPOT_STATIONS.includes(station)) {
-          violations.push(`Invalid DEPOT_MOVE_TO station param: '${String(station)}'`);
+        const rawStation = blk.params?.station;
+        const isVarStation =
+          typeof rawStation === 'string' && /^[a-z]$/.test(rawStation.trim());
+        const varAllowed =
+          palette.allowVariables !== false ||
+          allowedControl.has('VAR_ASSIGN') ||
+          allowedControl.has('VAR_OP');
+        const isValidLiteral =
+          (typeof rawStation === 'string' &&
+            (DEPOT_STATIONS.includes(rawStation as DepotStationId) ||
+              rawStation === 'TAPE' ||
+              rawStation === '1' ||
+              rawStation === '2' ||
+              rawStation === '3')) ||
+          (typeof rawStation === 'number' && [1, 2, 3].includes(rawStation));
+        if (!isValidLiteral && !(isVarStation && varAllowed)) {
+          violations.push(`Invalid DEPOT_MOVE_TO station param: '${String(rawStation)}'`);
         }
       }
 
@@ -295,6 +354,13 @@ function executeDepotWorkspace(
       ? 'SUCCESS'
       : state.status === 'COLLISION'
       ? 'COLLISION'
+      : runtime.status === 'TYPE_ERROR' ||
+        runtime.status === 'MATH_ERROR' ||
+        runtime.status === 'STACK_OVERFLOW' ||
+        runtime.status === 'STEP_LIMIT' ||
+        runtime.status === 'DEADLOCK' ||
+        runtime.status === 'COLLISION'
+      ? runtime.status
       : runtime.status === 'PAUSED'
       ? 'PAUSED'
       : 'IDLE';
@@ -772,8 +838,74 @@ export function checkDepotScaffoldWorkspace(
       }
     });
   }
+  if (placeholderSlots.length === 0) {
+    return {
+      applicable: true,
+      passed: false,
+      reason: 'scaffoldWorkspace has mode="scaffold" but contains 0 PLACEHOLDER blocks',
+      blockCount,
+      placeholderCount: 0,
+    };
+  }
 
   const initialVariants = depotVariants.map((def) => createInitialDepotState(def));
+
+  const depotBlockSig = (b: CodeBlock): string =>
+    `${b.type}|${b.repeatCount ?? 1}|${b.params ? JSON.stringify(b.params) : ''}`;
+
+  // Fast-path: Check if aligning directly with `referenceSolution` completes the scaffold validly
+  if (activity.referenceSolution) {
+    const paletteCatMap = new Map<string, string | undefined>();
+    for (const item of depotSimulationEnvironment.paletteItems) {
+      paletteCatMap.set(item.actionType, item.category);
+    }
+    let alignsWithRef = true;
+    for (const scope of ALL_SCOPES) {
+      const scBlocks = scaffold[scope] || [];
+      const refBlocks = activity.referenceSolution[scope] || [];
+      if (scBlocks.length !== refBlocks.length) {
+        alignsWithRef = false;
+        break;
+      }
+      for (let i = 0; i < scBlocks.length; i++) {
+        if (scBlocks[i].type === 'PLACEHOLDER') {
+          const hint = getPlaceholderHintCategory(scBlocks[i]);
+          const refBlk = refBlocks[i];
+          const itemCat = paletteCatMap.get(refBlk.type);
+          if (!doesBlockMatchHintCategory(refBlk.type, itemCat, hint)) {
+            alignsWithRef = false;
+            break;
+          }
+        } else if (depotBlockSig(scBlocks[i]) !== depotBlockSig(refBlocks[i])) {
+          alignsWithRef = false;
+          break;
+        }
+      }
+      if (!alignsWithRef) break;
+    }
+    if (alignsWithRef) {
+      const violations = validateDepotWorkspaceAgainstPalette(
+        activity.referenceSolution,
+        activity.palette
+      );
+      const passesAll =
+        violations.length === 0 &&
+        initialVariants.every(
+          (variantState) =>
+            executeDepotWorkspace(activity.referenceSolution!, variantState).status === 'SUCCESS'
+        );
+      if (passesAll) {
+        return {
+          applicable: true,
+          passed: true,
+          blockCount,
+          placeholderCount: placeholderSlots.length,
+          completedWorkspace: activity.referenceSolution,
+        };
+      }
+    }
+  }
+
   const scaffoldActiveStations: DepotStationId[] = [];
   for (const variantState of initialVariants) {
     for (const station of getActiveDepotStations(variantState)) {
@@ -786,6 +918,9 @@ export function checkDepotScaffoldWorkspace(
   const allowedSimBlocks =
     activity.palette.allowedSimBlocks ??
     depotSimulationEnvironment.paletteItems.map((p) => p.actionType);
+  const allowedCallBlocks = (activity.palette.allowedControlBlocks ?? []).filter(
+    (t) => t === 'CALL_F1' || t === 'CALL_F2' || t === 'CALL_F3'
+  );
   const candidatesPerSlot: Array<Array<{ type: string; params?: Record<string, unknown> }>> =
     placeholderSlots.map(({ block }) => {
       const hintCat = getPlaceholderHintCategory(block);
@@ -801,6 +936,11 @@ export function checkDepotScaffoldWorkspace(
           }
         } else {
           list.push({ type: actionType });
+        }
+      }
+      for (const callType of allowedCallBlocks) {
+        if (doesBlockMatchHintCategory(callType, undefined, hintCat)) {
+          list.push({ type: callType });
         }
       }
       return list;
@@ -910,6 +1050,230 @@ export function verifyDepotActivityRule(
       ? activity.slotCap?.perScope?.MAIN ?? resolveEffectiveSlotLimit(activity.slotCap)
       : resolveEffectiveSlotLimit(activity.slotCap);
   const slotLimit = effectiveScopeLimit;
+
+  if (
+    (rule.unmodifiedStarterMustFail || (rule.minStarterEditDistance ?? 0) > 0) &&
+    activity.starterWorkspace
+  ) {
+    const starter = activity.starterWorkspace;
+    const initialForStarter = variants.map(createInitialDepotState);
+    const solvesAllDepot = (ws: WorkspaceState): boolean =>
+      initialForStarter.every((v) => executeDepotWorkspace(ws, v).status === 'SUCCESS');
+
+    let exploredStarter = initialForStarter.length;
+    if (solvesAllDepot(starter)) {
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: false,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: exploredStarter,
+        minWinningBlocks: countWorkspaceBlocks(starter),
+        counterexampleWorkspace: starter,
+        formattedCounterexample: formatWorkspaceCompact(starter),
+        diagnostic: 'Unmodified starterWorkspace already solves all Depot variants',
+      };
+    }
+
+    const reqEdits = Math.max(
+      rule.unmodifiedStarterMustFail ? 1 : 0,
+      rule.minStarterEditDistance ?? 0
+    );
+    if (reqEdits > 1) {
+      const blkSig = (b: CodeBlock): string =>
+        `${b.type}|${b.repeatCount ?? 1}|${b.params ? JSON.stringify(b.params) : ''}`;
+      if (activity.referenceSolution) {
+        let refDist = 0;
+        for (const sc of ALL_SCOPES) {
+          const a = (starter[sc] || []).map(blkSig);
+          const b = (activity.referenceSolution[sc] || []).map(blkSig);
+          const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+            Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+          );
+          for (let i = 1; i <= a.length; i++) {
+            for (let j = 1; j <= b.length; j++) {
+              dp[i][j] =
+                a[i - 1] === b[j - 1]
+                  ? dp[i - 1][j - 1]
+                  : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+            }
+          }
+          refDist += dp[a.length][b.length];
+        }
+        if (refDist < reqEdits) {
+          return {
+            ruleId,
+            description: rule.description,
+            rule,
+            passed: false,
+            elapsedMs: nowMs() - startMs,
+            exploredStates: exploredStarter,
+            minWinningBlocks: countWorkspaceBlocks(activity.referenceSolution),
+            counterexampleWorkspace: activity.referenceSolution,
+            formattedCounterexample: formatWorkspaceCompact(activity.referenceSolution),
+            diagnostic: `referenceSolution is at edit distance ${refDist} (< minStarterEditDistance ${reqEdits})`,
+          };
+        }
+      }
+
+      const stSet = new Set<DepotStationId>();
+      for (const v of initialForStarter) {
+        for (const st of getActiveDepotStations(v)) stSet.add(st);
+      }
+      const { actions: editActions } = buildDepotCandidateActions(
+        activity.palette,
+        rule,
+        DEPOT_STATIONS.filter((st) => stSet.has(st))
+      );
+      const repBlocks: CodeBlock[] = editActions.map((a, idx) => ({
+        id: `dep_ed_${idx}`,
+        type: a.actionType,
+        ...(a.repeatCount > 1 ? { repeatCount: a.repeatCount } : {}),
+        ...(a.params ? { params: { ...a.params } } : {}),
+      }));
+      for (const ctrl of activity.palette.allowedControlBlocks ?? []) {
+        if (ctrl === 'CALL_F1' || ctrl === 'CALL_F2' || ctrl === 'CALL_F3' || ctrl === 'ELSE' || ctrl === 'END_IF') {
+          repBlocks.push({ id: `dep_ed_${ctrl}`, type: ctrl });
+        }
+      }
+      const allowedScopes =
+        activity.palette.allowedScopes && activity.palette.allowedScopes.length > 0
+          ? activity.palette.allowedScopes
+          : (['MAIN'] as ScopeType[]);
+      const wsSig = (ws: WorkspaceState): string =>
+        ALL_SCOPES.map((s) => `${s}:${(ws[s] || []).map(blkSig).join(';')}`).join('||');
+      const visitedEdit = new Set<string>([wsSig(starter)]);
+      let frontier: WorkspaceState[] = [starter];
+      const editDeadline = startMs + 120;
+
+      for (let dist = 1; dist < reqEdits && nowMs() < editDeadline; dist++) {
+        const nextFrontier: WorkspaceState[] = [];
+        for (const curWs of frontier) {
+          if (nowMs() >= editDeadline) break;
+          for (const sc of allowedScopes) {
+            if (nowMs() >= editDeadline) break;
+            const blocks = curWs[sc] || [];
+            for (let i = 0; i < blocks.length; i++) {
+              if ((exploredStarter & 15) === 0 && nowMs() >= editDeadline) break;
+              const cand: WorkspaceState = {
+                ...curWs,
+                [sc]: [...blocks.slice(0, i), ...blocks.slice(i + 1)],
+              };
+              const sig = wsSig(cand);
+              if (visitedEdit.has(sig)) continue;
+              visitedEdit.add(sig);
+              exploredStarter++;
+              if (solvesAllDepot(cand)) {
+                return {
+                  ruleId,
+                  description: rule.description,
+                  rule,
+                  passed: false,
+                  elapsedMs: nowMs() - startMs,
+                  exploredStates: exploredStarter,
+                  minWinningBlocks: countWorkspaceBlocks(cand),
+                  counterexampleWorkspace: cand,
+                  formattedCounterexample: formatWorkspaceCompact(cand),
+                  diagnostic: `Solved within edit distance ${dist} (< minStarterEditDistance ${reqEdits})`,
+                };
+              }
+              if (dist + 1 < reqEdits) nextFrontier.push(cand);
+            }
+            for (let i = 0; i < blocks.length && nowMs() < editDeadline; i++) {
+              for (const rep of repBlocks) {
+                if ((exploredStarter & 15) === 0 && nowMs() >= editDeadline) break;
+                if (blkSig(blocks[i]) === blkSig(rep)) continue;
+                const nextBlocks = [...blocks];
+                nextBlocks[i] = { ...rep, id: `dep_r_${dist}_${i}_${rep.type}` };
+                const cand: WorkspaceState = { ...curWs, [sc]: nextBlocks };
+                const sig = wsSig(cand);
+                if (visitedEdit.has(sig)) continue;
+                visitedEdit.add(sig);
+                exploredStarter++;
+                if (solvesAllDepot(cand)) {
+                  return {
+                    ruleId,
+                    description: rule.description,
+                    rule,
+                    passed: false,
+                    elapsedMs: nowMs() - startMs,
+                    exploredStates: exploredStarter,
+                    minWinningBlocks: countWorkspaceBlocks(cand),
+                    counterexampleWorkspace: cand,
+                    formattedCounterexample: formatWorkspaceCompact(cand),
+                    diagnostic: `Solved within edit distance ${dist} (< minStarterEditDistance ${reqEdits})`,
+                  };
+                }
+                if (dist + 1 < reqEdits) nextFrontier.push(cand);
+              }
+            }
+            for (let i = 0; i <= blocks.length && nowMs() < editDeadline; i++) {
+              for (const ins of repBlocks) {
+                if ((exploredStarter & 15) === 0 && nowMs() >= editDeadline) break;
+                const cand: WorkspaceState = {
+                  ...curWs,
+                  [sc]: [
+                    ...blocks.slice(0, i),
+                    { ...ins, id: `dep_i_${dist}_${i}_${ins.type}` },
+                    ...blocks.slice(i),
+                  ],
+                };
+                if (validateDepotWorkspaceAgainstSlotCap(cand, activity.slotCap) !== null) continue;
+                const sig = wsSig(cand);
+                if (visitedEdit.has(sig)) continue;
+                visitedEdit.add(sig);
+                exploredStarter++;
+                if (solvesAllDepot(cand)) {
+                  return {
+                    ruleId,
+                    description: rule.description,
+                    rule,
+                    passed: false,
+                    elapsedMs: nowMs() - startMs,
+                    exploredStates: exploredStarter,
+                    minWinningBlocks: countWorkspaceBlocks(cand),
+                    counterexampleWorkspace: cand,
+                    formattedCounterexample: formatWorkspaceCompact(cand),
+                    diagnostic: `Solved within edit distance ${dist} (< minStarterEditDistance ${reqEdits})`,
+                  };
+                }
+                if (dist + 1 < reqEdits) nextFrontier.push(cand);
+              }
+            }
+          }
+        }
+        frontier = nextFrontier;
+      }
+    }
+
+    const hasAdditionalDepotRestrictions =
+      Boolean(rule.forbidBlocks?.length) ||
+      rule.maxLoopNestingDepth !== undefined ||
+      rule.maxLoopNestingDepthPerScope !== undefined ||
+      rule.pureSingleLoopOnly === true ||
+      Boolean(rule.forbidSensors?.length) ||
+      Boolean(rule.forbidCombinators?.length) ||
+      rule.allowRepeatBadges !== undefined ||
+      rule.allowVariables !== undefined ||
+      rule.maxActionExecutions !== undefined;
+
+    if (!hasAdditionalDepotRestrictions) {
+      return {
+        ruleId,
+        description: rule.description,
+        rule,
+        passed: true,
+        elapsedMs: nowMs() - startMs,
+        exploredStates: exploredStarter,
+        minWinningBlocks: null,
+        diagnostic:
+          reqEdits > 1
+            ? `Starter fails and requires >= ${reqEdits} edits`
+            : 'Unmodified starterWorkspace fails as required',
+      };
+    }
+  }
 
   // Specific rule checks: ELSE / ELSE_IF / Conditionals / Multi-Scope Helper
   if (

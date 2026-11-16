@@ -133,9 +133,13 @@ describe('Module 2–3 Curriculum Expansion: 10-Color Palettes, Frame Animation 
       const loopTitle = getCurriculumModule('loop')!.title;
       expect(loopTitle).toBe('Loops — Repeating Sequences, Nested Loops & LIFO Stacks');
 
+      const preVarModules = new Set(['seq', 'param', 'loop', 'func', 'branch', 'while']);
       for (const act of CURRICULUM_ACTIVITIES) {
-        expect(act.palette.allowedSimBlocks ?? []).not.toContain('TELEPORT');
+        if (preVarModules.has(act.moduleId)) {
+          expect(act.palette.allowedSimBlocks ?? []).not.toContain('TELEPORT');
+        }
       }
+      expect(getActivityLatest('var.6')?.palette.allowedSimBlocks).toContain('TELEPORT');
 
       for (const id of ['loop.3', 'loop.4', 'loop.7', 'loop.B', 'loop.C']) {
         const latest = getActivityLatest(id)!;

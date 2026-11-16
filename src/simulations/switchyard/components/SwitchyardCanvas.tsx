@@ -13,6 +13,7 @@ import {
   SwitchyardState,
 } from '../types';
 import {
+  computeSwitchyardScaleMetrics,
   deriveSwitchyardFailureDiagnostic,
   resolveSwitchyardRoute,
 } from '../physics';
@@ -65,6 +66,8 @@ const ANIM_KEYFRAMES = `
   }
 }
 `;
+
+const EARLY_NO_WEIGHT_MODULES = new Set(['seq', 'param', 'loop', 'func', 'branch', 'while', 'var']);
 
 /**
  * Computes Switchyard animation duration in ms matching the Depot speed schedule.
@@ -199,10 +202,15 @@ const ItemEmblemGlyph: React.FC<{
 const ToyRailCarBody: React.FC<{
   item: SwitchyardItem;
   inScanner?: boolean;
-}> = ({ item, inScanner = false }) => {
+  showWeightPlate?: boolean;
+}> = ({ item, inScanner = false, showWeightPlate = false }) => {
   const meta = SWITCHYARD_COLOR_META[item.color] ?? SWITCHYARD_COLOR_META.RED;
   const damaged = Boolean(item.damaged);
   const bodyStroke = item.color === 'WHITE' ? '#475569' : meta.stroke;
+  const hasWeight = showWeightPlate && item.weight !== undefined;
+  const isHeavy = hasWeight && (item.weight ?? 0) > 10;
+  const seqLabel =
+    item.seqTag ?? (item.seqNum !== undefined ? `#${item.seqNum}` : undefined);
 
   return (
     <>
@@ -228,15 +236,77 @@ const ToyRailCarBody: React.FC<{
       {/* Top glossy wooden-toy specular rim */}
       <rect x="-19" y="-11.5" width="38" height="4.5" rx="2.2" fill="#ffffff" fillOpacity="0.38" />
 
-      {/* Center Emblem */}
+      {/* Heavy steel corner rivets when weight > 10 (cmp+ stage) */}
+      {isHeavy && (
+        <g data-testid="switchyard-heavy-rivets" fill="#e2e8f0" stroke="#0f172a" strokeWidth="0.9">
+          <circle cx="-19" cy="-10" r="1.7" />
+          <circle cx="19" cy="-10" r="1.7" />
+          <circle cx="-19" cy="7" r="1.7" />
+          <circle cx="19" cy="7" r="1.7" />
+        </g>
+      )}
+
+      {/* Center Emblem (shifted slightly left when weight plate is shown) */}
       <ItemEmblemGlyph
         icon={item.icon}
-        cx={0}
+        cx={hasWeight ? -8 : 0}
         cy={-1}
-        size={17}
+        size={hasWeight ? 15 : 17}
         stroke={item.color === 'BLACK' ? '#f8fafc' : '#0f172a'}
         fill="#ffffff"
       />
+
+      {/* cmp+-gated Weight Plate `[⚖️ N]` */}
+      {hasWeight && (
+        <g data-testid="switchyard-weight-plate" transform="translate(10, -1)">
+          <rect
+            x="-11"
+            y="-8.5"
+            width="22"
+            height="17"
+            rx="4"
+            fill="#ffffff"
+            stroke={isHeavy ? '#0f172a' : '#475569'}
+            strokeWidth={isHeavy ? '1.8' : '1.3'}
+          />
+          <text
+            x="0"
+            y="4"
+            textAnchor="middle"
+            fill="#0f172a"
+            fontSize="10.5"
+            fontWeight="900"
+          >
+            {item.weight}
+          </text>
+        </g>
+      )}
+
+      {/* Sequence Tag Chip (`#1`, `#2`, ...) */}
+      {seqLabel && (
+        <g data-testid="switchyard-seq-tag" transform="translate(-14, -16)">
+          <rect
+            x="-11"
+            y="-6.5"
+            width="22"
+            height="13"
+            rx="6"
+            fill="#0f172a"
+            stroke="#fde047"
+            strokeWidth="1.3"
+          />
+          <text
+            x="0"
+            y="3"
+            textAnchor="middle"
+            fill="#fef08a"
+            fontSize="8.5"
+            fontWeight="900"
+          >
+            {seqLabel}
+          </text>
+        </g>
+      )}
 
       {/* 4-cue itemDamaged Hazard Overlay (Crack + Spark + Tilt + Alert Badge) */}
       {damaged && (
@@ -279,9 +349,20 @@ const ToyRailCarSvg: React.FC<{
   scale?: number;
   inScanner?: boolean;
   dimmed?: boolean;
+  showWeightPlate?: boolean;
   animStyle?: React.CSSProperties;
   testId?: string;
-}> = ({ item, cx, cy, scale = 1, inScanner = false, dimmed = false, animStyle, testId }) => {
+}> = ({
+  item,
+  cx,
+  cy,
+  scale = 1,
+  inScanner = false,
+  dimmed = false,
+  showWeightPlate = false,
+  animStyle,
+  testId,
+}) => {
   const damaged = Boolean(item.damaged);
   const tilt = damaged ? 'rotate(-5)' : '';
 
@@ -293,10 +374,10 @@ const ToyRailCarSvg: React.FC<{
     >
       {animStyle ? (
         <g style={animStyle}>
-          <ToyRailCarBody item={item} inScanner={inScanner} />
+          <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
         </g>
       ) : (
-        <ToyRailCarBody item={item} inScanner={inScanner} />
+        <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
       )}
     </g>
   );
@@ -518,16 +599,21 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
     return () => mq.removeEventListener?.('change', onChange);
   }, []);
 
+  const activeActivity = React.useMemo(() => {
+    if (appMode !== 'curriculum') return undefined;
+    return (
+      getActivityAtVersion(activeActivityId, activeActivityVersion) ??
+      getActivityLatest(activeActivityId)
+    );
+  }, [appMode, activeActivityId, activeActivityVersion]);
+
   const spotlights = React.useMemo(() => {
     if (spotlightsOverride) return spotlightsOverride;
-    if (appMode !== 'curriculum') return [];
-    const act =
-      getActivityAtVersion(activeActivityId, activeActivityVersion) ??
-      getActivityLatest(activeActivityId);
-    if (!act || act.format !== 'explanation' || !act.demoTabs?.length) return [];
-    const idx = Math.min(Math.max(0, activeDemoTabIndex), act.demoTabs.length - 1);
-    return act.demoTabs[idx]?.spotlights ?? [];
-  }, [spotlightsOverride, appMode, activeActivityId, activeActivityVersion, activeDemoTabIndex]);
+    if (appMode !== 'curriculum' || !activeActivity) return [];
+    if (activeActivity.format !== 'explanation' || !activeActivity.demoTabs?.length) return [];
+    const idx = Math.min(Math.max(0, activeDemoTabIndex), activeActivity.demoTabs.length - 1);
+    return activeActivity.demoTabs[idx]?.spotlights ?? [];
+  }, [spotlightsOverride, appMode, activeActivity, activeDemoTabIndex]);
 
   const state = propState || storeSwitchyardState;
   if (!state) {
@@ -559,6 +645,28 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
 
   const hasSensorBeamSpotlight = spotlights.includes('sensor-beam');
   const hasBranchSkipSpotlight = spotlights.includes('branch-skip');
+  const hasWeightSpotlight =
+    spotlights.includes('itemWeight') || spotlights.includes('$itemWeight');
+
+  // Gate weight plates so branch/while Switchyard lessons stay uncluttered, while cmp+, Sandbox,
+  // and standalone weighted Switchyard states display crisp `[⚖️ N]` plates & scale readouts.
+  const isEarlyNoWeightSwitchyardLesson =
+    appMode === 'curriculum' &&
+    activeActivity?.simId === 'switchyard' &&
+    EARLY_NO_WEIGHT_MODULES.has(activeActivity.moduleId);
+  const hasStateWeights =
+    state.mode === 'balance_scale' ||
+    state.scrapRule === 'damaged_or_overweight' ||
+    state.queue.some((i) => i.weight !== undefined) ||
+    state.initialQueue.some((i) => i.weight !== undefined) ||
+    state.docks.some(
+      (d) =>
+        d.spec.minWeight !== undefined ||
+        d.spec.maxWeight !== undefined ||
+        d.items.some((i) => i.weight !== undefined)
+    ) ||
+    state.scrapped.some((i) => i.weight !== undefined);
+  const showWeights = !isEarlyNoWeightSwitchyardLesson && hasStateWeights;
 
   const headItem = state.queue[0];
   const peekQueue = state.queue.slice(1, 3);
@@ -579,12 +687,13 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
   const showScrapChute =
     state.scrapRule !== 'none' &&
     (state.scrapped.length > 0 ||
+      state.scrapRule === 'damaged_or_overweight' ||
       state.queue.some((i) => i.damaged) ||
       state.initialQueue.some((i) => i.damaged) ||
       state.scrapRule === 'damaged_only');
 
   // Switch hub coordinates
-  const swACoord = switchCount >= 2 ? { x: 320, y: 270 } : { x: 320, y: 290 };
+  const swACoord = switchCount >= 2 ? { x: 320, y: 270 } : { x: 320, y: 286 };
   const swBCoord = { x: 430, y: 344 };
 
   // Build track tree segments for 0, 1, or 2 switches
@@ -613,14 +722,14 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
       d: buildCurvedPath(swACoord.x, swACoord.y, leftX, 420),
       active: swA.direction === 'LEFT',
       isSkipCandidate: swA.direction !== 'LEFT',
-      chevronPos: { x: (swACoord.x + leftX) / 2, y: 356, angleDeg: 28 },
+      chevronPos: { x: (swACoord.x + leftX) / 2, y: 350, angleDeg: 28 },
     });
     trackSegments.push({
       key: 'a-right',
       d: buildCurvedPath(swACoord.x, swACoord.y, rightX, 420),
       active: swA.direction === 'RIGHT',
       isSkipCandidate: swA.direction !== 'RIGHT',
-      chevronPos: { x: (swACoord.x + rightX) / 2, y: 356, angleDeg: -28 },
+      chevronPos: { x: (swACoord.x + rightX) / 2, y: 350, angleDeg: -28 },
     });
   } else if (swA && swB) {
     const dockAX = dockCenterById.get(swA.leftTarget ?? 'DOCK_A') ?? 128;
@@ -670,6 +779,23 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
       : failureDiag.reason === 'UNSORTED_ITEMS_REMAIN'
       ? state.queue.length
       : 0;
+
+  const isBalanceMode = state.mode === 'balance_scale';
+  const scaleMetrics = isBalanceMode
+    ? {
+        leftWeightSum:
+          state.leftWeightSum ?? computeSwitchyardScaleMetrics(state.docks).leftWeightSum,
+        rightWeightSum:
+          state.rightWeightSum ?? computeSwitchyardScaleMetrics(state.docks).rightWeightSum,
+        beamTiltDeg:
+          state.beamTiltDeg ?? computeSwitchyardScaleMetrics(state.docks).beamTiltDeg,
+      }
+    : undefined;
+  const scaleTolerance = state.balanceTolerance ?? 0;
+  const scaleDelta = scaleMetrics
+    ? scaleMetrics.leftWeightSum - scaleMetrics.rightWeightSum
+    : 0;
+  const isScaleBalanced = Math.abs(scaleDelta) <= scaleTolerance;
 
   const animSeq = animEv?.seq ?? animEv?.stepId ?? state.stepCount;
   const dispatchedItem = animEv?.dispatchedItem ?? animEv?.item;
@@ -823,6 +949,10 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             <rect width="6" height="12" fill="#facc15" />
             <rect x="6" width="6" height="12" fill="#1e293b" />
           </pattern>
+          <pattern id="sy-full-gate-stripes" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="12" fill="#10b981" />
+            <rect x="6" width="6" height="12" fill="#ecfdf5" />
+          </pattern>
           <clipPath id="sy-tunnel-arch-clip">
             <rect x="50" y="76" width="120" height="60" rx="8" />
           </clipPath>
@@ -927,6 +1057,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                     cy={106}
                     scale={0.72}
                     dimmed
+                    showWeightPlate={showWeights}
                   />
                 );
               })}
@@ -1087,6 +1218,34 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               <text x="48" y="34" textAnchor="middle" fontSize="18">
                 ♻️
               </text>
+              {/* Overweight Scrap Rule Badge (cmp.A `damaged_or_overweight`) */}
+              {state.scrapRule === 'damaged_or_overweight' && (
+                <g
+                  data-testid="switchyard-scrap-overweight-badge"
+                  transform="translate(48, 88)"
+                >
+                  <rect
+                    x="-38"
+                    y="-9"
+                    width="76"
+                    height="18"
+                    rx="9"
+                    fill="#7c2d12"
+                    stroke="#facc15"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x="0"
+                    y="3.5"
+                    textAnchor="middle"
+                    fill="#fef08a"
+                    fontSize="10"
+                    fontWeight="900"
+                  >
+                    {`⚡ | ⚖️>${state.scrapMaxWeight ?? 20}`}
+                  </text>
+                </g>
+              )}
               {/* Scrapped count chips */}
               {state.scrapped.length > 0 && (
                 <g transform="translate(48, 68)">
@@ -1122,6 +1281,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 cy={222}
                 scale={0.48}
                 dimmed
+                showWeightPlate={showWeights}
                 animStyle={
                   isScrapAnim
                     ? { animation: `syDockSlotReveal ${animMs}ms linear both` }
@@ -1136,22 +1296,22 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
         <g data-testid="switchyard-scanner">
           {/* Scanner Housing Frame */}
           <rect
-            x="262"
+            x={showWeights ? '252' : '262'}
             y="150"
-            width="116"
+            width={showWeights ? '136' : '116'}
             height="78"
             rx="16"
             fill="#f8fafc"
-            stroke={hasSensorBeamSpotlight ? '#0ea5e9' : '#475569'}
-            strokeWidth={hasSensorBeamSpotlight ? '3.5' : '2.5'}
+            stroke={hasSensorBeamSpotlight || hasWeightSpotlight ? '#0ea5e9' : '#475569'}
+            strokeWidth={hasSensorBeamSpotlight || hasWeightSpotlight ? '3.5' : '2.5'}
           />
           <rect x="272" y="176" width="96" height="46" rx="10" fill="#0f172a" />
 
-          {/* Top Hood Sensor Trio (Color Lamp, Emblem Tile, Hazard Lamp) */}
+          {/* Top Hood Sensor Bar (Color Lamp, Emblem Tile, Hazard Lamp, + cmp+ Weight Scale Readout) */}
           <g transform="translate(320, 163)">
             {/* Color Sensor Lamp */}
             <circle
-              cx="-28"
+              cx={showWeights ? -48 : -28}
               cy="0"
               r="8"
               fill={headColorMeta ? headColorMeta.hex : '#cbd5e1'}
@@ -1160,7 +1320,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             />
             {/* Emblem Sensor Lamp */}
             <rect
-              x="-10"
+              x={showWeights ? -32 : -10}
               y="-9"
               width="20"
               height="18"
@@ -1172,7 +1332,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             {headItem && (
               <ItemEmblemGlyph
                 icon={headItem.icon}
-                cx={0}
+                cx={showWeights ? -22 : 0}
                 cy={0}
                 size={13}
                 stroke="#0f172a"
@@ -1181,7 +1341,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             )}
             {/* Hazard / Damaged Lamp */}
             <circle
-              cx="28"
+              cx={showWeights ? 2 : 28}
               cy="0"
               r="8"
               fill={
@@ -1196,7 +1356,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             />
             {headItem?.damaged && (
               <text
-                x="28"
+                x={showWeights ? 2 : 28}
                 y="3.5"
                 textAnchor="middle"
                 fontSize="10"
@@ -1205,6 +1365,31 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               >
                 ⚡
               </text>
+            )}
+            {/* cmp+-gated Weight Scale Readout Slot `[⚖️ N]` */}
+            {showWeights && (
+              <g data-testid="switchyard-scanner-weight" transform="translate(38, 0)">
+                <rect
+                  x="-22"
+                  y="-9"
+                  width="44"
+                  height="18"
+                  rx="6"
+                  fill={hasWeightSpotlight ? '#e0f2fe' : '#0f172a'}
+                  stroke={hasWeightSpotlight ? '#0284c7' : '#38bdf8'}
+                  strokeWidth="1.6"
+                />
+                <text
+                  x="0"
+                  y="3.5"
+                  textAnchor="middle"
+                  fill={hasWeightSpotlight ? '#0f172a' : '#f8fafc'}
+                  fontSize="10"
+                  fontWeight="900"
+                >
+                  {headItem ? `⚖️${headItem.weight ?? 1}` : '⚖️—'}
+                </text>
+              </g>
             )}
           </g>
 
@@ -1248,6 +1433,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               cy={199}
               scale={0.96}
               inScanner
+              showWeightPlate={showWeights}
               animStyle={
                 isEnterScannerAnim
                   ? { animation: `syCarEnterScanner ${animMs}ms ease-out both` }
@@ -1398,6 +1584,118 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           </g>
         )}
 
+        {/* Twin-Scale Fulcrum Balance Beam & Live Delta Meter (mode === 'balance_scale', cmp.M2) */}
+        {isBalanceMode && scaleMetrics && (
+          <g data-testid="switchyard-balance-scale" transform="translate(320, 396)">
+            {/* Fulcrum Pedestal Triangle */}
+            <polygon
+              points="-18,32 18,32 0,4"
+              fill="#f59e0b"
+              stroke="#78350f"
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Tilting Balance Beam strictly on inner <g> so outer SVG translate(320, 396) is preserved */}
+            <g
+              data-testid="switchyard-balance-beam"
+              transform={`rotate(${scaleMetrics.beamTiltDeg})`}
+            >
+              <line
+                x1="-134"
+                y1="0"
+                x2="134"
+                y2="0"
+                stroke={isScaleBalanced ? '#059669' : '#d97706'}
+                strokeWidth="6"
+                strokeLinecap="round"
+              />
+              {/* Left & Right Pan Hanger Links */}
+              <line x1="-134" y1="0" x2="-134" y2="20" stroke="#475569" strokeWidth="2.5" />
+              <line x1="134" y1="0" x2="134" y2="20" stroke="#475569" strokeWidth="2.5" />
+              <circle cx="-134" cy="0" r="4.5" fill="#fef3c7" stroke="#78350f" strokeWidth="1.8" />
+              <circle cx="134" cy="0" r="4.5" fill="#fef3c7" stroke="#78350f" strokeWidth="1.8" />
+            </g>
+
+            {/* Left Pan Live Sum Pill (ΣLeft) */}
+            <g data-testid="switchyard-scale-left" transform="translate(-134, -22)">
+              <rect
+                x="-32"
+                y="-11"
+                width="64"
+                height="22"
+                rx="11"
+                fill="#0f172a"
+                stroke={isScaleBalanced ? '#34d399' : '#fbbf24'}
+                strokeWidth="2"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#f8fafc"
+                fontSize="11"
+                fontWeight="900"
+              >
+                {`⚖️ ${scaleMetrics.leftWeightSum}`}
+              </text>
+            </g>
+
+            {/* Right Pan Live Sum Pill (ΣRight) */}
+            <g data-testid="switchyard-scale-right" transform="translate(134, -22)">
+              <rect
+                x="-32"
+                y="-11"
+                width="64"
+                height="22"
+                rx="11"
+                fill="#0f172a"
+                stroke={isScaleBalanced ? '#34d399' : '#fbbf24'}
+                strokeWidth="2"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#f8fafc"
+                fontSize="11"
+                fontWeight="900"
+              >
+                {`⚖️ ${scaleMetrics.rightWeightSum}`}
+              </text>
+            </g>
+
+            {/* Central Fulcrum Live Delta Meter */}
+            <g data-testid="switchyard-scale-delta" transform="translate(0, -14)">
+              <rect
+                x="-30"
+                y="-11"
+                width="60"
+                height="22"
+                rx="11"
+                fill={
+                  isCollision && failureDetail?.code === 'BALANCE_MISMATCH'
+                    ? '#e11d48'
+                    : isScaleBalanced
+                    ? '#10b981'
+                    : '#f59e0b'
+                }
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#ffffff"
+                fontSize="11"
+                fontWeight="900"
+              >
+                {isScaleBalanced ? 'Δ0 ✓' : `Δ${Math.abs(scaleDelta)}`}
+              </text>
+            </g>
+          </g>
+        )}
+
         {/* Bottom Receiving Dock Bays (y = 418..520) */}
         <g data-testid="switchyard-docks">
           {dockSlots.map((slot) => {
@@ -1408,7 +1706,9 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             const isDockFailed =
               isCollision &&
               (failureDetail?.dockId === dock.id ||
-                (state.lastRoutedDock === dock.id && strandedCount === 0));
+                (state.lastRoutedDock === dock.id &&
+                  strandedCount === 0 &&
+                  failureDetail?.code !== 'BALANCE_MISMATCH'));
             const colorMeta = dock.spec.acceptColor
               ? SWITCHYARD_COLOR_META[dock.spec.acceptColor]
               : undefined;
@@ -1418,6 +1718,23 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
 
             const visibleCars = dock.items.slice(-3);
             const overflowCars = Math.max(0, dock.items.length - visibleCars.length);
+
+            const quota = dock.spec.quota;
+            const isDockFull = quota !== undefined && quota > 0 && dock.items.length >= quota;
+            const weightRuleLabel =
+              showWeights && dock.spec.minWeight !== undefined && dock.spec.maxWeight !== undefined
+                ? `⚖️${dock.spec.minWeight}..${dock.spec.maxWeight}`
+                : showWeights && dock.spec.maxWeight !== undefined
+                ? `⚖️≤${dock.spec.maxWeight}`
+                : showWeights && dock.spec.minWeight !== undefined
+                ? `⚖️≥${dock.spec.minWeight}`
+                : undefined;
+            const parityLabel =
+              dock.spec.paritySlot === 'odd'
+                ? '#1 #3 #5'
+                : dock.spec.paritySlot === 'even'
+                ? '#2 #4 #6'
+                : undefined;
 
             return (
               <g key={dock.id} data-testid={`switchyard-dock-${dock.id}`}>
@@ -1432,16 +1749,18 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                   stroke={
                     isDockFailed
                       ? '#e11d48'
+                      : isDockFull
+                      ? '#059669'
                       : isTargeted
                       ? '#0ea5e9'
                       : colorMeta
                       ? colorMeta.stroke
                       : '#64748b'
                   }
-                  strokeWidth={isDockFailed || isTargeted ? '3.5' : '2.5'}
+                  strokeWidth={isDockFailed || isTargeted || isDockFull ? '3.5' : '2.5'}
                 />
 
-                {/* Top Dock Letter Tag + Optional Quota Pill */}
+                {/* Top Dock Letter Tag */}
                 <g transform={`translate(${leftX + 18}, 434)`}>
                   <circle
                     cx="0"
@@ -1463,11 +1782,91 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                   </text>
                 </g>
 
-                {dock.spec.quota !== undefined && (
-                  <g transform={`translate(${leftX + bayWidth - 28}, 434)`}>
-                    <rect x="-18" y="-9" width="36" height="18" rx="9" fill="#0f172a" />
-                    <text x="0" y="4" textAnchor="middle" fill="#f8fafc" fontSize="10" fontWeight="900">
-                      {`${dock.items.length}/${dock.spec.quota}`}
+                {/* Segmented Quota Gauge + Count/Quota Pill */}
+                {quota !== undefined && (
+                  <g
+                    data-testid={`switchyard-dock-quota-${dock.id}`}
+                    transform={`translate(${leftX + bayWidth - 32}, 434)`}
+                  >
+                    <rect
+                      x="-24"
+                      y="-9"
+                      width="48"
+                      height="18"
+                      rx="9"
+                      fill={isDockFull ? '#065f46' : '#0f172a'}
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill="#f8fafc"
+                      fontSize="10"
+                      fontWeight="900"
+                    >
+                      {`${dock.items.length}/${quota}`}
+                    </text>
+                    {quota > 0 && quota <= 6 && (
+                      <g transform="translate(0, 14)">
+                        {Array.from({ length: quota }, (_, pIdx) => {
+                          const segW = Math.min(8, Math.floor(42 / quota) - 2);
+                          const totalW = quota * segW + (quota - 1) * 2;
+                          const sx = -totalW / 2 + pIdx * (segW + 2);
+                          const filled = pIdx < dock.items.length;
+                          return (
+                            <rect
+                              key={pIdx}
+                              x={sx}
+                              y="-3"
+                              width={segW}
+                              height="5"
+                              rx="1.5"
+                              fill={filled ? '#10b981' : '#cbd5e1'}
+                              stroke="#0f172a"
+                              strokeWidth="0.6"
+                            />
+                          );
+                        })}
+                      </g>
+                    )}
+                  </g>
+                )}
+
+                {/* Lowered Green-Striped `✓ FULL` Gate Bar when dock quota is met */}
+                {isDockFull && (
+                  <g
+                    data-testid={`switchyard-dock-full-gate-${dock.id}`}
+                    transform={`translate(${slot.cx}, 418)`}
+                  >
+                    <rect
+                      x={-bayWidth / 2 + 12}
+                      y="-7"
+                      width={bayWidth - 24}
+                      height="14"
+                      rx="7"
+                      fill="url(#sy-full-gate-stripes)"
+                      stroke="#064e3b"
+                      strokeWidth="2"
+                    />
+                    <rect
+                      x="-30"
+                      y="-9"
+                      width="60"
+                      height="18"
+                      rx="9"
+                      fill="#059669"
+                      stroke="#ffffff"
+                      strokeWidth="1.8"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill="#ffffff"
+                      fontSize="10"
+                      fontWeight="900"
+                    >
+                      ✓ FULL
                     </text>
                   </g>
                 )}
@@ -1486,9 +1885,9 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 {/* Large >=44px Floor Stencil Target Badge */}
                 <g transform={`translate(${slot.cx}, 456)`}>
                   <rect
-                    x="-24"
+                    x="-28"
                     y="-22"
-                    width="48"
+                    width="56"
                     height="44"
                     rx="11"
                     fill={colorMeta ? colorMeta.hex : '#e2e8f0'}
@@ -1497,7 +1896,31 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                     strokeWidth="2.2"
                     strokeDasharray={dock.items.length === 0 ? '4 3' : undefined}
                   />
-                  {dock.spec.acceptIcon ? (
+                  {weightRuleLabel ? (
+                    <text
+                      data-testid={`switchyard-dock-weight-rule-${dock.id}`}
+                      x="0"
+                      y="4"
+                      textAnchor="middle"
+                      fill="#0f172a"
+                      fontSize="11"
+                      fontWeight="900"
+                    >
+                      {weightRuleLabel}
+                    </text>
+                  ) : parityLabel ? (
+                    <text
+                      data-testid={`switchyard-dock-parity-${dock.id}`}
+                      x="0"
+                      y="4"
+                      textAnchor="middle"
+                      fill="#0f172a"
+                      fontSize="10"
+                      fontWeight="900"
+                    >
+                      {parityLabel}
+                    </text>
+                  ) : dock.spec.acceptIcon ? (
                     <ItemEmblemGlyph
                       icon={dock.spec.acceptIcon}
                       cx={0}
@@ -1537,6 +1960,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                       cx={startX + idx * spacing}
                       cy={494}
                       scale={0.62}
+                      showWeightPlate={showWeights}
                       animStyle={
                         isNewest
                           ? { animation: `syDockSlotReveal ${animMs}ms linear both` }
@@ -1562,53 +1986,91 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                     transform={`translate(${slot.cx}, 394)`}
                   >
                     <rect
-                      x="-52"
+                      x="-54"
                       y="-20"
-                      width="104"
+                      width="108"
                       height="34"
                       rx="14"
                       fill="#fff1f2"
                       stroke="#e11d48"
                       strokeWidth="2.5"
                     />
-                    {/* Actual vs Expected visual chips */}
-                    <circle
-                      cx="-26"
-                      cy="-3"
-                      r="8"
-                      fill={
-                        failureDetail.actualColor
-                          ? SWITCHYARD_COLOR_META[failureDetail.actualColor].hex
-                          : '#f59e0b'
-                      }
-                      stroke="#1e293b"
-                      strokeWidth="1.5"
-                    />
-                    <text x="0" y="2" textAnchor="middle" fill="#e11d48" fontSize="14" fontWeight="900">
-                      {failureDetail.code === 'DAMAGED_REJECTED' ? '⚡🚫' : '≠'}
-                    </text>
-                    {failureDetail.expectedIcon ? (
-                      <ItemEmblemGlyph
-                        icon={failureDetail.expectedIcon}
-                        cx={26}
-                        cy={-3}
-                        size={14}
-                        stroke="#0f172a"
-                        fill="#ffffff"
-                      />
+                    {failureDetail.code === 'QUOTA_MISMATCH' ? (
+                      <text
+                        x="0"
+                        y="2"
+                        textAnchor="middle"
+                        fill="#be123c"
+                        fontSize="12"
+                        fontWeight="900"
+                      >
+                        {failureDetail.quota !== undefined && failureDetail.actualCount !== undefined
+                          ? `🎯 ${failureDetail.actualCount}/${failureDetail.quota} ✗`
+                          : 'FULL! ✗'}
+                      </text>
+                    ) : failureDetail.code === 'WEIGHT_MISMATCH' ? (
+                      <text
+                        x="0"
+                        y="2"
+                        textAnchor="middle"
+                        fill="#be123c"
+                        fontSize="12"
+                        fontWeight="900"
+                      >
+                        {`⚖️${failureDetail.actualWeight ?? ''} ✗`}
+                      </text>
+                    ) : failureDetail.code === 'PARITY_MISMATCH' ? (
+                      <text
+                        x="0"
+                        y="2"
+                        textAnchor="middle"
+                        fill="#be123c"
+                        fontSize="12"
+                        fontWeight="900"
+                      >
+                        {`#${failureDetail.actualSeqNum ?? ''} ✗`}
+                      </text>
                     ) : (
-                      <circle
-                        cx="26"
-                        cy="-3"
-                        r="8"
-                        fill={
-                          failureDetail.expectedColor
-                            ? SWITCHYARD_COLOR_META[failureDetail.expectedColor].hex
-                            : '#10b981'
-                        }
-                        stroke="#1e293b"
-                        strokeWidth="1.5"
-                      />
+                      <>
+                        <circle
+                          cx="-26"
+                          cy="-3"
+                          r="8"
+                          fill={
+                            failureDetail.actualColor
+                              ? SWITCHYARD_COLOR_META[failureDetail.actualColor].hex
+                              : '#f59e0b'
+                          }
+                          stroke="#1e293b"
+                          strokeWidth="1.5"
+                        />
+                        <text x="0" y="2" textAnchor="middle" fill="#e11d48" fontSize="14" fontWeight="900">
+                          {failureDetail.code === 'DAMAGED_REJECTED' ? '⚡🚫' : '≠'}
+                        </text>
+                        {failureDetail.expectedIcon ? (
+                          <ItemEmblemGlyph
+                            icon={failureDetail.expectedIcon}
+                            cx={26}
+                            cy={-3}
+                            size={14}
+                            stroke="#0f172a"
+                            fill="#ffffff"
+                          />
+                        ) : (
+                          <circle
+                            cx="26"
+                            cy="-3"
+                            r="8"
+                            fill={
+                              failureDetail.expectedColor
+                                ? SWITCHYARD_COLOR_META[failureDetail.expectedColor].hex
+                                : '#10b981'
+                            }
+                            stroke="#1e293b"
+                            strokeWidth="1.5"
+                          />
+                        )}
+                      </>
                     )}
                   </g>
                 )}
@@ -1616,6 +2078,25 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             );
           })}
         </g>
+
+        {/* Zero-Reading Balance Failure Bubble when Twin-Scale ends imbalanced */}
+        {isCollision && failureDetail?.code === 'BALANCE_MISMATCH' && (
+          <g data-testid="switchyard-failure-bubble" transform="translate(320, 344)">
+            <rect
+              x="-58"
+              y="-18"
+              width="116"
+              height="32"
+              rx="15"
+              fill="#fff1f2"
+              stroke="#e11d48"
+              strokeWidth="2.5"
+            />
+            <text x="0" y="3" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+              {`⚖️${failureDetail.leftWeightSum ?? 0} ≠ ⚖️${failureDetail.rightWeightSum ?? 0}`}
+            </text>
+          </g>
+        )}
 
         {/* Zero-Reading Scrap Failure Bubble when Good Car Scrapped */}
         {isCollision && failureDetail?.code === 'GOOD_SCRAPPED' && (
@@ -1653,7 +2134,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               }}
             >
               <g transform={dispatchedItem.damaged ? 'rotate(-5)' : undefined}>
-                <ToyRailCarBody item={dispatchedItem} />
+                <ToyRailCarBody item={dispatchedItem} showWeightPlate={showWeights} />
               </g>
             </g>
           </g>

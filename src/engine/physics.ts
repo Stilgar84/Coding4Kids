@@ -156,10 +156,26 @@ export function isFloorSwitchRequiredForGoal(
   return !hasAnyLinkedGate(sw, lockedGates);
 }
 
+export function countCratesAt(
+  worldItems: readonly WorldItem[] | undefined,
+  x: number,
+  y: number
+): number {
+  if (!worldItems) return 0;
+  let total = 0;
+  for (const it of worldItems) {
+    if (it.type === 'crate' && it.x === x && it.y === y) {
+      total += it.count ?? 1;
+    }
+  }
+  return total;
+}
+
 /**
  * Recomputes FloorSwitch.active states from crates currently on the floor
- * OR the robot currently standing on top of a switch tile,
+ * OR the robot currently standing on top of a switch tile (for single-count switches),
  * and updates any switch-linked LockedGate.unlocked states accordingly.
+ * When `sw.requiredCount > 1`, exact crate count (`countCratesAt === sw.requiredCount`) is required.
  */
 export function syncWorldSwitchesAndGates(
   floorSwitches?: readonly FloorSwitch[],
@@ -172,6 +188,12 @@ export function syncWorldSwitchesAndGates(
 } {
   const nextSwitches = floorSwitches
     ? floorSwitches.map((sw) => {
+        if (typeof sw.requiredCount === 'number' && sw.requiredCount > 1) {
+          return {
+            ...sw,
+            active: countCratesAt(worldItems, sw.x, sw.y) === sw.requiredCount,
+          };
+        }
         const hasCrate = Boolean(
           worldItems?.some((it) => it.type === 'crate' && it.x === sw.x && it.y === sw.y)
         );
@@ -938,6 +960,97 @@ export function executeRobotAction(
 
     if (currentCarried.type === 'crate') {
       const itemsList = currentItems ?? [];
+      const switchHere = currentSwitches?.find((sw) => sw.x === robot.x && sw.y === robot.y);
+      const reqCountHere =
+        typeof switchHere?.requiredCount === 'number' && switchHere.requiredCount > 1
+          ? switchHere.requiredCount
+          : undefined;
+
+      if (reqCountHere !== undefined) {
+        const hasNonCrateItem = itemsList.some(
+          (it) => it.x === robot.x && it.y === robot.y && it.type !== 'crate'
+        );
+        const existingCrateTotal = countCratesAt(itemsList, robot.x, robot.y);
+        if (hasNonCrateItem || existingCrateTotal + 1 > reqCountHere) {
+          return {
+            valid: false,
+            newX: robot.x,
+            newY: robot.y,
+            newDir: currentDir,
+            flags,
+            trace,
+            isSuccess: false,
+            isCollision: hasNonCrateItem ? isStrict : true,
+            ...baseInteractiveFields,
+            interactionFeedback: {
+              kind: 'occupied',
+              message: hasNonCrateItem
+                ? 'Current tile already holds an item.'
+                : 'Switch crate limit exceeded.',
+              seq: nextFeedbackSeq,
+            },
+          };
+        }
+
+        const isStack = currentCarriedCount > 1;
+        const nextCarriedCount = isStack ? currentCarriedCount - 1 : 0;
+        const nextCarried = isStack ? { ...currentCarried, count: nextCarriedCount } : null;
+        const existingCrateIdx = itemsList.findIndex(
+          (it) => it.type === 'crate' && it.x === robot.x && it.y === robot.y
+        );
+        const updatedItems =
+          existingCrateIdx >= 0
+            ? itemsList.map((it, idx) =>
+                idx === existingCrateIdx ? { ...it, count: (it.count ?? 1) + 1 } : it
+              )
+            : [
+                ...itemsList,
+                {
+                  ...currentCarried,
+                  x: robot.x,
+                  y: robot.y,
+                  count: 1,
+                },
+              ];
+        const syncedAfterDrop = syncWorldSwitchesAndGates(
+          currentSwitches,
+          currentGates,
+          updatedItems,
+          { x: robot.x, y: robot.y }
+        );
+        const goalEval = evaluateGoalCollection(
+          robot.x,
+          robot.y,
+          flags,
+          syncedAfterDrop.floorSwitches,
+          syncedAfterDrop.lockedGates,
+          {
+            ...currentGoalRules,
+            worldItems: updatedItems,
+            carriedItem: nextCarried,
+            carriedCount: nextCarriedCount,
+          }
+        );
+
+        return {
+          valid: true,
+          newX: robot.x,
+          newY: robot.y,
+          newDir: currentDir,
+          flags: goalEval.updatedFlags,
+          trace,
+          isSuccess: goalEval.isSuccess,
+          isCollision: false,
+          bridgedWaterCells: currentBridged,
+          lockedGates: syncedAfterDrop.lockedGates,
+          floorSwitches: syncedAfterDrop.floorSwitches,
+          worldItems: updatedItems,
+          carriedItem: nextCarried,
+          carriedCount: nextCarriedCount,
+          interactionFeedback: null,
+        };
+      }
+
       const alreadyOccupied = itemsList.some((it) => it.x === robot.x && it.y === robot.y);
       if (alreadyOccupied) {
         return {

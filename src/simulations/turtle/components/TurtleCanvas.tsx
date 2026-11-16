@@ -14,11 +14,67 @@ import {
   getTurtleGridStep,
   getVisibleTurtleWorldBounds,
 } from '../physics';
-import { SimulationStatus } from '../../../types';
-import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
+import { SimulationStatus, WorkspaceState } from '../../../types';
+import {
+  isLowQualityActive,
+  isTerminalErrorStatus,
+  useAppStore,
+  useAppStoreSelector,
+} from '../../../store/useAppStore';
 import { resolveActiveCurriculumActivity } from '../../../utils/curriculumStagePolicy';
 import { TurtleToolbarTools } from './TurtleToolbarTools';
-import { Infinity as InfinityIcon } from 'lucide-react';
+import { Infinity as InfinityIcon, Sparkles } from 'lucide-react';
+
+export function screenToTurtleWorld(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  panX: number,
+  panY: number,
+  zoom: number
+): { x: number; y: number } {
+  const safeZoom = Math.max(MIN_TURTLE_ZOOM, zoom);
+  const centerX = rect.width / 2 + panX;
+  const centerY = rect.height / 2 + panY;
+  const localX = clientX - rect.left;
+  const localY = clientY - rect.top;
+  return {
+    x: Math.round((localX - centerX) / safeZoom),
+    y: Math.round((localY - centerY) / safeZoom),
+  };
+}
+
+function valueContainsTurtlePointerRef(val: unknown): boolean {
+  if (val === '$pointerX' || val === '$pointerY' || val === '$pointerDown') return true;
+  if (!val || typeof val !== 'object') return false;
+  for (const child of Object.values(val as Record<string, unknown>)) {
+    if (valueContainsTurtlePointerRef(child)) return true;
+  }
+  return false;
+}
+
+export function workspaceUsesTurtlePointerOrTap(workspace?: WorkspaceState | null): boolean {
+  if (!workspace) return false;
+  if ((workspace.ON_TAP?.length ?? 0) > 0) return true;
+  for (const blocks of Object.values(workspace)) {
+    if (!Array.isArray(blocks)) continue;
+    for (const b of blocks) {
+      if (valueContainsTurtlePointerRef(b.repeatCount) || valueContainsTurtlePointerRef(b.params)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+const TURTLE_TERMINAL_GLYPHS: Partial<Record<SimulationStatus, string>> = {
+  COLLISION: '💥',
+  TYPE_ERROR: '🎨≠#',
+  MATH_ERROR: '🧮÷0',
+  STACK_OVERFLOW: '📚💥',
+  STEP_LIMIT: '⏳🔁',
+  DEADLOCK: '🔒💥',
+};
 
 interface TurtleCanvasProps {
   state: TurtleState;
@@ -401,36 +457,64 @@ const TurtleInkLayer = React.memo<{
   );
 });
 
-export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) => {
+export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({
+  state: propState,
+  runtimeStatus: propRuntimeStatus,
+}) => {
   const {
     turtleState,
     updateTurtleViewport,
     speed,
     isLowQuality,
+    isPlaying,
     isLoopPlayback,
     toggleLoopPlayback,
+    setLoopPlayback,
     toggleTurtleVisible,
     appMode,
     activeActivityId,
     activeActivityVersion,
+    workspace,
+    pointerState,
+    setPointerState,
+    enqueueInteractiveEvent,
+    hasMultiVariant,
   } = useAppStoreSelector((s) => ({
     turtleState: s.turtleState,
     updateTurtleViewport: s.updateTurtleViewport,
     speed: s.speed,
     isLowQuality: isLowQualityActive(s),
+    isPlaying: s.isPlaying,
     isLoopPlayback: s.isLoopPlayback,
     toggleLoopPlayback: s.toggleLoopPlayback,
+    setLoopPlayback: s.setLoopPlayback,
     toggleTurtleVisible: s.toggleTurtleVisible,
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
+    workspace: s.workspace,
+    pointerState: s.pointerState,
+    setPointerState: s.setPointerState,
+    enqueueInteractiveEvent: s.enqueueInteractiveEvent,
+    hasMultiVariant: s.variantRuns.length > 1,
   }));
   const state = propState || turtleState;
+  const effectiveStatus: SimulationStatus = isTerminalErrorStatus(state.status)
+    ? state.status
+    : isTerminalErrorStatus(propRuntimeStatus)
+    ? (propRuntimeStatus as SimulationStatus)
+    : state.status;
   const activeActivity = resolveActiveCurriculumActivity(
     appMode,
     activeActivityId,
     activeActivityVersion
   );
+  const isCurriculumLiveMode = activeActivity?.turtle?.mode === 'live';
+  const isLiveModeActive = state.mode === 'live' || isCurriculumLiveMode;
+  const showLiveToggle = appMode === 'sandbox' || isCurriculumLiveMode;
+  const workspaceUsesPointer = workspaceUsesTurtlePointerOrTap(workspace);
+  const isInteractivePointerActive = isLiveModeActive || workspaceUsesPointer;
+  const shouldCaptureLivePointer = isPlaying && isInteractivePointerActive;
   const hasInsideCanvasSensor = Boolean(
     activeActivity?.palette?.allowedSensors?.includes('insideCanvas')
   );
@@ -458,6 +542,61 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
     teleportScale = Math.max(0.05, phase);
     teleportOpacity = Math.max(0, phase);
   }
+
+  const [lingeringTeleportFx, setLingeringTeleportFx] = useState<{
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+  } | null>(null);
+  const prevTeleportAnimRef = useRef<TurtleActiveAnimation | null>(null);
+  const teleportTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (teleportTimerRef.current !== null) {
+        window.clearTimeout(teleportTimerRef.current);
+        teleportTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeAnim?.type === 'TELEPORT') {
+      prevTeleportAnimRef.current = activeAnim;
+      return;
+    }
+    if (prevTeleportAnimRef.current) {
+      const completed = prevTeleportAnimRef.current;
+      prevTeleportAnimRef.current = null;
+      if (!isLowQuality) {
+        setLingeringTeleportFx({
+          fromX: completed.fromPose.x,
+          fromY: completed.fromPose.y,
+          toX: completed.toPose.x,
+          toY: completed.toPose.y,
+        });
+        if (teleportTimerRef.current !== null) {
+          window.clearTimeout(teleportTimerRef.current);
+        }
+        teleportTimerRef.current = window.setTimeout(() => {
+          teleportTimerRef.current = null;
+          setLingeringTeleportFx(null);
+        }, 280);
+      }
+    }
+  }, [activeAnim, isLowQuality]);
+
+  const [tapRipple, setTapRipple] = useState<{ id: number; x: number; y: number } | null>(null);
+  const tapRippleTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (tapRippleTimerRef.current !== null) {
+        window.clearTimeout(tapRippleTimerRef.current);
+        tapRippleTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const [fadingAirTrails, setFadingAirTrails] = useState<FadingAirTrail[]>([]);
   const airTrailIdRef = useRef(0);
@@ -512,6 +651,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 600, height: 600 });
   const [isPanning, setIsPanning] = useState(false);
+  const [isTrackingLivePointer, setIsTrackingLivePointer] = useState(false);
+  const isTrackingLivePointerRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({
     x: 0,
     y: 0,
@@ -687,6 +828,11 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        if (isTrackingLivePointerRef.current) {
+          isTrackingLivePointerRef.current = false;
+          setIsTrackingLivePointer(false);
+          setPointerState({ isDown: false });
+        }
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -749,10 +895,77 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
       el.removeEventListener('touchend', handleTouchEnd);
       el.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [updateTurtleViewport]);
+  }, [updateTurtleViewport, setPointerState]);
+
+  const computeEventWorldCoords = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      width: containerSize.width || 600,
+      height: containerSize.height || 600,
+    };
+    return screenToTurtleWorld(
+      clientX,
+      clientY,
+      rect,
+      effectivePanX,
+      effectivePanY,
+      effectiveZoom
+    );
+  };
+
+  const handleToggleLiveMode = () => {
+    if (appMode !== 'sandbox') return;
+    const current = useAppStore.getState().turtleState;
+    const nextLive = current.mode !== 'live';
+    useAppStore.setState({
+      turtleState: {
+        ...current,
+        mode: nextLive ? 'live' : 'static',
+        clearBetweenFrames: current.clearBetweenFrames ?? true,
+        instantMode: nextLive,
+      },
+    });
+    setLoopPlayback(nextLive);
+  };
+
+  const handleToggleClearBetweenFrames = () => {
+    if (appMode !== 'sandbox') return;
+    const current = useAppStore.getState().turtleState;
+    const nextClear = current.clearBetweenFrames === false;
+    useAppStore.setState({
+      turtleState: {
+        ...current,
+        clearBetweenFrames: nextClear,
+      },
+    });
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    if (pinchStartRef.current) return;
+
+    if (shouldCaptureLivePointer) {
+      const world = computeEventWorldCoords(e.clientX, e.clientY);
+      isTrackingLivePointerRef.current = true;
+      setIsTrackingLivePointer(true);
+      setPointerState({ x: world.x, y: world.y, isDown: true });
+      enqueueInteractiveEvent('ON_TAP');
+      if (!isLowQuality) {
+        const rippleId = Date.now();
+        setTapRipple({ id: rippleId, x: world.x, y: world.y });
+        if (tapRippleTimerRef.current !== null) {
+          window.clearTimeout(tapRippleTimerRef.current);
+        }
+        tapRippleTimerRef.current = window.setTimeout(() => {
+          tapRippleTimerRef.current = null;
+          setTapRipple((curr) => (curr?.id === rippleId ? null : curr));
+        }, 320);
+      }
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      return;
+    }
+
     setIsPanning(true);
     dragStartRef.current = {
       x: e.clientX,
@@ -764,7 +977,22 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isPanning) return;
+    if (pinchStartRef.current) return;
+
+    if (isTrackingLivePointerRef.current) {
+      const world = computeEventWorldCoords(e.clientX, e.clientY);
+      setPointerState({ x: world.x, y: world.y, isDown: true });
+      return;
+    }
+
+    if (!isPanning) {
+      if (isInteractivePointerActive) {
+        const world = computeEventWorldCoords(e.clientX, e.clientY);
+        setPointerState({ x: world.x, y: world.y, isDown: false });
+      }
+      return;
+    }
+
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     if (dx === 0 && dy === 0) return;
@@ -779,6 +1007,14 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    if (isTrackingLivePointerRef.current) {
+      const world = computeEventWorldCoords(e.clientX, e.clientY);
+      isTrackingLivePointerRef.current = false;
+      setIsTrackingLivePointer(false);
+      setPointerState({ x: world.x, y: world.y, isDown: false });
+      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+      return;
+    }
     if (isPanning) {
       setIsPanning(false);
       (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
@@ -823,9 +1059,23 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
       onPointerCancel={handlePointerUp}
       onWheel={handleWheel}
       className={`relative w-full h-full overflow-hidden bg-white select-none touch-none ${
-        isPanning ? 'cursor-grabbing' : 'cursor-grab'
+        shouldCaptureLivePointer || isTrackingLivePointer
+          ? 'cursor-crosshair'
+          : isPanning
+          ? 'cursor-grabbing'
+          : 'cursor-grab'
       }`}
     >
+      {/* Top-Center Zero-Reading Terminal Status Pill */}
+      {TURTLE_TERMINAL_GLYPHS[effectiveStatus] && (
+        <div
+          data-testid="turtle-terminal-status"
+          data-terminal-status={effectiveStatus}
+          className={`absolute ${hasMultiVariant ? 'top-14' : 'top-3'} left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-rose-600/95 text-white rounded-full font-black shadow-lg pointer-events-none`}
+        >
+          <span className="text-base">{TURTLE_TERMINAL_GLYPHS[effectiveStatus]}</span>
+        </div>
+      )}
       {/* Background Coordinate Grid & SVG Canvas */}
       <svg
         data-testid="turtle-canvas-svg"
@@ -999,6 +1249,106 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
             ) : null
           )}
 
+          {/* TELEPORT Departure Flash + Landing Target Crosshair Ring */}
+          {(activeAnim?.type === 'TELEPORT' || lingeringTeleportFx) && (() => {
+            const fromX =
+              activeAnim?.type === 'TELEPORT'
+                ? activeAnim.fromPose.x
+                : lingeringTeleportFx!.fromX;
+            const fromY =
+              activeAnim?.type === 'TELEPORT'
+                ? activeAnim.fromPose.y
+                : lingeringTeleportFx!.fromY;
+            const toX =
+              activeAnim?.type === 'TELEPORT'
+                ? activeAnim.toPose.x
+                : lingeringTeleportFx!.toX;
+            const toY =
+              activeAnim?.type === 'TELEPORT'
+                ? activeAnim.toPose.y
+                : lingeringTeleportFx!.toY;
+            const p =
+              activeAnim?.type === 'TELEPORT'
+                ? Math.max(0, Math.min(1, activeAnim.progress))
+                : 1;
+            const flashOpacity = activeAnim?.type === 'TELEPORT' ? Math.max(0.25, 1 - p * 0.8) : 0.35;
+            const ringScale = activeAnim?.type === 'TELEPORT' ? 0.65 + p * 0.55 : 1.25;
+
+            return (
+              <g pointerEvents="none">
+                <g
+                  data-testid="turtle-teleport-departure-flash"
+                  transform={`translate(${fromX}, ${fromY}) scale(${1 / safeZoom})`}
+                  opacity={flashOpacity}
+                >
+                  <circle r={18} fill="#38bdf8" fillOpacity={0.22} stroke="#0ea5e9" strokeWidth={2} />
+                  {[0, 45, 90, 135].map((deg) => (
+                    <line
+                      key={deg}
+                      x1={-24}
+                      y1={0}
+                      x2={24}
+                      y2={0}
+                      stroke="#0284c7"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      transform={`rotate(${deg})`}
+                    />
+                  ))}
+                </g>
+
+                <g
+                  data-testid="turtle-teleport-landing-ring"
+                  transform={`translate(${toX}, ${toY}) scale(${ringScale / safeZoom})`}
+                  opacity={activeAnim?.type === 'TELEPORT' ? Math.max(0.4, p) : 0.45}
+                >
+                  <circle
+                    r={22}
+                    fill="none"
+                    stroke="#0ea5e9"
+                    strokeWidth={2.2}
+                    strokeDasharray="5 3"
+                  />
+                  <circle r={12} fill="#38bdf8" fillOpacity={0.18} stroke="#0284c7" strokeWidth={1.6} />
+                  <line x1={-28} y1={0} x2={-17} y2={0} stroke="#0284c7" strokeWidth={2} strokeLinecap="round" />
+                  <line x1={17} y1={0} x2={28} y2={0} stroke="#0284c7" strokeWidth={2} strokeLinecap="round" />
+                  <line x1={0} y1={-28} x2={0} y2={-17} stroke="#0284c7" strokeWidth={2} strokeLinecap="round" />
+                  <line x1={0} y1={17} x2={0} y2={28} stroke="#0284c7" strokeWidth={2} strokeLinecap="round" />
+                </g>
+              </g>
+            );
+          })()}
+
+          {/* Interactive Live Mode Pointer Reticle & Tap Ripple */}
+          {isInteractivePointerActive && (
+            <g
+              data-testid="turtle-pointer-reticle"
+              transform={`translate(${pointerState.x}, ${pointerState.y}) scale(${1 / safeZoom})`}
+              pointerEvents="none"
+            >
+              <circle
+                r={pointerState.isDown ? 13 : 10}
+                fill={pointerState.isDown ? '#f59e0b' : 'none'}
+                fillOpacity={pointerState.isDown ? 0.2 : 0}
+                stroke={pointerState.isDown ? '#f59e0b' : '#64748b'}
+                strokeWidth={1.8}
+                strokeDasharray={pointerState.isDown ? undefined : '3 2'}
+              />
+              <line x1={-6} y1={0} x2={6} y2={0} stroke={pointerState.isDown ? '#d97706' : '#64748b'} strokeWidth={1.4} />
+              <line x1={0} y1={-6} x2={0} y2={6} stroke={pointerState.isDown ? '#d97706' : '#64748b'} strokeWidth={1.4} />
+            </g>
+          )}
+
+          {tapRipple && (
+            <g
+              data-testid="turtle-tap-ripple"
+              transform={`translate(${tapRipple.x}, ${tapRipple.y}) scale(${1 / safeZoom})`}
+              pointerEvents="none"
+            >
+              <circle r={22} fill="none" stroke="#f59e0b" strokeWidth={2.4} opacity={0.75} />
+            </g>
+          )}
+
           {/* Robot Turtle Avatar (zoom-independent block-sized ~28x32px footprint) */}
           {state.showTurtle !== false && (
             <g
@@ -1144,6 +1494,56 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         >
           <InfinityIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${isLoopPlayback ? 'stroke-[2.5]' : 'stroke-[2.25]'}`} />
         </button>
+
+        {showLiveToggle && (
+          <button
+            type="button"
+            data-testid="tool-turtle-live"
+            onClick={handleToggleLiveMode}
+            disabled={appMode !== 'sandbox'}
+            aria-pressed={isLiveModeActive}
+            title={isLiveModeActive ? 'Live Frame Loop: On (60fps)' : 'Live Frame Loop: Off'}
+            aria-label={isLiveModeActive ? 'Live Frame Loop: On' : 'Live Frame Loop: Off'}
+            className={`relative flex items-center justify-center gap-0.5 min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 px-1.5 sm:px-2 rounded-lg border transition-all active:scale-95 ${
+              appMode === 'sandbox' ? 'cursor-pointer' : 'cursor-default'
+            } ${
+              isLiveModeActive
+                ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-200 text-slate-950 shadow-md font-black'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
+            }`}
+          >
+            <InfinityIcon className="w-4 h-4 sm:w-4 sm:h-4 stroke-[2.6]" />
+            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
+          </button>
+        )}
+
+        {isLiveModeActive && appMode === 'sandbox' && (
+          <button
+            type="button"
+            data-testid="tool-turtle-live-clear"
+            onClick={handleToggleClearBetweenFrames}
+            aria-pressed={state.clearBetweenFrames !== false}
+            title={
+              state.clearBetweenFrames !== false
+                ? 'Clear Each Frame: On'
+                : 'Keep Trails Across Frames'
+            }
+            aria-label={
+              state.clearBetweenFrames !== false
+                ? 'Clear Each Frame: On'
+                : 'Clear Each Frame: Off'
+            }
+            className={`flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+              state.clearBetweenFrames !== false
+                ? 'bg-sky-500 hover:bg-sky-400 border-sky-200 text-slate-950 shadow-md'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-400 hover:text-white opacity-75'
+            }`}
+          >
+            <span className="text-sm sm:text-base leading-none" aria-hidden="true">
+              🧹
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Floating Info Pill: Compact Coordinate, Heading & Pen Indicator */}
@@ -1161,6 +1561,15 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({ state: propState }) 
         <span className="hidden sm:inline">
           ∠ <b className="text-sky-400">{Math.round(robotPose.heading)}°</b>
         </span>
+        {isInteractivePointerActive && (
+          <>
+            <span className="text-slate-500">|</span>
+            <span data-testid="turtle-pointer-readout">
+              👆 <b className="text-emerald-400">{Math.round(pointerState.x)}</b>,{' '}
+              <b className="text-emerald-400">{Math.round(pointerState.y)}</b>
+            </span>
+          </>
+        )}
         <span
           className={`w-3 h-3 rounded-full border border-white/70 inline-block ${
             state.penDown ? 'shadow-sm' : 'opacity-40'

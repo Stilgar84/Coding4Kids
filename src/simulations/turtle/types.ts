@@ -76,10 +76,12 @@ export function subscribeTurtleCameraPinned(listener: TurtleCameraPinListener): 
   };
 }
 
+export type TurtleExecutionMode = 'static' | 'live' | 'flipbook';
+
 export interface TurtleState {
   robot: TurtlePose;
   penDown: boolean;
-  penColor: string; // '#0f172a' | '#ef4444' | '#3b82f6' | '#22c55e'
+  penColor: string; // '#0f172a' | '#ef4444' | '#3b82f6' | '#22c55e' | palette hex
   penWidth: number;
   paths: TurtlePathItem[];
   status: SimulationStatus;
@@ -94,4 +96,12 @@ export interface TurtleState {
   activeAnimation?: TurtleActiveAnimation | null;
   instantMode: boolean;
   showTurtle: boolean;
+  /** Optional Phase 3 / v2 execution mode ('static' default, 'live' 60fps loop, 'flipbook') */
+  mode?: TurtleExecutionMode;
+  /** Whether Live / Flipbook mode clears strokes between frames (default true) */
+  clearBetweenFrames?: boolean;
+  /** Optional total frame count for flipbook mode */
+  totalFrames?: number;
+  /** Optional target frames-per-second override */
+  fps?: number;
 }

@@ -1,12 +1,45 @@
-import React, { useSyncExternalStore } from 'react';
+import React, { useRef, useSyncExternalStore } from 'react';
 import { Bell, Eraser, Gauge, Grid, Hourglass, Infinity as InfinityIcon, Music, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { Direction, ScopeType, SimulationStatus } from '../../../types';
-import { isLowQualityActive, useAppStoreSelector } from '../../../store/useAppStore';
+import {
+  isLowQualityActive,
+  isTerminalErrorStatus,
+  useAppStoreSelector,
+} from '../../../store/useAppStore';
 import { SimulationTopLeftHud } from '../../../components/SimulationTopLeftHud';
 import { resolveActiveCurriculumActivity } from '../../../utils/curriculumStagePolicy';
 import { BEAT_GRID_SIZE, BEAT_LED_PALETTE, BeatCueKind, BeatState } from '../types';
 import { isBeatLedOffHex } from '../presets';
 import { beatSynth } from '../beatSynth';
+
+/**
+ * Quantizes a pointer event's client coordinates over the Beat 8×8 LED matrix bounding box
+ * into clamped 0-indexed `{ x: 0..width-1, y: 0..height-1 }` pad coordinates (`0..7` on `8×8`).
+ */
+export function quantizeBeatPointerCell(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  width: number = BEAT_GRID_SIZE,
+  height: number = BEAT_GRID_SIZE
+): { x: number; y: number } {
+  const safeW = Math.max(1, rect.width);
+  const safeH = Math.max(1, rect.height);
+  const relX = (clientX - rect.left) / safeW;
+  const relY = (clientY - rect.top) / safeH;
+  const x = Math.max(0, Math.min(width - 1, Math.floor(relX * width)));
+  const y = Math.max(0, Math.min(height - 1, Math.floor(relY * height)));
+  return { x, y };
+}
+
+const BEAT_TERMINAL_GLYPHS: Partial<Record<SimulationStatus, string>> = {
+  COLLISION: '💥',
+  TYPE_ERROR: '🎨≠#',
+  MATH_ERROR: '🧮÷0',
+  STACK_OVERFLOW: '📚💥',
+  STEP_LIMIT: '⏳🔁',
+  DEADLOCK: '🔒💥',
+};
 
 export interface BeatCanvasProps {
   state: BeatState;
@@ -271,6 +304,7 @@ const BeatLedCell = React.memo<BeatLedCellProps>(
 
 export const BeatCanvas: React.FC<BeatCanvasProps> = ({
   state: propState,
+  runtimeStatus: propRuntimeStatus,
   runtimeVariables: propRuntimeVariables,
 }) => {
   const {
@@ -284,7 +318,11 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
     appMode,
     activeActivityId,
     activeActivityVersion,
+    storeRuntimeStatus,
     storeRuntimeVariables,
+    setPointerState,
+    enqueueInteractiveEvent,
+    hasMultiVariant,
   } = useAppStoreSelector((s) => ({
     storeBeatState: s.beatState,
     setBeatMuted: s.setBeatMuted,
@@ -296,10 +334,73 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
+    storeRuntimeStatus: s.runtime?.status,
     storeRuntimeVariables: s.runtime?.variables,
+    setPointerState: s.setPointerState,
+    enqueueInteractiveEvent: s.enqueueInteractiveEvent,
+    hasMultiVariant: s.variantRuns.length > 1,
   }));
 
   const state = propState || storeBeatState;
+  const candidateRuntimeStatus = propRuntimeStatus ?? storeRuntimeStatus;
+  const effectiveStatus: SimulationStatus = isTerminalErrorStatus(state.status)
+    ? state.status
+    : isTerminalErrorStatus(candidateRuntimeStatus)
+    ? (candidateRuntimeStatus as SimulationStatus)
+    : state.status;
+  const gridRef = useRef<HTMLDivElement>(null);
+  const pointerDownRef = useRef(false);
+  const matrixWidth =
+    typeof state.width === 'number' && state.width > 0 ? Math.round(state.width) : BEAT_GRID_SIZE;
+  const matrixHeight =
+    typeof state.height === 'number' && state.height > 0 ? Math.round(state.height) : BEAT_GRID_SIZE;
+
+  const resolveGridPointerCell = (e: React.PointerEvent<HTMLDivElement>) => {
+    const targetEl = (e.target as HTMLElement | null)?.closest?.('[data-coord]') as HTMLElement | null;
+    if (targetEl) {
+      const coordAttr = targetEl.getAttribute('data-coord');
+      if (coordAttr) {
+        const parts = coordAttr.split(',');
+        const col1 = Number(parts[0]);
+        const row1 = Number(parts[1]);
+        if (Number.isFinite(col1) && Number.isFinite(row1)) {
+          return {
+            x: Math.max(0, Math.min(matrixWidth - 1, Math.trunc(col1) - 1)),
+            y: Math.max(0, Math.min(matrixHeight - 1, Math.trunc(row1) - 1)),
+          };
+        }
+      }
+    }
+    const rect = gridRef.current?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      width: 320,
+      height: 320,
+    };
+    return quantizeBeatPointerCell(e.clientX, e.clientY, rect, matrixWidth, matrixHeight);
+  };
+
+  const handleGridPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    unlockBeatAudio();
+    const cell = resolveGridPointerCell(e);
+    pointerDownRef.current = true;
+    setPointerState({ x: cell.x, y: cell.y, isDown: true });
+    enqueueInteractiveEvent('ON_TAP');
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const handleGridPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const cell = resolveGridPointerCell(e);
+    setPointerState({ x: cell.x, y: cell.y, isDown: pointerDownRef.current });
+  };
+
+  const handleGridPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const cell = resolveGridPointerCell(e);
+    pointerDownRef.current = false;
+    setPointerState({ x: cell.x, y: cell.y, isDown: false });
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  };
   const isMuted = Boolean(state.isMuted);
   const activeColor = state.activeColor || '#06b6d4';
   const isActiveColorOff = isBeatLedOffHex(activeColor);
@@ -486,8 +587,18 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
       >
         <SimulationTopLeftHud
           variables={resolvedVariables ?? {}}
+          status={effectiveStatus}
           positionClassName="top-3 left-3"
         />
+        {BEAT_TERMINAL_GLYPHS[effectiveStatus] && (
+          <div
+            data-testid="beat-terminal-status"
+            data-terminal-status={effectiveStatus}
+            className={`absolute ${hasMultiVariant ? 'top-12' : 'top-3'} left-1/2 -translate-x-1/2 z-20 px-5 py-1.5 bg-rose-600/95 text-white rounded-full font-black shadow-lg pointer-events-none`}
+          >
+            <span className="text-base">{BEAT_TERMINAL_GLYPHS[effectiveStatus]}</span>
+          </div>
+        )}
         <div
           data-testid="beat-ring"
           data-beat-index={state.beatIndex}
@@ -519,11 +630,16 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
 
           {/* 8x8 Rounded Silicone LED Pad Matrix */}
           <div
+            ref={gridRef}
             data-testid="beat-led-grid"
             data-edge-bonk={state.edgeBonk ? 'true' : 'false'}
             role="img"
             aria-label="8 by 8 RGB LED Matrix"
-            className={`w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border ${
+            onPointerDown={handleGridPointerDown}
+            onPointerMove={handleGridPointerMove}
+            onPointerUp={handleGridPointerUp}
+            onPointerCancel={handleGridPointerUp}
+            className={`w-full h-full grid grid-cols-8 grid-rows-8 gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-2xl bg-slate-950 border touch-none ${
               state.edgeBonk ? 'border-amber-400/80' : 'border-slate-800'
             } ${isLowQuality ? '' : 'shadow-inner'}`}
           >

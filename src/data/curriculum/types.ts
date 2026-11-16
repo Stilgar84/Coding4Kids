@@ -335,10 +335,11 @@ export interface CurriculumSwitchyardDefinition {
 export interface CurriculumVariant {
   index: number;
   label?: string;
-  kind: 'grid' | 'depot' | 'switchyard';
+  kind: 'grid' | 'depot' | 'switchyard' | 'beat';
   grid?: CurriculumGridDefinition;
   depot?: CurriculumDepotDefinition;
   switchyard?: CurriculumSwitchyardDefinition;
+  beat?: CurriculumBeatDefinition;
 }
 
 export interface SceneInputConfig {
@@ -426,6 +427,19 @@ export interface CurriculumBeatRules {
   patternLength?: number;
 }
 
+export interface CurriculumBeatDefinition {
+  id?: string;
+  label?: string;
+  startX?: number;
+  startY?: number;
+  startDir?: Direction;
+  cursorVisible?: boolean;
+  expectedRow?: {
+    row: number;
+    colors: readonly (string | null)[];
+  };
+}
+
 export interface ExplanationDemoTab {
   id: string;
   label: string;
@@ -439,6 +453,7 @@ export interface ExplanationDemoTab {
   switchyard?: CurriculumSwitchyardDefinition;
   switchyardState?: CurriculumSwitchyardDefinition;
   turtle?: CurriculumTurtleDefinition;
+  beat?: CurriculumBeatDefinition;
   beatRules?: CurriculumBeatRules;
   coPilotCard?: string;
   initialVars?: Record<string, number | TypedValue | { type: string; value: any }>;
@@ -460,6 +475,10 @@ export interface ActivityVersionPayload {
   switchyard?: CurriculumSwitchyardDefinition;
   /** Ordered multi-stream Switchyard variants evaluated simultaneously */
   switchyardVariants?: CurriculumSwitchyardDefinition[];
+  /** Optional Beat cursor & target LED row definition when simId === 'beat' */
+  beat?: CurriculumBeatDefinition;
+  /** Ordered multi-row Beat variants evaluated simultaneously (e.g., cmp.5a) */
+  beatVariants?: CurriculumBeatDefinition[];
   /** Optional Turtle canvas configuration (e.g., showCanvasBounds for insideCanvas) */
   turtle?: CurriculumTurtleDefinition;
   /** Optional Beat playback/reset rules for reactive scenes */
@@ -612,6 +631,27 @@ export function getActivityVariants(
     }
     return [];
   }
+  if (simId === 'beat') {
+    if (payload.beatVariants && payload.beatVariants.length > 0) {
+      return payload.beatVariants.map((beat, index) => ({
+        index,
+        label: beat.label,
+        kind: 'beat',
+        beat,
+      }));
+    }
+    if (payload.beat) {
+      return [
+        {
+          index: 0,
+          label: payload.beat.label,
+          kind: 'beat',
+          beat: payload.beat,
+        },
+      ];
+    }
+    return [];
+  }
   return [];
 }
 
@@ -728,6 +768,7 @@ export function createCurriculumGridState(
 }
 
 export function isValidatedPuzzleActivity(activity: CurriculumActivity): boolean {
+  if (activity.simId === 'turtle') return false;
   if (activity.format === 'puzzle' || activity.format === 'challenge') return true;
   if (activity.format === 'capstone' && activity.capstoneType === 'puzzle') return true;
   return Boolean(activity.referenceSolution);

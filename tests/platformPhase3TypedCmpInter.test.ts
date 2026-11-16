@@ -801,9 +801,9 @@ describe('Wave 3A: Phase 3 Platform (TypedValue, 0x30 CMP, Sensors, Interactive 
       expect(subHtml).toContain('data-testid="subpalette-assign-b-sensor-$randD6"');
     });
 
-    it('enforces cmp ==> inter Side-Track DAG readiness and preserves Phase 2 6-module / 89-activity catalog + legacy aliases', () => {
-      expect(CURRICULUM_MODULES).toHaveLength(6);
-      expect(CURRICULUM_ACTIVITIES).toHaveLength(89);
+    it('enforces cmp ==> inter Side-Track DAG readiness and registers Phase 3 8-module / 123-activity catalog + legacy aliases', () => {
+      expect(CURRICULUM_MODULES).toHaveLength(8);
+      expect(CURRICULUM_ACTIVITIES).toHaveLength(123);
 
       expect(resolveModuleIdAlias('module-6')).toBe('var');
       expect(resolveModuleIdAlias('module-7')).toBe('cmp');
@@ -918,25 +918,12 @@ describe('Wave 3A: Phase 3 Platform (TypedValue, 0x30 CMP, Sensors, Interactive 
 
       // Side-Track DAG unlock in markLessonCompleted: cmp -> tape (linear) AND cmp ==> inter (side-track),
       // while completing tape alone does NOT linearly unlock inter (since inter requires cmp).
-      const mockCmpMod: CurriculumModule = {
-        id: 'cmp',
-        order: 7,
-        icon: '⚖️',
-        title: 'Comparisons',
-        summary: 'Compare values',
-        activityIds: ['cmp.A'],
-        capstoneIds: ['cmp.A'],
-        badgeId: 'badge-cmp',
-        badgeIcon: '⚖️',
-        badgeTitle: 'Comparer',
-      };
       const mockTapeMod: CurriculumModule = {
         id: 'tape',
-        order: 8,
+        number: 9,
+        shortTitle: 'tape',
         icon: '🎞️',
         title: 'Tape',
-        summary: 'Tape ops',
-        activityIds: ['tape.A'],
         capstoneIds: ['tape.A'],
         badgeId: 'badge-tape',
         badgeIcon: '🎞️',
@@ -944,28 +931,16 @@ describe('Wave 3A: Phase 3 Platform (TypedValue, 0x30 CMP, Sensors, Interactive 
       };
       const mockInterMod: CurriculumModule = {
         id: 'inter',
-        order: 9,
+        number: 10,
+        shortTitle: 'inter',
         icon: '🕹️',
         title: 'Interactivity',
-        summary: 'Events & keys',
-        activityIds: ['inter.A'],
         capstoneIds: ['inter.A'],
         badgeId: 'badge-inter',
         badgeIcon: '🕹️',
         badgeTitle: 'Controller',
       };
       const mockActs: CurriculumActivity[] = [
-        {
-          id: 'cmp.A',
-          version: 1,
-          moduleId: 'cmp',
-          format: 'puzzle',
-          simId: 'turtle',
-          icon: '⚖️',
-          title: 'CMP Capstone',
-          concept: 'cmp',
-          palette: { allowedSimBlocks: ['FORWARD'] },
-        },
         {
           id: 'tape.A',
           version: 1,
@@ -990,20 +965,22 @@ describe('Wave 3A: Phase 3 Platform (TypedValue, 0x30 CMP, Sensors, Interactive 
         },
       ];
 
-      CURRICULUM_MODULES.push(mockCmpMod, mockTapeMod, mockInterMod);
+      CURRICULUM_MODULES.push(mockTapeMod, mockInterMod);
       CURRICULUM_ACTIVITIES.push(...mockActs);
       try {
         // Completing tape.A alone must NOT unlock inter because inter has prerequisite ['cmp']
         const afterTape = markLessonCompleted(DEFAULT_PROFILE_ID, 'tape.A', 1);
         expect(afterTape.progress.unlockedModules).not.toContain('inter');
 
-        // Completing cmp.A unlocks BOTH linear neighbor 'tape' AND side-track 'inter' (even across 'tape')
-        const afterCmp = markLessonCompleted(DEFAULT_PROFILE_ID, 'cmp.A', 1);
+        // Completing cmp capstones (cmp.A, cmp.B, cmp.C) unlocks BOTH linear neighbor 'tape' AND side-track 'inter'
+        markLessonCompleted(DEFAULT_PROFILE_ID, 'cmp.A', 1);
+        markLessonCompleted(DEFAULT_PROFILE_ID, 'cmp.B', 1);
+        const afterCmp = markLessonCompleted(DEFAULT_PROFILE_ID, 'cmp.C', 1);
         expect(afterCmp.progress.unlockedModules).toContain('tape');
         expect(afterCmp.progress.unlockedModules).toContain('inter');
         expect(getProfileProgress(DEFAULT_PROFILE_ID).unlockedModules).toContain('inter');
       } finally {
-        for (const m of [mockCmpMod, mockTapeMod, mockInterMod]) {
+        for (const m of [mockTapeMod, mockInterMod]) {
           const idx = CURRICULUM_MODULES.indexOf(m);
           if (idx >= 0) CURRICULUM_MODULES.splice(idx, 1);
         }

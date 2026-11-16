@@ -37,6 +37,17 @@ import { BeatCanvas } from './components/BeatCanvas';
 
 export { isBeatLedOffHex };
 
+export interface CurriculumBeatSeed {
+  startX?: number;
+  startY?: number;
+  startDir?: BeatState['cursor']['dir'];
+  cursorVisible?: boolean;
+  expectedRow?: {
+    row: number;
+    colors: readonly (string | null)[];
+  };
+}
+
 export function createInitialBeatState(isMuted: boolean = false): BeatState {
   return {
     leds: createEmptyLedGrid(),
@@ -59,10 +70,65 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
   };
 }
 
+export function createCurriculumBeatState(
+  def?: CurriculumBeatSeed,
+  isMuted: boolean = false
+): BeatState {
+  const base = createInitialBeatState(isMuted);
+  if (!def) return base;
+  const startX = typeof def.startX === 'number' ? Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(def.startX))) : 1;
+  const startY = typeof def.startY === 'number' ? Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(def.startY))) : 1;
+  const startDir = def.startDir ?? 'EAST';
+  const visible = def.cursorVisible ?? (def.startX !== undefined || def.startY !== undefined);
+  return {
+    ...base,
+    cursor: {
+      x: startX,
+      y: startY,
+      dir: startDir,
+      visible,
+    },
+    initialCursor: {
+      x: startX,
+      y: startY,
+      dir: startDir,
+      visible,
+    },
+    ...(def.expectedRow
+      ? {
+          expectedRow: {
+            row: def.expectedRow.row,
+            colors: [...def.expectedRow.colors],
+          },
+        }
+      : {}),
+  };
+}
+
 export function resetBeatState(state?: BeatState): BeatState {
   const initial = createInitialBeatState(Boolean(state?.isMuted));
+  const initCur = state?.initialCursor;
   return {
     ...initial,
+    ...(initCur
+      ? {
+          cursor: {
+            x: initCur.x,
+            y: initCur.y,
+            dir: initCur.dir ?? 'EAST',
+            visible: initCur.visible ?? true,
+          },
+          initialCursor: { ...initCur },
+        }
+      : {}),
+    ...(state?.expectedRow
+      ? {
+          expectedRow: {
+            row: state.expectedRow.row,
+            colors: [...state.expectedRow.colors],
+          },
+        }
+      : {}),
     ...(typeof state?.width === 'number' ? { width: state.width } : {}),
     ...(typeof state?.height === 'number' ? { height: state.height } : {}),
   };
@@ -74,16 +140,10 @@ export const BEAT_PITCH_PARAM_DEF: ActionParamDef = {
   type: 'pitch',
   visualVariant: 'pitch',
   defaultValue: 1,
-  options: [
-    { value: 1, label: '1' },
-    { value: 2, label: '2' },
-    { value: 3, label: '3' },
-    { value: 4, label: '4' },
-    { value: 5, label: '5' },
-    { value: 6, label: '6' },
-    { value: 7, label: '7' },
-    { value: 8, label: '8' },
-  ],
+  options: Array.from({ length: 16 }, (_, idx) => ({
+    value: idx + 1,
+    label: `${idx + 1}`,
+  })),
 };
 
 export const BEAT_DURATION_PARAM_DEF: ActionParamDef = {
@@ -93,9 +153,12 @@ export const BEAT_DURATION_PARAM_DEF: ActionParamDef = {
   visualVariant: 'duration',
   defaultValue: 1,
   options: [
+    { value: 0.125, label: '⅛' },
+    { value: 0.25, label: '¼' },
     { value: 0.5, label: '½' },
     { value: 1, label: '1' },
     { value: 2, label: '2' },
+    { value: 4, label: '4' },
   ],
 };
 
@@ -866,24 +929,112 @@ function resolvePaintLedCell(color?: string | null): string | null {
   return color;
 }
 
-function resolveLedColor(rawColor: unknown, fallback: string): string {
+const CANONICAL_INDEX_TO_BEAT_HEX: readonly string[] = [
+  '#0f172a', // 0: black (off/erase)
+  '#f43f5e', // 1: red / rose
+  '#3b82f6', // 2: blue
+  '#10b981', // 3: green / emerald
+  '#fbbf24', // 4: amber / yellow
+  '#a855f7', // 5: purple / violet
+  '#ec4899', // 6: pink
+  '#06b6d4', // 7: cyan
+  '#f97316', // 8: orange
+  '#ffffff', // 9: white
+];
+
+const BEAT_COLOR_NAME_MAP: Record<string, string> = {
+  black: '#0f172a',
+  off: '#0f172a',
+  slate: '#0f172a',
+  red: '#f43f5e',
+  rose: '#f43f5e',
+  blue: '#3b82f6',
+  green: '#10b981',
+  emerald: '#10b981',
+  amber: '#fbbf24',
+  yellow: '#fbbf24',
+  purple: '#a855f7',
+  violet: '#a855f7',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+  orange: '#f97316',
+  white: '#ffffff',
+};
+
+const TURTLE_TO_BEAT_HEX_ALIAS: Record<string, string> = {
+  '#ef4444': '#f43f5e',
+  '#22c55e': '#10b981',
+  '#f59e0b': '#fbbf24',
+  '#8b5cf6': '#a855f7',
+};
+
+export function resolveLedColor(rawColor: unknown, fallback: string): string {
+  if (rawColor === null || rawColor === undefined) {
+    return fallback;
+  }
+
+  if (typeof rawColor === 'object') {
+    const obj = rawColor as { type?: unknown; value?: unknown };
+    if (obj.type === 'color' && obj.value !== undefined) {
+      if (typeof obj.value === 'number' && Number.isFinite(obj.value)) {
+        const idx = Math.max(
+          0,
+          Math.min(CANONICAL_INDEX_TO_BEAT_HEX.length - 1, Math.trunc(obj.value))
+        );
+        return CANONICAL_INDEX_TO_BEAT_HEX[idx];
+      }
+      return resolveLedColor(obj.value, fallback);
+    }
+    return fallback;
+  }
+
   if (typeof rawColor === 'number') {
-    // 1..10 variable index (Module 6+) or 0 fallback to first swatch
-    const normalized = rawColor >= 1 ? Math.round(rawColor) - 1 : 0;
+    if (!Number.isFinite(rawColor)) return fallback;
+    // 1..10 variable index (Module 2/6+) or 0 fallback to first swatch
+    const normalized = rawColor >= 1 ? Math.trunc(rawColor) - 1 : 0;
     const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, normalized));
     return BEAT_LED_PALETTE[idx].hex;
   }
+
   if (typeof rawColor === 'string' && rawColor.trim()) {
     const trimmed = rawColor.trim();
-    if (trimmed.startsWith('#')) return trimmed;
-    const byNum = Number(trimmed);
+    if (trimmed.startsWith('#')) {
+      const lowerHex = trimmed.toLowerCase();
+      return TURTLE_TO_BEAT_HEX_ALIAS[lowerHex] ?? trimmed;
+    }
+    const clean = (trimmed.startsWith('color:') ? trimmed.slice(6) : trimmed).trim();
+    const lowerName = clean.toLowerCase();
+    if (lowerName in BEAT_COLOR_NAME_MAP) {
+      return BEAT_COLOR_NAME_MAP[lowerName];
+    }
+    const byNum = Number(clean);
     if (Number.isFinite(byNum)) {
-      // 1..10 variable index or 0..9 colorId
-      const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, Math.round(byNum) - 1));
+      if (trimmed.startsWith('color:')) {
+        const idx = Math.max(
+          0,
+          Math.min(CANONICAL_INDEX_TO_BEAT_HEX.length - 1, Math.trunc(byNum))
+        );
+        return CANONICAL_INDEX_TO_BEAT_HEX[idx];
+      }
+      const normalized = byNum >= 1 ? Math.trunc(byNum) - 1 : 0;
+      const idx = Math.max(0, Math.min(BEAT_LED_PALETTE.length - 1, normalized));
       return BEAT_LED_PALETTE[idx].hex;
     }
   }
   return fallback;
+}
+
+export function readBeatSensor(sensorId: string | number, state: BeatState): number {
+  if (sensorId === 0xb0 || sensorId === '$cursorX' || sensorId === 'cursorX') {
+    return Math.trunc(state.cursor?.x ?? 1);
+  }
+  if (sensorId === 0xb1 || sensorId === '$cursorY' || sensorId === 'cursorY') {
+    return Math.trunc(state.cursor?.y ?? 1);
+  }
+  if (sensorId === 0xb2 || sensorId === '$beatIndex' || sensorId === 'beatIndex') {
+    return Math.trunc(state.beatIndex ?? 0);
+  }
+  return 0;
 }
 
 export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
@@ -892,6 +1043,20 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
   icon: <span className="text-xl">🎵</span>,
 
   paletteItems: BEAT_PALETTE_ITEMS,
+
+  sensors: [
+    { id: '$cursorX', label: '📍X', icon: '📍X', shortLabel: 'cx' },
+    { id: '$cursorY', label: '📍Y', icon: '📍Y', shortLabel: 'cy' },
+    { id: '$beatIndex', label: '🎵#', icon: '🎵#', shortLabel: '🎵' },
+    { id: '$pointerX', label: '👆X', icon: '👆X', shortLabel: '👆X' },
+    { id: '$pointerY', label: '👆Y', icon: '👆Y', shortLabel: '👆Y' },
+    { id: '$pointerDown', label: '👆⬇', icon: '👆⬇', shortLabel: '👆⬇' },
+    { id: '$randomColor', label: '🎲🎨', icon: '🎲🎨', shortLabel: '🎨' },
+  ],
+
+  readSensor: (sensorId: string, state: BeatState): number => {
+    return readBeatSensor(sensorId, state);
+  },
 
   createInitialState: () => createInitialBeatState(false),
 
@@ -1029,8 +1194,11 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'PLAY_NOTE': {
-        const pitch = Math.max(1, Math.min(8, Math.round(Number(options?.params?.pitch ?? 1))));
-        const durationBeats = Number(options?.params?.duration ?? 1) || 1;
+        const rawPitch = options?.params?.pitch;
+        const numPitch = rawPitch === undefined ? 1 : Number(rawPitch);
+        const pitch = Number.isFinite(numPitch) ? Math.trunc(numPitch) : 0;
+        const rawDur = Number(options?.params?.duration ?? 1);
+        const durationBeats = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 1;
         lastTriggeredEvent = {
           kind: 'PLAY_NOTE',
           actionType,
@@ -1042,14 +1210,15 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'LIGHT_ROW': {
-        const rowIdx = Math.max(
-          0,
-          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
-        );
-        nextLeds = cloneLedGrid(state.leds);
-        const paintColor = resolvePaintLedCell(nextActiveColor);
-        for (let c = 0; c < BEAT_GRID_SIZE; c++) {
-          nextLeds[rowIdx][c] = paintColor;
+        const { width, height } = resolveBeatDimensions(state);
+        const rawY = Number(options?.params?.y ?? 1);
+        const rowIdx = Number.isFinite(rawY) ? Math.trunc(rawY) - 1 : -1;
+        if (rowIdx >= 0 && rowIdx < height) {
+          nextLeds = cloneLedGrid(state.leds);
+          const paintColor = resolvePaintLedCell(nextActiveColor);
+          for (let c = 0; c < width; c++) {
+            nextLeds[rowIdx][c] = paintColor;
+          }
         }
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
@@ -1061,14 +1230,15 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'LIGHT_COL': {
-        const colIdx = Math.max(
-          0,
-          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.x ?? 1)) - 1)
-        );
-        nextLeds = cloneLedGrid(state.leds);
-        const paintColor = resolvePaintLedCell(nextActiveColor);
-        for (let r = 0; r < BEAT_GRID_SIZE; r++) {
-          nextLeds[r][colIdx] = paintColor;
+        const { width, height } = resolveBeatDimensions(state);
+        const rawX = Number(options?.params?.x ?? 1);
+        const colIdx = Number.isFinite(rawX) ? Math.trunc(rawX) - 1 : -1;
+        if (colIdx >= 0 && colIdx < width) {
+          nextLeds = cloneLedGrid(state.leds);
+          const paintColor = resolvePaintLedCell(nextActiveColor);
+          for (let r = 0; r < height; r++) {
+            nextLeds[r][colIdx] = paintColor;
+          }
         }
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
@@ -1080,16 +1250,15 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
       }
 
       case 'LIGHT_PIXEL': {
-        const colIdx = Math.max(
-          0,
-          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.x ?? 1)) - 1)
-        );
-        const rowIdx = Math.max(
-          0,
-          Math.min(BEAT_GRID_SIZE - 1, Math.round(Number(options?.params?.y ?? 1)) - 1)
-        );
-        nextLeds = cloneLedGrid(state.leds);
-        nextLeds[rowIdx][colIdx] = resolvePaintLedCell(nextActiveColor);
+        const { width, height } = resolveBeatDimensions(state);
+        const rawX = Number(options?.params?.x ?? 1);
+        const rawY = Number(options?.params?.y ?? 1);
+        const colIdx = Number.isFinite(rawX) ? Math.trunc(rawX) - 1 : -1;
+        const rowIdx = Number.isFinite(rawY) ? Math.trunc(rawY) - 1 : -1;
+        if (colIdx >= 0 && colIdx < width && rowIdx >= 0 && rowIdx < height) {
+          nextLeds = cloneLedGrid(state.leds);
+          nextLeds[rowIdx][colIdx] = resolvePaintLedCell(nextActiveColor);
+        }
         lastTriggeredEvent = {
           kind: 'LED_CHANGE',
           actionType,
@@ -1159,7 +1328,22 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
     return evaluateBeatSensor(sensor, state);
   },
 
-  evaluateCompletion: () => 'IDLE',
+  evaluateCompletion: (state: BeatState) => {
+    if (!state?.expectedRow) return 'IDLE';
+    if (state.edgeBonk) return 'IDLE';
+    const rowIdx = Math.trunc(state.expectedRow.row) - 1;
+    const rowLeds = state.leds?.[rowIdx];
+    const expectedColors = state.expectedRow.colors;
+    if (!rowLeds || !expectedColors || expectedColors.length === 0) return 'IDLE';
+    for (let c = 0; c < expectedColors.length; c++) {
+      const actual = resolvePaintLedCell(rowLeds[c] ?? null);
+      const expected = resolvePaintLedCell(expectedColors[c] ?? null);
+      if ((actual ?? '').toLowerCase() !== (expected ?? '').toLowerCase()) {
+        return 'IDLE';
+      }
+    }
+    return 'SUCCESS';
+  },
 
   Renderer: BeatCanvas,
 };

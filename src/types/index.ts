@@ -220,7 +220,12 @@ export interface FloorSwitch {
    * Defaults to true when unlinked, or false when linked to a gate.
    */
   requiredForGoal?: boolean;
-  /** Runtime active state: true while a crate sits on (x, y) */
+  /**
+   * Optional exact crate stack count required on this switch to activate it (`cmp.M1` multi-crate charge pads).
+   * When omitted or `<= 1`, standard single-crate or standing-robot activation applies.
+   */
+  requiredCount?: number;
+  /** Runtime active state: true while required crate(s) / robot activate (x, y) */
   active?: boolean;
 }
 

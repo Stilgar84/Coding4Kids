@@ -1,6 +1,7 @@
 import { BinaryReader } from '../binaryReader';
 import { BinaryWriter } from '../binaryWriter';
 import {
+  ENV_VERSION_TURTLE,
   OP_TURTLE_TURN_LEFT,
   OP_TURTLE_TURN_RIGHT,
   OP_TURTLE_ARC_LEFT,
@@ -19,6 +20,28 @@ import {
   isSensorRefString,
 } from '../types';
 import { isVariableName } from '../../../types';
+import { TurtleExecutionMode, TurtleState } from '../../../simulations/turtle/types';
+
+export { ENV_VERSION_TURTLE };
+export const ENV_VERSION_TURTLE_V2 = 2;
+
+function createBaseTurtleState(): TurtleState {
+  return {
+    robot: { x: 0, y: 0, heading: 0 },
+    penDown: true,
+    penColor: '#0f172a',
+    penWidth: 6,
+    paths: [],
+    status: 'IDLE',
+    pan: { x: 0, y: 0 },
+    zoom: 1,
+    fitToView: false,
+    computedBounds: { minX: -100, minY: -100, maxX: 100, maxY: 100 },
+    activeAnimation: null,
+    instantMode: false,
+    showTurtle: true,
+  };
+}
 
 function isVarOrSensorVal(val: unknown): boolean {
   return (
@@ -39,17 +62,72 @@ function readSignedVLE(reader: BinaryReader): number {
   return (zigzag >>> 1) ^ -(zigzag & 1);
 }
 
-/**
- * Converts a hex color string to a 1-byte palette index.
- */
-export function colorToByte(color?: string): number {
-  if (!color) return 0;
-  const lower = color.toLowerCase();
-  // Handle alias for green
-  if (lower === '#22c55e') return 3;
+const TURTLE_COLOR_NAME_TO_BYTE: Record<string, number> = {
+  black: 0,
+  slate: 0,
+  red: 1,
+  rose: 1,
+  blue: 2,
+  green: 3,
+  emerald: 3,
+  amber: 4,
+  yellow: 4,
+  purple: 5,
+  violet: 5,
+  pink: 6,
+  cyan: 7,
+  orange: 8,
+  white: 9,
+};
 
-  const idx = TURTLE_COLOR_PALETTE.findIndex((c) => c.toLowerCase() === lower);
-  return idx >= 0 ? idx : 0;
+/**
+ * Converts a hex color string, canonical color name, `0..9` index, or `TypedValue` `color`
+ * into a 1-byte palette index (`0..9`).
+ */
+export function colorToByte(color?: unknown): number {
+  if (color === null || color === undefined) return 0;
+
+  if (typeof color === 'object') {
+    const obj = color as { type?: unknown; value?: unknown };
+    if (obj.type === 'color' && obj.value !== undefined) {
+      return colorToByte(obj.value);
+    }
+    return 0;
+  }
+
+  if (typeof color === 'number') {
+    if (!Number.isFinite(color)) return 0;
+    return Math.max(0, Math.min(TURTLE_COLOR_PALETTE.length - 1, Math.trunc(color)));
+  }
+
+  if (typeof color === 'string') {
+    const trimmed = color.trim();
+    if (!trimmed) return 0;
+    const lower = trimmed.toLowerCase();
+
+    // Hex aliases across Stage A / Beat / Turtle palettes
+    if (lower === '#22c55e') return 3;
+    if (lower === '#f43f5e') return 1;
+    if (lower === '#fbbf24') return 4;
+    if (lower === '#a855f7') return 5;
+    if (lower === '#000000') return 0;
+
+    const hexIdx = TURTLE_COLOR_PALETTE.findIndex((c) => c.toLowerCase() === lower);
+    if (hexIdx >= 0) return hexIdx;
+
+    const cleanName = lower.startsWith('color:') ? lower.slice(6).trim() : lower;
+    if (cleanName in TURTLE_COLOR_NAME_TO_BYTE) {
+      return TURTLE_COLOR_NAME_TO_BYTE[cleanName];
+    }
+    if (/^-?\d+$/.test(cleanName)) {
+      return Math.max(
+        0,
+        Math.min(TURTLE_COLOR_PALETTE.length - 1, Math.trunc(Number(cleanName)))
+      );
+    }
+  }
+
+  return 0;
 }
 
 /**
@@ -255,4 +333,103 @@ export function readTurtleParams(
     default:
       return undefined;
   }
+}
+
+/**
+ * Determines the minimum Turtle environment serialization version (`1` or `2`).
+ * Static default states remain version `1` (0-byte payload) for 100% backward compatibility.
+ */
+export function getTurtleSerializationVersion(state?: Partial<TurtleState> | null): number {
+  if (!state) return ENV_VERSION_TURTLE;
+  const mode = state.mode ?? 'static';
+  if (
+    mode !== 'static' ||
+    state.clearBetweenFrames !== undefined ||
+    state.totalFrames !== undefined ||
+    state.fps !== undefined
+  ) {
+    return ENV_VERSION_TURTLE_V2;
+  }
+  return ENV_VERSION_TURTLE;
+}
+
+/**
+ * Writes Turtle environment metadata payload (`v1` = 0 bytes; `v2` = `turtleFlags` + optional `totalFrames`/`fps`).
+ */
+export function writeTurtleState(
+  writer: BinaryWriter,
+  state?: Partial<TurtleState> | null,
+  envVersion: number = getTurtleSerializationVersion(state)
+): void {
+  if (envVersion < ENV_VERSION_TURTLE_V2) {
+    return;
+  }
+
+  const mode: TurtleExecutionMode = state?.mode ?? 'static';
+  const modeBits = mode === 'flipbook' ? 1 : mode === 'live' ? 2 : 0;
+  const clearBetweenFrames = state?.clearBetweenFrames !== false;
+  const defaultFps = mode === 'live' ? 60 : mode === 'flipbook' ? 8 : 0;
+  const fpsVal =
+    typeof state?.fps === 'number' && Number.isFinite(state.fps) && state.fps > 0
+      ? Math.min(255, Math.max(1, Math.round(state.fps)))
+      : undefined;
+  const hasNonDefaultFps = fpsVal !== undefined && fpsVal !== defaultFps;
+
+  const turtleFlags =
+    (modeBits & 0x03) |
+    (clearBetweenFrames ? 0x04 : 0) |
+    (hasNonDefaultFps ? 0x08 : 0);
+
+  writer.writeUint8(turtleFlags);
+
+  if (modeBits === 1) {
+    const frames =
+      typeof state?.totalFrames === 'number' && Number.isFinite(state.totalFrames)
+        ? Math.max(1, Math.round(state.totalFrames))
+        : 8;
+    writer.writeVLE(frames);
+  }
+
+  if (hasNonDefaultFps && fpsVal !== undefined) {
+    writer.writeUint8(fpsVal);
+  }
+}
+
+/**
+ * Reads Turtle environment metadata payload (`v1` = default initial state; `v2` = `turtleFlags` + optional `totalFrames`/`fps`).
+ */
+export function readTurtleState(
+  reader: BinaryReader,
+  envVersion: number = ENV_VERSION_TURTLE
+): TurtleState {
+  const base = createBaseTurtleState();
+  if (envVersion < ENV_VERSION_TURTLE_V2) {
+    return base;
+  }
+
+  const turtleFlags = reader.readUint8();
+  const modeBits = turtleFlags & 0x03;
+  const mode: TurtleExecutionMode =
+    modeBits === 1 ? 'flipbook' : modeBits === 2 ? 'live' : 'static';
+  const clearBetweenFrames = (turtleFlags & 0x04) !== 0;
+  const hasNonDefaultFps = (turtleFlags & 0x08) !== 0;
+
+  let totalFrames: number | undefined;
+  if (modeBits === 1) {
+    totalFrames = reader.readVLE();
+  }
+
+  let fps: number | undefined;
+  if (hasNonDefaultFps) {
+    fps = reader.readUint8();
+  }
+
+  return {
+    ...base,
+    mode,
+    clearBetweenFrames,
+    ...(totalFrames !== undefined ? { totalFrames } : {}),
+    ...(fps !== undefined ? { fps } : {}),
+    ...(mode === 'live' ? { instantMode: true } : {}),
+  };
 }
