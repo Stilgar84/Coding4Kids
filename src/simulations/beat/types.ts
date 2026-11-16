@@ -87,6 +87,18 @@ export interface BeatState {
   lastTriggeredEvent: BeatTriggerEvent | null;
   /** Coordinate-free LED cursor state (starts at (1, 1) facing EAST, ready for Commit 17) */
   cursor: BeatCursorState;
+  /** Optional initial cursor pose restored on resetBeatState (e.g., multi-row Beat puzzles like cmp.5a) */
+  initialCursor?: {
+    x: number;
+    y: number;
+    dir?: Direction;
+    visible?: boolean;
+  };
+  /** Optional expected LED row colors for validated Beat puzzles (`row` is 1-indexed 1..8) */
+  expectedRow?: {
+    row: number;
+    colors: readonly (string | null)[];
+  };
   /** True when the latest CURSOR_STEP soft-clamped on an outer boundary instead of moving */
   edgeBonk?: boolean;
   /** Monotonically incrementing pulse counter whenever edgeBonk triggers for UI shimmer re-trigger */

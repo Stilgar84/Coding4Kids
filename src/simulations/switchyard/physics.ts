@@ -1394,7 +1394,6 @@ export function applySwitchyardAction(
 ): SwitchyardState {
   if (
     state.status === 'COLLISION' ||
-    state.status === 'SUCCESS' ||
     state.status === 'STEP_LIMIT' ||
     state.status === 'STACK_OVERFLOW' ||
     state.status === 'MATH_ERROR' ||

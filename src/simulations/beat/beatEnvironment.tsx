@@ -37,6 +37,17 @@ import { BeatCanvas } from './components/BeatCanvas';
 
 export { isBeatLedOffHex };
 
+export interface CurriculumBeatSeed {
+  startX?: number;
+  startY?: number;
+  startDir?: BeatState['cursor']['dir'];
+  cursorVisible?: boolean;
+  expectedRow?: {
+    row: number;
+    colors: readonly (string | null)[];
+  };
+}
+
 export function createInitialBeatState(isMuted: boolean = false): BeatState {
   return {
     leds: createEmptyLedGrid(),
@@ -59,10 +70,65 @@ export function createInitialBeatState(isMuted: boolean = false): BeatState {
   };
 }
 
+export function createCurriculumBeatState(
+  def?: CurriculumBeatSeed,
+  isMuted: boolean = false
+): BeatState {
+  const base = createInitialBeatState(isMuted);
+  if (!def) return base;
+  const startX = typeof def.startX === 'number' ? Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(def.startX))) : 1;
+  const startY = typeof def.startY === 'number' ? Math.max(1, Math.min(BEAT_GRID_SIZE, Math.round(def.startY))) : 1;
+  const startDir = def.startDir ?? 'EAST';
+  const visible = def.cursorVisible ?? (def.startX !== undefined || def.startY !== undefined);
+  return {
+    ...base,
+    cursor: {
+      x: startX,
+      y: startY,
+      dir: startDir,
+      visible,
+    },
+    initialCursor: {
+      x: startX,
+      y: startY,
+      dir: startDir,
+      visible,
+    },
+    ...(def.expectedRow
+      ? {
+          expectedRow: {
+            row: def.expectedRow.row,
+            colors: [...def.expectedRow.colors],
+          },
+        }
+      : {}),
+  };
+}
+
 export function resetBeatState(state?: BeatState): BeatState {
   const initial = createInitialBeatState(Boolean(state?.isMuted));
+  const initCur = state?.initialCursor;
   return {
     ...initial,
+    ...(initCur
+      ? {
+          cursor: {
+            x: initCur.x,
+            y: initCur.y,
+            dir: initCur.dir ?? 'EAST',
+            visible: initCur.visible ?? true,
+          },
+          initialCursor: { ...initCur },
+        }
+      : {}),
+    ...(state?.expectedRow
+      ? {
+          expectedRow: {
+            row: state.expectedRow.row,
+            colors: [...state.expectedRow.colors],
+          },
+        }
+      : {}),
     ...(typeof state?.width === 'number' ? { width: state.width } : {}),
     ...(typeof state?.height === 'number' ? { height: state.height } : {}),
   };
@@ -1262,7 +1328,22 @@ export const beatSimulationEnvironment: SimulationEnvironment<BeatState> = {
     return evaluateBeatSensor(sensor, state);
   },
 
-  evaluateCompletion: () => 'IDLE',
+  evaluateCompletion: (state: BeatState) => {
+    if (!state?.expectedRow) return 'IDLE';
+    if (state.edgeBonk) return 'IDLE';
+    const rowIdx = Math.trunc(state.expectedRow.row) - 1;
+    const rowLeds = state.leds?.[rowIdx];
+    const expectedColors = state.expectedRow.colors;
+    if (!rowLeds || !expectedColors || expectedColors.length === 0) return 'IDLE';
+    for (let c = 0; c < expectedColors.length; c++) {
+      const actual = resolvePaintLedCell(rowLeds[c] ?? null);
+      const expected = resolvePaintLedCell(expectedColors[c] ?? null);
+      if ((actual ?? '').toLowerCase() !== (expected ?? '').toLowerCase()) {
+        return 'IDLE';
+      }
+    }
+    return 'SUCCESS';
+  },
 
   Renderer: BeatCanvas,
 };

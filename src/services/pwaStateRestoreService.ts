@@ -166,6 +166,9 @@ const VALID_TOOLS: readonly EditorTool[] = [
   'GATE',
   'CRATE',
   'SWITCH',
+  'BEACON',
+  'DIAL',
+  'STACK_DEPOT',
   'ERASE',
 ];
 const VALID_STATUSES: readonly SimulationStatus[] = [
@@ -293,6 +296,9 @@ function sanitizeGridState(raw: unknown, fallbackGrid: GridState): GridState {
                 : null,
           }
         : {}),
+      ...(typeof rawRobot.carriedCount === 'number' && Number.isFinite(rawRobot.carriedCount)
+        ? { carriedCount: rawRobot.carriedCount }
+        : {}),
     },
     barriers,
     flags,
@@ -314,6 +320,21 @@ function sanitizeGridState(raw: unknown, fallbackGrid: GridState): GridState {
       : {}),
     ...(Array.isArray(g.initialWorldItems)
       ? { initialWorldItems: JSON.parse(JSON.stringify(g.initialWorldItems)) }
+      : {}),
+    ...(Array.isArray(g.beaconTiles)
+      ? { beaconTiles: JSON.parse(JSON.stringify(g.beaconTiles)) }
+      : {}),
+    ...(Array.isArray(g.dialTiles)
+      ? { dialTiles: JSON.parse(JSON.stringify(g.dialTiles)) }
+      : {}),
+    ...(typeof g.strictInteractionCollision === 'boolean'
+      ? { strictInteractionCollision: g.strictInteractionCollision }
+      : {}),
+    ...(typeof g.requireAllItemsCollected === 'boolean'
+      ? { requireAllItemsCollected: g.requireAllItemsCollected }
+      : {}),
+    ...(typeof g.requireEmptyBackpackAtGoal === 'boolean'
+      ? { requireEmptyBackpackAtGoal: g.requireEmptyBackpackAtGoal }
       : {}),
     trace,
     status: status === 'RUNNING' ? 'PAUSED' : status,
@@ -371,6 +392,34 @@ function sanitizeTurtleState(raw: unknown): TurtleState {
     activeAnimation: null,
     instantMode: typeof t.instantMode === 'boolean' ? t.instantMode : defaults.instantMode,
     showTurtle: typeof t.showTurtle === 'boolean' ? t.showTurtle : defaults.showTurtle,
+    mode:
+      t.mode === 'static' || t.mode === 'live' || t.mode === 'flipbook'
+        ? t.mode
+        : defaults.mode,
+    clearBetweenFrames:
+      typeof t.clearBetweenFrames === 'boolean'
+        ? t.clearBetweenFrames
+        : defaults.clearBetweenFrames,
+    ...(typeof t.totalFrames === 'number' && Number.isFinite(t.totalFrames) && t.totalFrames >= 1
+      ? { totalFrames: Math.floor(t.totalFrames) }
+      : {}),
+    ...(typeof t.fps === 'number' && Number.isFinite(t.fps) && t.fps >= 1
+      ? { fps: Math.floor(t.fps) }
+      : {}),
+    ...(t.canvasBounds &&
+    typeof t.canvasBounds === 'object' &&
+    typeof t.canvasBounds.halfWidth === 'number' &&
+    typeof t.canvasBounds.halfHeight === 'number'
+      ? {
+          canvasBounds: {
+            halfWidth: t.canvasBounds.halfWidth,
+            halfHeight: t.canvasBounds.halfHeight,
+          },
+        }
+      : {}),
+    ...(typeof t.showCanvasBounds === 'boolean'
+      ? { showCanvasBounds: t.showCanvasBounds }
+      : {}),
   };
 }
 
@@ -380,11 +429,19 @@ function sanitizeBeatState(raw: unknown): BeatState {
     return defaults;
   }
   const b = raw as Record<string, any>;
+  const width =
+    typeof b.width === 'number' && Number.isInteger(b.width) && b.width >= 2 && b.width <= 16
+      ? b.width
+      : BEAT_GRID_SIZE;
+  const height =
+    typeof b.height === 'number' && Number.isInteger(b.height) && b.height >= 2 && b.height <= 16
+      ? b.height
+      : BEAT_GRID_SIZE;
   const leds: (string | null)[][] = [];
-  for (let r = 0; r < BEAT_GRID_SIZE; r++) {
+  for (let r = 0; r < height; r++) {
     const row: (string | null)[] = [];
     const srcRow = Array.isArray(b.leds) && Array.isArray(b.leds[r]) ? b.leds[r] : null;
-    for (let c = 0; c < BEAT_GRID_SIZE; c++) {
+    for (let c = 0; c < width; c++) {
       const cell = srcRow ? srcRow[c] : null;
       const trimmed = typeof cell === 'string' ? cell.trim() : '';
       const lower = trimmed.toLowerCase();
@@ -402,6 +459,8 @@ function sanitizeBeatState(raw: unknown): BeatState {
   const status: SimulationStatus = VALID_STATUSES.includes(b.status) ? b.status : 'IDLE';
 
   return {
+    width,
+    height,
     leds,
     activeColor:
       typeof b.activeColor === 'string' && b.activeColor ? b.activeColor : defaults.activeColor,
@@ -420,16 +479,55 @@ function sanitizeBeatState(raw: unknown): BeatState {
         : null,
     cursor: {
       x:
-        typeof rawCursor.x === 'number' && rawCursor.x >= 1 && rawCursor.x <= BEAT_GRID_SIZE
+        typeof rawCursor.x === 'number' && rawCursor.x >= 1 && rawCursor.x <= width
           ? Math.floor(rawCursor.x)
           : defaults.cursor.x,
       y:
-        typeof rawCursor.y === 'number' && rawCursor.y >= 1 && rawCursor.y <= BEAT_GRID_SIZE
+        typeof rawCursor.y === 'number' && rawCursor.y >= 1 && rawCursor.y <= height
           ? Math.floor(rawCursor.y)
           : defaults.cursor.y,
       dir: cursorDir,
       visible: Boolean(rawCursor.visible),
     },
+    ...(b.initialCursor && typeof b.initialCursor === 'object'
+      ? {
+          initialCursor: {
+            x:
+              typeof b.initialCursor.x === 'number' &&
+              b.initialCursor.x >= 1 &&
+              b.initialCursor.x <= width
+                ? Math.floor(b.initialCursor.x)
+                : defaults.cursor.x,
+            y:
+              typeof b.initialCursor.y === 'number' &&
+              b.initialCursor.y >= 1 &&
+              b.initialCursor.y <= height
+                ? Math.floor(b.initialCursor.y)
+                : defaults.cursor.y,
+            dir: VALID_DIRECTIONS.includes(b.initialCursor.dir)
+              ? b.initialCursor.dir
+              : defaults.cursor.dir,
+            visible: Boolean(b.initialCursor.visible),
+          },
+        }
+      : {}),
+    ...(b.expectedRow &&
+    typeof b.expectedRow === 'object' &&
+    typeof b.expectedRow.row === 'number' &&
+    Array.isArray(b.expectedRow.colors)
+      ? {
+          expectedRow: {
+            row: Math.floor(b.expectedRow.row),
+            colors: b.expectedRow.colors.map((c: unknown) =>
+              typeof c === 'string' && c.trim() ? c.trim() : null
+            ),
+          },
+        }
+      : {}),
+    ...(typeof b.edgeBonk === 'boolean' ? { edgeBonk: b.edgeBonk } : {}),
+    ...(typeof b.edgeBonkPulse === 'number' && Number.isFinite(b.edgeBonkPulse)
+      ? { edgeBonkPulse: b.edgeBonkPulse }
+      : {}),
     isMuted: Boolean(b.isMuted),
     stepDelayMultiplier:
       typeof b.stepDelayMultiplier === 'number' && Number.isFinite(b.stepDelayMultiplier) && b.stepDelayMultiplier >= 0
@@ -445,31 +543,84 @@ function sanitizeDepotState(raw: unknown): DepotState {
     return defaults;
   }
   const d = raw as Record<string, any>;
-  const validColors = new Set(['RED', 'BLUE', 'GREEN', 'AMBER']);
+  const validColors = new Set([
+    'BLACK',
+    'RED',
+    'BLUE',
+    'GREEN',
+    'AMBER',
+    'PURPLE',
+    'PINK',
+    'CYAN',
+    'ORANGE',
+    'WHITE',
+  ]);
   const cleanList = (arr: unknown) =>
     Array.isArray(arr) ? arr.filter((c) => typeof c === 'string' && validColors.has(c)) : [];
+  const cleanValueList = (arr: unknown): Array<number | undefined> =>
+    Array.isArray(arr)
+      ? arr.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined))
+      : [];
   const cleanStacks = (s: unknown): [any[], any[], any[]] => {
     if (!Array.isArray(s) || s.length < 3) return cloneStacks(defaults.initialStacks);
     return [cleanList(s[0]), cleanList(s[1]), cleanList(s[2])];
   };
+  const cleanStackValues = (
+    sv: unknown
+  ): [Array<number | undefined>, Array<number | undefined>, Array<number | undefined>] | undefined => {
+    if (!Array.isArray(sv) || sv.length < 3) return undefined;
+    return [cleanValueList(sv[0]), cleanValueList(sv[1]), cleanValueList(sv[2])];
+  };
   const initialStacks = cleanStacks(d.initialStacks ?? d.stacks);
   const stacks = cleanStacks(d.stacks ?? initialStacks);
+  const initialStackValues = cleanStackValues(d.initialStackValues ?? d.stackValues);
+  const stackValues = cleanStackValues(d.stackValues ?? initialStackValues);
+  const targetStackValues = cleanStackValues(d.targetStackValues);
   const status: SimulationStatus = VALID_STATUSES.includes(d.status) ? d.status : 'IDLE';
   return {
     stacks,
     initialStacks,
+    ...(stackValues ? { stackValues } : {}),
+    ...(initialStackValues ? { initialStackValues } : {}),
     output: cleanList(d.output),
+    ...(Array.isArray(d.outputValues) ? { outputValues: cleanValueList(d.outputValues) } : {}),
     ...(d.targetStacks ? { targetStacks: cleanStacks(d.targetStacks) } : {}),
+    ...(targetStackValues ? { targetStackValues } : {}),
     ...(Array.isArray(d.targetOutput) ? { targetOutput: cleanList(d.targetOutput) } : {}),
+    ...(Array.isArray(d.targetOutputValues)
+      ? { targetOutputValues: cleanValueList(d.targetOutputValues) }
+      : {}),
     workerStation: normalizeDepotStation(d.workerStation),
     initialWorkerStation: normalizeDepotStation(d.initialWorkerStation),
     heldCrate: typeof d.heldCrate === 'string' && validColors.has(d.heldCrate) ? (d.heldCrate as any) : null,
     heldDamaged: Boolean(d.heldDamaged),
+    ...(typeof d.heldValue === 'number' && Number.isFinite(d.heldValue)
+      ? { heldValue: d.heldValue }
+      : {}),
+    ...(typeof d.heldColorless === 'boolean' ? { heldColorless: d.heldColorless } : {}),
     lastFailureReason: typeof d.lastFailureReason === 'string' ? (d.lastFailureReason as any) : null,
     status: status === 'RUNNING' ? 'PAUSED' : status,
     stepCount: typeof d.stepCount === 'number' && Number.isFinite(d.stepCount) ? d.stepCount : 0,
     queue: Array.isArray(d.queue) ? cloneQueue(d.queue) : [],
     initialQueue: Array.isArray(d.initialQueue ?? d.queue) ? cloneQueue(d.initialQueue ?? d.queue) : [],
+    ...(Array.isArray(d.input) ? { input: cloneQueue(d.input) } : {}),
+    ...(Array.isArray(d.initialInput ?? d.input)
+      ? { initialInput: cloneQueue(d.initialInput ?? d.input) }
+      : {}),
+    ...(typeof d.mode === 'string' && d.mode ? { mode: d.mode } : {}),
+    ...(typeof d.enforceHanoiRule === 'boolean' ? { enforceHanoiRule: d.enforceHanoiRule } : {}),
+    ...(typeof d.requireEmptyStacks === 'boolean'
+      ? { requireEmptyStacks: d.requireEmptyStacks }
+      : {}),
+    ...(typeof d.allowNonEmptyInput === 'boolean'
+      ? { allowNonEmptyInput: d.allowNonEmptyInput }
+      : {}),
+    ...(typeof d.exactOutputCount === 'number' && Number.isFinite(d.exactOutputCount)
+      ? { exactOutputCount: d.exactOutputCount }
+      : {}),
+    ...(typeof d.activeStationsMask === 'number' && Number.isFinite(d.activeStationsMask)
+      ? { activeStationsMask: d.activeStationsMask }
+      : {}),
     scrapCount: typeof d.scrapCount === 'number' && Number.isFinite(d.scrapCount) ? d.scrapCount : 0,
   };
 }
@@ -555,6 +706,8 @@ function sanitizeRuntime(raw: unknown): InterpreterRuntimeState | null {
   return {
     callStack: JSON.parse(JSON.stringify(r.callStack)),
     loopStack: JSON.parse(JSON.stringify(r.loopStack)),
+    ...(Array.isArray(r.whileStack) ? { whileStack: JSON.parse(JSON.stringify(r.whileStack)) } : {}),
+    ...(Array.isArray(r.condStack) ? { condStack: JSON.parse(JSON.stringify(r.condStack)) } : {}),
     activeBlockId: typeof r.activeBlockId === 'string' ? r.activeBlockId : null,
     activeScope,
     status: status === 'RUNNING' ? 'PAUSED' : status,
@@ -565,6 +718,24 @@ function sanitizeRuntime(raw: unknown): InterpreterRuntimeState | null {
         : null,
     variables:
       r.variables && typeof r.variables === 'object' ? JSON.parse(JSON.stringify(r.variables)) : ({} as any),
+    ...(r.sceneInput !== undefined ? { sceneInput: JSON.parse(JSON.stringify(r.sceneInput)) } : {}),
+    ...(Array.isArray(r.eventQueue)
+      ? {
+          eventQueue: r.eventQueue.filter((sc: unknown): sc is ScopeType =>
+            VALID_SCOPES.includes(sc as ScopeType)
+          ),
+        }
+      : {}),
+    ...(typeof r.randomSeed === 'number' && Number.isFinite(r.randomSeed)
+      ? { randomSeed: r.randomSeed }
+      : {}),
+    ...(r.pointer &&
+    typeof r.pointer === 'object' &&
+    typeof r.pointer.x === 'number' &&
+    typeof r.pointer.y === 'number' &&
+    typeof r.pointer.isDown === 'boolean'
+      ? { pointer: { x: r.pointer.x, y: r.pointer.y, isDown: r.pointer.isDown } }
+      : {}),
   };
 }
 
@@ -613,6 +784,7 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     isSubpaletteCollapsed: state.isSubpaletteCollapsed,
     isMapHidden: state.isMapHidden,
     isFunctionBarOpen: state.isFunctionBarOpen,
+    ...(typeof state.isLoopPlayback === 'boolean' ? { isLoopPlayback: state.isLoopPlayback } : {}),
     past: (state.past || []).slice(-MAX_PERSISTED_HISTORY),
     future: (state.future || []).slice(-MAX_PERSISTED_HISTORY),
   };
@@ -717,6 +889,7 @@ export function consumeRestoredStateAfterUpdate(
         turtleState: sanitizeTurtleState(snap.turtleState),
         beatState: sanitizeBeatState(snap.beatState),
         depotState: sanitizeDepotState(snap.depotState),
+        switchyardState: snap.switchyardState ? sanitizeSwitchyardState(snap.switchyardState) : undefined,
         workspace: sanitizeWorkspace(snap.workspace),
         savedWorkspaces: snapSaved,
       };

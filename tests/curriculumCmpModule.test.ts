@@ -205,121 +205,6 @@ function runHeadless<TState>(
 }
 
 // ---------------------------------------------------------------------------
-// Forward-Compatible Grid Charge-Pad Adapter for cmp.M1 (`requiredCount: m`)
-// ---------------------------------------------------------------------------
-
-interface ChargePadLedgerState extends GridState {
-  __padCounts?: Record<string, number>;
-}
-
-function createCmpM1ChargePadEnv(): SimulationEnvironment<GridState> {
-  const padKey = (x: number, y: number) => `${x},${y}`;
-
-  const getRequiredCount = (sw: unknown): number => {
-    const rc = (sw as { requiredCount?: unknown })?.requiredCount;
-    return typeof rc === 'number' && rc > 1 ? rc : 1;
-  };
-
-  return {
-    ...gridSimulationEnvironment,
-    executeAction(actionType, state, options) {
-      const st = state as ChargePadLedgerState;
-      if (actionType === 'USE_DROP' && state.robot.carriedItem?.type === 'crate') {
-        const rx = state.robot.x;
-        const ry = state.robot.y;
-        const padSw = state.floorSwitches?.find(
-          (sw) => sw.x === rx && sw.y === ry && getRequiredCount(sw) > 1
-        );
-        if (padSw) {
-          const req = getRequiredCount(padSw);
-          const key = padKey(rx, ry);
-          const nextCount = (st.__padCounts?.[key] ?? 0) + 1;
-          if (nextCount > req) {
-            const collided: ChargePadLedgerState = {
-              ...state,
-              status: 'COLLISION',
-            };
-            return { nextState: collided, status: 'COLLISION', isCollision: true };
-          }
-          // Clear previous single crate visual on the multi-cell Charge Pad before delegating drop
-          const clearedItems = (state.worldItems ?? []).filter(
-            (it) => !(it.type === 'crate' && it.x === rx && it.y === ry)
-          );
-          const baseRes = gridSimulationEnvironment.executeAction(
-            actionType,
-            { ...state, worldItems: clearedItems },
-            options
-          );
-          const satisfied = nextCount === req;
-          const patchedSwitches = baseRes.nextState.floorSwitches?.map((sw) =>
-            sw.id === padSw.id ? { ...sw, active: satisfied } : sw
-          );
-          const nextState: ChargePadLedgerState = {
-            ...baseRes.nextState,
-            floorSwitches: patchedSwitches,
-            __padCounts: { ...(st.__padCounts ?? {}), [key]: nextCount },
-          };
-          return { ...baseRes, nextState };
-        }
-      }
-
-      const res = gridSimulationEnvironment.executeAction(actionType, state, options);
-      // Preserve pad counts & strict `nextCount === requiredCount` switch state across moves
-      if (st.__padCounts && res.nextState.floorSwitches) {
-        const patchedSwitches = res.nextState.floorSwitches.map((sw) => {
-          const req = getRequiredCount(sw);
-          if (req <= 1) return sw;
-          const count = st.__padCounts?.[padKey(sw.x, sw.y)] ?? 0;
-          return { ...sw, active: count === req };
-        });
-        const onGoal = res.nextState.flags.some(
-          (f) => f.isGoal && f.x === res.nextState.robot.x && f.y === res.nextState.robot.y
-        );
-        const allPadsExact = patchedSwitches.every((sw) => !sw.requiredForGoal || sw.active);
-        const patchedFlags = res.nextState.flags.map((f) =>
-          f.isGoal ? { ...f, collected: onGoal && allPadsExact } : f
-        );
-        const nextState: ChargePadLedgerState = {
-          ...res.nextState,
-          floorSwitches: patchedSwitches,
-          flags: patchedFlags,
-          status:
-            res.nextState.status === 'SUCCESS' && !allPadsExact
-              ? 'RUNNING'
-              : res.nextState.status,
-          __padCounts: st.__padCounts,
-        };
-        return {
-          ...res,
-          nextState,
-          isSuccess: Boolean(res.isSuccess && allPadsExact),
-        };
-      }
-      return res;
-    },
-    evaluateCompletion(state) {
-      const st = state as ChargePadLedgerState;
-      if (state.floorSwitches?.some((sw) => getRequiredCount(sw) > 1)) {
-        const allExact = state.floorSwitches.every((sw) => {
-          if (!sw.requiredForGoal) return true;
-          const req = getRequiredCount(sw);
-          if (req <= 1) return Boolean(sw.active);
-          return (st.__padCounts?.[padKey(sw.x, sw.y)] ?? 0) === req;
-        });
-        if (!allExact) return state.status === 'COLLISION' ? 'COLLISION' : 'IDLE';
-        const onGoal = state.flags.some(
-          (f) => f.isGoal && f.x === state.robot.x && f.y === state.robot.y
-        );
-        const emptyBag = !state.requireEmptyBackpackAtGoal || !state.robot.carriedItem;
-        if (onGoal && emptyBag) return 'SUCCESS';
-        return 'IDLE';
-      }
-      return gridSimulationEnvironment.evaluateCompletion(state);
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Phase 3 Switchyard & Numbered Toy-Block Depot VM Harnesses
 // (Executes real `tickInterpreter` against CMP_ACTIVITIES specs on `swarm/p3-curr-cmp`)
 // ---------------------------------------------------------------------------
@@ -854,16 +739,10 @@ describe('Module cmp Curriculum (CMP_ACTIVITIES — 18 Activities)', () => {
     const cmpB = getActivity('cmp.B');
     const cmpM1 = getActivity('cmp.M1');
     const cmpM3 = getActivity('cmp.M3');
-    const cmpM1Env = createCmpM1ChargePadEnv();
 
-    for (const { act, simEnv } of [
-      { act: cmp2, simEnv: undefined },
-      { act: cmpB, simEnv: undefined },
-      { act: cmpM1, simEnv: cmpM1Env },
-      { act: cmpM3, simEnv: undefined },
-    ]) {
+    for (const act of [cmp2, cmpB, cmpM1, cmpM3]) {
       const t0 = performance.now();
-      const report = verifyActivityConstraints(act, simEnv ? { simEnv } : undefined);
+      const report = verifyActivityConstraints(act);
       const elapsed = performance.now() - t0;
       expect(report.passed, `${act.id} failed solver: ${JSON.stringify(report)}`).toBe(true);
       expect(elapsed, `${act.id} solver exceeded 500ms (${elapsed.toFixed(1)}ms)`).toBeLessThan(
@@ -931,14 +810,14 @@ describe('Module cmp Curriculum (CMP_ACTIVITIES — 18 Activities)', () => {
     };
     const m1Overcharge = runHeadless(
       cmpM1FixedLoop5,
-      cmpM1Env,
+      gridSimulationEnvironment,
       createCurriculumGridState(cmpM1.gridVariants![1]) // D=3, required m=4
     );
     expect(m1Overcharge.runtimeStatus).toBe('COLLISION');
 
     const m1Undercharge = runHeadless(
       cmpM1FixedLoop5,
-      cmpM1Env,
+      gridSimulationEnvironment,
       createCurriculumGridState(cmpM1.gridVariants![2]) // D=5, required m=6
     );
     expect(m1Undercharge.evalStatus).not.toBe('SUCCESS');

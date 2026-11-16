@@ -5,15 +5,13 @@ import {
   SimPaletteItem,
   SimActionResult,
 } from '../../engine/simulation/types';
-import { GridState, Direction, FloorSwitch, LockedGate, WorldItem } from '../../types';
+import { GridState, Direction } from '../../types';
 import {
   areGoalSwitchesSatisfied,
   cloneLockedGates,
   cloneWorldItems,
   executeRobotAction,
   hasInteractiveWorldElements,
-  isFloorSwitchRequiredForGoal,
-  isSwitchLinkedToGate,
   resetGridInteractiveState,
   RobotGridActionType,
   syncWorldSwitchesAndGates,
@@ -180,8 +178,6 @@ export function createDefaultGridState(): GridState {
   };
 }
 
-type MultiCountFloorSwitch = FloorSwitch & { requiredCount?: number };
-
 const GRID_TERMINAL_ERROR_STATUSES = new Set<string>([
   'COLLISION',
   'TYPE_ERROR',
@@ -190,56 +186,6 @@ const GRID_TERMINAL_ERROR_STATUSES = new Set<string>([
   'STEP_LIMIT',
   'DEADLOCK',
 ]);
-
-function countCratesAt(worldItems: readonly WorldItem[] | undefined, x: number, y: number): number {
-  if (!worldItems) return 0;
-  return worldItems
-    .filter((it) => it.type === 'crate' && it.x === x && it.y === y)
-    .reduce((sum, it) => sum + (it.count ?? 1), 0);
-}
-
-function syncMultiCountSwitchesAndGates(
-  floorSwitches: readonly FloorSwitch[] | undefined,
-  lockedGates: readonly LockedGate[] | undefined,
-  worldItems: readonly WorldItem[] | undefined,
-  robotPos: { x: number; y: number }
-): {
-  floorSwitches: FloorSwitch[] | undefined;
-  lockedGates: LockedGate[] | undefined;
-} {
-  const base = syncWorldSwitchesAndGates(floorSwitches, lockedGates, worldItems, robotPos);
-  if (!base.floorSwitches || !base.floorSwitches.some((sw) => typeof (sw as MultiCountFloorSwitch).requiredCount === 'number')) {
-    return base;
-  }
-
-  const nextSwitches = base.floorSwitches.map((sw) => {
-    const reqCount = (sw as MultiCountFloorSwitch).requiredCount;
-    if (typeof reqCount !== 'number') return sw;
-    const crateCount = countCratesAt(worldItems, sw.x, sw.y);
-    return {
-      ...sw,
-      active: crateCount === reqCount,
-    };
-  });
-
-  const nextGates = base.lockedGates
-    ? base.lockedGates.map((gate) => {
-        if (gate.unlockedByKey) {
-          return { ...gate, unlocked: true, unlockedByKey: true };
-        }
-        const linked = nextSwitches.filter((sw) => isSwitchLinkedToGate(sw, gate));
-        if (linked.length > 0) {
-          return { ...gate, unlocked: linked.every((sw) => Boolean(sw.active)) };
-        }
-        return gate;
-      })
-    : undefined;
-
-  return {
-    floorSwitches: nextSwitches,
-    lockedGates: nextGates,
-  };
-}
 
 export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
   id: 'grid',
@@ -251,21 +197,7 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
   createInitialState: createDefaultGridState,
 
   resetState: (state: GridState): GridState => {
-    const reset = resetGridInteractiveState(state);
-    if (reset.floorSwitches?.some((sw) => typeof (sw as MultiCountFloorSwitch).requiredCount === 'number')) {
-      const synced = syncMultiCountSwitchesAndGates(
-        reset.floorSwitches,
-        reset.lockedGates,
-        reset.worldItems,
-        { x: reset.robot.x, y: reset.robot.y }
-      );
-      return {
-        ...reset,
-        ...(synced.floorSwitches ? { floorSwitches: synced.floorSwitches } : {}),
-        ...(synced.lockedGates ? { lockedGates: synced.lockedGates } : {}),
-      };
-    }
-    return reset;
+    return resetGridInteractiveState(state);
   },
 
   executeAction: (
@@ -285,83 +217,6 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       state.initialLockedGates ??
       (state.lockedGates !== undefined ? cloneLockedGates(state.lockedGates, true) : undefined);
 
-    // Multi-crate FloorSwitch (`requiredCount`) stacking support on `USE_DROP`
-    const carried = state.robot.carriedItem;
-    const carriedCount = state.robot.carriedCount ?? (carried ? carried.count ?? 1 : 0);
-    const switchHere = state.floorSwitches?.find(
-      (sw) => sw.x === state.robot.x && sw.y === state.robot.y
-    ) as MultiCountFloorSwitch | undefined;
-    const reqCountHere = switchHere?.requiredCount;
-
-    if (
-      actionType === 'USE_DROP' &&
-      carried?.type === 'crate' &&
-      carriedCount >= 1 &&
-      typeof reqCountHere === 'number'
-    ) {
-      const currentItems = cloneWorldItems(state.worldItems ?? []);
-      const existingIdx = currentItems.findIndex(
-        (it) => it.type === 'crate' && it.x === state.robot.x && it.y === state.robot.y
-      );
-      if (existingIdx >= 0) {
-        const existingTotal = countCratesAt(currentItems, state.robot.x, state.robot.y);
-        const nextFeedbackSeq = (state.lastInteractionFeedback?.seq ?? 0) + 1;
-        if (existingTotal + 1 > reqCountHere) {
-          const collidedState: GridState = {
-            ...state,
-            ...(capturedInitialGates !== undefined ? { initialLockedGates: capturedInitialGates } : {}),
-            ...(capturedInitialItems !== undefined ? { initialWorldItems: capturedInitialItems } : {}),
-            lastInteractionFeedback: {
-              kind: 'occupied',
-              message: 'Switch crate limit exceeded.',
-              seq: nextFeedbackSeq,
-            },
-            status: 'COLLISION',
-          };
-          return {
-            nextState: collidedState,
-            status: 'COLLISION',
-            isCollision: true,
-            isSuccess: false,
-          };
-        }
-
-        const nextCarriedCount = carriedCount > 1 ? carriedCount - 1 : 0;
-        const nextCarried = nextCarriedCount > 0 ? { ...carried, count: nextCarriedCount } : null;
-        currentItems[existingIdx] = {
-          ...currentItems[existingIdx],
-          count: (currentItems[existingIdx].count ?? 1) + 1,
-        };
-        const synced = syncMultiCountSwitchesAndGates(
-          state.floorSwitches,
-          state.lockedGates,
-          currentItems,
-          { x: state.robot.x, y: state.robot.y }
-        );
-        const stackedState: GridState = {
-          ...state,
-          robot: {
-            ...state.robot,
-            carriedItem: nextCarried,
-            carriedCount: nextCarriedCount,
-          },
-          worldItems: currentItems,
-          ...(capturedInitialItems !== undefined ? { initialWorldItems: capturedInitialItems } : {}),
-          ...(synced.floorSwitches !== undefined ? { floorSwitches: synced.floorSwitches } : {}),
-          ...(synced.lockedGates !== undefined ? { lockedGates: synced.lockedGates } : {}),
-          ...(capturedInitialGates !== undefined ? { initialLockedGates: capturedInitialGates } : {}),
-          lastInteractionFeedback: null,
-          status: 'RUNNING',
-        };
-        return {
-          nextState: stackedState,
-          status: 'RUNNING',
-          isCollision: false,
-          isSuccess: false,
-        };
-      }
-    }
-
     const res = executeRobotAction(actionType as RobotGridActionType, state);
 
     const prevVisited = (state as GridState & { visitedCells?: { x: number; y: number }[] })
@@ -378,20 +233,6 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
         nextVisited.push({ x: res.newX, y: res.newY });
       }
     }
-
-    const effectiveSwitchesSource = res.floorSwitches ?? state.floorSwitches;
-    const effectiveGatesSource = res.lockedGates ?? state.lockedGates;
-    const effectiveItemsSource = res.worldItems ?? state.worldItems;
-    const multiSynced = effectiveSwitchesSource?.some(
-      (sw) => typeof (sw as MultiCountFloorSwitch).requiredCount === 'number'
-    )
-      ? syncMultiCountSwitchesAndGates(
-          effectiveSwitchesSource,
-          effectiveGatesSource,
-          effectiveItemsSource,
-          { x: res.newX, y: res.newY }
-        )
-      : { floorSwitches: res.floorSwitches, lockedGates: res.lockedGates };
 
     const nextState: GridState = {
       ...state,
@@ -411,9 +252,9 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       trace: res.trace,
       ...(nextVisited !== undefined ? { visitedCells: nextVisited } : {}),
       ...(res.bridgedWaterCells !== undefined ? { bridgedWaterCells: res.bridgedWaterCells } : {}),
-      ...(multiSynced.lockedGates !== undefined ? { lockedGates: multiSynced.lockedGates } : {}),
+      ...(res.lockedGates !== undefined ? { lockedGates: res.lockedGates } : {}),
       ...(capturedInitialGates !== undefined ? { initialLockedGates: capturedInitialGates } : {}),
-      ...(multiSynced.floorSwitches !== undefined ? { floorSwitches: multiSynced.floorSwitches } : {}),
+      ...(res.floorSwitches !== undefined ? { floorSwitches: res.floorSwitches } : {}),
       ...(res.worldItems !== undefined ? { worldItems: res.worldItems } : {}),
       ...(capturedInitialItems !== undefined ? { initialWorldItems: capturedInitialItems } : {}),
       ...(hasWorld ? { lastInteractionFeedback: res.interactionFeedback ?? null } : {}),
@@ -453,19 +294,13 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
     );
     const nonGoalFlags = state.flags.filter((f) => !f.isGoal);
     const allCollected = nonGoalFlags.every((f) => f.collected);
-    const synced = syncMultiCountSwitchesAndGates(
+    const synced = syncWorldSwitchesAndGates(
       state.floorSwitches,
       state.lockedGates,
       state.worldItems,
       { x: state.robot.x, y: state.robot.y }
     );
     const switchesOk = areGoalSwitchesSatisfied(synced.floorSwitches, synced.lockedGates);
-    const multiCountSwitchesOk = (synced.floorSwitches ?? []).every((sw) => {
-      const reqCount = (sw as MultiCountFloorSwitch).requiredCount;
-      if (typeof reqCount !== 'number') return true;
-      if (!isFloorSwitchRequiredForGoal(sw, synced.lockedGates)) return true;
-      return countCratesAt(state.worldItems, sw.x, sw.y) === reqCount;
-    });
     const allItemsCollectedOk =
       !state.requireAllItemsCollected || (state.worldItems?.length ?? 0) === 0;
     const emptyBackpackOk =
@@ -475,7 +310,6 @@ export const gridSimulationEnvironment: SimulationEnvironment<GridState> = {
       onGoal &&
       allCollected &&
       switchesOk &&
-      multiCountSwitchesOk &&
       allItemsCollectedOk &&
       emptyBackpackOk
     )

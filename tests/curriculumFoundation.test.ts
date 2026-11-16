@@ -21,6 +21,8 @@ import { exportToString } from '../src/engine/serialization/codeSerializer';
 import { clearPendingUpdateState } from '../src/services/pwaStateRestoreService';
 import { GridOverlayLayer, GRID_CELL_SIZE } from '../src/simulations/grid/components/GridOverlayLayer';
 import { createInitialDepotState } from '../src/simulations/depot/depotPhysics';
+import { createInitialSwitchyardState } from '../src/simulations/switchyard/physics';
+import { createCurriculumBeatState } from '../src/simulations/beat/beatEnvironment';
 import { useAppStore } from '../src/store/useAppStore';
 
 // Ensure simulation environments are registered
@@ -53,10 +55,19 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
   });
 
   describe('Curriculum Module & Activity Schema', () => {
-    it('declares static badgeId and capstoneIds for registered modules (seq..while) and resolves legacy aliases', () => {
+    it('declares static badgeId and capstoneIds for registered modules (seq..cmp) and resolves legacy aliases', () => {
       const modules = getCurriculumModules();
-      expect(modules).toHaveLength(6);
-      expect(modules.map((m) => m.id)).toEqual(['seq', 'param', 'loop', 'func', 'branch', 'while']);
+      expect(modules).toHaveLength(8);
+      expect(modules.map((m) => m.id)).toEqual([
+        'seq',
+        'param',
+        'loop',
+        'func',
+        'branch',
+        'while',
+        'var',
+        'cmp',
+      ]);
 
       const seq = getCurriculumModule('seq')!;
       expect(seq.badgeId).toBe('badge-seq');
@@ -82,18 +93,36 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
       expect(whileMod.badgeId).toBe('badge-while');
       expect(whileMod.capstoneIds).toEqual(['while.A', 'while.B', 'while.C']);
 
+      const varMod = getCurriculumModule('var')!;
+      expect(varMod.badgeId).toBe('badge-var');
+      expect(varMod.capstoneIds).toEqual(['var.A', 'var.B']);
+
+      const cmpMod = getCurriculumModule('cmp')!;
+      expect(cmpMod.badgeId).toBe('badge-cmp');
+      expect(cmpMod.capstoneIds).toEqual(['cmp.A', 'cmp.B', 'cmp.C']);
+
       // Backward-compatibility alias lookup
       expect(resolveModuleIdAlias('module-1')).toBe('seq');
       expect(resolveModuleIdAlias('module-4')).toBe('func');
       expect(resolveModuleIdAlias('module-5')).toBe('branch');
+      expect(resolveModuleIdAlias('module-6')).toBe('var');
+      expect(resolveModuleIdAlias('module-7')).toBe('cmp');
       expect(resolveActivityIdAlias('1.0')).toBe('seq.0');
       expect(resolveActivityIdAlias('2.5a')).toBe('param.6');
       expect(resolveActivityIdAlias('3.8')).toBe('loop.8');
       expect(resolveActivityIdAlias('4C')).toBe('func.C');
       expect(resolveActivityIdAlias('5.5a')).toBe('branch.5a');
       expect(resolveActivityIdAlias('5B')).toBe('branch.B');
+      expect(resolveActivityIdAlias('6.4a')).toBe('var.4a');
+      expect(resolveActivityIdAlias('7.5a')).toBe('cmp.5a');
+      expect(resolveActivityIdAlias('C6.1')).toBe('var.M1');
+      expect(resolveActivityIdAlias('C7.1')).toBe('cmp.M1');
       expect(getCurriculumModule('module-2')?.id).toBe('param');
+      expect(getCurriculumModule('module-6')?.id).toBe('var');
+      expect(getCurriculumModule('module-7')?.id).toBe('cmp');
       expect(getActivityLatest('2.5a')?.id).toBe('param.6');
+      expect(getActivityLatest('C6.1')?.id).toBe('var.M1');
+      expect(getActivityLatest('C7.1')?.id).toBe('cmp.M1');
     });
 
     it('seeds validated puzzles whose referenceSolutions solve their maps/variants within slotCap', () => {
@@ -130,6 +159,14 @@ describe('Wave 1 / Commit 1: Curriculum Foundation, Read-Only Maps & GridOverlay
           if (variant.kind === 'depot' && variant.depot) {
             const initialDepot = createInitialDepotState(variant.depot);
             const simResult = runHeadlessSimulation(sol, 'depot', initialDepot);
+            expect(simResult.status, `${activity.id} (${variant.label})`).toBe('SUCCESS');
+          } else if (variant.kind === 'switchyard' && variant.switchyard) {
+            const initialSw = createInitialSwitchyardState(variant.switchyard as any);
+            const simResult = runHeadlessSimulation(sol, 'switchyard', initialSw);
+            expect(simResult.status, `${activity.id} (${variant.label})`).toBe('SUCCESS');
+          } else if (variant.kind === 'beat' && variant.beat) {
+            const initialBeat = createCurriculumBeatState(variant.beat, true);
+            const simResult = runHeadlessSimulation(sol, 'beat', initialBeat);
             expect(simResult.status, `${activity.id} (${variant.label})`).toBe('SUCCESS');
           } else if (variant.kind === 'grid' && variant.grid) {
             const initialGrid = createCurriculumGridState(variant.grid);

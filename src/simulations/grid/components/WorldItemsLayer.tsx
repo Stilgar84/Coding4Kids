@@ -570,12 +570,19 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
         const linkedVisual = linkedGate
           ? KEY_GATE_VISUALS[resolveKeyGateColor(linkedGate.color, linkedShape!)]
           : null;
+        const reqCount = typeof sw.requiredCount === 'number' && sw.requiredCount > 1 ? sw.requiredCount : undefined;
+        const crateCountHere = reqCount
+          ? worldItems
+              .filter((it) => it.type === 'crate' && it.x === sw.x && it.y === sw.y)
+              .reduce((sum, it) => sum + (it.count ?? 1), 0)
+          : 0;
 
         return (
           <g
             key={sw.id}
             data-testid={`floor-switch-${sw.x}-${sw.y}`}
             data-active={active ? 'true' : 'false'}
+            data-required-count={reqCount}
             transform={`translate(${cx}, ${cy}) scale(${sf})`}
           >
             {/* Outer recessed metal frame */}
@@ -628,6 +635,36 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
                   stroke={linkedVisual.stroke}
                   strokeWidth={1}
                 />
+              </g>
+            )}
+
+            {/* Multi-crate target count badge in bottom-right corner (`k/N`, zero prose) */}
+            {reqCount !== undefined && (
+              <g
+                transform="translate(15, 19)"
+                data-testid={`floor-switch-count-${sw.x}-${sw.y}`}
+              >
+                <rect
+                  x={-11}
+                  y={-6.5}
+                  width={22}
+                  height={13}
+                  rx={4}
+                  fill={active ? '#064e3b' : '#0f172a'}
+                  stroke={active ? '#6ee7b7' : '#fbbf24'}
+                  strokeWidth={1.2}
+                />
+                <text
+                  x={0}
+                  y={3}
+                  textAnchor="middle"
+                  fontSize={8.5}
+                  fontWeight="800"
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fill={active ? '#ecfdf5' : '#fef3c7'}
+                >
+                  {`${crateCountHere}/${reqCount}`}
+                </text>
               </g>
             )}
           </g>
@@ -870,12 +907,14 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
         }
 
         // Crate item (sized so floor switch rim remains clearly visible around it when depressed)
+        const crateCount = item.count ?? 1;
         return (
           <g
             key={item.id}
             data-testid={`world-item-crate-${item.x}-${item.y}`}
             data-item-type="crate"
-            aria-label="Wooden crate"
+            data-count={crateCount > 1 ? crateCount : undefined}
+            aria-label={crateCount > 1 ? `Wooden crate stack (${crateCount})` : 'Wooden crate'}
             transform={`translate(${cx}, ${cy}) scale(${sf})`}
           >
             <rect
@@ -904,7 +943,32 @@ export const WorldItemsLayer: React.FC<WorldItemsLayerProps> = ({
             <circle cx={13} cy={-13} r={1.3} fill="#fef3c7" />
             <circle cx={-13} cy={13} r={1.3} fill="#fef3c7" />
             <circle cx={13} cy={13} r={1.3} fill="#fef3c7" />
-            <title>Wooden crate</title>
+            {crateCount > 1 && (
+              <g transform="translate(0, -16)">
+                <rect
+                  x={-10}
+                  y={-6.5}
+                  width={20}
+                  height={13}
+                  rx={4}
+                  fill="#0f172a"
+                  stroke="#fde68a"
+                  strokeWidth={1.2}
+                />
+                <text
+                  x={0}
+                  y={3}
+                  textAnchor="middle"
+                  fontSize={8.5}
+                  fontWeight="800"
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fill="#fef3c7"
+                >
+                  {`×${crateCount}`}
+                </text>
+              </g>
+            )}
+            <title>{crateCount > 1 ? `Wooden crate (×${crateCount})` : 'Wooden crate'}</title>
           </g>
         );
       })}

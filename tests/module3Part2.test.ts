@@ -175,7 +175,7 @@ describe('Phase 1 V2: Loop Activities (loop.5–loop.C) & Full 56-Activity Catal
       expect(paramIds).toHaveLength(14);
       expect(loopIds).toHaveLength(17);
       expect(funcIds).toHaveLength(11);
-      expect(CURRICULUM_ACTIVITIES).toHaveLength(89);
+      expect(CURRICULUM_ACTIVITIES).toHaveLength(123);
 
       const validatedPuzzleIds = CURRICULUM_ACTIVITIES.filter((a) => isValidatedPuzzleActivity(a)).map(
         (a) => a.id
@@ -224,6 +224,24 @@ describe('Phase 1 V2: Loop Activities (loop.5–loop.C) & Full 56-Activity Catal
         'while.5',
         'while.8',
         'while.A',
+        'var.2',
+        'var.4',
+        'var.4a',
+        'var.A',
+        'cmp.1',
+        'cmp.1a',
+        'cmp.2',
+        'cmp.4',
+        'cmp.5a',
+        'cmp.7',
+        'cmp.8',
+        'cmp.9',
+        'cmp.A',
+        'cmp.B',
+        'var.M1',
+        'cmp.M1',
+        'cmp.M2',
+        'cmp.M3',
       ]);
     });
   });

@@ -231,11 +231,12 @@ export const switchyardSimulationEnvironment: SimulationEnvironment<SwitchyardSt
 
   executeAction: (actionType, state, options): SimActionResult<SwitchyardState> => {
     const nextState = applySwitchyardAction(actionType, state, options);
+    const inProgramStatus = nextState.status === 'SUCCESS' ? 'RUNNING' : nextState.status;
     return {
       nextState,
-      isSuccess: nextState.status === 'SUCCESS',
+      isSuccess: false,
       isCollision: nextState.status === 'COLLISION',
-      status: nextState.status,
+      status: inProgramStatus,
     };
   },
 

@@ -12,6 +12,7 @@ import {
   type ConditionExpr,
   type CreativeVariationCard,
   type CurriculumActivity,
+  type CurriculumBeatDefinition,
   type CurriculumDepotDefinition,
   type CurriculumGridDefinition,
   type CurriculumSwitchyardDefinition,
@@ -1057,6 +1058,19 @@ export const CMP_5A_ROW_VARIANTS: readonly CmpBeatCursorRowVariant[] = [
   },
 ];
 
+export const CMP_5A_BEAT_VARIANTS: CurriculumBeatDefinition[] = CMP_5A_ROW_VARIANTS.map((v) => ({
+  id: v.id,
+  label: v.label,
+  startX: v.startX,
+  startY: v.startY,
+  startDir: 'EAST',
+  cursorVisible: true,
+  expectedRow: {
+    row: v.startY,
+    colors: [...v.expectedRowColors],
+  },
+}));
+
 const CMP_5A_MAIN_SPECS: BlockSpec[] = [
   loopStart(8),
   { type: 'CALL_F1' },
@@ -1935,7 +1949,7 @@ function buildCmpM1VaultGrid(
         x: hallEndD,
         y: 2,
         requiredForGoal: true,
-        ...({ requiredCount: requiredMaxM } as Record<string, unknown>),
+        requiredCount: requiredMaxM,
       },
     ],
     flags: [
@@ -2491,9 +2505,14 @@ export const CMP_ACTIVITIES: CurriculumActivity[] = [
         unmodifiedStarterMustFail: true,
       },
       {
-        id: 'cmp4_requires_variables',
-        description: 'Identical crates across odd and even stream lengths (6, 4, 5, 8) require counter + % 2 parity.',
-        allowVariables: false,
+        id: 'cmp4_requires_if',
+        description: 'Odd-length Variant #3 (5 crates) defeats unguarded 2-item pair loops without IF.',
+        forbidBlocks: ['IF'],
+      },
+      {
+        id: 'cmp4_requires_while',
+        description: 'Variable stream lengths (6, 4, 5, 8) defeat flat unrolling within 13 slots without WHILE.',
+        forbidBlocks: ['WHILE'],
       },
     ],
   },
@@ -2552,6 +2571,8 @@ export const CMP_ACTIVITIES: CurriculumActivity[] = [
     description:
       'Complete F1 using s = $cursorX + $cursorY and p = s % 2 so odd and even start rows light up in true checkerboard Cyan (0) and Purple (1) colors!',
     hint: 'Add s = $cursorX + $cursorY inside F1, then check p = s % 2 == 0 for Cyan and ELSE for Purple before LIGHT_PIXEL!',
+    beat: CMP_5A_BEAT_VARIANTS[0],
+    beatVariants: CMP_5A_BEAT_VARIANTS,
     beatRules: { patternLength: 8 },
     starterWorkspace: CMP_5A_STARTER,
     palette: {

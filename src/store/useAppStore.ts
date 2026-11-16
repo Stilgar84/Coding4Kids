@@ -37,6 +37,7 @@ import { createInitialTurtleState, turtleSimulationEnvironment } from '../simula
 import { BeatState } from '../simulations/beat/types';
 import {
   beatSimulationEnvironment,
+  createCurriculumBeatState,
   createInitialBeatState,
   resetBeatState,
 } from '../simulations/beat/beatEnvironment';
@@ -430,11 +431,12 @@ export const PRESET_LEVELS: LevelPreset[] = LESSONS.map((lesson) => ({
 export interface VariantRunSnapshot {
   index: number;
   label?: string;
-  kind: 'grid' | 'depot' | 'switchyard';
+  kind: 'grid' | 'depot' | 'switchyard' | 'beat';
   status: SimulationStatus;
   gridState?: GridState;
   depotState?: DepotState;
   switchyardState?: SwitchyardState;
+  beatState?: BeatState;
   runtime?: InterpreterRuntimeState | null;
 }
 
@@ -805,6 +807,51 @@ export const useAppStore = create<AppState>((set, get) => {
       });
 
       if (nextBeat.status === 'SUCCESS' || res.nextRuntime.status === 'SUCCESS') {
+        const currentVariantRuns = get().variantRuns;
+        if (currentVariantRuns.length > 1) {
+          const freshRuns = resetVariantRunsList(currentVariantRuns);
+          const evaluatedRuns: VariantRunSnapshot[] = freshRuns.map((v) => {
+            const vBeat = v.beatState ?? beatState;
+            const vRes = computeInstantSimulation(
+              workspace,
+              'beat',
+              get().grid,
+              get().turtleState,
+              vBeat,
+              get().depotState,
+              get().switchyardState,
+              tickOpts
+            );
+            return {
+              ...v,
+              status: vRes.status,
+              runtime: {
+                ...vRes.finalRuntime,
+                activeBlockId: null,
+                activeRepeatProgress: null,
+              },
+              beatState: vRes.finalState as BeatState,
+            };
+          });
+          const allSucceeded = evaluatedRuns.every((v) => v.status === 'SUCCESS');
+          const firstFailIdx = evaluatedRuns.findIndex((v) => v.status !== 'SUCCESS');
+          const nextFocusIdx = !allSucceeded && firstFailIdx >= 0 ? firstFailIdx : get().focusedVariantIndex;
+          const focused = evaluatedRuns[nextFocusIdx] ?? evaluatedRuns[0];
+          set({
+            variantRuns: evaluatedRuns,
+            focusedVariantIndex: nextFocusIdx,
+            ...(focused?.beatState ? { beatState: focused.beatState } : {}),
+            ...(focused?.runtime ? { runtime: focused.runtime } : {}),
+            isPlaying: false,
+          });
+          if (allSucceeded) {
+            const reward = recordCurriculumSuccessIfApplicable();
+            if (!wasSuccess) {
+              triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
+            }
+          }
+          return;
+        }
         const reward = recordCurriculumSuccessIfApplicable();
         if (!wasSuccess) {
           triggerVictoryModal(reward?.newlyEarnedBadges ?? [], true);
@@ -1541,6 +1588,9 @@ export const useAppStore = create<AppState>((set, get) => {
       ...(v.kind === 'switchyard' && v.switchyard
         ? { switchyardState: createInitialSwitchyardState(v.switchyard as any) }
         : {}),
+      ...(v.kind === 'beat' && v.beat
+        ? { beatState: createCurriculumBeatState(v.beat, beatSynth.isMuted()) }
+        : {}),
       runtime: null,
     }));
   };
@@ -1553,6 +1603,7 @@ export const useAppStore = create<AppState>((set, get) => {
       ...(v.gridState ? { gridState: getInitialGridState(v.gridState) } : {}),
       ...(v.depotState ? { depotState: getInitialDepotState(v.depotState) } : {}),
       ...(v.switchyardState ? { switchyardState: getInitialSwitchyardState(v.switchyardState) } : {}),
+      ...(v.beatState ? { beatState: getInitialBeatState(v.beatState) } : {}),
     }));
 
   const areAllVariantsSucceeded = (runs: VariantRunSnapshot[]): boolean =>
@@ -1642,6 +1693,11 @@ export const useAppStore = create<AppState>((set, get) => {
     bootActivity?.demoTabs?.[0]?.switchyard ??
     bootActivity?.demoTabs?.[0]?.switchyardState;
   const bootTurtleDef = bootTab0?.turtle ?? bootActivity?.turtle;
+  const bootBeatDef =
+    bootTab0?.beat ??
+    bootActivity?.beat ??
+    bootActivity?.beatVariants?.[0] ??
+    bootActivity?.demoTabs?.[0]?.beat;
   const bootBeatRules = bootTab0?.beatRules ?? bootActivity?.beatRules;
   const bootInitialVars = bootTab0?.initialVars ?? bootActivity?.initialVars;
 
@@ -1795,6 +1851,7 @@ export const useAppStore = create<AppState>((set, get) => {
         depotDef: undefined,
         switchyardDef: undefined,
         turtleDef: undefined,
+        beatDef: undefined,
         beatRules: undefined,
         initialVars: undefined,
       };
@@ -1829,6 +1886,11 @@ export const useAppStore = create<AppState>((set, get) => {
         activity.demoTabs?.[0]?.switchyard ??
         activity.demoTabs?.[0]?.switchyardState,
       turtleDef: tab?.turtle ?? activity.turtle,
+      beatDef:
+        tab?.beat ??
+        activity.beat ??
+        activity.beatVariants?.[0] ??
+        activity.demoTabs?.[0]?.beat,
       beatRules: tab?.beatRules ?? activity.beatRules,
       initialVars: tab?.initialVars ?? activity.initialVars,
     };
@@ -1893,6 +1955,7 @@ export const useAppStore = create<AppState>((set, get) => {
     Boolean(act) &&
     !isValidatedPuzzleActivity(act!) &&
     (act!.format === 'sandbox' ||
+      act!.format === 'challenge' ||
       (act!.format === 'capstone' &&
         (act!.capstoneType === 'creative' || (act!.capstoneType as string) === 'sandbox')));
 
@@ -2080,6 +2143,10 @@ export const useAppStore = create<AppState>((set, get) => {
     const targetSwitchyard = resolvedSwitchyardDef
       ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
       : createInitialSwitchyardState();
+    const resolvedBeatDef = activity.beat ?? activity.beatVariants?.[0];
+    const targetBeat = resolvedBeatDef
+      ? createCurriculumBeatState(resolvedBeatDef, state.beatState.isMuted)
+      : createInitialBeatState(state.beatState.isMuted);
     const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
     const allowedScopes: ScopeType[] =
@@ -2102,7 +2169,7 @@ export const useAppStore = create<AppState>((set, get) => {
       ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
       grid: targetGrid,
       turtleState: createInitialTurtleState(),
-      beatState: resetBeatState(state.beatState),
+      beatState: targetBeat,
       depotState: targetDepot,
       switchyardState: targetSwitchyard,
       isLoopPlayback: Boolean(activity.defaultLoopPlayback ?? activity.beatRules?.isLoopingDefault),
@@ -2175,7 +2242,10 @@ export const useAppStore = create<AppState>((set, get) => {
       bootMode === 'curriculum'
         ? createCurriculumTurtleState(bootTurtleDef)
         : createInitialTurtleState(),
-    beatState: createInitialBeatState(beatSynth.isMuted()),
+    beatState:
+      bootMode === 'curriculum' && bootBeatDef
+        ? createCurriculumBeatState(bootBeatDef, beatSynth.isMuted())
+        : createInitialBeatState(beatSynth.isMuted()),
     depotState:
       bootMode === 'curriculum' && bootDepotDef
         ? createInitialDepotState(bootDepotDef)
@@ -2836,6 +2906,9 @@ export const useAppStore = create<AppState>((set, get) => {
           ? createInitialSwitchyardState(resolvedSwitchyardDef as any)
           : createInitialSwitchyardState();
         const targetTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
+        const targetBeat = tabCfg.beatDef
+          ? createCurriculumBeatState(tabCfg.beatDef, state.beatState.isMuted)
+          : createInitialBeatState(state.beatState.isMuted);
         const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
         const targetWs = state.curriculumWorkspaces[activity.id]
@@ -2867,7 +2940,7 @@ export const useAppStore = create<AppState>((set, get) => {
           ...(shouldResetInstant ? { speed: 400 as SimulationSpeed } : {}),
           grid: targetGrid,
           turtleState: targetTurtle,
-          beatState: resetBeatState(state.beatState),
+          beatState: targetBeat,
           depotState: targetDepot,
           switchyardState: targetSwitchyard,
           isLoopPlayback: Boolean(
@@ -3024,6 +3097,9 @@ export const useAppStore = create<AppState>((set, get) => {
         ? createInitialSwitchyardState(tabCfg.switchyardDef as any)
         : createInitialSwitchyardState();
       const targetTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
+      const targetBeat = tabCfg.beatDef
+        ? createCurriculumBeatState(tabCfg.beatDef, state.beatState.isMuted)
+        : createInitialBeatState(state.beatState.isMuted);
       const targetVariantRuns = buildVariantRunsForActivity(activity, prevFitToView);
 
       const targetWs = nextCurriculumWorkspaces[activity.id]
@@ -3057,7 +3133,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeVariables: tabCfg.initialVars ? normalizeInitialVariables(tabCfg.initialVars) : {},
         grid: targetGrid,
         turtleState: targetTurtle,
-        beatState: resetBeatState(state.beatState),
+        beatState: targetBeat,
         depotState: targetDepot,
         switchyardState: targetSwitchyard,
         isLoopPlayback: Boolean(
@@ -3097,6 +3173,7 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(target.gridState ? { grid: target.gridState } : {}),
         ...(target.depotState ? { depotState: target.depotState } : {}),
         ...(target.switchyardState ? { switchyardState: target.switchyardState } : {}),
+        ...(target.beatState ? { beatState: target.beatState } : {}),
         ...(target.runtime !== undefined ? { runtime: target.runtime } : {}),
       });
     },
@@ -3156,6 +3233,9 @@ export const useAppStore = create<AppState>((set, get) => {
         ? createInitialSwitchyardState(tabCfg.switchyardDef as any)
         : resetSwitchyardState(state.switchyardState);
       const nextTurtle = createCurriculumTurtleState(tabCfg.turtleDef);
+      const nextBeat = tabCfg.beatDef
+        ? createCurriculumBeatState(tabCfg.beatDef, state.beatState.isMuted)
+        : createInitialBeatState(state.beatState.isMuted);
       const nextWs = cloneWorkspaceWithFreshIds(tab.workspace);
       const nextSimId = tabCfg.simId;
 
@@ -3170,7 +3250,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeVariables: tabCfg.initialVars ? normalizeInitialVariables(tabCfg.initialVars) : {},
         grid: nextGrid,
         turtleState: nextTurtle,
-        beatState: resetBeatState(state.beatState),
+        beatState: nextBeat,
         depotState: nextDepot,
         switchyardState: nextSwitchyard,
         isLoopPlayback: Boolean(
@@ -4372,18 +4452,25 @@ export const useAppStore = create<AppState>((set, get) => {
 
       const tickOpts = getActiveTickOptions();
 
-      if (variantRuns.length > 1 && (activeSimId === 'grid' || activeSimId === 'depot' || activeSimId === 'switchyard')) {
+      if (
+        variantRuns.length > 1 &&
+        (activeSimId === 'grid' ||
+          activeSimId === 'depot' ||
+          activeSimId === 'switchyard' ||
+          activeSimId === 'beat')
+      ) {
         const freshRuns = resetVariantRunsList(variantRuns);
         const evaluatedRuns: VariantRunSnapshot[] = freshRuns.map((v) => {
           const vGrid = activeSimId === 'grid' && v.gridState ? v.gridState : grid;
           const vDepot = activeSimId === 'depot' && v.depotState ? v.depotState : depotState;
           const vSwitchyard = activeSimId === 'switchyard' && v.switchyardState ? v.switchyardState : switchyardState;
+          const vBeat = activeSimId === 'beat' && v.beatState ? v.beatState : beatState;
           const res = computeInstantSimulation(
             workspace,
             activeSimId,
             vGrid,
             turtleState,
-            beatState,
+            vBeat,
             vDepot,
             vSwitchyard,
             tickOpts
@@ -4402,6 +4489,8 @@ export const useAppStore = create<AppState>((set, get) => {
               ? { gridState: res.finalState as GridState }
               : activeSimId === 'depot'
               ? { depotState: res.finalState as DepotState }
+              : activeSimId === 'beat'
+              ? { beatState: res.finalState as BeatState }
               : { switchyardState: res.finalState as SwitchyardState }),
           };
         });
@@ -4429,6 +4518,9 @@ export const useAppStore = create<AppState>((set, get) => {
             : {}),
           ...(activeSimId === 'switchyard' && focused?.switchyardState
             ? { switchyardState: focused.switchyardState }
+            : {}),
+          ...(activeSimId === 'beat' && focused?.beatState
+            ? { beatState: focused.beatState }
             : {}),
           runtime: focusedRuntime,
           isPlaying: false,
@@ -5647,7 +5739,13 @@ export const useAppStore = create<AppState>((set, get) => {
         set({ ghostPreview: null });
       }
 
-      if ((activeSimId === 'grid' || activeSimId === 'depot' || activeSimId === 'switchyard') && get().variantRuns.length > 1) {
+      if (
+        (activeSimId === 'grid' ||
+          activeSimId === 'depot' ||
+          activeSimId === 'switchyard' ||
+          activeSimId === 'beat') &&
+        get().variantRuns.length > 1
+      ) {
         const currentVariants = get().variantRuns;
         const {
           runtime: prevRuntime,
@@ -5667,7 +5765,14 @@ export const useAppStore = create<AppState>((set, get) => {
         let allDone = true;
 
         const nextVariants: VariantRunSnapshot[] = currentVariants.map((v) => {
-          const vState = activeSimId === 'grid' ? v.gridState : activeSimId === 'depot' ? v.depotState : v.switchyardState;
+          const vState =
+            activeSimId === 'grid'
+              ? v.gridState
+              : activeSimId === 'depot'
+              ? v.depotState
+              : activeSimId === 'beat'
+              ? v.beatState
+              : v.switchyardState;
           if (
             !vState ||
             v.status === 'SUCCESS' ||
@@ -5677,7 +5782,7 @@ export const useAppStore = create<AppState>((set, get) => {
           }
           const vRuntime = v.runtime || createStoreInitialRuntime();
           const res = tickInterpreter(vRuntime, workspace, vState, simEnv, getActiveTickOptions());
-          const nextState = res.nextGrid as GridState & DepotState & SwitchyardState;
+          const nextState = res.nextGrid as GridState & DepotState & SwitchyardState & BeatState;
           const paused = res.nextRuntime.status === 'PAUSED';
           if (paused) anyPaused = true;
           const resolvedStatus = resolveTerminalStatus(nextState.status, res.nextRuntime.status);
@@ -5702,6 +5807,8 @@ export const useAppStore = create<AppState>((set, get) => {
               ? { gridState: res.nextGrid as GridState }
               : activeSimId === 'depot'
               ? { depotState: res.nextGrid as DepotState }
+              : activeSimId === 'beat'
+              ? { beatState: res.nextGrid as BeatState }
               : { switchyardState: res.nextGrid as SwitchyardState }),
           };
         });
@@ -5732,6 +5839,9 @@ export const useAppStore = create<AppState>((set, get) => {
             : {}),
           ...(activeSimId === 'switchyard' && focused?.switchyardState
             ? { switchyardState: focused.switchyardState }
+            : {}),
+          ...(activeSimId === 'beat' && focused?.beatState
+            ? { beatState: focused.beatState }
             : {}),
           activeScope,
           ...(activeScope !== prevScope && activeScope !== 'MAIN'
@@ -6256,7 +6366,7 @@ export const useAppStore = create<AppState>((set, get) => {
           victoryEarnedBadges: [],
           variantRuns: resetVariants,
           focusedVariantIndex: 0,
-          beatState: getInitialBeatState(beatState),
+          beatState: firstVariant?.beatState ?? getInitialBeatState(beatState),
         });
       } else if (activeSimId === 'depot') {
         set({
