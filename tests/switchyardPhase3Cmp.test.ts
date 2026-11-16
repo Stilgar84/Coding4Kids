@@ -485,11 +485,11 @@ describe('Switchyard Phase 3 (cmp): Weights, Quotas, Parity, Overweight Scrap & 
   });
 
   it('preserves Stage A UX invariants (anim speed schedule, sy-tunnel-arch-clip, outer <g transform> + inner <g style>) and renders Phase 3 visuals cleanly', () => {
-    // 1. Stage A speed-scaled animation duration contract (1350 / 585 / 230 / 0)
-    expect(computeSwitchyardAnimDurationMs(400, false, true)).toBe(1350);
-    expect(computeSwitchyardAnimDurationMs(Number.NaN, false, true)).toBe(1350);
-    expect(computeSwitchyardAnimDurationMs(100, false, true)).toBe(585);
-    expect(computeSwitchyardAnimDurationMs(25, false, true)).toBe(230);
+    // 1. Stage A speed-scaled animation duration contract (675 / 290 / 115 / 0)
+    expect(computeSwitchyardAnimDurationMs(400, false, true)).toBe(675);
+    expect(computeSwitchyardAnimDurationMs(Number.NaN, false, true)).toBe(675);
+    expect(computeSwitchyardAnimDurationMs(100, false, true)).toBe(290);
+    expect(computeSwitchyardAnimDurationMs(25, false, true)).toBe(115);
     expect(computeSwitchyardAnimDurationMs('instant', false, true)).toBe(0);
     expect(computeSwitchyardAnimDurationMs(400, true, true)).toBe(0);
     expect(computeSwitchyardAnimDurationMs(400, false, false)).toBe(0);

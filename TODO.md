@@ -8,12 +8,12 @@ in loop.5 bot start on plank, making it invisible
 
 in multi map lesson, reseting should keep current map.
 
+add button to change random seed on click (and start/restart drawing)
 
-in depot, the fifo is missing animation: block should be animated to get to the graber, and also the other block on the belt should animate moving the their new position to clearly show progress. also consider changing shape to be mor like a U shaped belt where block are droped on one side and taken back from the other side? or something like so that we can see the
-blocks on the queue instead of them been cut off.
+next to try a variation add a reset to initial button
 
 
-for condition, each selection should be independent. e.g. not show color or position in first selector
+for condition, each selection should be independent. e.g. not show color or position in first selector, only station empty, top or held color icon
 
 ---
 
@@ -22,15 +22,6 @@ Filed logo shape? How to do that? Separate small module. Mostly for sandbox
 
 
 # bugs
-
-so many exercice just don't work
-
-new env are bad
-
-...
-
-
-profile save is too large
 
 french translation
 

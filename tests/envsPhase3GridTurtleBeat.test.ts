@@ -4,7 +4,8 @@ import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../src/store/useAppStore';
-import { createInitialInterpreterState, tickInterpreter } from '../src/engine/interpreter';
+import { createInitialInterpreterState, evaluateTypedValue, tickInterpreter } from '../src/engine/interpreter';
+import type { TypedValue } from '../src/types';
 import { BinaryWriter } from '../src/engine/serialization/binaryWriter';
 import { BinaryReader } from '../src/engine/serialization/binaryReader';
 import { exportToBinary, importFromBinary } from '../src/engine/serialization/codeSerializer';
@@ -483,6 +484,72 @@ describe('Wave 3B Phase 3 — Grid, Turtle & Beat Environments', () => {
         0x02
       );
       expect(decodedParam).toEqual({ color: '$randomColor' });
+    });
+
+    it('$randomColor only selects vibrant swatches 1..8 and never returns white or black in LOGO', () => {
+      const vibrantNames = new Set([
+        'red',
+        'blue',
+        'green',
+        'amber',
+        'purple',
+        'pink',
+        'cyan',
+        'orange',
+      ]);
+      const vibrantHexes = new Set([
+        '#ef4444',
+        '#3b82f6',
+        '#10b981',
+        '#f59e0b',
+        '#8b5cf6',
+        '#ec4899',
+        '#06b6d4',
+        '#f97316',
+      ]);
+
+      const seenNames = new Set<string>();
+      let seed = 1;
+      for (let i = 0; i < 240; i++) {
+        const res = evaluateTypedValue('$randomColor', {}, 0, { seed });
+        seed = res.nextSeed ?? seed + 1;
+        const tv = res.value as TypedValue;
+        expect(tv.type).toBe('color');
+        expect(tv.value).not.toBe('white');
+        expect(tv.value).not.toBe('black');
+        expect(vibrantNames.has(tv.value)).toBe(true);
+        seenNames.add(tv.value);
+      }
+      expect(seenNames).toEqual(vibrantNames);
+
+      // Verify tickInterpreter SET_PEN_COLOR with $randomColor across 240 LOGO steps
+      const ws: WorkspaceState = {
+        MAIN: [
+          { id: 'loop', type: 'LOOP_START', repeatCount: 240 },
+          { id: 'c1', type: 'SET_PEN_COLOR', params: { color: '$randomColor' } },
+          { id: 'f1', type: 'FORWARD', params: { length: 10 } },
+          { id: 'end', type: 'LOOP_END' },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      let rt = createInitialInterpreterState(12345);
+      let sim = createInitialTurtleState();
+      while (!rt.status || rt.status === 'IDLE' || rt.status === 'RUNNING') {
+        const step = tickInterpreter(rt, ws, sim, turtleSimulationEnvironment);
+        rt = step.nextRuntime;
+        sim = step.nextGrid;
+        if (step.done) break;
+      }
+      expect(sim.paths).toHaveLength(240);
+      const seenHexes = new Set(sim.paths.map((p) => p.color.toLowerCase()));
+      expect(seenHexes.has('#ffffff')).toBe(false);
+      expect(seenHexes.has('#0f172a')).toBe(false);
+      for (const hex of seenHexes) {
+        expect(vibrantHexes.has(hex)).toBe(true);
+      }
+      expect(seenHexes).toEqual(vibrantHexes);
     });
 
     it('serializes ENV_VERSION_TURTLE_V2 = 2 live/flipbook state while keeping static v1 at 0 bytes', () => {

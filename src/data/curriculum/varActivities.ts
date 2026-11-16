@@ -1055,10 +1055,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       'Define constants once in Main (s, a, b, e) so changing a single value resizes houses, pixel bot faces, and scaled blueprints.',
     hint: 'Change s = 100 at the top of Main, or pick a Variation Card to explore F1 scaling.',
     palette: VAR_1_PALETTE,
-    slotCap: {
-      maxTotal: 60,
-      perScope: { MAIN: 30, F1: 30 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -1463,10 +1459,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       'Put a self-updating variable (a = a + 12 or a = a - 15) inside a Loop to draw classic spirals, 122° vortices, Nautilus shells, and two-tone galaxy arms.',
     hint: 'Try editing + 12 or turning angle 90°, or switch Variation Cards to see ARC_RIGHT and shrinking spirals.',
     palette: VAR_5_PALETTE,
-    slotCap: {
-      maxTotal: 24,
-      perScope: { MAIN: 14, F1: 14 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -1689,10 +1681,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     hint: 'Pair r, c, and p updates inside Loop, or split rising F1 and falling F2 sweeps.',
     palette: VAR_7_PALETTE,
     beatRules: { cleanResetOnInputChange: true },
-    slotCap: {
-      maxTotal: 60,
-      perScope: { MAIN: 30, F1: 30, F2: 30 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -1945,10 +1933,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
     hint: 'Store $randCoin in c for Loop x[c] (0 skips safely, 1 plays F1!), or double $randD8 via m = p * 2.',
     palette: VAR_9_PALETTE,
     beatRules: { cleanResetOnInputChange: true },
-    slotCap: {
-      maxTotal: 60,
-      perScope: { MAIN: 30, F1: 30, F2: 30 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -2080,10 +2064,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       'Build confetti starfields, cosmic random walkers with $rand01 * 360, neon starburst fireworks, and 4-way mirrored kaleidoscope quilts.',
     hint: 'Compute negative coordinates with u = 0 - x before passing [u, y, 90] into TELEPORT.',
     palette: VAR_10_PALETTE,
-    slotCap: {
-      maxTotal: 60,
-      perScope: { MAIN: 30, F1: 30, F2: 30 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -2325,10 +2305,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       'Compose bold mathematical tapestries combining mirror galaxies, Nautilus scrolls, pyramid waves with $x/$y crest stars, and 4-corner spiro-gardens.',
     hint: 'Save x = $x and y = $y at mid-wave before flying F3 back to crown the peak.',
     palette: VAR_B_PALETTE,
-    slotCap: {
-      maxTotal: 60,
-      perScope: { MAIN: 30, F1: 30, F2: 30, F3: 30 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -2574,10 +2550,6 @@ export const VAR_ACTIVITIES: CurriculumActivity[] = [
       'Build from the 10-block CW cyan spiral starter to complete sequential double helices, simultaneous braided pinwheels, and twin arc tapestries.',
     hint: 'Assign b = 186 and TELEPORT [0, 0, 180] after the cyan spiral, or interleave F1 (x,y,h) and F2 (u,v,w).',
     palette: VAR_M2_PALETTE,
-    slotCap: {
-      maxTotal: 50,
-      perScope: { MAIN: 20, F1: 20, F2: 20 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [

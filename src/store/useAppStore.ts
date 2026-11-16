@@ -52,6 +52,7 @@ import { gridSimulationEnvironment } from '../simulations/grid/gridEnvironment';
 import { SwitchyardState } from '../simulations/switchyard/types';
 import {
   createInitialSwitchyardState,
+  loadSwitchyardScanner,
   resetSwitchyardState,
 } from '../simulations/switchyard/physics';
 import { switchyardSimulationEnvironment } from '../simulations/switchyard/switchyardEnvironment';
@@ -123,6 +124,7 @@ import {
   normalizeColorLiteralParam,
   resolveActiveCurriculumActivity,
   resolveDefaultConditionForContext,
+  resolveEffectiveSlotCap,
 } from '../utils/curriculumStagePolicy';
 import {
   exportToString,
@@ -198,7 +200,12 @@ export function getSimStepIntervalMs(
   speed: number | 'instant'
 ): number {
   if (speed === 'instant' || speed <= 0) return 0;
-  if (activeSimId === 'depot' || activeSimId === 'switchyard') {
+  if (activeSimId === 'switchyard') {
+    if (speed <= 25) return 130;
+    if (speed <= 100) return 325;
+    return Math.round(speed * 1.875);
+  }
+  if (activeSimId === 'depot') {
     if (speed <= 25) return 260;
     if (speed <= 100) return 650;
     return Math.round(speed * 3.75);
@@ -4225,7 +4232,7 @@ export const useAppStore = create<AppState>((set, get) => {
               stateBeforeReplace.workspace,
               scope,
               stateBeforeReplace.appMode,
-              activeActivityForDefaults.slotCap
+              resolveEffectiveSlotCap(activeActivityForDefaults)
             );
             if (budget.isCapped && budget.remainingForScope !== null && budget.remainingForScope < 1) {
               const allowedScopes: ScopeType[] =
@@ -4661,7 +4668,7 @@ export const useAppStore = create<AppState>((set, get) => {
           stateBefore.workspace,
           scope,
           stateBefore.appMode,
-          activeActForPolicy.slotCap
+          resolveEffectiveSlotCap(activeActForPolicy)
         );
         if (
           budget.isCapped &&
@@ -4782,11 +4789,16 @@ export const useAppStore = create<AppState>((set, get) => {
       const currentState = get();
       const currentBlock = currentState.workspace[scope]?.find((b) => b.id === blockId);
       if (!currentBlock) return;
-      const isVariableOrPlaceholderBlock =
+      const isConditionBlock =
+        currentBlock.type === 'IF' ||
+        currentBlock.type === 'ELSE_IF' ||
+        currentBlock.type === 'WHILE';
+      const isVariableOrPlaceholderOrCondBlock =
         currentBlock.type === 'VAR_ASSIGN' ||
         currentBlock.type === 'VAR_OP' ||
-        currentBlock.type === 'PLACEHOLDER';
-      if (currentState.appMode === 'curriculum' && !isVariableOrPlaceholderBlock) {
+        currentBlock.type === 'PLACEHOLDER' ||
+        isConditionBlock;
+      if (currentState.appMode === 'curriculum' && !isVariableOrPlaceholderOrCondBlock) {
         const activeActivity =
           getActivityAtVersion(currentState.activeActivityId, currentState.activeActivityVersion) ??
           getActivityLatest(currentState.activeActivityId);
@@ -5760,6 +5772,47 @@ export const useAppStore = create<AppState>((set, get) => {
         const simEnv = getSimEnvironment(activeSimId);
         if (!simEnv) return;
 
+        if (
+          activeSimId === 'switchyard' &&
+          workspace.MAIN.length > 0 &&
+          currentVariants.some(
+            (v) =>
+              !v.runtime &&
+              v.switchyardState &&
+              !v.switchyardState.scannerLoaded &&
+              v.switchyardState.queue.length > 0 &&
+              v.status !== 'SUCCESS' &&
+              !isTerminalErrorStatus(v.status)
+          )
+        ) {
+          const loadedVariants: VariantRunSnapshot[] = currentVariants.map((v) => {
+            if (
+              !v.runtime &&
+              v.switchyardState &&
+              !v.switchyardState.scannerLoaded &&
+              v.switchyardState.queue.length > 0 &&
+              v.status !== 'SUCCESS' &&
+              !isTerminalErrorStatus(v.status)
+            ) {
+              return {
+                ...v,
+                status: 'RUNNING' as SimulationStatus,
+                switchyardState: loadSwitchyardScanner(v.switchyardState),
+              };
+            }
+            return v;
+          });
+          const safeIdx = Math.min(Math.max(0, focusedVariantIndex), loadedVariants.length - 1);
+          const focused = loadedVariants[safeIdx] ?? loadedVariants[0];
+          set({
+            variantRuns: loadedVariants,
+            focusedVariantIndex: safeIdx,
+            ...(focused?.switchyardState ? { switchyardState: focused.switchyardState } : {}),
+          });
+          markDemoTabExploredInternal(true);
+          return;
+        }
+
         const wasAllSuccess = areAllVariantsSucceeded(currentVariants);
         let anyPaused = false;
         let allDone = true;
@@ -6084,6 +6137,19 @@ export const useAppStore = create<AppState>((set, get) => {
         const { runtime, workspace, switchyardState } = get();
 
         if (hasWorkspaceLoopError(workspace)) {
+          return;
+        }
+
+        if (
+          workspace.MAIN.length > 0 &&
+          runtime === null &&
+          !switchyardState.scannerLoaded &&
+          switchyardState.queue.length > 0 &&
+          switchyardState.status !== 'SUCCESS' &&
+          !isTerminalErrorStatus(switchyardState.status)
+        ) {
+          set({ switchyardState: loadSwitchyardScanner(switchyardState) });
+          markDemoTabExploredInternal(true);
           return;
         }
 

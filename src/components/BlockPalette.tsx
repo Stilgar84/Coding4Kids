@@ -25,6 +25,7 @@ import {
   getRequiredSlotCostForBlockType,
   resolveActiveCurriculumActivity,
   resolveDefaultConditionForContext,
+  resolveEffectiveSlotCap,
 } from '../utils/curriculumStagePolicy';
 import type { SceneInputConfig } from '../data/curriculum/types';
 
@@ -206,25 +207,25 @@ const PALETTE_SCOPE_TABS: Array<{
   {
     id: 'MAIN',
     label: 'Main',
-    icon: <Sparkles className="w-3.5 h-3.5 text-yellow-300" />,
+    icon: <Sparkles className="w-3.5 h-3.5 text-yellow-300" aria-hidden="true" />,
     activeColor: 'bg-indigo-600 border-indigo-400 text-white',
   },
   {
     id: 'F1',
     label: '1',
-    icon: <span className="font-black text-xs">1</span>,
+    icon: <PhoneCall className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />,
     activeColor: 'bg-emerald-600 border-emerald-400 text-white',
   },
   {
     id: 'F2',
     label: '2',
-    icon: <span className="font-black text-xs">2</span>,
+    icon: <PhoneCall className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />,
     activeColor: 'bg-blue-600 border-blue-400 text-white',
   },
   {
     id: 'F3',
     label: '3',
-    icon: <span className="font-black text-xs">3</span>,
+    icon: <PhoneCall className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />,
     activeColor: 'bg-rose-600 border-rose-400 text-white',
   },
   {
@@ -590,7 +591,8 @@ export const BlockPalette: React.FC = React.memo(() => {
   if (!effectiveInputConfig) {
     effectiveInputConfig = activeActivity?.inputConfig;
   }
-  const budget = computeSlotBudget(workspace, activeScope, appMode, activeActivity?.slotCap);
+  const effectiveSlotCap = resolveEffectiveSlotCap(activeActivity);
+  const budget = computeSlotBudget(workspace, activeScope, appMode, effectiveSlotCap);
   const isSlotRejected =
     budget.isCapped &&
     lastSlotCapRejectedAt !== null &&
@@ -1214,7 +1216,7 @@ export const BlockPalette: React.FC = React.memo(() => {
           <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Scope:</span>
           {visibleScopeTabs.map((tab) => {
             // Compute per-tab slot budget for the compact pill (used/cap)
-            const tabBudget = computeSlotBudget(workspace, tab.id, appMode, activeActivity?.slotCap);
+            const tabBudget = computeSlotBudget(workspace, tab.id, appMode, effectiveSlotCap);
             const showTabPill = tabBudget.isCapped && tabBudget.counterMax !== null;
             const tabIsActive = activeScope === tab.id;
             const tabIsFull = tabBudget.isFull;
@@ -1227,7 +1229,7 @@ export const BlockPalette: React.FC = React.memo(() => {
                 aria-pressed={tabIsActive}
                 aria-label={
                   showTabPill
-                    ? `${tab.ariaLabel ?? (tab.id === 'MAIN' ? 'Main' : tab.label)} tab, ${tabBudget.counterUsed} of ${tabBudget.counterMax} slots used`
+                    ? `${tab.ariaLabel ?? (tab.id === 'MAIN' ? 'Main' : `Function ${tab.label}`)} tab, ${tabBudget.counterUsed} of ${tabBudget.counterMax} slots used`
                     : tab.ariaLabel
                     ? `${tab.ariaLabel} tab`
                     : tab.id === 'MAIN'

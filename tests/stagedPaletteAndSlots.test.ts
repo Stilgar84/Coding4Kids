@@ -6,12 +6,14 @@ import { getSimEnvironment } from '../src/engine/simulation/registry';
 import {
   CURRICULUM_ACTIVITIES,
   CurriculumActivity,
+  isValidatedPuzzleActivity,
 } from '../src/data/curriculum';
 import {
   computeSlotBudget,
   computeStagedPalettePolicy,
   getAllowedParamDefs,
   resolveActiveCurriculumActivity,
+  resolveEffectiveSlotCap,
 } from '../src/utils/curriculumStagePolicy';
 import { BlockPalette } from '../src/components/BlockPalette';
 import { BlockSubpalette } from '../src/components/BlockSubpalette';
@@ -755,6 +757,52 @@ describe('Commit 2: Staged Palette Filtering & Physical Block-Budget Slot Trays'
       expect(computeSlotBudget(ws, 'MAIN', 'sandbox', { maxTotal: 3 }).isCapped).toBe(false);
       expect(getAllowedParamDefs('FORWARD', undefined, 'curriculum')).toEqual([]);
       expect(computeStagedPalettePolicy('curriculum', undefined, []).isCurriculum).toBe(false);
+    });
+
+    it('never assigns or enforces slotCap on non-puzzle (creative/explanation/LOGO) curriculum activities', () => {
+      for (const act of CURRICULUM_ACTIVITIES) {
+        if (!isValidatedPuzzleActivity(act)) {
+          expect(act.slotCap, `${act.id} (${act.format}/${act.simId}) slotCap`).toBeUndefined();
+          expect(
+            resolveEffectiveSlotCap(act),
+            `${act.id} resolveEffectiveSlotCap`
+          ).toBeUndefined();
+        }
+      }
+
+      // Even if a creative sandbox or capstone carries a slotCap object, runtime enforcement stays uncapped
+      registerTestActivity({
+        id: 'test-creative-uncapped',
+        moduleId: 'branch',
+        version: 1,
+        format: 'sandbox',
+        capstoneType: 'creative',
+        simId: 'turtle',
+        icon: '🎨',
+        title: 'Creative Sandbox',
+        concept: 'Open drawing',
+        palette: {
+          allowedSimBlocks: ['FORWARD', 'TURN_RIGHT'],
+          allowedControlBlocks: ['LOOP_START', 'LOOP_END'],
+          allowedScopes: ['MAIN'],
+        },
+        slotCap: { maxTotal: 2, perScope: { MAIN: 2 } },
+      });
+
+      const store = useAppStore.getState();
+      store.setAppMode('curriculum');
+      store.setCurriculumActivity('test-creative-uncapped');
+      store.addBlock('MAIN', 'FORWARD');
+      store.addBlock('MAIN', 'FORWARD');
+      store.addBlock('MAIN', 'FORWARD');
+
+      expect(useAppStore.getState().workspace.MAIN).toHaveLength(3);
+      expect(useAppStore.getState().slotCapRejectionCount).toBe(0);
+
+      const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
+      const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+      expect(paletteHtml).not.toContain('data-testid="workspace-slot-counter"');
+      expect(canvasHtml).toContain('data-slot-capped="false"');
     });
   });
 });

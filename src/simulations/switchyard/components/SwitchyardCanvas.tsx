@@ -6,6 +6,7 @@ import { getActivityAtVersion, getActivityLatest } from '../../../data/curriculu
 import {
   DockId,
   DockState,
+  ItemColor,
   ItemIcon,
   SWITCHYARD_COLOR_META,
   SwitchState,
@@ -29,6 +30,15 @@ const ANIM_KEYFRAMES = `
 @keyframes syLaserPulse {
   0%, 100% { opacity: 0.45; transform: translateY(0px); }
   50% { opacity: 0.95; transform: translateY(3px); }
+}
+@keyframes syTunnelAdvance {
+  0% { transform: translate(-52px, 0px); }
+  100% { transform: translate(0px, 0px); }
+}
+@keyframes syFailureBubbleReveal {
+  0%, 76% { opacity: 0; transform: scale(0.76); }
+  88% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
 }
 @keyframes syCarEnterScanner {
   0% { transform: translate(-52px, -28px) scale(0.88); opacity: 0.55; }
@@ -70,7 +80,7 @@ const ANIM_KEYFRAMES = `
 const EARLY_NO_WEIGHT_MODULES = new Set(['seq', 'param', 'loop', 'func', 'branch', 'while', 'var']);
 
 /**
- * Computes Switchyard animation duration in ms matching the Depot speed schedule.
+ * Computes Switchyard animation duration in ms (2x faster than Depot for crisp puzzle cadence).
  */
 export function computeSwitchyardAnimDurationMs(
   speed: number | 'instant',
@@ -79,11 +89,11 @@ export function computeSwitchyardAnimDurationMs(
 ): number {
   if (!hasEvent || isLowQuality || speed === 'instant') return 0;
   const numericSpeed = Number(speed);
-  if (!Number.isFinite(numericSpeed)) return 1350;
+  if (!Number.isFinite(numericSpeed)) return 675;
   if (numericSpeed <= 0) return 0;
-  if (numericSpeed <= 25) return 230;
-  if (numericSpeed <= 100) return 585;
-  return Math.round(numericSpeed * 3.375);
+  if (numericSpeed <= 25) return 115;
+  if (numericSpeed <= 100) return 290;
+  return Math.round(numericSpeed * 1.6875);
 }
 
 /**
@@ -338,9 +348,57 @@ const ToyRailCarBody: React.FC<{
 };
 
 /**
+ * Compact zero-reading cargo chip used inside failure diagnostic bubbles so color, emblem,
+ * and damaged spark match the exact rejected wagon rather than a generic dot.
+ */
+const MiniCargoChipSvg: React.FC<{
+  cx: number;
+  cy: number;
+  color: ItemColor;
+  icon?: ItemIcon;
+  damaged?: boolean;
+}> = ({ cx, cy, color, icon, damaged = false }) => {
+  const meta = SWITCHYARD_COLOR_META[color] ?? SWITCHYARD_COLOR_META.RED;
+  const stroke = color === 'WHITE' ? '#475569' : meta.stroke;
+  return (
+    <g transform={`translate(${cx}, ${cy})`} aria-hidden="true">
+      <rect
+        x="-14"
+        y="-11"
+        width="28"
+        height="22"
+        rx="5"
+        fill={meta.hex}
+        stroke={stroke}
+        strokeWidth="1.8"
+      />
+      {icon && (
+        <ItemEmblemGlyph
+          icon={icon}
+          cx={0}
+          cy={0}
+          size={14}
+          stroke={color === 'BLACK' ? '#f8fafc' : '#0f172a'}
+          fill="#ffffff"
+        />
+      )}
+      {damaged && (
+        <polygon
+          points="13,-15 8,-7 12,-7 9,-1 17,-9 13,-9"
+          fill="#facc15"
+          stroke="#991b1b"
+          strokeWidth="1"
+          strokeLinejoin="round"
+        />
+      )}
+    </g>
+  );
+};
+
+/**
  * Toy railway freight car rendered inside the tunnel queue, scanner gate, or dock bays.
- * Outer <g> uses strictly SVG transform placement so CSS animations on the inner <g>
- * never override SVG coordinates in Chromium SVG2.
+ * Outer <g> uses strictly SVG translate(cx, cy) so CSS animations on the middle <g> run in
+ * unscaled 1:1 SVG pixels and never override SVG coordinates in Chromium SVG2.
  */
 const ToyRailCarSvg: React.FC<{
   item: SwitchyardItem;
@@ -352,6 +410,7 @@ const ToyRailCarSvg: React.FC<{
   showWeightPlate?: boolean;
   animStyle?: React.CSSProperties;
   testId?: string;
+  extraAttrs?: Record<string, string | undefined>;
 }> = ({
   item,
   cx,
@@ -362,22 +421,29 @@ const ToyRailCarSvg: React.FC<{
   showWeightPlate = false,
   animStyle,
   testId,
+  extraAttrs,
 }) => {
   const damaged = Boolean(item.damaged);
   const tilt = damaged ? 'rotate(-5)' : '';
+  const innerTransform = `scale(${scale})${tilt ? ` ${tilt}` : ''}`;
 
   return (
     <g
       data-testid={testId}
-      transform={`translate(${cx}, ${cy}) scale(${scale})${tilt ? ` ${tilt}` : ''}`}
+      {...extraAttrs}
+      transform={`translate(${cx}, ${cy})`}
       opacity={dimmed ? 0.72 : 1}
     >
       {animStyle ? (
         <g style={animStyle}>
-          <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
+          <g transform={innerTransform}>
+            <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
+          </g>
         </g>
       ) : (
-        <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
+        <g transform={innerTransform}>
+          <ToyRailCarBody item={item} inScanner={inScanner} showWeightPlate={showWeightPlate} />
+        </g>
       )}
     </g>
   );
@@ -437,6 +503,8 @@ function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
 
+type RouteAnimMode = 'dock_fade' | 'arrive_hold' | 'crash_recoil';
+
 interface InflightRouteData {
   path: string;
   keyframesCss: string;
@@ -448,7 +516,8 @@ function buildInflightRouteData(
   segs: readonly RouteSeg[],
   animName: string,
   startScale: number,
-  endScale: number
+  endScale: number,
+  mode: RouteAnimMode = 'dock_fade'
 ): InflightRouteData | null {
   if (segs.length === 0) return null;
   const originX = segs[0].x0;
@@ -487,7 +556,11 @@ function buildInflightRouteData(
     return rawPts[rawPts.length - 1];
   };
 
-  const travelEndPct = 85;
+  const endPt = rawPts[rawPts.length - 1];
+  // For `arrive_hold` (e.g. Feeder -> Scanner), keyframes are relative to the resting endPt anchor.
+  const anchorX = mode === 'arrive_hold' ? endPt.x : originX;
+  const anchorY = mode === 'arrive_hold' ? endPt.y : originY;
+  const travelEndPct = mode === 'arrive_hold' ? 100 : mode === 'crash_recoil' ? 78 : 85;
   const numStops = 16;
   const keyframeStops: string[] = [];
   const waypointPairs: string[] = [];
@@ -497,8 +570,8 @@ function buildInflightRouteData(
     const pct = (u * travelEndPct).toFixed(1).replace(/\.0$/, '');
     const eased = easeInOutQuad(u);
     const pt = sampleAtNormS(eased);
-    const dx = (pt.x - originX).toFixed(1);
-    const dy = (pt.y - originY).toFixed(1);
+    const dx = (pt.x - anchorX).toFixed(1);
+    const dy = (pt.y - anchorY).toFixed(1);
     const scale = (startScale + (endScale - startScale) * eased).toFixed(3);
     keyframeStops.push(
       `${pct}% { transform: translate(${dx}px, ${dy}px) scale(${scale}); opacity: 1; }`
@@ -508,16 +581,39 @@ function buildInflightRouteData(
     }
   }
 
-  const endPt = rawPts[rawPts.length - 1];
-  const endDx = (endPt.x - originX).toFixed(1);
-  const endDy = (endPt.y - originY).toFixed(1);
+  const endDx = (endPt.x - anchorX).toFixed(1);
+  const endDy = (endPt.y - anchorY).toFixed(1);
   const endScaleStr = endScale.toFixed(3);
-  keyframeStops.push(
-    `92% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0.92; }`
-  );
-  keyframeStops.push(
-    `100% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0; }`
-  );
+
+  if (mode === 'crash_recoil') {
+    const prePt = rawPts[Math.max(0, rawPts.length - 4)];
+    const vx = endPt.x - prePt.x;
+    const vy = endPt.y - prePt.y;
+    const vLen = Math.hypot(vx, vy) || 1;
+    const ux = vx / vLen;
+    const uy = vy / vLen;
+    const bounceDx = (endPt.x - ux * 11 - anchorX).toFixed(1);
+    const bounceDy = (endPt.y - uy * 11 - anchorY).toFixed(1);
+    const settleDx = (endPt.x - ux * 7 - anchorX).toFixed(1);
+    const settleDy = (endPt.y - uy * 7 - anchorY).toFixed(1);
+
+    keyframeStops.push(
+      `88% { transform: translate(${bounceDx}px, ${bounceDy}px) scale(${endScaleStr}) rotate(-8deg); opacity: 1; }`
+    );
+    keyframeStops.push(
+      `95% { transform: translate(${settleDx}px, ${settleDy}px) scale(${endScaleStr}) rotate(4deg); opacity: 1; }`
+    );
+    keyframeStops.push(
+      `100% { transform: translate(${settleDx}px, ${settleDy}px) scale(${endScaleStr}) rotate(-4deg); opacity: 1; }`
+    );
+  } else if (mode === 'dock_fade') {
+    keyframeStops.push(
+      `92% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0.92; }`
+    );
+    keyframeStops.push(
+      `100% { transform: translate(${endDx}px, ${endDy}px) scale(${endScaleStr}); opacity: 0; }`
+    );
+  }
 
   return {
     path: segsToSvgPath(segs),
@@ -668,9 +764,20 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
     state.scrapped.some((i) => i.weight !== undefined);
   const showWeights = !isEarlyNoWeightSwitchyardLesson && hasStateWeights;
 
-  const headItem = state.queue[0];
-  const peekQueue = state.queue.slice(1, 3);
-  const hiddenExtraCount = Math.max(0, state.queue.length - 3);
+  const isPreRunIdle =
+    !state.scannerLoaded &&
+    state.stepCount === 0 &&
+    !state.lastAnimEvent &&
+    effectiveStatus === 'IDLE';
+  const isHaltedPostDispatchCollision =
+    !state.scannerLoaded &&
+    effectiveStatus === 'COLLISION' &&
+    Boolean(animEv?.dispatchedItem ?? animEv?.item);
+  const isScannerOccupied = !isPreRunIdle && !isHaltedPostDispatchCollision;
+  const headItem = isScannerOccupied ? state.queue[0] : undefined;
+  const depotQueue = isScannerOccupied ? state.queue.slice(1) : state.queue;
+  const depotCount = depotQueue.length;
+  const peekQueue = depotQueue.slice(0, 2);
 
   const switches = state.switches ?? [];
   const switchCount = switches.length;
@@ -801,11 +908,28 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
   const dispatchedItem = animEv?.dispatchedItem ?? animEv?.item;
   const destDock = animEv?.toDock ?? animEv?.targetDock;
   const isEnterScannerAnim =
-    shouldAnimate && (animEv?.type === 'SEND_NEXT' || animEv?.type === 'SCRAP_ITEM');
+    shouldAnimate &&
+    Boolean(headItem) &&
+    (animEv?.type === 'LOAD_SCANNER' ||
+      animEv?.type === 'SEND_NEXT' ||
+      animEv?.type === 'SCRAP_ITEM');
+  const isTunnelAdvanceAnim =
+    shouldAnimate &&
+    (animEv?.type === 'LOAD_SCANNER' ||
+      (Boolean(headItem) && (animEv?.type === 'SEND_NEXT' || animEv?.type === 'SCRAP_ITEM')));
+  const isCollisionScrap =
+    animEv?.type === 'COLLISION' && Boolean(dispatchedItem) && destDock === 'SCRAP';
+  const isCollisionDock =
+    animEv?.type === 'COLLISION' &&
+    Boolean(dispatchedItem) &&
+    Boolean(destDock) &&
+    destDock !== 'SCRAP';
   const isScrapAnim =
     shouldAnimate &&
     Boolean(dispatchedItem) &&
-    (animEv?.type === 'SCRAP_ITEM' || (animEv?.type === 'SEND_NEXT' && destDock === 'SCRAP'));
+    (animEv?.type === 'SCRAP_ITEM' ||
+      (animEv?.type === 'SEND_NEXT' && destDock === 'SCRAP') ||
+      isCollisionScrap);
   const isSendNextAnim =
     shouldAnimate &&
     animEv?.type === 'SEND_NEXT' &&
@@ -817,6 +941,30 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
   const switchTransitionMs = shouldAnimate ? animMs : 0;
   const isScrapFlash = isScrapAnim;
   const headColorMeta = headItem ? SWITCHYARD_COLOR_META[headItem.color] : undefined;
+
+  const feederRoute = isEnterScannerAnim
+    ? buildInflightRouteData(
+        [
+          { kind: 'L', x0: 136, y0: 106, x1: 184, y1: 108 },
+          {
+            kind: 'C',
+            x0: 184,
+            y0: 108,
+            cx1: 266,
+            cy1: 108,
+            cx2: 320,
+            cy2: 118,
+            x1: 320,
+            y1: 156,
+          },
+          { kind: 'L', x0: 320, y0: 156, x1: 320, y1: 199 },
+        ],
+        `syFeederRoute_${animSeq}`,
+        0.72 / 0.96,
+        1,
+        'arrive_hold'
+      )
+    : null;
 
   let inflightRoute: InflightRouteData | null = null;
   if (isScrapAnim) {
@@ -830,15 +978,16 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           cy1: 194,
           cx2: 470,
           cy2: 196,
-          x1: 558,
-          y1: 215,
+          x1: isCollisionScrap ? 536 : 558,
+          y1: isCollisionScrap ? 212 : 215,
         },
       ],
       `syInflightRoute_${animSeq}`,
       0.96,
-      0.5
+      isCollisionScrap ? 0.58 : 0.5,
+      isCollisionScrap ? 'crash_recoil' : 'dock_fade'
     );
-  } else if (isSendNextAnim && destDock) {
+  } else if ((isSendNextAnim || (shouldAnimate && isCollisionDock)) && destDock) {
     const destSlot = dockSlots.find((s) => s.id === destDock);
     const destDockObj = state.docks.find((d) => d.id === destDock);
     if (destSlot && destDockObj) {
@@ -873,14 +1022,26 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           routeSegs.push(makeCurvedSeg(swACoord.x, swACoord.y, destSlot.cx, 420));
         }
       }
-      routeSegs.push(makeCurvedSeg(destSlot.cx, 420, slotCx, slotCy));
 
-      inflightRoute = buildInflightRouteData(
-        routeSegs,
-        `syInflightRoute_${animSeq}`,
-        0.96,
-        0.62
-      );
+      if (isCollisionDock) {
+        routeSegs.push({ kind: 'L', x0: destSlot.cx, y0: 420, x1: destSlot.cx, y1: 438 });
+        inflightRoute = buildInflightRouteData(
+          routeSegs,
+          `syInflightRoute_${animSeq}`,
+          0.96,
+          0.68,
+          'crash_recoil'
+        );
+      } else {
+        routeSegs.push(makeCurvedSeg(destSlot.cx, 420, slotCx, slotCy));
+        inflightRoute = buildInflightRouteData(
+          routeSegs,
+          `syInflightRoute_${animSeq}`,
+          0.96,
+          0.62,
+          'dock_fade'
+        );
+      }
     }
   }
 
@@ -891,7 +1052,11 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
       data-anim-event={shouldAnimate && animEv ? animEv.type : 'NONE'}
       className="relative w-full h-full flex flex-col overflow-hidden select-none bg-gradient-to-b from-[#dbeafe] via-[#eff6ff] to-[#fef3c7]"
     >
-      <style>{`${ANIM_KEYFRAMES}${inflightRoute ? `\n${inflightRoute.keyframesCss}` : ''}`}</style>
+      <style>
+        {`${ANIM_KEYFRAMES}${feederRoute ? `\n${feederRoute.keyframesCss}` : ''}${
+          inflightRoute ? `\n${inflightRoute.keyframesCss}` : ''
+        }`}
+      </style>
 
       {/* Top Centered Victory / Collision Pill safely below MultiRunPipsBar sky slot */}
       {isCollision && (
@@ -954,7 +1119,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             <rect x="6" width="6" height="12" fill="#ecfdf5" />
           </pattern>
           <clipPath id="sy-tunnel-arch-clip">
-            <rect x="50" y="76" width="120" height="60" rx="8" />
+            <rect x="50" y="74" width="134" height="62" rx="8" />
           </clipPath>
         </defs>
 
@@ -1015,9 +1180,9 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           <line x1="28" y1="104" x2="188" y2="104" stroke="#94a3b8" strokeWidth="2.5" />
           <line x1="28" y1="117" x2="188" y2="117" stroke="#94a3b8" strokeWidth="2.5" />
 
-          {/* Brick Tunnel Arch Frame */}
+          {/* Brick Tunnel Arch Frame with open right feeder-track exit */}
           <path
-            d="M 24 62 H 196 V 136 H 170 V 96 C 170 80, 156 76, 110 76 C 64 76, 50 80, 50 96 V 136 H 24 Z"
+            d="M 24 62 H 196 V 90 H 170 C 166 78, 152 76, 110 76 C 64 76, 50 80, 50 96 V 136 H 24 Z"
             fill="#c2410c"
             stroke="#7c2d12"
             strokeWidth="2.5"
@@ -1034,14 +1199,14 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           {/* Cozy Hanging Warm Lantern */}
           <circle
             cx="182"
-            cy="88"
-            r="9"
-            fill={state.queue.length === 0 && !isCollision ? '#34d399' : '#fde047'}
+            cy="78"
+            r="8"
+            fill={depotCount === 0 && !isCollision ? '#34d399' : '#fde047'}
             stroke="#78350f"
             strokeWidth="2"
           />
 
-          {/* Remaining Convoy Peek Cars inside Tunnel */}
+          {/* Remaining Convoy Peek Cars inside Tunnel (first to exit on right at cx=136) */}
           <g clipPath="url(#sy-tunnel-arch-clip)">
             {peekQueue
               .slice()
@@ -1050,7 +1215,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 const slotX = 136 - (peekQueue.length - 1 - revIdx) * 52;
                 return (
                   <ToyRailCarSvg
-                    key={peekItem.id}
+                    key={isTunnelAdvanceAnim ? `${peekItem.id}-adv-${animSeq}` : peekItem.id}
                     testId={`switchyard-tunnel-car-${revIdx}`}
                     item={peekItem}
                     cx={slotX}
@@ -1058,18 +1223,23 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                     scale={0.72}
                     dimmed
                     showWeightPlate={showWeights}
+                    animStyle={
+                      isTunnelAdvanceAnim
+                        ? { animation: `syTunnelAdvance ${animMs}ms ease-out both` }
+                        : undefined
+                    }
                   />
                 );
               })}
           </g>
 
-          {/* +N Queue Counter Badge */}
-          {state.queue.length > 0 && (
+          {/* Plain Remaining Depot Wagon Counter Badge */}
+          {depotCount > 0 && (
             <g transform="translate(46, 70)">
               <rect
-                x="-22"
+                x="-20"
                 y="-11"
-                width="44"
+                width="40"
                 height="22"
                 rx="11"
                 fill="#0f172a"
@@ -1077,6 +1247,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 strokeWidth="2"
               />
               <text
+                data-testid="switchyard-depot-count"
                 x="0"
                 y="4"
                 textAnchor="middle"
@@ -1084,7 +1255,7 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 fontSize="12"
                 fontWeight="900"
               >
-                {hiddenExtraCount > 0 ? `+${state.queue.length}` : `×${state.queue.length}`}
+                {depotCount}
               </text>
             </g>
           )}
@@ -1428,6 +1599,14 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
             <ToyRailCarSvg
               key={isEnterScannerAnim ? `${headItem.id}-enter-${animSeq}` : headItem.id}
               testId="switchyard-scanner-wagon"
+              extraAttrs={
+                feederRoute
+                  ? {
+                      'data-feeder-anim': 'true',
+                      'data-feeder-path': feederRoute.path,
+                    }
+                  : undefined
+              }
               item={headItem}
               cx={320}
               cy={199}
@@ -1435,8 +1614,8 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
               inScanner
               showWeightPlate={showWeights}
               animStyle={
-                isEnterScannerAnim
-                  ? { animation: `syCarEnterScanner ${animMs}ms ease-out both` }
+                feederRoute
+                  ? { animation: `${feederRoute.animName} ${animMs}ms ease-out both` }
                   : headItem.damaged && allowAmbientMotion
                   ? { animation: `syHazardSpark ${Math.max(700, ambientAnimMs)}ms ease-in-out infinite` }
                   : undefined
@@ -1983,95 +2162,230 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
                 {isDockFailed && failureDetail && (
                   <g
                     data-testid="switchyard-failure-bubble"
-                    transform={`translate(${slot.cx}, 394)`}
+                    transform={`translate(${slot.cx}, 392)`}
                   >
-                    <rect
-                      x="-54"
-                      y="-20"
-                      width="108"
-                      height="34"
-                      rx="14"
-                      fill="#fff1f2"
-                      stroke="#e11d48"
-                      strokeWidth="2.5"
-                    />
-                    {failureDetail.code === 'QUOTA_MISMATCH' ? (
-                      <text
-                        x="0"
-                        y="2"
-                        textAnchor="middle"
-                        fill="#be123c"
-                        fontSize="12"
-                        fontWeight="900"
-                      >
-                        {failureDetail.quota !== undefined && failureDetail.actualCount !== undefined
-                          ? `🎯 ${failureDetail.actualCount}/${failureDetail.quota} ✗`
-                          : 'FULL! ✗'}
-                      </text>
-                    ) : failureDetail.code === 'WEIGHT_MISMATCH' ? (
-                      <text
-                        x="0"
-                        y="2"
-                        textAnchor="middle"
-                        fill="#be123c"
-                        fontSize="12"
-                        fontWeight="900"
-                      >
-                        {`⚖️${failureDetail.actualWeight ?? ''} ✗`}
-                      </text>
-                    ) : failureDetail.code === 'PARITY_MISMATCH' ? (
-                      <text
-                        x="0"
-                        y="2"
-                        textAnchor="middle"
-                        fill="#be123c"
-                        fontSize="12"
-                        fontWeight="900"
-                      >
-                        {`#${failureDetail.actualSeqNum ?? ''} ✗`}
-                      </text>
-                    ) : (
-                      <>
-                        <circle
-                          cx="-26"
-                          cy="-3"
-                          r="8"
-                          fill={
-                            failureDetail.actualColor
-                              ? SWITCHYARD_COLOR_META[failureDetail.actualColor].hex
-                              : '#f59e0b'
-                          }
-                          stroke="#1e293b"
-                          strokeWidth="1.5"
-                        />
-                        <text x="0" y="2" textAnchor="middle" fill="#e11d48" fontSize="14" fontWeight="900">
-                          {failureDetail.code === 'DAMAGED_REJECTED' ? '⚡🚫' : '≠'}
+                    <g
+                      style={
+                        shouldAnimate && isCollisionDock
+                          ? { animation: `syFailureBubbleReveal ${animMs}ms ease-out both` }
+                          : undefined
+                      }
+                    >
+                      <rect
+                        x="-58"
+                        y="-20"
+                        width="116"
+                        height="36"
+                        rx="14"
+                        fill="#fff1f2"
+                        stroke="#e11d48"
+                        strokeWidth="2.5"
+                      />
+                      {failureDetail.code === 'QUOTA_MISMATCH' ? (
+                        <text
+                          x="0"
+                          y="3"
+                          textAnchor="middle"
+                          fill="#be123c"
+                          fontSize="12"
+                          fontWeight="900"
+                        >
+                          {failureDetail.quota !== undefined && failureDetail.actualCount !== undefined
+                            ? `🎯 ${failureDetail.actualCount}/${failureDetail.quota} ✗`
+                            : '🎯 ✗'}
                         </text>
-                        {failureDetail.expectedIcon ? (
-                          <ItemEmblemGlyph
-                            icon={failureDetail.expectedIcon}
-                            cx={26}
-                            cy={-3}
-                            size={14}
-                            stroke="#0f172a"
-                            fill="#ffffff"
-                          />
-                        ) : (
-                          <circle
-                            cx="26"
-                            cy="-3"
-                            r="8"
-                            fill={
-                              failureDetail.expectedColor
-                                ? SWITCHYARD_COLOR_META[failureDetail.expectedColor].hex
-                                : '#10b981'
-                            }
-                            stroke="#1e293b"
-                            strokeWidth="1.5"
-                          />
-                        )}
-                      </>
-                    )}
+                      ) : failureDetail.code === 'WEIGHT_MISMATCH' ? (
+                        <text
+                          x="0"
+                          y="3"
+                          textAnchor="middle"
+                          fill="#be123c"
+                          fontSize="11.5"
+                          fontWeight="900"
+                        >
+                          {failureDetail.minWeight !== undefined && failureDetail.maxWeight !== undefined
+                            ? `⚖️${failureDetail.actualWeight ?? '?'}≠${failureDetail.minWeight}..${failureDetail.maxWeight}`
+                            : failureDetail.maxWeight !== undefined
+                            ? `⚖️${failureDetail.actualWeight ?? '?'}≠≤${failureDetail.maxWeight}`
+                            : failureDetail.minWeight !== undefined
+                            ? `⚖️${failureDetail.actualWeight ?? '?'}≠≥${failureDetail.minWeight}`
+                            : `⚖️${failureDetail.actualWeight ?? ''} ✗`}
+                        </text>
+                      ) : failureDetail.code === 'PARITY_MISMATCH' ? (
+                        <text
+                          x="0"
+                          y="3"
+                          textAnchor="middle"
+                          fill="#be123c"
+                          fontSize="12"
+                          fontWeight="900"
+                        >
+                          {`#${failureDetail.actualSeqNum ?? ''} ✗`}
+                        </text>
+                      ) : (
+                        <>
+                          {failureDetail.actualColor ? (
+                            <MiniCargoChipSvg
+                              cx={-32}
+                              cy={-2}
+                              color={failureDetail.actualColor}
+                              icon={failureDetail.actualIcon}
+                              damaged={
+                                failureDetail.code === 'DAMAGED_REJECTED' ||
+                                Boolean(failureDetail.actualDamaged)
+                              }
+                            />
+                          ) : failureDetail.actualIcon ? (
+                            <ItemEmblemGlyph
+                              icon={failureDetail.actualIcon}
+                              cx={-32}
+                              cy={-2}
+                              size={16}
+                              stroke="#0f172a"
+                              fill="#ffffff"
+                            />
+                          ) : (
+                            <text x="-32" y="3" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+                              ?
+                            </text>
+                          )}
+
+                          <text x="0" y="3" textAnchor="middle" fill="#e11d48" fontSize="14" fontWeight="900">
+                            ≠
+                          </text>
+
+                          {failureDetail.code === 'DAMAGED_REJECTED' ? (
+                            <g transform="translate(32, -2)" aria-label="No damaged cars">
+                              <circle
+                                cx="0"
+                                cy="0"
+                                r="10.5"
+                                fill="#fef3c7"
+                                stroke="#f59e0b"
+                                strokeWidth="1.6"
+                              />
+                              <text x="0" y="3.5" textAnchor="middle" fontSize="10.5">
+                                ⚡
+                              </text>
+                              <line
+                                x1="-6.5"
+                                y1="-6.5"
+                                x2="6.5"
+                                y2="6.5"
+                                stroke="#dc2626"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                              />
+                            </g>
+                          ) : failureDetail.code === 'WRONG_ICON' ? (
+                            (() => {
+                              const icons =
+                                failureDetail.expectedIcons && failureDetail.expectedIcons.length > 0
+                                  ? failureDetail.expectedIcons
+                                  : failureDetail.expectedIcon
+                                  ? [failureDetail.expectedIcon]
+                                  : [];
+                              if (icons.length > 1) {
+                                const shown = icons.slice(0, 3);
+                                const stepX = shown.length === 2 ? 15 : 12;
+                                const startX = 32 - ((shown.length - 1) * stepX) / 2;
+                                return (
+                                  <g aria-hidden="true">
+                                    <rect
+                                      x="12"
+                                      y="-13"
+                                      width="40"
+                                      height="22"
+                                      rx="5"
+                                      fill="#e2e8f0"
+                                      stroke="#64748b"
+                                      strokeWidth="1.5"
+                                    />
+                                    {shown.map((ic, iIdx) => (
+                                      <ItemEmblemGlyph
+                                        key={ic}
+                                        icon={ic}
+                                        cx={startX + iIdx * stepX}
+                                        cy={-2}
+                                        size={shown.length === 2 ? 12 : 10}
+                                        stroke="#0f172a"
+                                        fill="#ffffff"
+                                      />
+                                    ))}
+                                  </g>
+                                );
+                              }
+                              const singleIcon = icons[0] ?? 'CRATE';
+                              const expColorMeta = failureDetail.expectedColor
+                                ? SWITCHYARD_COLOR_META[failureDetail.expectedColor]
+                                : undefined;
+                              return (
+                                <g aria-hidden="true">
+                                  <rect
+                                    x="18"
+                                    y="-13"
+                                    width="28"
+                                    height="22"
+                                    rx="5"
+                                    fill={expColorMeta ? expColorMeta.lightBg : '#e2e8f0'}
+                                    stroke={expColorMeta ? expColorMeta.stroke : '#64748b'}
+                                    strokeWidth="1.6"
+                                  />
+                                  <ItemEmblemGlyph
+                                    icon={singleIcon}
+                                    cx={32}
+                                    cy={-2}
+                                    size={15}
+                                    stroke={expColorMeta ? expColorMeta.stroke : '#0f172a'}
+                                    fill="#ffffff"
+                                  />
+                                </g>
+                              );
+                            })()
+                          ) : failureDetail.expectedColors && failureDetail.expectedColors.length > 1 ? (
+                            <g aria-hidden="true">
+                              {failureDetail.expectedColors.slice(0, 3).map((co, cIdx, arr) => {
+                                const stepX = arr.length === 2 ? 15 : 12;
+                                const cx = 32 - ((arr.length - 1) * stepX) / 2 + cIdx * stepX;
+                                return (
+                                  <circle
+                                    key={co}
+                                    cx={cx}
+                                    cy="-2"
+                                    r={arr.length === 2 ? 6.5 : 5.5}
+                                    fill={SWITCHYARD_COLOR_META[co]?.hex ?? '#64748b'}
+                                    stroke="#1e293b"
+                                    strokeWidth="1.4"
+                                  />
+                                );
+                              })}
+                            </g>
+                          ) : failureDetail.expectedColor ? (
+                            <circle
+                              cx="32"
+                              cy="-2"
+                              r="9"
+                              fill={SWITCHYARD_COLOR_META[failureDetail.expectedColor]?.hex ?? '#64748b'}
+                              stroke="#1e293b"
+                              strokeWidth="1.6"
+                            />
+                          ) : failureDetail.expectedIcon ? (
+                            <ItemEmblemGlyph
+                              icon={failureDetail.expectedIcon}
+                              cx={32}
+                              cy={-2}
+                              size={16}
+                              stroke="#0f172a"
+                              fill="#ffffff"
+                            />
+                          ) : (
+                            <text x="32" y="3" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+                              🚫
+                            </text>
+                          )}
+                        </>
+                      )}
+                    </g>
                   </g>
                 )}
               </g>
@@ -2098,23 +2412,89 @@ export const SwitchyardCanvas: React.FC<SwitchyardCanvasProps> = ({
           </g>
         )}
 
-        {/* Zero-Reading Scrap Failure Bubble when Good Car Scrapped */}
-        {isCollision && failureDetail?.code === 'GOOD_SCRAPPED' && (
-          <g data-testid="switchyard-failure-bubble" transform="translate(556, 152)">
+        {/* Zero-Reading Empty Scanner Bubble when SEND_NEXT / SCRAP_ITEM called on empty queue */}
+        {isCollision && failureDetail?.code === 'QUEUE_EMPTY' && (
+          <g data-testid="switchyard-failure-bubble" transform="translate(320, 128)">
             <rect
               x="-44"
               y="-18"
               width="88"
-              height="30"
+              height="32"
               rx="14"
               fill="#fff1f2"
               stroke="#e11d48"
               strokeWidth="2.5"
             />
-            <text x="0" y="2" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
-              ✓ ≠ ♻️
+            <rect
+              x="-30"
+              y="-11"
+              width="24"
+              height="18"
+              rx="4"
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth="1.8"
+              strokeDasharray="3 2"
+            />
+            <text x="16" y="3" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+              🚫
             </text>
           </g>
+        )}
+
+        {/* Zero-Reading Scrap Failure Bubble when Good Car Scrapped */}
+        {isCollision && failureDetail?.code === 'GOOD_SCRAPPED' && (
+          <g data-testid="switchyard-failure-bubble" transform="translate(556, 152)">
+            <g
+              style={
+                shouldAnimate && isCollisionScrap
+                  ? { animation: `syFailureBubbleReveal ${animMs}ms ease-out both` }
+                  : undefined
+              }
+            >
+              <rect
+                x="-52"
+                y="-19"
+                width="104"
+                height="34"
+                rx="14"
+                fill="#fff1f2"
+                stroke="#e11d48"
+                strokeWidth="2.5"
+              />
+              {failureDetail.actualColor ? (
+                <MiniCargoChipSvg
+                  cx={-26}
+                  cy={-2}
+                  color={failureDetail.actualColor}
+                  icon={failureDetail.actualIcon}
+                  damaged={Boolean(failureDetail.actualDamaged)}
+                />
+              ) : (
+                <text x="-24" y="3" textAnchor="middle" fill="#059669" fontSize="13" fontWeight="900">
+                  ✓
+                </text>
+              )}
+              <text x="0" y="3" textAnchor="middle" fill="#e11d48" fontSize="13" fontWeight="900">
+                ≠
+              </text>
+              <text x="27" y="3" textAnchor="middle" fill="#be123c" fontSize="13" fontWeight="900">
+                ⚡♻️
+              </text>
+            </g>
+          </g>
+        )}
+
+        {/* Static Crashed Wagon Fallback when animations are disabled (instant / reduced motion) */}
+        {!shouldAnimate && isCollision && dispatchedItem && destDock && (
+          <ToyRailCarSvg
+            testId="switchyard-crashed-wagon"
+            item={dispatchedItem}
+            cx={destDock === 'SCRAP' ? 534 : (dockCenterById.get(destDock) ?? 320)}
+            cy={destDock === 'SCRAP' ? 212 : 428}
+            scale={destDock === 'SCRAP' ? 0.58 : 0.68}
+            showWeightPlate={showWeights}
+          />
         )}
 
         {/* In-Flight Dispatched Freight Wagon Traveling Along Exact Rail Path */}

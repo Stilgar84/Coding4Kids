@@ -245,7 +245,8 @@ export function evaluateTypedValue<TState = any>(
       if (trimmed === '$randD20') return { value: Math.floor(nextVal * 20) + 1, nextSeed };
       if (trimmed === '$rand01') return { value: nextVal, nextSeed };
       if (trimmed === '$randomColor') {
-        const colorIdx = Math.floor(nextVal * 10);
+        // Vibrant palette swatches 1..8 only ('red'..'orange'), excluding 0 ('black', Beat erase/off) and 9 ('white', Turtle erase/paper)
+        const colorIdx = 1 + Math.floor(nextVal * 8);
         return { value: { type: 'color', value: PALETTE_COLORS[colorIdx] ?? 'red' }, nextSeed };
       }
     }

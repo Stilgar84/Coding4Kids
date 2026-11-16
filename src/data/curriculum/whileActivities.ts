@@ -1259,10 +1259,6 @@ export const WHILE_ACTIVITIES: CurriculumActivity[] = [
       canvasBounds: { halfWidth: 300, halfHeight: 240 },
       showCanvasBounds: true,
     },
-    slotCap: {
-      perScope: { MAIN: 14, F1: 14, F2: 14 },
-      maxTotal: 20,
-    },
     starterWorkspace: makeMainWorkspace(
       [
         { type: 'SET_PEN_WIDTH', params: { width: 4 } },
@@ -1366,9 +1362,6 @@ export const WHILE_ACTIVITIES: CurriculumActivity[] = [
     palette: WHILE_7_PALETTE,
     inputConfig: INPUT_1_TO_3,
     beatRules: { cleanResetOnInputChange: true },
-    slotCap: {
-      perScope: { MAIN: 28, F1: 16, F2: 18 },
-    },
     starterWorkspace: makeMainWorkspace(
       [
         { type: 'SET_BEAT_DELAY', params: { delay: 0.25 } },
@@ -1701,9 +1694,6 @@ export const WHILE_ACTIVITIES: CurriculumActivity[] = [
       showCanvasBounds: true,
     },
     inputConfig: INPUT_1_TO_4,
-    slotCap: {
-      perScope: { MAIN: 26, F1: 14, F2: 14, F3: 14 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [
@@ -1872,9 +1862,6 @@ export const WHILE_ACTIVITIES: CurriculumActivity[] = [
     palette: WHILE_C_PALETTE,
     inputConfig: INPUT_1_TO_4,
     beatRules: { cleanResetOnInputChange: true },
-    slotCap: {
-      perScope: { MAIN: 28, F1: 16, F2: 18, F3: 16 },
-    },
     starterWorkspace: makeWorkspace(
       {
         MAIN: [

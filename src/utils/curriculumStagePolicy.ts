@@ -18,6 +18,7 @@ import {
   SlotCapConfig,
   getActivityAtVersion,
   getActivityLatest,
+  isValidatedPuzzleActivity,
 } from '../data/curriculum';
 import {
   createInitialDepotState,
@@ -547,6 +548,20 @@ export interface SlotBudgetStatus {
   counterUsed: number;
   /** Denominator for the visual slot counter (`null` if uncapped) */
   counterMax: number | null;
+}
+
+/**
+ * Returns the effective physical slot cap for a curriculum activity, or `undefined`
+ * when the activity is not a validated puzzle (open creative lessons, creative capstones,
+ * explanation demos, and Turtle challenges never enforce block limits).
+ */
+export function resolveEffectiveSlotCap(
+  activity?: CurriculumActivity
+): SlotCapConfig | undefined {
+  if (!activity || !isValidatedPuzzleActivity(activity)) {
+    return undefined;
+  }
+  return activity.slotCap;
 }
 
 /**

@@ -298,6 +298,33 @@ describe('Functions (func): UI & Creative/Demo Activities', () => {
       const html = renderToStaticMarkup(React.createElement(BlockPalette));
       expect(html).toContain('data-testid="palette-function-bar"');
     });
+
+    it('renders PhoneCall icon and single numeric label (never duplicated "1 1" or "2 2") on F1..F3 function tabs', () => {
+      useAppStore.setState({
+        appMode: 'sandbox',
+        activeSimId: 'turtle',
+        activeScope: 'MAIN',
+        isFunctionBarOpen: true,
+      });
+
+      const html = renderToStaticMarkup(React.createElement(BlockPalette));
+      expect(html).toContain('data-testid="palette-function-bar"');
+
+      for (const [scope, num] of [
+        ['f1', '1'],
+        ['f2', '2'],
+        ['f3', '3'],
+      ] as const) {
+        const match = html.match(
+          new RegExp(`<button[^>]*data-testid="palette-tab-${scope}"[\\s\\S]*?<\\/button>`)
+        );
+        expect(match, `palette-tab-${scope} rendered`).toBeTruthy();
+        const btnHtml = match![0];
+        expect(btnHtml).toContain('<svg');
+        expect(btnHtml).toContain(`<span>${num}</span>`);
+        expect(btnHtml).not.toMatch(new RegExp(`>${num}<\\/span>\\s*<span[^>]*>${num}<`));
+      }
+    });
   });
 
   describe('Call-Stack-Jump Spotlight Animation in ExplanationDemoBar', () => {

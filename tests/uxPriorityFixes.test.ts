@@ -126,7 +126,7 @@ describe('Wave ux-core: Priority UX & Bugfixes', () => {
     });
   });
 
-  describe('Items 2 & 3: Shared Speed-Scaled Step Intervals for Depot & Switchyard', () => {
+  describe('Items 2 & 3: Speed-Scaled Step Intervals for Depot & Switchyard', () => {
     it('calculates expected step interval ms across all speeds and simulation modes', () => {
       // instant or <= 0
       expect(getSimStepIntervalMs('depot', 'instant')).toBe(0);
@@ -134,17 +134,17 @@ describe('Wave ux-core: Priority UX & Bugfixes', () => {
       expect(getSimStepIntervalMs('grid', 'instant')).toBe(0);
       expect(getSimStepIntervalMs('depot', 0)).toBe(0);
 
-      // Depot & Switchyard: 16x (speed 25) -> 260ms
+      // Depot (260 / 650 / 1500) & Switchyard (2x faster: 130 / 325 / 750)
       expect(getSimStepIntervalMs('depot', 25)).toBe(260);
-      expect(getSimStepIntervalMs('switchyard', 25)).toBe(260);
+      expect(getSimStepIntervalMs('switchyard', 25)).toBe(130);
 
-      // Depot & Switchyard: 4x (speed 100) -> 650ms
+      // 4x (speed 100)
       expect(getSimStepIntervalMs('depot', 100)).toBe(650);
-      expect(getSimStepIntervalMs('switchyard', 100)).toBe(650);
+      expect(getSimStepIntervalMs('switchyard', 100)).toBe(325);
 
-      // Depot & Switchyard: 1x (speed 400) -> 1500ms
+      // 1x (speed 400)
       expect(getSimStepIntervalMs('depot', 400)).toBe(1500);
-      expect(getSimStepIntervalMs('switchyard', 400)).toBe(1500);
+      expect(getSimStepIntervalMs('switchyard', 400)).toBe(750);
 
       // Grid, Turtle, Beat -> unmodified
       expect(getSimStepIntervalMs('grid', 400)).toBe(400);

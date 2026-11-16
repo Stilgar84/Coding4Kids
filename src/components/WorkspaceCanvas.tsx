@@ -14,6 +14,7 @@ import { validateLoopStructure } from '../engine/interpreter';
 import {
   computeSlotBudget,
   resolveActiveCurriculumActivity,
+  resolveEffectiveSlotCap,
 } from '../utils/curriculumStagePolicy';
 
 export {
@@ -77,7 +78,12 @@ export const WorkspaceCanvas: React.FC = () => {
     activeActivityId,
     activeActivityVersion
   );
-  const budget = computeSlotBudget(workspace, activeScope, appMode, activeActivity?.slotCap);
+  const budget = computeSlotBudget(
+    workspace,
+    activeScope,
+    appMode,
+    resolveEffectiveSlotCap(activeActivity)
+  );
   const isSlotRejected =
     budget.isCapped &&
     lastSlotCapRejectedAt !== null &&

@@ -621,6 +621,7 @@ export function normalizeSwitchyardDefinition(
     'beamTiltDeg',
     'dispatchedCount',
     'tape',
+    'scannerLoaded',
     'status',
     'stepCount',
     'lastFailureReason',
@@ -654,6 +655,7 @@ export function normalizeSwitchyardDefinition(
     ...(scaleMetrics ? scaleMetrics : {}),
     dispatchedCount: defaultDispatched,
     ...(raw.tape && typeof raw.tape === 'object' ? { tape: { ...raw.tape } } : {}),
+    ...(raw.scannerLoaded !== undefined ? { scannerLoaded: Boolean(raw.scannerLoaded) } : {}),
     status,
     stepCount: typeof raw.stepCount === 'number' && Number.isFinite(raw.stepCount) ? raw.stepCount : 0,
     ...(raw.lastFailureReason ? { lastFailureReason: raw.lastFailureReason } : {}),
@@ -698,12 +700,36 @@ export function resetSwitchyardState(state: SwitchyardState): SwitchyardState {
     ...(scaleMetrics ? scaleMetrics : {}),
     dispatchedCount: 0,
     ...(state.tape ? { tape: { ...state.tape } } : {}),
+    scannerLoaded: false,
     status: 'IDLE',
     stepCount: 0,
     lastFailureReason: undefined,
     lastFailureDetail: undefined,
     lastRoutedDock: undefined,
     lastAnimEvent: undefined,
+  };
+}
+
+/**
+ * Transitions the head wagon out of the intake depot into the scanner gate for Play/Step start
+ * without altering the logical queue used by headless evaluation and sensors.
+ */
+export function loadSwitchyardScanner(state: SwitchyardState): SwitchyardState {
+  if (state.scannerLoaded || state.queue.length === 0) {
+    return { ...state, scannerLoaded: state.queue.length > 0 };
+  }
+  const nextSeq = nextAnimSeq(state, state.stepCount + 1);
+  return {
+    ...state,
+    scannerLoaded: true,
+    status: state.status === 'IDLE' ? 'RUNNING' : state.status,
+    lastAnimEvent: {
+      stepId: state.stepCount,
+      seq: nextSeq,
+      type: 'LOAD_SCANNER',
+      item: state.queue[0],
+      ...getSwitchSnapshot(state.switches),
+    },
   };
 }
 
@@ -965,6 +991,23 @@ function validateItemIntrinsicForDock(
 ): { reason: string; detail: SwitchyardFailureDetail } | null {
   const spec = dock.spec;
   const dockId = dock.id;
+  const actualMeta = {
+    actualColor: item.color,
+    actualIcon: item.icon,
+    actualDamaged: Boolean(item.damaged),
+  };
+
+  if (spec.rejectDamaged && item.damaged && !spec.expectedItems?.some((e) => e.damaged === true)) {
+    return {
+      reason: 'WRONG_DOCK',
+      detail: {
+        code: 'DAMAGED_REJECTED',
+        dockId,
+        expectedDamaged: false,
+        ...actualMeta,
+      },
+    };
+  }
 
   if (spec.expectedItems && spec.expectedItems.length > 0) {
     const matchesAnyExpected = spec.expectedItems.some(
@@ -976,49 +1019,97 @@ function validateItemIntrinsicForDock(
         (exp.seqNum === undefined || effectiveSeq === exp.seqNum)
     );
     if (!matchesAnyExpected) {
-      const firstExp = spec.expectedItems[0];
-      const hasDamagedMismatch =
-        firstExp.damaged !== undefined && Boolean(item.damaged) !== Boolean(firstExp.damaged);
-      const hasColorMismatch = Boolean(firstExp.color && item.color !== firstExp.color);
-      const hasIconMismatch = Boolean(firstExp.icon && item.icon !== firstExp.icon);
+      const expectedIcons = Array.from(
+        new Set(spec.expectedItems.map((e) => e.icon).filter((ic): ic is ItemIcon => Boolean(ic)))
+      );
+      const expectedColors = Array.from(
+        new Set(
+          spec.expectedItems.map((e) => e.color).filter((co): co is ItemColor => Boolean(co))
+        )
+      );
+      const allRejectDamaged = spec.expectedItems.every(
+        (e) => e.damaged !== undefined && Boolean(item.damaged) !== Boolean(e.damaged)
+      );
+      if (allRejectDamaged) {
+        return {
+          reason: 'WRONG_DOCK',
+          detail: {
+            code: 'DAMAGED_REJECTED',
+            dockId,
+            expectedDamaged: Boolean(spec.expectedItems[0].damaged),
+            ...actualMeta,
+          },
+        };
+      }
+      if (expectedIcons.length > 0 && !expectedIcons.includes(item.icon)) {
+        const refEntry =
+          spec.expectedItems.find((e) => !e.color || e.color === item.color) ??
+          spec.expectedItems[0];
+        return {
+          reason: 'WRONG_DOCK',
+          detail: {
+            code: 'WRONG_ICON',
+            dockId,
+            expectedIcon: refEntry.icon ?? expectedIcons[0],
+            expectedIcons,
+            ...(expectedColors.length === 1 ? { expectedColor: expectedColors[0] } : {}),
+            ...(expectedColors.length > 0 ? { expectedColors } : {}),
+            ...actualMeta,
+          },
+        };
+      }
+      if (expectedColors.length > 0 && !expectedColors.includes(item.color)) {
+        const refEntry =
+          spec.expectedItems.find((e) => !e.icon || e.icon === item.icon) ??
+          spec.expectedItems[0];
+        return {
+          reason: 'WRONG_DOCK',
+          detail: {
+            code: 'WRONG_COLOR',
+            dockId,
+            expectedColor: refEntry.color ?? expectedColors[0],
+            expectedColors,
+            ...(expectedIcons.length === 1 ? { expectedIcon: expectedIcons[0] } : {}),
+            ...(expectedIcons.length > 0 ? { expectedIcons } : {}),
+            ...actualMeta,
+          },
+        };
+      }
+
+      const colorMatchExp = spec.expectedItems.find(
+        (e) => e.color === item.color && e.icon && e.icon !== item.icon
+      );
+      const iconMatchExp = spec.expectedItems.find(
+        (e) => e.icon === item.icon && e.color && e.color !== item.color
+      );
+      const refExp = colorMatchExp ?? iconMatchExp ?? spec.expectedItems[0];
+      const hasColorMismatch = Boolean(!colorMatchExp && refExp.color && item.color !== refExp.color);
+      const hasIconMismatch = Boolean(refExp.icon && item.icon !== refExp.icon);
       const hasWeightMismatch =
-        firstExp.weight !== undefined && (item.weight ?? 1) !== firstExp.weight;
+        refExp.weight !== undefined && (item.weight ?? 1) !== refExp.weight;
       return {
         reason: hasWeightMismatch ? 'WEIGHT_LIMIT_VIOLATED' : 'WRONG_DOCK',
         detail: {
-          code: hasDamagedMismatch
-            ? 'DAMAGED_REJECTED'
+          code: hasIconMismatch
+            ? 'WRONG_ICON'
             : hasColorMismatch
             ? 'WRONG_COLOR'
-            : hasIconMismatch
-            ? 'WRONG_ICON'
             : hasWeightMismatch
             ? 'WEIGHT_MISMATCH'
             : 'PARITY_MISMATCH',
           dockId,
-          ...(firstExp.color ? { expectedColor: firstExp.color, actualColor: item.color } : {}),
-          ...(firstExp.icon ? { expectedIcon: firstExp.icon, actualIcon: item.icon } : {}),
-          ...(firstExp.damaged !== undefined
-            ? { expectedDamaged: Boolean(firstExp.damaged), actualDamaged: Boolean(item.damaged) }
+          ...(refExp.color ? { expectedColor: refExp.color } : {}),
+          ...(expectedColors.length > 0 ? { expectedColors } : {}),
+          ...(refExp.icon ? { expectedIcon: refExp.icon } : {}),
+          ...(expectedIcons.length > 0 ? { expectedIcons } : {}),
+          ...(refExp.damaged !== undefined ? { expectedDamaged: Boolean(refExp.damaged) } : {}),
+          ...(refExp.weight !== undefined
+            ? { actualWeight: item.weight ?? 1, maxWeight: refExp.weight }
             : {}),
-          ...(firstExp.weight !== undefined
-            ? { actualWeight: item.weight ?? 1, maxWeight: firstExp.weight }
-            : {}),
+          ...actualMeta,
         },
       };
     }
-  }
-
-  if (spec.rejectDamaged && item.damaged) {
-    return {
-      reason: 'WRONG_DOCK',
-      detail: {
-        code: 'DAMAGED_REJECTED',
-        dockId,
-        expectedDamaged: false,
-        actualDamaged: true,
-      },
-    };
   }
 
   if (spec.acceptColor && item.color !== spec.acceptColor) {
@@ -1028,7 +1119,7 @@ function validateItemIntrinsicForDock(
         code: 'WRONG_COLOR',
         dockId,
         expectedColor: spec.acceptColor,
-        actualColor: item.color,
+        ...actualMeta,
       },
     };
   }
@@ -1040,7 +1131,8 @@ function validateItemIntrinsicForDock(
         code: 'WRONG_ICON',
         dockId,
         expectedIcon: spec.acceptIcon,
-        actualIcon: item.icon,
+        ...(spec.acceptColor ? { expectedColor: spec.acceptColor } : {}),
+        ...actualMeta,
       },
     };
   }
@@ -1058,6 +1150,7 @@ function validateItemIntrinsicForDock(
         actualWeight: weight,
         ...(spec.minWeight !== undefined ? { minWeight: spec.minWeight } : {}),
         ...(spec.maxWeight !== undefined ? { maxWeight: spec.maxWeight } : {}),
+        ...actualMeta,
       },
     };
   }
@@ -1077,6 +1170,7 @@ function validateItemIntrinsicForDock(
           dockId,
           actualWeight: weight,
           maxWeight: scrapMax,
+          ...actualMeta,
         },
       };
     }
@@ -1093,6 +1187,7 @@ function validateItemIntrinsicForDock(
           dockId,
           expectedParity: spec.paritySlot,
           actualSeqNum: effectiveSeq,
+          ...actualMeta,
         },
       };
     }
@@ -1129,6 +1224,9 @@ function validateItemForDock(
         dockId,
         quota: spec.quota,
         actualCount: dock.items.length + 1,
+        actualColor: item.color,
+        actualIcon: item.icon,
+        actualDamaged: Boolean(item.damaged),
       },
     };
   }
@@ -1256,14 +1354,24 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
 
   const rule = state.scrapRule ?? 'damaged_only';
   const [item, ...remainingQueue] = state.queue;
+  const nextDispatched = (state.dispatchedCount ?? 0) + 1;
 
   if (rule === 'none') {
     return {
       ...state,
+      queue: remainingQueue,
+      dispatchedCount: nextDispatched,
+      scannerLoaded: false,
       status: 'COLLISION',
       stepCount: nextStep,
       lastFailureReason: 'SCRAP_DISALLOWED',
-      lastFailureDetail: { code: 'GOOD_SCRAPPED', dockId: 'SCRAP', actualDamaged: Boolean(item.damaged) },
+      lastFailureDetail: {
+        code: 'GOOD_SCRAPPED',
+        dockId: 'SCRAP',
+        actualColor: item.color,
+        actualIcon: item.icon,
+        actualDamaged: Boolean(item.damaged),
+      },
       lastRoutedDock: 'SCRAP',
       lastAnimEvent: {
         stepId: nextStep,
@@ -1281,6 +1389,9 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
   if (rule === 'damaged_only' && !item.damaged) {
     return {
       ...state,
+      queue: remainingQueue,
+      dispatchedCount: nextDispatched,
+      scannerLoaded: false,
       status: 'COLLISION',
       stepCount: nextStep,
       lastFailureReason: 'GOOD_ITEM_SCRAPPED',
@@ -1288,6 +1399,8 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
         code: 'GOOD_SCRAPPED',
         dockId: 'SCRAP',
         expectedDamaged: true,
+        actualColor: item.color,
+        actualIcon: item.icon,
         actualDamaged: false,
       },
       lastRoutedDock: 'SCRAP',
@@ -1310,6 +1423,9 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
     if (!item.damaged && weight <= maxWeight) {
       return {
         ...state,
+        queue: remainingQueue,
+        dispatchedCount: nextDispatched,
+        scannerLoaded: false,
         status: 'COLLISION',
         stepCount: nextStep,
         lastFailureReason: 'GOOD_ITEM_SCRAPPED',
@@ -1317,6 +1433,8 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
           code: 'GOOD_SCRAPPED',
           dockId: 'SCRAP',
           expectedDamaged: true,
+          actualColor: item.color,
+          actualIcon: item.icon,
           actualDamaged: false,
           actualWeight: weight,
           maxWeight,
@@ -1337,7 +1455,6 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
   }
 
   const nextScrap = [...state.scrapped, item];
-  const nextDispatched = (state.dispatchedCount ?? 0) + 1;
   const queueDone = remainingQueue.length === 0;
   const quotaFailure = queueDone ? findUnsatisfiedQuotaDock(state.docks, state) : null;
   const balanceFailure =
@@ -1350,6 +1467,7 @@ function executeScrapSingleItem(state: SwitchyardState): SwitchyardState {
     scrapped: nextScrap,
     scrap: nextScrap,
     dispatchedCount: nextDispatched,
+    scannerLoaded: remainingQueue.length > 0,
     status: queueDone ? (allOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
     stepCount: nextStep,
     lastRoutedDock: 'SCRAP',
@@ -1457,6 +1575,7 @@ export function applySwitchyardAction(
     return {
       ...state,
       switches: nextSwitches,
+      scannerLoaded: state.queue.length > 0,
       status: activeStatus,
       stepCount: nextStep,
       lastFailureReason: undefined,
@@ -1496,19 +1615,33 @@ export function applySwitchyardAction(
       return executeScrapSingleItem(state);
     }
 
+    const [item, ...remainingQueue] = state.queue;
+    const nextDispatched = (state.dispatchedCount ?? 0) + 1;
+
     const dockObj = state.docks.find((d) => d.id === targetDock);
     if (!dockObj) {
       return {
         ...state,
+        queue: remainingQueue,
+        dispatchedCount: nextDispatched,
+        scannerLoaded: false,
         status: 'COLLISION',
         stepCount: nextStep,
         lastFailureReason: 'WRONG_DOCK',
-        lastFailureDetail: { code: 'INVALID_SWITCH', dockId: targetDock },
+        lastFailureDetail: {
+          code: 'INVALID_SWITCH',
+          dockId: targetDock,
+          actualColor: item.color,
+          actualIcon: item.icon,
+          actualDamaged: Boolean(item.damaged),
+        },
         lastRoutedDock: targetDock,
         lastAnimEvent: {
           stepId: nextStep,
           seq: nextSeq,
           type: 'COLLISION',
+          item,
+          dispatchedItem: item,
           targetDock,
           toDock: targetDock,
           switchesTraversed,
@@ -1517,12 +1650,14 @@ export function applySwitchyardAction(
       };
     }
 
-    const [item, ...remainingQueue] = state.queue;
     const effectiveSeq = item.seqNum ?? (state.dispatchedCount ?? 0) + 1;
     const mismatch = validateItemForDock(item, dockObj, state, effectiveSeq);
     if (mismatch) {
       return {
         ...state,
+        queue: remainingQueue,
+        dispatchedCount: nextDispatched,
+        scannerLoaded: false,
         status: 'COLLISION',
         stepCount: nextStep,
         lastFailureReason: mismatch.reason,
@@ -1548,7 +1683,6 @@ export function applySwitchyardAction(
       const updated = [...d.items, item];
       return { ...d, items: updated, received: updated };
     });
-    const nextDispatched = (state.dispatchedCount ?? 0) + 1;
     const scaleMetrics =
       state.mode === 'balance_scale' ? computeSwitchyardScaleMetrics(nextDocks) : undefined;
     const queueDone = remainingQueue.length === 0;
@@ -1562,6 +1696,7 @@ export function applySwitchyardAction(
       queue: remainingQueue,
       docks: nextDocks,
       dispatchedCount: nextDispatched,
+      scannerLoaded: remainingQueue.length > 0,
       ...(scaleMetrics ? scaleMetrics : {}),
       status: queueDone ? (allOk ? 'SUCCESS' : 'COLLISION') : activeStatus,
       stepCount: nextStep,

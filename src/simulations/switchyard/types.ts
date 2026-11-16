@@ -212,8 +212,10 @@ export interface SwitchyardFailureDetail {
   dockId?: DockId;
   remainingCount?: number;
   expectedColor?: ItemColor;
+  expectedColors?: ItemColor[];
   actualColor?: ItemColor;
   expectedIcon?: ItemIcon;
+  expectedIcons?: ItemIcon[];
   actualIcon?: ItemIcon;
   expectedDamaged?: boolean;
   actualDamaged?: boolean;
@@ -232,7 +234,7 @@ export interface SwitchyardFailureDetail {
 export interface SwitchyardAnimEvent {
   stepId: number;
   seq?: number;
-  type: 'SEND_NEXT' | 'SCRAP_ITEM' | 'SWITCH_LEFT' | 'SWITCH_RIGHT' | 'COLLISION';
+  type: 'LOAD_SCANNER' | 'SEND_NEXT' | 'SCRAP_ITEM' | 'SWITCH_LEFT' | 'SWITCH_RIGHT' | 'COLLISION';
   item?: SwitchyardItem;
   dispatchedItem?: SwitchyardItem;
   targetDock?: DockId;
@@ -276,6 +278,8 @@ export interface SwitchyardState {
   dispatchedCount?: number;
   /** Optional Phase 4+ sparse tape cells when saved in Sandbox */
   tape?: Record<string, number>;
+  /** True once the head wagon has left the intake depot and entered the scanner gate */
+  scannerLoaded?: boolean;
   status: SimulationStatus;
   stepCount: number;
   lastFailureReason?: string;

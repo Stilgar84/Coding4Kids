@@ -2554,7 +2554,6 @@ export const CMP_ACTIVITIES: CurriculumActivity[] = [
       allowedCmpOps: CMP_ALL_OPS,
       allowRecursion: false,
     },
-    slotCap: { maxTotal: 24, perScope: { MAIN: 24 } },
   },
 
   // 8. cmp.5a — Modulo Beat & Checkerboard Runway (Puzzle · Beat & Light)
@@ -2943,7 +2942,6 @@ export const CMP_ACTIVITIES: CurriculumActivity[] = [
       allowedCmpOps: CMP_ALL_OPS,
       allowRecursion: false,
     },
-    slotCap: { maxTotal: 50, perScope: { MAIN: 25, F1: 25, F2: 25 } },
   },
 
   // 16. cmp.M1 — Max-Vault Hunter (Mastery Challenge · Robot Grid)

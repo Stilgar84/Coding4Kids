@@ -8,6 +8,7 @@ import {
 import {
   applySwitchyardAction,
   createInitialSwitchyardState,
+  loadSwitchyardScanner,
   resetSwitchyardState,
 } from '../src/simulations/switchyard/physics';
 import type { SwitchyardItem, SwitchyardState } from '../src/simulations/switchyard/types';
@@ -64,10 +65,10 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
   });
 
   describe('computeSwitchyardAnimDurationMs', () => {
-    it('matches the speed selector schedule (1x=1350, 4x=585, 16x=230, instant=0)', () => {
-      expect(computeSwitchyardAnimDurationMs(400, false, true)).toBe(1350);
-      expect(computeSwitchyardAnimDurationMs(100, false, true)).toBe(585);
-      expect(computeSwitchyardAnimDurationMs(25, false, true)).toBe(230);
+    it('matches the halved speed selector schedule (1x=675, 4x=290, 16x=115, instant=0)', () => {
+      expect(computeSwitchyardAnimDurationMs(400, false, true)).toBe(675);
+      expect(computeSwitchyardAnimDurationMs(100, false, true)).toBe(290);
+      expect(computeSwitchyardAnimDurationMs(25, false, true)).toBe(115);
       expect(computeSwitchyardAnimDurationMs('instant', false, true)).toBe(0);
     });
 
@@ -216,11 +217,11 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
       const afterSend = applySwitchyardAction('SEND_NEXT', base);
       expect(afterSend.status).not.toBe('COLLISION');
 
-      // 1x (400) -> 1350ms
+      // 1x (400) -> 675ms
       useAppStore.setState({ speed: 400 });
       const html1x = renderCanvas(afterSend);
       const canvas1x = getTagByTestId(html1x, 'switchyard-canvas');
-      expect(canvas1x).toContain('data-anim-duration="1350"');
+      expect(canvas1x).toContain('data-anim-duration="675"');
       expect(canvas1x).toContain('data-anim-event="SEND_NEXT"');
 
       const inflight1x = getTagByTestId(html1x, 'switchyard-inflight-wagon');
@@ -236,19 +237,19 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
       // Newly landed dock car waits until 85% via syDockSlotReveal inner animation
       const dockIdx = html1x.indexOf('data-testid="switchyard-dock-DOCK_B-car-0"');
       expect(dockIdx).toBeGreaterThan(-1);
-      expect(html1x.slice(dockIdx, dockIdx + 360)).toContain('syDockSlotReveal 1350ms');
+      expect(html1x.slice(dockIdx, dockIdx + 360)).toContain('syDockSlotReveal 675ms');
 
-      // 4x (100) -> 585ms
+      // 4x (100) -> 290ms
       useAppStore.setState({ speed: 100 });
       const html4x = renderCanvas(afterSend);
-      expect(getTagByTestId(html4x, 'switchyard-canvas')).toContain('data-anim-duration="585"');
-      expect(html4x).toContain('syDockSlotReveal 585ms');
+      expect(getTagByTestId(html4x, 'switchyard-canvas')).toContain('data-anim-duration="290"');
+      expect(html4x).toContain('syDockSlotReveal 290ms');
 
-      // 16x (25) -> 230ms
+      // 16x (25) -> 115ms
       useAppStore.setState({ speed: 25 });
       const html16x = renderCanvas(afterSend);
-      expect(getTagByTestId(html16x, 'switchyard-canvas')).toContain('data-anim-duration="230"');
-      expect(html16x).toContain('syDockSlotReveal 230ms');
+      expect(getTagByTestId(html16x, 'switchyard-canvas')).toContain('data-anim-duration="115"');
+      expect(html16x).toContain('syDockSlotReveal 115ms');
     });
 
     it('routes 0-switch and 2-switch (A/B/C) dispatches along exact rail curves', () => {
@@ -296,7 +297,7 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
 
       const canvas = getTagByTestId(html, 'switchyard-canvas');
       expect(canvas).toContain('data-anim-event="SCRAP_ITEM"');
-      expect(canvas).toContain('data-anim-duration="1350"');
+      expect(canvas).toContain('data-anim-duration="675"');
 
       const inflight = getTagByTestId(html, 'switchyard-inflight-wagon');
       expect(inflight).not.toBeNull();
@@ -305,7 +306,7 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
 
       const scrapIdx = html.indexOf('data-testid="switchyard-scrap-preview-car"');
       expect(scrapIdx).toBeGreaterThan(-1);
-      expect(html.slice(scrapIdx, scrapIdx + 360)).toContain('syDockSlotReveal 1350ms');
+      expect(html.slice(scrapIdx, scrapIdx + 360)).toContain('syDockSlotReveal 675ms');
     });
 
     it('scales switch lever transition duration with speed', () => {
@@ -320,15 +321,15 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
 
       useAppStore.setState({ speed: 400 });
       const html1x = renderCanvas(toggled);
-      expect(getTagByTestId(html1x, 'switchyard-switch-A-lever')).toContain('transition-duration:1350ms');
+      expect(getTagByTestId(html1x, 'switchyard-switch-A-lever')).toContain('transition-duration:675ms');
 
       useAppStore.setState({ speed: 100 });
       const html4x = renderCanvas(toggled);
-      expect(getTagByTestId(html4x, 'switchyard-switch-A-lever')).toContain('transition-duration:585ms');
+      expect(getTagByTestId(html4x, 'switchyard-switch-A-lever')).toContain('transition-duration:290ms');
 
       useAppStore.setState({ speed: 25 });
       const html16x = renderCanvas(toggled);
-      expect(getTagByTestId(html16x, 'switchyard-switch-A-lever')).toContain('transition-duration:230ms');
+      expect(getTagByTestId(html16x, 'switchyard-switch-A-lever')).toContain('transition-duration:115ms');
 
       useAppStore.setState({ speed: 'instant' });
       const htmlInstant = renderCanvas(toggled);
@@ -357,6 +358,170 @@ describe('Switchyard offscreen wagon fix & speed-scaled rail animation', () => {
       expect(getTagByTestId(htmlLow, 'switchyard-canvas')).toContain('data-anim-duration="0"');
       expect(getTagByTestId(htmlLow, 'switchyard-inflight-wagon')).toBeNull();
       expect(htmlLow).not.toMatch(/animation\s*:\s*syDockSlotReveal/);
+    });
+  });
+
+  describe('Initial depot FIFO order, plain counter, feeder animation, and error visuals', () => {
+    it('parks all wagons in depot at t=0 with plain counter and FIFO right-exit order, then animates along feeder curve on load', () => {
+      const s0 = createInitialSwitchyardState({
+        switches: [{ id: 'A', direction: 'RIGHT', initialDirection: 'RIGHT' }],
+        docks: [
+          { dockId: 'DOCK_A', acceptIcon: 'GEAR', quota: 2, rejectDamaged: true },
+          { dockId: 'DOCK_B', acceptIcon: 'CRATE', quota: 2, rejectDamaged: true },
+        ],
+        queue: [
+          makeItem('w1', 'RED', 'GEAR'),
+          makeItem('w2', 'BLUE', 'CRATE'),
+          makeItem('w3', 'YELLOW', 'GEAR'),
+          makeItem('w4', 'RED', 'CRATE'),
+        ],
+      });
+
+      const htmlIdle = renderCanvas(s0);
+      // t = 0: scanner is empty; all 4 cars wait in depot with plain badge "4" (no + or ×)
+      expect(getTagByTestId(htmlIdle, 'switchyard-scanner-wagon')).toBeNull();
+      expect(htmlIdle).toContain('data-testid="switchyard-depot-count"');
+      expect(htmlIdle).toMatch(/data-testid="switchyard-depot-count"[^>]*>4<\/text>/);
+      expect(htmlIdle).not.toContain('+4');
+      expect(htmlIdle).not.toContain('×4');
+
+      // Rightmost car (cx=136) is w1 (Red GEAR), behind it (cx=84) is w2 (Blue CRATE)
+      const carLeft = getTagByTestId(htmlIdle, 'switchyard-tunnel-car-0');
+      const carRight = getTagByTestId(htmlIdle, 'switchyard-tunnel-car-1');
+      expect(parseTranslateAttr(carLeft!)).toEqual({ cx: 84, cy: 106 });
+      expect(parseTranslateAttr(carRight!)).toEqual({ cx: 136, cy: 106 });
+      // w2 (blue #3b82f6) is painted in car-0 (left), w1 (red #ef4444) in car-1 (right)
+      const idxCar0 = htmlIdle.indexOf('data-testid="switchyard-tunnel-car-0"');
+      const idxCar1 = htmlIdle.indexOf('data-testid="switchyard-tunnel-car-1"');
+      expect(htmlIdle.slice(idxCar0, idxCar1)).toContain('#3b82f6');
+      expect(htmlIdle.slice(idxCar1, idxCar1 + 1200)).toContain('#ef4444');
+
+      // Step 0 -> LOAD_SCANNER rolls w1 into scanner and immediately drops depot count to 3
+      const sLoaded = loadSwitchyardScanner(s0);
+      const htmlLoaded = renderCanvas(sLoaded);
+      const scannerTag = getTagByTestId(htmlLoaded, 'switchyard-scanner-wagon');
+      expect(scannerTag).not.toBeNull();
+      expect(scannerTag).toContain('data-feeder-anim="true"');
+      expect(scannerTag).not.toMatch(/style="/i);
+      expect(htmlLoaded).toContain('@keyframes syFeederRoute_');
+      expect(htmlLoaded).toContain('@keyframes syTunnelAdvance');
+      expect(htmlLoaded).toMatch(/data-testid="switchyard-depot-count"[^>]*>3<\/text>/);
+
+      // Sending cars through the scanner decrements depot count immediately (2 -> 1 -> hidden)
+      const fourCarState = createInitialSwitchyardState({
+        switches: [{ id: 'A', direction: 'LEFT', initialDirection: 'LEFT' }],
+        docks: [{ dockId: 'DOCK_A', acceptColor: 'RED', quota: 4, rejectDamaged: true }],
+        queue: [
+          makeItem('a1', 'RED', 'CRATE'),
+          makeItem('a2', 'RED', 'GEAR'),
+          makeItem('a3', 'RED', 'BATTERY'),
+          makeItem('a4', 'RED', 'CRYSTAL'),
+        ],
+      });
+      const step0 = loadSwitchyardScanner(fourCarState);
+      expect(renderCanvas(step0)).toMatch(/data-testid="switchyard-depot-count"[^>]*>3<\/text>/);
+      const step1 = applySwitchyardAction('SEND_NEXT', step0);
+      expect(renderCanvas(step1)).toMatch(/data-testid="switchyard-depot-count"[^>]*>2<\/text>/);
+      const step2 = applySwitchyardAction('SEND_NEXT', step1);
+      expect(renderCanvas(step2)).toMatch(/data-testid="switchyard-depot-count"[^>]*>1<\/text>/);
+      const step3 = applySwitchyardAction('SEND_NEXT', step2);
+      const htmlZeroLeft = renderCanvas(step3);
+      expect(htmlZeroLeft).not.toContain('data-testid="switchyard-depot-count"');
+      expect(getTagByTestId(htmlZeroLeft, 'switchyard-scanner-wagon')).not.toBeNull();
+    });
+
+    it('animates rejected wagon along tracks with recoil on COLLISION and renders Red Gear != Crate in branch.3', () => {
+      // Exact branch.3 Variant 1 Starter trace: Red Gear sent to Crate Dock B
+      const b3 = createInitialSwitchyardState({
+        switches: [{ id: 'A', direction: 'RIGHT', initialDirection: 'RIGHT' }],
+        docks: [
+          { dockId: 'DOCK_A', acceptIcon: 'GEAR', quota: 2, rejectDamaged: true },
+          { dockId: 'DOCK_B', acceptIcon: 'CRATE', quota: 2, rejectDamaged: true },
+        ],
+        queue: [
+          makeItem('b3_1', 'RED', 'GEAR'),
+          makeItem('b3_2', 'BLUE', 'CRATE'),
+          makeItem('b3_3', 'YELLOW', 'GEAR'),
+          makeItem('b3_4', 'RED', 'CRATE'),
+        ],
+      });
+
+      const crashed = applySwitchyardAction('SEND_NEXT', loadSwitchyardScanner(b3));
+      expect(crashed.status).toBe('COLLISION');
+      expect(crashed.queue).toHaveLength(3);
+      expect(crashed.lastFailureDetail).toMatchObject({
+        code: 'WRONG_ICON',
+        dockId: 'DOCK_B',
+        expectedIcon: 'CRATE',
+        actualIcon: 'GEAR',
+        actualColor: 'RED',
+      });
+
+      const htmlCrash = renderCanvas(crashed);
+      expect(htmlCrash).toContain('data-anim-event="COLLISION"');
+      // Dispatched wagon animates to Dock B and stays visible at 100% (recoil) instead of freezing in scanner
+      expect(getTagByTestId(htmlCrash, 'switchyard-scanner-wagon')).toBeNull();
+      const inflightCrash = getTagByTestId(htmlCrash, 'switchyard-inflight-wagon');
+      expect(inflightCrash).not.toBeNull();
+      expect(inflightCrash!).toContain('data-target-dock="DOCK_B"');
+      expect(htmlCrash).toMatch(/100% \{[^}]*opacity: 1; \}/);
+      // Remaining depot badge shows 3 (never 4)
+      expect(htmlCrash).toMatch(/data-testid="switchyard-depot-count"[^>]*>3<\/text>/);
+
+      // Failure bubble shows Red (#ef4444) chip + GEAR glyph vs CRATE glyph — NOT an amber #f59e0b fallback circle
+      const bubbleIdx = htmlCrash.indexOf('data-testid="switchyard-failure-bubble"');
+      expect(bubbleIdx).toBeGreaterThan(-1);
+      const bubbleSnippet = htmlCrash.slice(bubbleIdx, bubbleIdx + 1400);
+      expect(bubbleSnippet).toContain('#ef4444');
+      expect(bubbleSnippet).not.toContain('fill="#f59e0b"');
+      expect(bubbleSnippet).toContain('≠');
+      expect(bubbleSnippet).toContain('polygon'); // Gear emblem glyph
+    });
+
+    it('emits LOAD_SCANNER pre-step on first step() before Block 1 across multi-variant and sandbox Switchyard runs', () => {
+      const prevMode = useAppStore.getState().appMode;
+      const prevActivity = useAppStore.getState().activeActivityId;
+      try {
+        useAppStore.getState().setCurriculumActivity('branch.3');
+        expect(useAppStore.getState().switchyardState.scannerLoaded).toBeFalsy();
+        expect(useAppStore.getState().variantRuns.length).toBe(3);
+
+        // First step loads Wagon #1 into the scanner without advancing runtime past Block 1 yet
+        useAppStore.getState().step();
+        const afterLoad = useAppStore.getState();
+        expect(afterLoad.switchyardState.scannerLoaded).toBe(true);
+        expect(afterLoad.switchyardState.lastAnimEvent?.type).toBe('LOAD_SCANNER');
+        expect(afterLoad.variantRuns.every((v) => v.switchyardState?.scannerLoaded)).toBe(true);
+        expect(afterLoad.runtime).toBeNull();
+
+        // Subsequent steps advance Starter code through LOOP_START -> SWITCH_RIGHT -> SEND_NEXT (colliding on Variant 1)
+        useAppStore.getState().step(); // LOOP_START
+        useAppStore.getState().step(); // SWITCH_RIGHT
+        useAppStore.getState().step(); // SEND_NEXT -> COLLISION
+        expect(useAppStore.getState().switchyardState.status).toBe('COLLISION');
+        expect(useAppStore.getState().switchyardState.lastFailureDetail?.code).toBe('WRONG_ICON');
+
+        // Condition parameters on IF/ELSE_IF/WHILE must remain editable even when allowActionParams === false (branch.3)
+        useAppStore.getState().addBlock('MAIN', 'IF', undefined, 2, {
+          condition: { kind: 'sensor', sensor: 'itemIcon', param: 'crate' },
+        });
+        const insertedIf = useAppStore.getState().workspace.MAIN.find((b) => b.type === 'IF');
+        expect(insertedIf).toBeDefined();
+        useAppStore.getState().updateBlockParams('MAIN', insertedIf!.id, {
+          condition: { kind: 'sensor', sensor: 'itemIcon', param: 'gear' },
+        });
+        const updatedIf = useAppStore.getState().workspace.MAIN.find((b) => b.id === insertedIf!.id);
+        expect(updatedIf?.params?.condition).toEqual({
+          kind: 'sensor',
+          sensor: 'itemIcon',
+          param: 'gear',
+        });
+      } finally {
+        useAppStore.getState().setAppMode(prevMode);
+        if (prevActivity) {
+          useAppStore.getState().setCurriculumActivity(prevActivity);
+        }
+      }
     });
   });
 });

@@ -1233,7 +1233,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 7 }, maxTotal: 7 },
     grid: BRANCH_0_GRID_1,
     gridVariants: [BRANCH_0_GRID_1, BRANCH_0_GRID_2],
     demoTabs: [
@@ -1370,7 +1369,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 8 }, maxTotal: 8 },
     switchyard: BRANCH_2_SY_1,
     switchyardVariants: [BRANCH_2_SY_1, BRANCH_2_SY_2],
     demoTabs: [
@@ -1538,7 +1536,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 9 }, maxTotal: 9 },
     grid: BRANCH_4_GRID_BLUE,
     gridVariants: [BRANCH_4_GRID_BLUE, BRANCH_4_GRID_RED],
     switchyard: BRANCH_4_SY,
@@ -1792,7 +1789,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 8 }, maxTotal: 8 },
     grid: BRANCH_6_GRID_NORTH,
     gridVariants: [BRANCH_6_GRID_NORTH, BRANCH_6_GRID_SOUTH],
     demoTabs: [
@@ -2039,7 +2035,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 10 }, maxTotal: 10 },
     grid: BRANCH_7_GRID_TAB1,
     switchyard: BRANCH_7_SY_TAB3,
     demoTabs: [
@@ -2406,7 +2401,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 13 }, maxTotal: 13 },
     switchyard: BRANCH_8A_SY_TAB1,
     switchyardVariants: [BRANCH_8A_SY_TAB1, BRANCH_8A_SY_TAB2],
     demoTabs: [
@@ -2593,7 +2587,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       allowVariables: false,
       allowRecursion: false,
     },
-    slotCap: { perScope: { MAIN: 20 }, maxTotal: 20 },
     inputConfig: {
       mode: 'int',
       min: 1,
@@ -2681,7 +2674,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       'Use MAIN as a clean $input switchboard into F1, F2, and F3 drawings, then remix shapes or color swatches with the Variation Cards.',
     hint: 'Switch $input buttons [1..4] or load Variation 3 for live Red/Blue/Green/Yellow swatches.',
     palette: BRANCH_TURTLE_PALETTE,
-    slotCap: { perScope: { MAIN: 22, F1: 22, F2: 22, F3: 22 } },
     inputConfig: {
       mode: 'int',
       min: 1,
@@ -3074,7 +3066,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       'Combine IF / ELSE IF / ELSE, combinators, and F1..F3 sub-drawings to direct multi-layer mandalas and white stencil cutouts.',
     hint: 'Layer shared outer frames with OR, toggle accents with NOT, and try all 3 Studio Remixes.',
     palette: BRANCH_B_TURTLE_PALETTE,
-    slotCap: { perScope: { MAIN: 22, F1: 22, F2: 22, F3: 22 } },
     inputConfig: {
       mode: 'int',
       min: 1,
@@ -3327,7 +3318,6 @@ export const BRANCH_ACTIVITIES: CurriculumActivity[] = [
       'Switch $input live while Beat Loop playback runs: MAIN dispatches across four LED light-and-note tracks cleanly.',
     hint: 'Keep STAMP_PRESET before pixel overlays, use grid coordinates 1..8 and pitches 1..8, and try all 3 Jukebox Remixes.',
     palette: BRANCH_BEAT_PALETTE,
-    slotCap: { perScope: { MAIN: 22, F1: 22, F2: 22, F3: 22 } },
     inputConfig: {
       mode: 'int',
       min: 1,

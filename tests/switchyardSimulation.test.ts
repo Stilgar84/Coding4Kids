@@ -1360,4 +1360,59 @@ describe('Switchyard v2 Clean Replacement (Phase 2)', () => {
     expect(repLen4Badge.ruleResults[0].passed).toBe(false);
     expect(repLen4Badge.ruleResults[0].minWinningBlocks).toBe(6);
   });
+
+  it('prioritizes rejectDamaged over expectedItems and populates full actual item metadata on collisions', () => {
+    const damagedExpectedState = createInitialSwitchyardState({
+      switches: [{ id: 'A', direction: 'RIGHT', initialDirection: 'RIGHT' }],
+      incomingStream: [
+        { color: 'red', icon: 'battery', damaged: true },
+        { color: 'purple', icon: 'crystal', damaged: false },
+      ],
+      docks: [
+        { id: 'A', expectedIcon: 'battery', acceptsDamaged: false },
+        { id: 'B', expectedItems: [{ icon: 'crate' }, { icon: 'gear' }, { icon: 'crystal' }], acceptsDamaged: false },
+      ],
+      scrapRules: ['damaged'],
+    });
+
+    const damagedCrash = applySwitchyardAction('SEND_NEXT', damagedExpectedState);
+    expect(damagedCrash.status).toBe('COLLISION');
+    expect(damagedCrash.lastFailureDetail).toMatchObject({
+      code: 'DAMAGED_REJECTED',
+      dockId: 'DOCK_B',
+      expectedDamaged: false,
+      actualDamaged: true,
+      actualColor: 'RED',
+      actualIcon: 'BATTERY',
+    });
+
+    const multiIconState = createInitialSwitchyardState({
+      switches: [{ id: 'A', direction: 'RIGHT', initialDirection: 'RIGHT' }],
+      incomingStream: [{ color: 'amber', icon: 'battery', damaged: false }],
+      docks: [
+        { id: 'A', expectedIcon: 'battery', acceptsDamaged: false },
+        { id: 'B', expectedItems: [{ icon: 'crate' }, { icon: 'gear' }, { icon: 'crystal' }], acceptsDamaged: false },
+      ],
+    });
+    const wrongMulti = applySwitchyardAction('SEND_NEXT', multiIconState);
+    expect(wrongMulti.status).toBe('COLLISION');
+    expect(wrongMulti.lastFailureDetail).toMatchObject({
+      code: 'WRONG_ICON',
+      dockId: 'DOCK_B',
+      expectedIcon: 'CRATE',
+      expectedIcons: ['CRATE', 'GEAR', 'CRYSTAL'],
+      actualColor: 'YELLOW',
+      actualIcon: 'BATTERY',
+    });
+
+    const goodScrapCrash = applySwitchyardAction('SCRAP_ITEM', multiIconState);
+    expect(goodScrapCrash.status).toBe('COLLISION');
+    expect(goodScrapCrash.lastFailureDetail).toMatchObject({
+      code: 'GOOD_SCRAPPED',
+      dockId: 'SCRAP',
+      actualColor: 'YELLOW',
+      actualIcon: 'BATTERY',
+      actualDamaged: false,
+    });
+  });
 });
