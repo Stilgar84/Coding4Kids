@@ -2,31 +2,17 @@ import { useEffect } from 'react';
 import { useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import { beatVariationPreviewPlayer } from '../components/VariationCardsPanel';
 
-export type PerformanceMode = 'auto' | 'low' | 'high';
+import {
+  loadPersistedPerformanceMode,
+  savePersistedPerformanceMode,
+  type PerformanceMode,
+} from '../store/helpers/statusAndPerfHelpers';
 
-const PERF_MODE_STORAGE_KEY = 'robotemu_perf_mode';
-
-export function loadPersistedPerformanceMode(): PerformanceMode {
-  if (typeof window === 'undefined') return 'auto';
-  try {
-    const raw = window.localStorage?.getItem(PERF_MODE_STORAGE_KEY);
-    if (raw === 'low' || raw === 'high' || raw === 'auto') {
-      return raw;
-    }
-  } catch {
-    // Ignore storage errors (private mode, etc.)
-  }
-  return 'auto';
-}
-
-export function savePersistedPerformanceMode(mode: PerformanceMode): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage?.setItem(PERF_MODE_STORAGE_KEY, mode);
-  } catch {
-    // Ignore storage errors
-  }
-}
+export {
+  loadPersistedPerformanceMode,
+  savePersistedPerformanceMode,
+  type PerformanceMode,
+};
 
 export interface FrameSmoothnessMonitorOptions {
   /** Number of frames in the rolling evaluation window (default: 14) */
