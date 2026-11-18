@@ -753,6 +753,15 @@ describe('Wave 2A: Phase 2 Shared Platform Foundation', () => {
         );
         expect(useAppStore.getState().activeVariationInputConfig?.mode).toBe('color');
         expect(useAppStore.getState().sceneInput).toBe('color:blue');
+
+        // Loading the default starter card from the dock (inputConfigOverride = null) clears override & restores activity previewInput
+        store.loadVariationWorkspace(
+          { MAIN: [{ id: 's_mv', type: 'MOVE_FWD' }], F1: [], F2: [], F3: [] },
+          'Default Starter',
+          null
+        );
+        expect(useAppStore.getState().activeVariationInputConfig).toBeNull();
+        expect(useAppStore.getState().sceneInput).toBe(1);
       } finally {
         const idx = CURRICULUM_ACTIVITIES.indexOf(inputAct);
         if (idx >= 0) CURRICULUM_ACTIVITIES.splice(idx, 1);

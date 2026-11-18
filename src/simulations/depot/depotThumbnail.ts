@@ -140,7 +140,7 @@ export function renderDepotWorkshopSvg(depot: DepotState): string {
     const inRingW = Math.max(12, inputW - 6);
     const inRingX = inCenter - inRingW / 2;
     for (let i = 0; i < inItems.length && i < 5; i++) {
-      const iy = 104 - (i + 1) * 10;
+      const iy = 52 + i * 10;
       const iHex = ringColorHex(inItems[i].color);
       parts.push(
         `<rect x="${inRingX}" y="${iy}" width="${inRingW}" height="8" rx="4" fill="${iHex}" fill-opacity="${

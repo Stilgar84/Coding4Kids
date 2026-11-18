@@ -10,6 +10,7 @@ import {
 } from '../src/data/curriculum';
 import {
   VariationCardsPanel,
+  buildVariationDockCards,
   renderTurtleVariationPreview,
 } from '../src/components/VariationCardsPanel';
 import { BlockItem } from '../src/components/BlockItem';
@@ -418,7 +419,7 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
       useAppStore.getState().setCurriculumActivity('seq.1');
       expect(renderToStaticMarkup(React.createElement(VariationCardsPanel))).toBe('');
 
-      // Turtle LOGO seq.6: renders panel, collapse toggle, 3 variation thumbnails, and 3 Load Code buttons
+      // Turtle LOGO seq.6: renders panel, collapse toggle, starter + 3 variation thumbnails (4 total), and Load Code buttons
       useAppStore.getState().setCurriculumActivity('seq.6');
       const panelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(panelHtml).toContain('data-testid="variation-cards-panel"');
@@ -427,7 +428,16 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
       expect(panelHtml).toContain('aria-controls="variation-cards-list"');
 
       const actSeq6 = getActivityLatest('seq.6')!;
-      for (const card of actSeq6.variations!) {
+      const dockCardsSeq6 = buildVariationDockCards(actSeq6);
+      expect(dockCardsSeq6).toHaveLength(4);
+      expect(dockCardsSeq6[0].id).toBe('seq.6-starter');
+      expect(
+        panelHtml.indexOf('data-testid="variation-card-seq.6-starter"')
+      ).toBeLessThan(
+        panelHtml.indexOf(`data-testid="variation-card-${actSeq6.variations![0].id}"`)
+      );
+
+      for (const card of dockCardsSeq6) {
         expect(panelHtml).toContain(`data-testid="variation-card-${card.id}"`);
         expect(panelHtml).toContain(`data-testid="variation-thumbnail-${card.id}"`);
         expect(panelHtml).toContain(`data-testid="btn-load-variation-${card.id}"`);
@@ -531,6 +541,22 @@ describe('Sequencing (seq): VariationCardsPanel & LOGO Lessons (seq.6, seq.7, se
         learnerTypesBefore
       );
       expect(afterUndo.turtleState.paths).toHaveLength(2);
+
+      // Loading the default starter card from the dock restores seq.6's 8-block default program with Undo protection
+      const actSeq6 = getActivityLatest('seq.6')!;
+      const starterDockCard = buildVariationDockCards(actSeq6)[0];
+      expect(starterDockCard.id).toBe('seq.6-starter');
+      store.loadVariationWorkspace(plusCard.workspace, plusCard.title);
+      store.addBlock('MAIN', 'FORWARD');
+      store.loadVariationWorkspace(starterDockCard.workspace, starterDockCard.title, null);
+
+      const afterStarterLoad = useAppStore.getState();
+      expect(afterStarterLoad.canUndo).toBe(true);
+      expect(afterStarterLoad.workspace.MAIN).toHaveLength(8);
+      expect(afterStarterLoad.workspace.MAIN.map((b) => b.type)).toEqual(
+        actSeq6.starterWorkspace!.MAIN.map((b) => b.type)
+      );
+      expect(afterStarterLoad.turtleState.paths).toHaveLength(5);
     });
   });
 });

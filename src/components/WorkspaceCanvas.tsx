@@ -126,6 +126,7 @@ export const WorkspaceCanvas: React.FC = () => {
         ...loopValidation.orphanEndIfIds,
         ...loopValidation.unclosedWhileIds,
         ...loopValidation.orphanEndWhileIds,
+        ...loopValidation.interleavedBlockIds,
       ]),
     [loopValidation]
   );
@@ -311,8 +312,10 @@ export const WorkspaceCanvas: React.FC = () => {
         >
           <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
           <span>
-            {loopValidation.unclosedLoopStartIds.length > 0 ||
-            loopValidation.orphanLoopEndIds.length > 0
+            {loopValidation.interleavedBlockIds.length > 0
+              ? '⚠️ Crossed blocks: Close inner blocks before outer blocks'
+              : loopValidation.unclosedLoopStartIds.length > 0 ||
+                loopValidation.orphanLoopEndIds.length > 0
               ? '⚠️ Loop not closed: Missing matching Loop Start or Loop End block'
               : loopValidation.unclosedIfIds.length > 0 ||
                 loopValidation.orphanElseIds.length > 0 ||

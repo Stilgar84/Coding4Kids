@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAppStoreSelector } from '../store/useAppStore';
 import { getSimEnvironment } from '../engine/simulation/registry';
+import { analyzeControlStructure } from '../engine/interpreter';
 import { getActivityAtVersion, getActivityLatest } from '../data/curriculum';
 import { BlockParamBadge } from './params/BlockParamBadge';
 import { ConditionBadge } from './ConditionBadge';
@@ -258,71 +259,7 @@ export function computeLoopNestingMetadata(
   blocks: readonly CodeBlock[],
   activeLoopStartPcs?: ReadonlySet<number>
 ): ScopeLoopNestingAnalysis {
-  const loopStack: number[] = [];
-  const ifStack: Array<{ startIndex: number; hasElse: boolean; branchIndices: number[] }> = [];
-  const whileStack: number[] = [];
-  const rawPairs: Array<{
-    loopId: string;
-    kind: ControlSpanKind;
-    startIndex: number;
-    endIndex: number;
-    branchIndices: number[];
-  }> = [];
-
-  for (let i = 0; i < blocks.length; i++) {
-    const blk = blocks[i];
-    if (blk.type === 'LOOP_START') {
-      loopStack.push(i);
-    } else if (blk.type === 'LOOP_END') {
-      if (loopStack.length > 0) {
-        const startIdx = loopStack.pop()!;
-        rawPairs.push({
-          loopId: blocks[startIdx].id,
-          kind: 'loop',
-          startIndex: startIdx,
-          endIndex: i,
-          branchIndices: [],
-        });
-      }
-    } else if (blk.type === 'IF') {
-      ifStack.push({ startIndex: i, hasElse: false, branchIndices: [] });
-    } else if (blk.type === 'ELSE_IF') {
-      if (ifStack.length > 0 && !ifStack[ifStack.length - 1].hasElse) {
-        ifStack[ifStack.length - 1].branchIndices.push(i);
-      }
-    } else if (blk.type === 'ELSE') {
-      if (ifStack.length > 0 && !ifStack[ifStack.length - 1].hasElse) {
-        ifStack[ifStack.length - 1].branchIndices.push(i);
-        ifStack[ifStack.length - 1].hasElse = true;
-      }
-    } else if (blk.type === 'END_IF') {
-      if (ifStack.length > 0) {
-        const frame = ifStack.pop()!;
-        rawPairs.push({
-          loopId: blocks[frame.startIndex].id,
-          kind: 'if',
-          startIndex: frame.startIndex,
-          endIndex: i,
-          branchIndices: frame.branchIndices,
-        });
-      }
-    } else if (blk.type === 'WHILE') {
-      whileStack.push(i);
-    } else if (blk.type === 'END_WHILE') {
-      if (whileStack.length > 0) {
-        const startIdx = whileStack.pop()!;
-        rawPairs.push({
-          loopId: blocks[startIdx].id,
-          kind: 'while',
-          startIndex: startIdx,
-          endIndex: i,
-          branchIndices: [],
-        });
-      }
-    }
-  }
-
-  rawPairs.sort((a, b) => a.startIndex - b.startIndex);
+  const rawPairs = analyzeControlStructure(blocks).matchedPairs;
 
   const depths = rawPairs.map((pair, idx) => {
     let enclosingCount = 0;

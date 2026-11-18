@@ -113,8 +113,8 @@ test.describe('Wave 4: seq (seq.4–seq.A), Browser & Badges, param (param.1–p
     await page.goto('/?mode=curriculum&activity=loop.7');
     await page.waitForSelector('[data-testid="variation-cards-panel"]');
     const loadButtons = page.locator('[data-testid^="btn-load-variation-"]');
-    await expect(loadButtons).toHaveCount(3);
-    await loadButtons.nth(2).click();
+    await expect(loadButtons).toHaveCount(4);
+    await page.getByTestId('btn-load-variation-var3-ring-of-stars').click();
 
     // Verify both depth-1 and depth-2 loop bracket rails render as solid lines without marker symbols
     await expect(page.getByTestId('workspace-sequence')).toHaveAttribute('data-max-loop-depth', '2');

@@ -46,10 +46,10 @@ Every item uses canonical 10-color `PALETTE_COLORS` (`0..9`: `black`, `red`, `bl
   ┌───────────┐   ┌────────┐ ┌────────┐ ┌────────┐   ┌──────────────────┐   ┌──────────┐
   │  INPUT    │   │STACK 1 │ │STACK 2 │ │STACK 3 │   │  QUEUE (U-Belt)  │   │ OUTPUT   │
   │ Dispenser │   │  ┌──┐  │ │  ┌──┐  │ │  ┌──┐  │   │ [▲ 0]      [7 ⬇] │   │  ┌────┐  │
-  │ [🔵]      │   │  │🔴│  │ │  │  │  │ │  │  │  │   │  │🟠│  ││  │🟣│  │   │  │OUT │  │
-  │ [🟢]      │   │  │🔵│  │ │  │  │  │ │  │  │  │   │  │🔵│▲ ││ ▼│🟢│  │   │  │ or │  │
-  │ [🟡] ◀──  │   │  │🟢│  │ │  │  │  │ │  │  │  │   │  ╰─ ⊙ ◀ ⊙ ─╯     │   │  │✅/❌│  │
-  │ (Grab ▲)  │   │ ═╧══╧═ │ │ ═╧══╧═ │ │ ═╧══╧═ │   │    [ ↺ FIFO ]    │   │  └────┘  │
+  │ [🟡] ◀──  │   │  │🔴│  │ │  │  │  │ │  │  │  │   │  │🟠│  ││  │🟣│  │   │  │OUT │  │
+  │ [🟢] (▲)  │   │  │🔵│  │ │  │  │  │ │  │  │  │   │  │🔵│▲ ││ ▼│🟢│  │   │  │ or │  │
+  │ [🔵]  ▲   │   │  │🟢│  │ │  │  │  │ │  │  │  │   │  ╰─ ⊙ ◀ ⊙ ─╯     │   │  │✅/❌│  │
+  │  (Top)    │   │ ═╧══╧═ │ │ ═╧══╧═ │ │ ═╧══╧═ │   │    [ ↺ FIFO ]    │   │  └────┘  │
   └───────────┘   │  [ 1 ] │ │  [ 2 ] │ │  [ 3 ] │   └──────────────────┘   └──────────┘
   [Optional Workbench Floor: Recessed Physical Peg Sockets ⌼1 ⌼2 ⌼3 ... (peg-mode only)]
 ```
@@ -64,7 +64,7 @@ Stations not used by a lesson are hidden cleanly (`activeStationsMask`) so early
 - **Full Pipeline (`conc`, Free-Play Sandbox):** All active zones scale cleanly (`INPUT ~11%`, `STACK 1..3 ~42%`, `QUEUE ~31%`, `OUTPUT ~16%`).
 
 ### 2.2 Station Visual Details (LIFO vs. FIFO & Ghosts)
-- **`INPUT` Supply Dispenser (Left):** Clear vertical tube with an illuminated bottom **Pickup Cradle** and an upward-only exit icon (`DEPOT_PLACE` triggers one-way barrier `⛔` `COLLISION`). Targetable by `DEPOT_GRAB`, `$topColor`, `$topValue`, and `stationEmpty [INPUT]`.
+- **`INPUT` Supply Dispenser (Left):** Clear vertical tube aligned to the top with an illuminated **Top Pickup Cradle (`▲`, `input[0]`)** matching the Queue's exit cradle (contrasting visually with bottom-aligned LIFO stacks), upward-advancing queued items, and a one-way barrier (`DEPOT_PLACE` triggers `⛔` `COLLISION`). Targetable by `DEPOT_GRAB`, `$topColor`, `$topValue`, and `stationEmpty [INPUT]`.
 - **`STACK 1..3` Open-Top Acrylic Chutes (Center-Left):** Flared open top mouth + vertical center peg + bold numeric pedestal `[ 1 ] [ 2 ] [ 3 ]` (or color-coded bin pedestals `[ 1 🔴 ] [ 2 🔵 ] [ 3 🟢 ]` in `tape.A`).
   - **Top vs. Lower Items:** Only the top item shows full saturation + pulsing grab-halo (+ `▲` chevron when hovered); lower items render behind diagonal translucent acrylic glare lines at ~75% brightness.
   - **Zero-Reading Target Blueprints:** Empty target stacks render translucent (~25%) dashed ghost silhouettes (`bottom → top`) that pop `✓` as matching rings arrive; stacks that start non-empty render a compact **Mini Goal Stack Preview** beside/below the pedestal base.

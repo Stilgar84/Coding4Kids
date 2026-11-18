@@ -415,7 +415,7 @@ export const Toolbar: React.FC = React.memo(() => {
             }`}
             title={
               hasLoopError
-                ? 'Cannot step: unclosed loop'
+                ? 'Cannot step: unclosed or crossed blocks'
                 : isInstant
                 ? 'Step disabled in Instant mode'
                 : 'Step One Block'
@@ -453,7 +453,7 @@ export const Toolbar: React.FC = React.memo(() => {
                   ? 'bg-slate-800 border-red-500/60 text-slate-500 cursor-not-allowed opacity-60'
                   : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-300 active:scale-95 cursor-pointer'
               }`}
-              title={hasLoopError ? 'Cannot play: unclosed loop' : 'Play'}
+              title={hasLoopError ? 'Cannot play: unclosed or crossed blocks' : 'Play'}
               aria-label="Play"
             >
               <Play className="w-5 h-5 md:w-6 md:h-6 stroke-[3] ml-0.5" />

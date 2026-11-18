@@ -7,6 +7,7 @@ import {
 } from '../src/components/BlockItem';
 import { BlockPalette } from '../src/components/BlockPalette';
 import { SolutionModal } from '../src/components/SolutionModal';
+import { Toolbar } from '../src/components/Toolbar';
 import { WorkspaceCanvas } from '../src/components/WorkspaceCanvas';
 import { renderTurtleVariationPreview } from '../src/components/VariationCardsPanel';
 import {
@@ -30,7 +31,7 @@ import {
 import { verifyActivityConstraints } from '../src/engine/verification/constraintSolver';
 import { DemoSpotlightOverlay } from '../src/simulations/grid/components/DemoSpotlightOverlay';
 import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
-import { useAppStore } from '../src/store/useAppStore';
+import { hasWorkspaceLoopError, useAppStore } from '../src/store/useAppStore';
 import { CodeBlock, GridState, WorkspaceState } from '../src/types';
 
 function emptyWorkspace(mainBlocks: CodeBlock[] = []): WorkspaceState {
@@ -600,6 +601,66 @@ describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0
       expect(brokenHtml).toContain('data-testid="badge-loop-error-if_broken"');
       expect(brokenHtml).toContain('data-testid="loop-error-banner"');
       expect(brokenHtml).toContain('bg-cyan-700');
+    });
+
+    it('surfaces crossed/interleaved control block errors in WorkspaceCanvas and disables Play/Step in Toolbar', () => {
+      // 1. Standalone interleaved WHILE -> IF -> END_WHILE -> END_IF
+      const interleavedBlocks: CodeBlock[] = [
+        { id: 'w_cross', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'i_cross', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'itemHere' } } },
+        { id: 'ew_cross', type: 'END_WHILE' },
+        { id: 'ei_cross', type: 'END_IF' },
+      ];
+      const interleavedMeta = computeLoopNestingMetadata(interleavedBlocks);
+      expect(interleavedMeta.matchedSpans).toHaveLength(0);
+
+      const interleavedWs = emptyWorkspace(interleavedBlocks);
+      expect(hasWorkspaceLoopError(interleavedWs)).toBe(true);
+      useAppStore.setState({ workspace: interleavedWs, isPlaying: false, speed: 400 });
+
+      const canvasHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+      expect(canvasHtml).toContain('data-testid="loop-error-banner"');
+      expect(canvasHtml).toContain('Crossed blocks');
+      expect(canvasHtml).toContain('data-testid="badge-loop-error-w_cross"');
+      expect(canvasHtml).toContain('data-testid="badge-loop-error-i_cross"');
+      expect(canvasHtml).toContain('data-testid="badge-loop-error-ew_cross"');
+      expect(canvasHtml).toContain('data-testid="badge-loop-error-ei_cross"');
+      expect(canvasHtml).not.toContain('data-testid="loop-bracket-segment"');
+
+      const toolbarHtml = renderToStaticMarkup(React.createElement(Toolbar));
+      expect(toolbarHtml).toMatch(/data-testid="btn-play"[^>]*disabled=""/);
+      expect(toolbarHtml).toMatch(/data-testid="btn-step"[^>]*disabled=""/);
+
+      // 2. Crossed inner WHILE/IF inside a clean outer LOOP_START .. LOOP_END keeps outer bracket only
+      const nestedCrossedBlocks: CodeBlock[] = [
+        { id: 'l_outer', type: 'LOOP_START', repeatCount: 2 },
+        { id: 'w_in', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'i_in', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'itemHere' } } },
+        { id: 'ew_in', type: 'END_WHILE' },
+        { id: 'ei_in', type: 'END_IF' },
+        { id: 'le_outer', type: 'LOOP_END' },
+      ];
+      const nestedCrossedMeta = computeLoopNestingMetadata(nestedCrossedBlocks);
+      expect(nestedCrossedMeta.matchedSpans).toHaveLength(1);
+      expect(nestedCrossedMeta.matchedSpans[0]).toMatchObject({
+        loopId: 'l_outer',
+        kind: 'loop',
+        startIndex: 0,
+        endIndex: 5,
+      });
+
+      useAppStore.setState({ workspace: emptyWorkspace(nestedCrossedBlocks), isPlaying: false });
+      const nestedHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+      expect(nestedHtml).toContain('data-testid="loop-error-banner"');
+      expect(nestedHtml).toContain('Crossed blocks');
+      expect(nestedHtml).not.toContain('data-testid="badge-loop-error-l_outer"');
+      expect(nestedHtml).not.toContain('data-testid="badge-loop-error-le_outer"');
+      expect(nestedHtml).toContain('data-testid="badge-loop-error-w_in"');
+      expect(nestedHtml).toContain('data-testid="badge-loop-error-i_in"');
+      expect(nestedHtml).toContain('data-testid="badge-loop-error-ew_in"');
+      expect(nestedHtml).toContain('data-testid="badge-loop-error-ei_in"');
+      expect(nestedHtml).toContain('data-testid="loop-bracket-segment"');
+      expect(nestedHtml).toContain('data-loop-id="l_outer"');
     });
   });
 

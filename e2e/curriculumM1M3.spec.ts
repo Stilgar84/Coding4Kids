@@ -165,7 +165,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     // Click Next inside VictoryCelebrationModal -> advances directly to Creative Capstone loop.B (Kaleidoscope Medallion)
     await page.getByTestId('btn-victory-next').click();
     await expect(page.getByTestId('variation-cards-panel')).toBeVisible();
-    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(3);
+    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(4);
 
     // Complete loop.B via Done CTA -> opens Capstone celebration -> click Next to advance to loop.C (Looping Lightshow)
     await page.getByTestId('btn-complete-creative-activity').click();
@@ -328,7 +328,7 @@ test.describe('Wave 6 (Phase 1): Full M1–M4 Curriculum E2E Suite (Desktop & An
     await page.goto('/?mode=curriculum&activity=loop.3');
     await page.waitForSelector('[data-testid="turtle-canvas-svg"]');
     await expect(page.getByTestId('variation-cards-panel')).toBeVisible();
-    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(3);
+    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(4);
     await page.getByTestId('tool-loop-playback').click();
     await page.getByTestId('btn-hamburger-menu').click();
     await expect(page.getByTestId('drawer-btn-loop')).toHaveAttribute('aria-pressed', 'true');

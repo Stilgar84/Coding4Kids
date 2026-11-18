@@ -25,9 +25,12 @@ import {
   tickInterpreter,
   validateControlStructure,
   validateLoopStructure,
+  findMatchingLoopEnd,
   findMatchingWhileEnd,
   findIfStructure,
 } from '../src/engine/interpreter';
+import { runHeadlessSimulation } from '../src/engine/simulationRunner';
+import { gridSimulationEnvironment } from '../src/simulations/grid/gridEnvironment';
 import {
   OP_IF,
   OP_ELSE,
@@ -505,6 +508,159 @@ describe('Commit 21: Conditionals (IF, ELSE, ELSE_IF, WHILE) & Compound Booleans
     it('validateLoopStructure aliases validateControlStructure seamlessly', () => {
       const badWhile: CodeBlock[] = [{ id: 'w1', type: 'WHILE' }];
       expect(validateLoopStructure(badWhile).hasError).toBe(true);
+    });
+
+    it('detects badly interleaved multi-block structures and rejects matching/execution', () => {
+      const cases: Array<{
+        name: string;
+        blocks: CodeBlock[];
+        expectedInterleavedIds: string[];
+      }> = [
+        {
+          name: 'WHILE -> IF -> END_WHILE -> END_IF',
+          blocks: [
+            { id: 'w1', type: 'WHILE' },
+            { id: 'i1', type: 'IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['w1', 'i1', 'ew1', 'ei1'],
+        },
+        {
+          name: 'IF -> WHILE -> END_IF -> END_WHILE',
+          blocks: [
+            { id: 'i1', type: 'IF' },
+            { id: 'w1', type: 'WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+          ],
+          expectedInterleavedIds: ['i1', 'w1', 'ei1', 'ew1'],
+        },
+        {
+          name: 'LOOP_START -> IF -> LOOP_END -> END_IF',
+          blocks: [
+            { id: 'l1', type: 'LOOP_START', repeatCount: 2 },
+            { id: 'i1', type: 'IF' },
+            { id: 'le1', type: 'LOOP_END' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['l1', 'i1', 'le1', 'ei1'],
+        },
+        {
+          name: 'LOOP_START -> WHILE -> LOOP_END -> END_WHILE',
+          blocks: [
+            { id: 'l1', type: 'LOOP_START', repeatCount: 2 },
+            { id: 'w1', type: 'WHILE' },
+            { id: 'le1', type: 'LOOP_END' },
+            { id: 'ew1', type: 'END_WHILE' },
+          ],
+          expectedInterleavedIds: ['l1', 'w1', 'le1', 'ew1'],
+        },
+        {
+          name: 'IF -> WHILE -> ELSE -> END_WHILE -> END_IF',
+          blocks: [
+            { id: 'i1', type: 'IF' },
+            { id: 'w1', type: 'WHILE' },
+            { id: 'el1', type: 'ELSE' },
+            { id: 'ew1', type: 'END_WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['i1', 'w1', 'el1', 'ew1', 'ei1'],
+        },
+        {
+          name: 'IF -> LOOP_START -> ELSE_IF -> LOOP_END -> END_IF',
+          blocks: [
+            { id: 'i1', type: 'IF' },
+            { id: 'l1', type: 'LOOP_START', repeatCount: 2 },
+            { id: 'eif1', type: 'ELSE_IF' },
+            { id: 'le1', type: 'LOOP_END' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['i1', 'l1', 'eif1', 'le1', 'ei1'],
+        },
+        {
+          name: 'WHILE -> IF -> END_WHILE -> ELSE -> END_IF',
+          blocks: [
+            { id: 'w1', type: 'WHILE' },
+            { id: 'i1', type: 'IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+            { id: 'el1', type: 'ELSE' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['w1', 'i1', 'ew1', 'el1', 'ei1'],
+        },
+        {
+          name: '3-way interleaving LOOP_START -> WHILE -> IF -> LOOP_END -> END_WHILE -> END_IF',
+          blocks: [
+            { id: 'l1', type: 'LOOP_START', repeatCount: 2 },
+            { id: 'w1', type: 'WHILE' },
+            { id: 'i1', type: 'IF' },
+            { id: 'le1', type: 'LOOP_END' },
+            { id: 'ew1', type: 'END_WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          expectedInterleavedIds: ['l1', 'w1', 'i1', 'le1', 'ew1', 'ei1'],
+        },
+      ];
+
+      for (const tc of cases) {
+        const ctrl = validateControlStructure(tc.blocks);
+        expect(ctrl.hasError, tc.name).toBe(true);
+        expect(ctrl.isValid, tc.name).toBe(false);
+        expect(ctrl.interleavedBlockIds, tc.name).toEqual(tc.expectedInterleavedIds);
+        expect(validateLoopStructure(tc.blocks).hasError, tc.name).toBe(true);
+
+        const ws: WorkspaceState = {
+          MAIN: tc.blocks,
+          F1: [],
+          F2: [],
+          F3: [],
+        };
+        const headless = runHeadlessSimulation(
+          ws,
+          'grid',
+          gridSimulationEnvironment.createInitialState()
+        );
+        expect(headless.stepCount, tc.name).toBe(0);
+        expect(headless.status, tc.name).toBe('IDLE');
+      }
+
+      // Unified forward matchers refuse to match across interleaved boundaries
+      expect(
+        findMatchingWhileEnd(
+          [
+            { id: 'w1', type: 'WHILE' },
+            { id: 'i1', type: 'IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          0
+        )
+      ).toBe(-1);
+
+      expect(
+        findMatchingLoopEnd(
+          [
+            { id: 'l1', type: 'LOOP_START', repeatCount: 2 },
+            { id: 'i1', type: 'IF' },
+            { id: 'le1', type: 'LOOP_END' },
+            { id: 'ei1', type: 'END_IF' },
+          ],
+          0
+        )
+      ).toBe(-1);
+
+      expect(
+        findIfStructure(
+          [
+            { id: 'i1', type: 'IF' },
+            { id: 'w1', type: 'WHILE' },
+            { id: 'ei1', type: 'END_IF' },
+            { id: 'ew1', type: 'END_WHILE' },
+          ],
+          0
+        ).endIfPc
+      ).toBe(-1);
     });
   });
 

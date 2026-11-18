@@ -3,7 +3,10 @@ import { ArrowRight, Check, ChevronDown, ChevronUp, Copy, Play, Sparkles, Square
 import { InterpreterRuntimeState, ScopeType, SimulationSpeed, WorkspaceState } from '../types';
 import {
   CreativeVariationCard,
+  CurriculumActivity,
+  CurriculumBeatDefinition,
   CurriculumSimId,
+  CurriculumTurtleDefinition,
   getActivityAtVersion,
   getActivityLatest,
 } from '../data/curriculum';
@@ -17,11 +20,13 @@ import {
 import { countLitLeds } from '../simulations/beat/presets';
 import {
   beatSimulationEnvironment,
+  createCurriculumBeatState,
   createInitialBeatState,
 } from '../simulations/beat/beatEnvironment';
 import { beatSynth } from '../simulations/beat/beatSynth';
 import {
   createInitialInterpreterState,
+  InterpreterTickOptions,
   tickInterpreter,
   validateLoopStructure,
 } from '../engine/interpreter';
@@ -35,6 +40,8 @@ import {
   renderBeatMapSvg,
   renderTurtleMapSvg,
 } from '../services/mapThumbnailGenerator';
+import { createCurriculumTurtleState } from '../store/helpers/simStateHelpers';
+import { resolveDefaultSceneInput } from '../store/helpers/curriculumHelpers';
 import { isLowQualityActive, useAppStore, useAppStoreSelector } from '../store/useAppStore';
 import {
   getNextCurriculumActivity,
@@ -81,9 +88,23 @@ const IDLE_PREVIEW_SNAPSHOT: BeatVariationPreviewSnapshot = {
   liveAnnouncement: '',
 };
 
+const ALL_WORKSPACE_SCOPES: readonly ScopeType[] = [
+  'MAIN',
+  'F1',
+  'F2',
+  'F3',
+  'ON_TAP',
+  'ON_KEY_UP',
+  'ON_KEY_DOWN',
+  'ON_KEY_LEFT',
+  'ON_KEY_RIGHT',
+  'ON_KEY_A',
+  'ON_KEY_B',
+];
+
 function hasValidNonEmptyWorkspace(workspace: WorkspaceState): boolean {
   let totalBlocks = 0;
-  for (const scope of ['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]) {
+  for (const scope of ALL_WORKSPACE_SCOPES) {
     const blocks = workspace[scope] || [];
     totalBlocks += blocks.length;
     if (blocks.length > 0 && validateLoopStructure(blocks).hasError) {
@@ -93,16 +114,38 @@ function hasValidNonEmptyWorkspace(workspace: WorkspaceState): boolean {
   return totalBlocks > 0;
 }
 
+export interface VariationPreviewOptions {
+  turtleDef?: CurriculumTurtleDefinition;
+  beatDef?: CurriculumBeatDefinition;
+  sceneInput?: number | string;
+  initialVars?: CurriculumActivity['initialVars'];
+}
+
 /**
  * Headlessly executes a Turtle LOGO variation workspace and renders its SVG markup and data URL thumbnail.
  */
-export function renderTurtleVariationPreview(workspace: WorkspaceState): TurtleVariationPreview {
-  const initialTurtle = createInitialTurtleState();
+export function renderTurtleVariationPreview(
+  workspace: WorkspaceState,
+  options?: VariationPreviewOptions
+): TurtleVariationPreview {
+  const initialTurtle = options?.turtleDef
+    ? createCurriculumTurtleState(options.turtleDef)
+    : createInitialTurtleState();
+  const hasSimOptions =
+    options?.sceneInput !== undefined || Boolean(options?.initialVars);
   const simResult = runHeadlessSimulation(
     workspace,
     'turtle',
     initialTurtle,
-    MAX_INSTANT_SIMULATION_STEPS
+    MAX_INSTANT_SIMULATION_STEPS,
+    hasSimOptions
+      ? {
+          ...(options?.sceneInput !== undefined
+            ? { sceneInput: options.sceneInput }
+            : {}),
+          ...(options?.initialVars ? { initialVars: options.initialVars } : {}),
+        }
+      : undefined
   );
   const finalState = simResult.finalState as TurtleState;
   const svgMarkup = renderTurtleMapSvg(finalState);
@@ -114,8 +157,13 @@ export function renderTurtleVariationPreview(workspace: WorkspaceState): TurtleV
  * Headlessly simulates a Beat & Light variation workspace to extract its beat-by-beat LED frames
  * and a static representative 8x8 LED thumbnail frame for idle display.
  */
-export function renderBeatVariationPreview(workspace: WorkspaceState): BeatVariationPreview {
-  const initialBeat = createInitialBeatState(true);
+export function renderBeatVariationPreview(
+  workspace: WorkspaceState,
+  options?: VariationPreviewOptions
+): BeatVariationPreview {
+  const initialBeat = options?.beatDef
+    ? createCurriculumBeatState(options.beatDef, true)
+    : createInitialBeatState(true);
   if (!hasValidNonEmptyWorkspace(workspace)) {
     const svgMarkup = renderBeatMapSvg(initialBeat);
     const thumbnailUrl = generateBeatMapThumbnail(initialBeat);
@@ -129,14 +177,32 @@ export function renderBeatVariationPreview(workspace: WorkspaceState): BeatVaria
     };
   }
 
-  let runtime = createInitialInterpreterState();
+  let runtime: InterpreterRuntimeState = {
+    ...createInitialInterpreterState(undefined, options?.initialVars),
+    ...(options?.sceneInput !== undefined ? { sceneInput: options.sceneInput } : {}),
+  };
+  const tickOptions: InterpreterTickOptions | undefined =
+    options?.sceneInput !== undefined || options?.initialVars
+      ? {
+          ...(options?.sceneInput !== undefined
+            ? { sceneInput: options.sceneInput }
+            : {}),
+          ...(options?.initialVars ? { initialVars: options.initialVars } : {}),
+        }
+      : undefined;
   let state = initialBeat;
   const frames: BeatState[] = [];
   let steps = 0;
 
   while (steps < MAX_INSTANT_SIMULATION_STEPS) {
     const prevBeatIndex = state.beatIndex;
-    const res = tickInterpreter(runtime, workspace, state, beatSimulationEnvironment);
+    const res = tickInterpreter(
+      runtime,
+      workspace,
+      state,
+      beatSimulationEnvironment,
+      tickOptions
+    );
     runtime = res.nextRuntime;
     state = res.nextGrid;
     steps++;
@@ -178,6 +244,9 @@ export interface BeatVariationStartOptions {
   activityId?: string;
   tickMs?: number;
   getIsMuted?: () => boolean;
+  beatDef?: CurriculumBeatDefinition;
+  sceneInput?: number | string;
+  initialVars?: CurriculumActivity['initialVars'];
 }
 
 /**
@@ -191,6 +260,7 @@ export class BeatVariationPreviewPlayer {
   private timerId: ReturnType<typeof setInterval> | null = null;
   private runtime: InterpreterRuntimeState | null = null;
   private beatState: BeatState | null = null;
+  private tickOptions: InterpreterTickOptions | undefined = undefined;
   private workspace: WorkspaceState | null = null;
   private card: CreativeVariationCard | null = null;
   private activityId: string | null = null;
@@ -236,6 +306,7 @@ export class BeatVariationPreviewPlayer {
     }
     this.runtime = null;
     this.beatState = null;
+    this.tickOptions = undefined;
     this.workspace = null;
     this.card = null;
     this.activityId = null;
@@ -262,7 +333,8 @@ export class BeatVariationPreviewPlayer {
         runtime,
         workspace,
         beatState,
-        beatSimulationEnvironment
+        beatSimulationEnvironment,
+        this.tickOptions
       );
       runtime = res.nextRuntime;
       beatState = res.nextGrid;
@@ -337,7 +409,15 @@ export class BeatVariationPreviewPlayer {
       return false;
     }
 
-    const previewMeta = renderBeatVariationPreview(card.workspace);
+    const resolvedSceneInput =
+      options?.sceneInput !== undefined
+        ? options.sceneInput
+        : resolveDefaultSceneInput(card.inputConfig);
+    const previewMeta = renderBeatVariationPreview(card.workspace, {
+      beatDef: options?.beatDef,
+      sceneInput: resolvedSceneInput,
+      initialVars: options?.initialVars,
+    });
     if (previewMeta.totalBeats === 0) {
       if (this.snapshot !== IDLE_PREVIEW_SNAPSHOT) {
         this.snapshot = IDLE_PREVIEW_SNAPSHOT;
@@ -360,8 +440,20 @@ export class BeatVariationPreviewPlayer {
       // Never block preview ticks when AudioContext is unavailable or blocked
     }
 
-    this.runtime = createInitialInterpreterState();
-    this.beatState = createInitialBeatState(mutedNow);
+    this.runtime = {
+      ...createInitialInterpreterState(undefined, options?.initialVars),
+      ...(resolvedSceneInput !== undefined ? { sceneInput: resolvedSceneInput } : {}),
+    };
+    this.beatState = options?.beatDef
+      ? createCurriculumBeatState(options.beatDef, mutedNow)
+      : createInitialBeatState(mutedNow);
+    this.tickOptions =
+      resolvedSceneInput !== undefined || options?.initialVars
+        ? {
+            ...(resolvedSceneInput !== undefined ? { sceneInput: resolvedSceneInput } : {}),
+            ...(options?.initialVars ? { initialVars: options.initialVars } : {}),
+          }
+        : undefined;
     this.workspace = card.workspace;
     this.card = card;
     this.activityId = options?.activityId ?? null;
@@ -446,10 +538,35 @@ export function handleButtonKeyboardActivation(
 }
 
 function countWorkspaceBlocks(workspace: WorkspaceState): number {
-  return (['MAIN', 'F1', 'F2', 'F3'] as ScopeType[]).reduce(
+  return ALL_WORKSPACE_SCOPES.reduce(
     (sum, scope) => sum + (workspace[scope]?.length ?? 0),
     0
   );
+}
+
+/**
+ * Builds the ordered list of cards rendered in `VariationCardsPanel`, prepending
+ * the lesson's default/main starter program (when non-empty & valid) ahead of its variations.
+ */
+export function buildVariationDockCards(
+  activity?: CurriculumActivity
+): CreativeVariationCard[] {
+  if (!activity) return [];
+  const variationList = activity.variations ?? [];
+  const isOpenLesson = isCreativeOpenLessonActivity(activity);
+  if (variationList.length === 0 && !isOpenLesson) {
+    return [];
+  }
+  if (activity.starterWorkspace && hasValidNonEmptyWorkspace(activity.starterWorkspace)) {
+    const starterCard: CreativeVariationCard = {
+      id: `${activity.id}-starter`,
+      title: activity.title,
+      icon: activity.icon || '🏠',
+      workspace: activity.starterWorkspace,
+    };
+    return [starterCard, ...variationList];
+  }
+  return [...variationList];
 }
 
 interface MiniCueRingStyle {
@@ -509,6 +626,7 @@ function getMiniCueRingStyle(cue: BeatCueKind | 'NONE'): MiniCueRingStyle {
 interface VariationCardPreviewProps {
   simId: CurriculumSimId;
   card: CreativeVariationCard;
+  previewOptions?: VariationPreviewOptions;
   liveBeatState?: BeatState | null;
   isPreviewPlaying?: boolean;
   isLowQuality?: boolean;
@@ -518,6 +636,7 @@ interface VariationCardPreviewProps {
 const VariationCardPreview: React.FC<VariationCardPreviewProps> = React.memo(({
   simId,
   card,
+  previewOptions,
   liveBeatState,
   isPreviewPlaying = false,
   isLowQuality = false,
@@ -525,13 +644,25 @@ const VariationCardPreview: React.FC<VariationCardPreviewProps> = React.memo(({
 }) => {
   const turtlePreview = useMemo(() => {
     if (simId !== 'turtle') return null;
-    return renderTurtleVariationPreview(card.workspace);
-  }, [simId, card.workspace]);
+    return renderTurtleVariationPreview(card.workspace, previewOptions);
+  }, [
+    simId,
+    card.workspace,
+    previewOptions?.turtleDef,
+    previewOptions?.sceneInput,
+    previewOptions?.initialVars,
+  ]);
 
   const beatPreview = useMemo(() => {
     if (simId !== 'beat') return null;
-    return renderBeatVariationPreview(card.workspace);
-  }, [simId, card.workspace]);
+    return renderBeatVariationPreview(card.workspace, previewOptions);
+  }, [
+    simId,
+    card.workspace,
+    previewOptions?.beatDef,
+    previewOptions?.sceneInput,
+    previewOptions?.initialVars,
+  ]);
 
   if (simId === 'turtle' && turtlePreview) {
     return (
@@ -718,10 +849,13 @@ export const VariationCardsPanel: React.FC = () => {
         getActivityLatest(activeActivityId)
       : undefined;
 
-  const variationList = activeActivity?.variations ?? [];
-  const hasVariations = variationList.length > 0;
+  const dockCards = useMemo(
+    () => buildVariationDockCards(activeActivity),
+    [activeActivity]
+  );
+  const hasDockCards = dockCards.length > 0;
   const isOpenLesson = isCreativeOpenLessonActivity(activeActivity);
-  if (appMode !== 'curriculum' || !activeActivity || (!hasVariations && !isOpenLesson)) {
+  if (appMode !== 'curriculum' || !activeActivity || (!hasDockCards && !isOpenLesson)) {
     return null;
   }
 
@@ -729,8 +863,16 @@ export const VariationCardsPanel: React.FC = () => {
   const isCompleted = Boolean(completedActivities[activeActivity.id]);
   const isBeatActivity = activeActivity.simId === 'beat';
 
-  const handleToggleCardPreview = (card: CreativeVariationCard) => {
-    beatVariationPreviewPlayer.toggle(card, { activityId: activeActivity.id });
+  const handleToggleCardPreview = (
+    card: CreativeVariationCard,
+    effectiveSceneInput?: number | string
+  ) => {
+    beatVariationPreviewPlayer.toggle(card, {
+      activityId: activeActivity.id,
+      beatDef: activeActivity.beat,
+      sceneInput: effectiveSceneInput,
+      initialVars: activeActivity.initialVars,
+    });
   };
 
   const handleLoadCard = (card: CreativeVariationCard) => {
@@ -765,7 +907,7 @@ export const VariationCardsPanel: React.FC = () => {
 
       {/* Compact Header Strip */}
       <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-        {hasVariations ? (
+        {hasDockCards ? (
           <button
             type="button"
             data-testid="btn-toggle-variation-cards"
@@ -777,7 +919,7 @@ export const VariationCardsPanel: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" aria-hidden="true" />
             <span>Try a Variation</span>
             <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[11px] font-mono">
-              {variationList.length}
+              {dockCards.length}
             </span>
             {isCollapsed ? (
               <ChevronUp className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
@@ -833,15 +975,18 @@ export const VariationCardsPanel: React.FC = () => {
       </div>
 
       {/* Collapsible Horizontal Card Strip */}
-      {hasVariations && !isCollapsed && (
+      {hasDockCards && !isCollapsed && (
         <div
           id="variation-cards-list"
           data-testid="variation-cards-list"
           role="list"
           className="flex items-stretch gap-2.5 px-3 pb-2.5 pt-0.5 overflow-x-auto"
         >
-          {variationList.map((card) => {
+          {dockCards.map((card) => {
             const blockCount = countWorkspaceBlocks(card.workspace);
+            const effectiveSceneInput = resolveDefaultSceneInput(
+              card.inputConfig ?? activeActivity.inputConfig
+            );
             const isThisCardPlaying =
               isBeatActivity &&
               previewSnapshot.isPlaying &&
@@ -868,11 +1013,19 @@ export const VariationCardsPanel: React.FC = () => {
                 <VariationCardPreview
                   simId={activeActivity.simId}
                   card={card}
+                  previewOptions={{
+                    turtleDef: activeActivity.turtle,
+                    beatDef: activeActivity.beat,
+                    sceneInput: effectiveSceneInput,
+                    initialVars: activeActivity.initialVars,
+                  }}
                   liveBeatState={isThisCardPlaying ? previewSnapshot.currentState : null}
                   isPreviewPlaying={isThisCardPlaying}
                   isLowQuality={isLowQuality}
                   onToggleBeatPreview={
-                    isBeatActivity ? () => handleToggleCardPreview(card) : undefined
+                    isBeatActivity
+                      ? () => handleToggleCardPreview(card, effectiveSceneInput)
+                      : undefined
                   }
                 />
 
@@ -923,9 +1076,11 @@ export const VariationCardsPanel: React.FC = () => {
                             beatSynth.unlockFromGesture();
                           }
                         }}
-                        onClick={() => handleToggleCardPreview(card)}
+                        onClick={() => handleToggleCardPreview(card, effectiveSceneInput)}
                         onKeyDown={(e) =>
-                          handleButtonKeyboardActivation(e, () => handleToggleCardPreview(card))
+                          handleButtonKeyboardActivation(e, () =>
+                            handleToggleCardPreview(card, effectiveSceneInput)
+                          )
                         }
                         className={`inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 ${
                           isThisCardPlaying

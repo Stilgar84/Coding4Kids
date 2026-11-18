@@ -518,72 +518,225 @@ export interface ControlStructureValidationResult extends LoopValidationResult {
   orphanEndIfIds: string[];
   unclosedWhileIds: string[];
   orphanEndWhileIds: string[];
+  interleavedBlockIds: string[];
+}
+
+export interface MatchedControlPair {
+  loopId: string;
+  kind: 'loop' | 'if' | 'while';
+  startIndex: number;
+  endIndex: number;
+  branchIndices: number[];
+}
+
+interface OpenControlFrame {
+  kind: 'loop' | 'if' | 'while';
+  block: CodeBlock;
+  startIndex: number;
+  hasElse: boolean;
+  branchIds: string[];
+  branchIndices: number[];
+}
+
+interface UnwoundControlFrame {
+  frame: OpenControlFrame;
+  interruptedByIds: string[];
+}
+
+function appendUniqueIds(target: string[], ids: readonly string[]): void {
+  for (const id of ids) {
+    if (!target.includes(id)) {
+      target.push(id);
+    }
+  }
 }
 
 /**
- * Validates loop, while, and conditional structures in a list of blocks.
+ * Analyzes loop, while, and conditional control structures in a list of blocks
+ * using a single unified control stack to detect unclosed openers, orphan closers/branches,
+ * and badly interleaved (crossed) multi-block structures, while extracting clean matched spans.
  */
-export function validateControlStructure(blocks: CodeBlock[]): ControlStructureValidationResult {
+export function analyzeControlStructure(blocks: readonly CodeBlock[]): {
+  validation: ControlStructureValidationResult;
+  matchedPairs: MatchedControlPair[];
+} {
   const unclosedLoopStartIds: string[] = [];
   const orphanLoopEndIds: string[] = [];
-  const loopOpenStack: CodeBlock[] = [];
-
   const unclosedIfIds: string[] = [];
   const orphanElseIds: string[] = [];
   const orphanEndIfIds: string[] = [];
-  const ifOpenStack: { ifBlock: CodeBlock; hasElse: boolean }[] = [];
-
   const unclosedWhileIds: string[] = [];
   const orphanEndWhileIds: string[] = [];
-  const whileOpenStack: CodeBlock[] = [];
 
-  for (const block of blocks) {
-    if (block.type === 'LOOP_START') {
-      loopOpenStack.push(block);
-    } else if (block.type === 'LOOP_END') {
-      if (loopOpenStack.length > 0) {
-        loopOpenStack.pop();
-      } else {
-        orphanLoopEndIds.push(block.id);
+  const openStack: OpenControlFrame[] = [];
+  const unwoundFrames: UnwoundControlFrame[] = [];
+  const interleavedSet = new Set<string>();
+  const candidatePairs: MatchedControlPair[] = [];
+
+  const pushUnclosed = (frame: OpenControlFrame): void => {
+    if (frame.kind === 'loop') {
+      unclosedLoopStartIds.push(frame.block.id);
+    } else if (frame.kind === 'if') {
+      unclosedIfIds.push(frame.block.id);
+    } else {
+      unclosedWhileIds.push(frame.block.id);
+    }
+  };
+
+  const markInterleaved = (unwound: UnwoundControlFrame, closerOrBranchId: string): void => {
+    interleavedSet.add(unwound.frame.block.id);
+    for (const branchId of unwound.frame.branchIds) {
+      interleavedSet.add(branchId);
+    }
+    for (const interruptedId of unwound.interruptedByIds) {
+      interleavedSet.add(interruptedId);
+    }
+    interleavedSet.add(closerOrBranchId);
+  };
+
+  const propagateInterruptedIds = (ownerFrame: OpenControlFrame, controlIds: readonly string[]): void => {
+    for (const unwound of unwoundFrames) {
+      if (
+        unwound.interruptedByIds.includes(ownerFrame.block.id) ||
+        unwound.frame.startIndex > ownerFrame.startIndex
+      ) {
+        appendUniqueIds(unwound.interruptedByIds, controlIds);
       }
-    } else if (block.type === 'IF') {
-      ifOpenStack.push({ ifBlock: block, hasElse: false });
-    } else if (block.type === 'ELSE_IF') {
-      if (ifOpenStack.length === 0 || ifOpenStack[ifOpenStack.length - 1].hasElse) {
+    }
+  };
+
+  const findNearestOpenIndex = (kind: OpenControlFrame['kind']): number => {
+    for (let idx = openStack.length - 1; idx >= 0; idx--) {
+      if (openStack[idx].kind === kind) {
+        return idx;
+      }
+    }
+    return -1;
+  };
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+
+    if (block.type === 'LOOP_START' || block.type === 'IF' || block.type === 'WHILE') {
+      const kind: OpenControlFrame['kind'] =
+        block.type === 'LOOP_START' ? 'loop' : block.type === 'IF' ? 'if' : 'while';
+      openStack.push({
+        kind,
+        block,
+        startIndex: i,
+        hasElse: false,
+        branchIds: [],
+        branchIndices: [],
+      });
+    } else if (block.type === 'LOOP_END' || block.type === 'END_IF' || block.type === 'END_WHILE') {
+      const expectedKind: OpenControlFrame['kind'] =
+        block.type === 'LOOP_END' ? 'loop' : block.type === 'END_IF' ? 'if' : 'while';
+      const matchIdx = findNearestOpenIndex(expectedKind);
+
+      if (matchIdx >= 0) {
+        const matchedFrame = openStack[matchIdx];
+        const spanControlIds = [matchedFrame.block.id, ...matchedFrame.branchIds, block.id];
+        propagateInterruptedIds(matchedFrame, spanControlIds);
+
+        if (interleavedSet.has(matchedFrame.block.id)) {
+          interleavedSet.add(block.id);
+          for (const branchId of matchedFrame.branchIds) {
+            interleavedSet.add(branchId);
+          }
+        }
+
+        while (openStack.length - 1 > matchIdx) {
+          const innerFrame = openStack.pop()!;
+          pushUnclosed(innerFrame);
+          unwoundFrames.push({
+            frame: innerFrame,
+            interruptedByIds: [...spanControlIds],
+          });
+        }
+
+        openStack.pop();
+        candidatePairs.push({
+          loopId: matchedFrame.block.id,
+          kind: matchedFrame.kind,
+          startIndex: matchedFrame.startIndex,
+          endIndex: i,
+          branchIndices: [...matchedFrame.branchIndices],
+        });
+      } else {
+        if (expectedKind === 'loop') {
+          orphanLoopEndIds.push(block.id);
+        } else if (expectedKind === 'if') {
+          orphanEndIfIds.push(block.id);
+        } else {
+          orphanEndWhileIds.push(block.id);
+        }
+
+        for (let uIdx = unwoundFrames.length - 1; uIdx >= 0; uIdx--) {
+          if (unwoundFrames[uIdx].frame.kind === expectedKind) {
+            const [unwound] = unwoundFrames.splice(uIdx, 1);
+            markInterleaved(unwound, block.id);
+            break;
+          }
+        }
+      }
+    } else if (block.type === 'ELSE_IF' || block.type === 'ELSE') {
+      const matchIdx = findNearestOpenIndex('if');
+
+      if (matchIdx >= 0) {
+        const targetIf = openStack[matchIdx];
+        if (targetIf.hasElse) {
+          orphanElseIds.push(block.id);
+        } else {
+          const branchControlIds = [targetIf.block.id, ...targetIf.branchIds, block.id];
+          propagateInterruptedIds(targetIf, branchControlIds);
+
+          while (openStack.length - 1 > matchIdx) {
+            const innerFrame = openStack.pop()!;
+            pushUnclosed(innerFrame);
+            unwoundFrames.push({
+              frame: innerFrame,
+              interruptedByIds: [...branchControlIds],
+            });
+          }
+
+          targetIf.branchIds.push(block.id);
+          targetIf.branchIndices.push(i);
+          if (block.type === 'ELSE') {
+            targetIf.hasElse = true;
+          }
+          if (interleavedSet.has(targetIf.block.id)) {
+            interleavedSet.add(block.id);
+          }
+        }
+      } else {
         orphanElseIds.push(block.id);
-      }
-    } else if (block.type === 'ELSE') {
-      if (ifOpenStack.length === 0 || ifOpenStack[ifOpenStack.length - 1].hasElse) {
-        orphanElseIds.push(block.id);
-      } else {
-        ifOpenStack[ifOpenStack.length - 1].hasElse = true;
-      }
-    } else if (block.type === 'END_IF') {
-      if (ifOpenStack.length > 0) {
-        ifOpenStack.pop();
-      } else {
-        orphanEndIfIds.push(block.id);
-      }
-    } else if (block.type === 'WHILE') {
-      whileOpenStack.push(block);
-    } else if (block.type === 'END_WHILE') {
-      if (whileOpenStack.length > 0) {
-        whileOpenStack.pop();
-      } else {
-        orphanEndWhileIds.push(block.id);
+
+        for (let uIdx = unwoundFrames.length - 1; uIdx >= 0; uIdx--) {
+          const unwound = unwoundFrames[uIdx];
+          if (unwound.frame.kind === 'if' && !unwound.frame.hasElse) {
+            unwound.frame.branchIds.push(block.id);
+            if (block.type === 'ELSE') {
+              unwound.frame.hasElse = true;
+            }
+            markInterleaved(unwound, block.id);
+            break;
+          }
+        }
       }
     }
   }
 
-  for (const block of loopOpenStack) {
-    unclosedLoopStartIds.push(block.id);
+  for (const frame of openStack) {
+    pushUnclosed(frame);
   }
-  for (const frame of ifOpenStack) {
-    unclosedIfIds.push(frame.ifBlock.id);
-  }
-  for (const block of whileOpenStack) {
-    unclosedWhileIds.push(block.id);
-  }
+
+  const interleavedBlockIds = blocks
+    .filter((b) => interleavedSet.has(b.id))
+    .map((b) => b.id);
+
+  const matchedPairs = candidatePairs
+    .filter((p) => !interleavedSet.has(p.loopId))
+    .sort((a, b) => a.startIndex - b.startIndex);
 
   const hasError =
     unclosedLoopStartIds.length > 0 ||
@@ -592,19 +745,31 @@ export function validateControlStructure(blocks: CodeBlock[]): ControlStructureV
     orphanElseIds.length > 0 ||
     orphanEndIfIds.length > 0 ||
     unclosedWhileIds.length > 0 ||
-    orphanEndWhileIds.length > 0;
+    orphanEndWhileIds.length > 0 ||
+    interleavedBlockIds.length > 0;
 
   return {
-    isValid: !hasError,
-    unclosedLoopStartIds,
-    orphanLoopEndIds,
-    unclosedIfIds,
-    orphanElseIds,
-    orphanEndIfIds,
-    unclosedWhileIds,
-    orphanEndWhileIds,
-    hasError,
+    validation: {
+      isValid: !hasError,
+      unclosedLoopStartIds,
+      orphanLoopEndIds,
+      unclosedIfIds,
+      orphanElseIds,
+      orphanEndIfIds,
+      unclosedWhileIds,
+      orphanEndWhileIds,
+      interleavedBlockIds,
+      hasError,
+    },
+    matchedPairs,
   };
+}
+
+/**
+ * Validates loop, while, and conditional structures in a list of blocks.
+ */
+export function validateControlStructure(blocks: CodeBlock[]): ControlStructureValidationResult {
+  return analyzeControlStructure(blocks).validation;
 }
 
 /**
@@ -615,40 +780,86 @@ export function validateLoopStructure(blocks: CodeBlock[]): ControlStructureVali
   return validateControlStructure(blocks);
 }
 
-/**
- * Finds the index of the matching LOOP_END for a LOOP_START at startIdx in blocks array.
- */
-export function findMatchingLoopEnd(blocks: CodeBlock[], startIdx: number): number {
-  let depth = 0;
-  for (let i = startIdx; i < blocks.length; i++) {
-    if (blocks[i].type === 'LOOP_START') {
-      depth++;
-    } else if (blocks[i].type === 'LOOP_END') {
-      depth--;
-      if (depth === 0) {
+type UnifiedScanFrame =
+  | { kind: 'loop' | 'while' }
+  | { kind: 'if'; hasElse: boolean };
+
+const ROOT_OPENER_TYPE: Record<'loop' | 'if' | 'while', string> = {
+  loop: 'LOOP_START',
+  if: 'IF',
+  while: 'WHILE',
+};
+
+const CLOSER_KIND_BY_TYPE: Record<string, 'loop' | 'if' | 'while'> = {
+  LOOP_END: 'loop',
+  END_IF: 'if',
+  END_WHILE: 'while',
+};
+
+function scanUnifiedControlSpan(
+  blocks: readonly CodeBlock[],
+  startIdx: number,
+  rootKind: 'loop' | 'if' | 'while',
+  onRootBranch?: (pc: number, type: 'ELSE_IF' | 'ELSE') => void
+): number {
+  if (
+    startIdx < 0 ||
+    startIdx >= blocks.length ||
+    blocks[startIdx].type !== ROOT_OPENER_TYPE[rootKind]
+  ) {
+    return -1;
+  }
+
+  const stack: UnifiedScanFrame[] = [
+    rootKind === 'if' ? { kind: 'if', hasElse: false } : { kind: rootKind },
+  ];
+
+  for (let i = startIdx + 1; i < blocks.length; i++) {
+    const t = blocks[i].type;
+    if (t === 'LOOP_START') {
+      stack.push({ kind: 'loop' });
+    } else if (t === 'WHILE') {
+      stack.push({ kind: 'while' });
+    } else if (t === 'IF') {
+      stack.push({ kind: 'if', hasElse: false });
+    } else if (t === 'ELSE_IF' || t === 'ELSE') {
+      const top = stack[stack.length - 1];
+      if (!top || top.kind !== 'if' || top.hasElse) {
+        return -1;
+      }
+      if (t === 'ELSE') {
+        top.hasElse = true;
+      }
+      if (stack.length === 1 && onRootBranch) {
+        onRootBranch(i, t);
+      }
+    } else if (t in CLOSER_KIND_BY_TYPE) {
+      const expectedKind = CLOSER_KIND_BY_TYPE[t];
+      const top = stack.pop();
+      if (!top || top.kind !== expectedKind) {
+        return -1;
+      }
+      if (stack.length === 0) {
         return i;
       }
     }
   }
-  return -1; // Unmatched loop
+
+  return -1;
+}
+
+/**
+ * Finds the index of the matching LOOP_END for a LOOP_START at startIdx in blocks array.
+ */
+export function findMatchingLoopEnd(blocks: CodeBlock[], startIdx: number): number {
+  return scanUnifiedControlSpan(blocks, startIdx, 'loop');
 }
 
 /**
  * Finds the index of the matching END_WHILE for a WHILE at startIdx in blocks array.
  */
 export function findMatchingWhileEnd(blocks: CodeBlock[], startIdx: number): number {
-  let depth = 0;
-  for (let i = startIdx; i < blocks.length; i++) {
-    if (blocks[i].type === 'WHILE') {
-      depth++;
-    } else if (blocks[i].type === 'END_WHILE') {
-      depth--;
-      if (depth === 0) {
-        return i;
-      }
-    }
-  }
-  return -1;
+  return scanUnifiedControlSpan(blocks, startIdx, 'while');
 }
 
 export interface IfStructure {
@@ -664,26 +875,21 @@ export interface IfStructure {
 export function findIfStructure(blocks: CodeBlock[], ifIdx: number): IfStructure {
   const elseIfPcs: number[] = [];
   let elsePc: number | null = null;
-  let endIfPc = -1;
-
-  let depth = 0;
-  for (let i = ifIdx; i < blocks.length; i++) {
-    const t = blocks[i].type;
-    if (t === 'IF') {
-      depth++;
-    } else if (t === 'END_IF') {
-      depth--;
-      if (depth === 0) {
-        endIfPc = i;
-        break;
-      }
-    } else if (depth === 1) {
-      if (t === 'ELSE_IF') {
-        elseIfPcs.push(i);
-      } else if (t === 'ELSE' && elsePc === null) {
-        elsePc = i;
-      }
+  const endIfPc = scanUnifiedControlSpan(blocks, ifIdx, 'if', (pc, type) => {
+    if (type === 'ELSE_IF') {
+      elseIfPcs.push(pc);
+    } else if (elsePc === null) {
+      elsePc = pc;
     }
+  });
+
+  if (endIfPc === -1) {
+    return {
+      ifPc: ifIdx,
+      elseIfPcs: [],
+      elsePc: null,
+      endIfPc: -1,
+    };
   }
 
   return { ifPc: ifIdx, elseIfPcs, elsePc, endIfPc };

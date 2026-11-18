@@ -13,6 +13,7 @@ import {
   BEAT_VARIATION_PREVIEW_TICK_MS,
   VariationCardsPanel,
   beatVariationPreviewPlayer,
+  buildVariationDockCards,
   handleButtonKeyboardActivation,
   renderBeatVariationPreview,
 } from '../src/components/VariationCardsPanel';
@@ -408,7 +409,7 @@ describe('Sequencing (seq): Playable Animated 8x8 Variation Cards & Beat Lessons
 
   describe('3. VariationCardsPanel Mini 8x8 Previews, Play/Stop Frame Playback, Audio Resilience & Accessibility', () => {
     it('renders 64-LED mini 8x8 previews & Play buttons on Beat cards while preserving static SVG thumbnails on Turtle cards', () => {
-      // Beat Lesson seq.8: renders 3 playable 8x8 cards
+      // Beat Lesson seq.8: renders starter + 3 playable 8x8 cards (4 total)
       useAppStore.getState().setCurriculumActivity('seq.8');
       const beatPanelHtml = renderToStaticMarkup(React.createElement(VariationCardsPanel));
       expect(beatPanelHtml).toContain('data-testid="variation-cards-panel"');
@@ -416,18 +417,35 @@ describe('Sequencing (seq): Playable Animated 8x8 Variation Cards & Beat Lessons
       expect(beatPanelHtml).toContain('aria-live="polite"');
 
       const actSeq8 = getActivityLatest('seq.8')!;
-      for (const card of actSeq8.variations!) {
+      const dockCardsSeq8 = buildVariationDockCards(actSeq8);
+      expect(dockCardsSeq8).toHaveLength(4);
+      expect(dockCardsSeq8[0].id).toBe('seq.8-starter');
+
+      for (const card of dockCardsSeq8) {
+        const escapedTitle = card.title.replace(/&/g, '&amp;');
         expect(beatPanelHtml).toContain(`data-testid="variation-card-${card.id}"`);
         expect(beatPanelHtml).toContain(`data-testid="variation-beat-preview-${card.id}"`);
         expect(beatPanelHtml).toContain(`data-testid="variation-beat-grid-${card.id}"`);
         expect(beatPanelHtml).toContain(`data-testid="variation-beat-led-${card.id}-0-0"`);
         expect(beatPanelHtml).toContain(`data-testid="variation-beat-led-${card.id}-7-7"`);
         expect(beatPanelHtml).toContain(`data-testid="btn-preview-variation-${card.id}"`);
-        expect(beatPanelHtml).toContain(`aria-label="Play preview for ${card.title}"`);
+        expect(beatPanelHtml).toContain(`aria-label="Play preview for ${escapedTitle}"`);
         expect(beatPanelHtml).toContain('aria-pressed="false"');
         expect(beatPanelHtml).toContain(`data-testid="btn-load-variation-${card.id}"`);
         expect(beatPanelHtml).not.toContain(`data-testid="variation-thumbnail-${card.id}"`);
       }
+
+      // Starter dock card preview plays isolated Beat sequence without mutating main BeatState
+      const mainBeatBeforeStarterPreview = JSON.stringify(useAppStore.getState().beatState);
+      expect(
+        beatVariationPreviewPlayer.toggle(dockCardsSeq8[0], {
+          activityId: 'seq.8',
+          getIsMuted: () => true,
+        })
+      ).toBe('playing');
+      expect(beatVariationPreviewPlayer.getSnapshot().activeCardId).toBe('seq.8-starter');
+      expect(JSON.stringify(useAppStore.getState().beatState)).toBe(mainBeatBeforeStarterPreview);
+      beatVariationPreviewPlayer.stop('silent');
 
       // Idle Card 1 ('seq.8-rock-smiley') statically displays Cyan SMILE pixels (e.g. row 0, col 2)
       expect(beatPanelHtml).toContain(

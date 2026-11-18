@@ -174,6 +174,36 @@ test.describe('Robot Emulator E2E Suite', () => {
     await expect(page.getByTestId('btn-step')).toBeEnabled();
   });
 
+  test('detects badly interleaved control blocks (WHILE -> IF -> END_WHILE -> END_IF), displays error banner, and disables play/step', async ({ page }) => {
+    // Build [WHILE, IF, END_IF, END_WHILE] via auto-pairing
+    await page.getByTestId('palette-while').click();
+    await page.getByTestId('palette-if').click();
+    await expect(page.locator('[data-block-type]')).toHaveCount(4);
+
+    // Move END_WHILE before END_IF -> [WHILE, IF, END_WHILE, END_IF]
+    await page.locator('[data-block-type="END_WHILE"]').click();
+    await page.getByTestId('btn-trash').click();
+    await page.locator('[data-block-type="IF"]').click();
+    await page.getByTestId('palette-end-while').click();
+
+    await expect(page.getByTestId('loop-error-banner')).toBeVisible();
+    await expect(page.getByTestId('loop-error-banner')).toContainText('Crossed blocks');
+    await expect(page.locator('[data-testid^="badge-loop-error-"]')).toHaveCount(4);
+    await expect(page.getByTestId('loop-bracket-segment')).toHaveCount(0);
+    await expect(page.getByTestId('btn-play')).toBeDisabled();
+    await expect(page.getByTestId('btn-step')).toBeDisabled();
+
+    // Fix nesting back to [WHILE, IF, END_IF, END_WHILE]
+    await page.locator('[data-block-type="END_WHILE"]').click();
+    await page.getByTestId('btn-trash').click();
+    await page.locator('[data-block-type="END_IF"]').click();
+    await page.getByTestId('palette-end-while').click();
+
+    await expect(page.getByTestId('loop-error-banner')).toHaveCount(0);
+    await expect(page.getByTestId('btn-play')).toBeEnabled();
+    await expect(page.getByTestId('btn-step')).toBeEnabled();
+  });
+
   test('supports drag block to palette for deletion', async ({ page }) => {
     await page.getByTestId('palette-move-fwd').click();
     const block = page.locator('[data-testid^="block-MOVE_FWD"]');

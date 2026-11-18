@@ -900,7 +900,7 @@ export function createCurriculumSlice(
       const newWorkspace = cloneWorkspaceWithFreshIds(variationWorkspace);
       const act = getActiveCurriculumActivity(get());
       const nextInputCfg =
-        inputConfigOverride !== undefined
+        inputConfigOverride !== undefined && inputConfigOverride !== null
           ? inputConfigOverride
           : act?.inputConfig ?? null;
       const nextSceneInput =

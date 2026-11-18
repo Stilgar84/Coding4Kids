@@ -10,12 +10,14 @@ import {
   computeDepotAnimDurationMs,
   computeDepotStationTravelPx,
 } from '../src/simulations/depot/components/DepotCanvas';
+import { renderDepotWorkshopSvg } from '../src/simulations/depot/depotThumbnail';
 import { DEPOT_PALETTE_ITEMS } from '../src/simulations/depot/depotEnvironment';
 import {
   DEPOT_STATION_BITS,
   DepotState,
 } from '../src/simulations/depot/types';
 import { useAppStore } from '../src/store/useAppStore';
+import { WorkspaceState } from '../src/types';
 
 const ALL_STATIONS_MASK =
   DEPOT_STATION_BITS.INPUT |
@@ -77,7 +79,7 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
         inputIndex: 0,
         color: 'RED',
       });
-      expect(inputGrab.grabDistPx).toBe(178);
+      expect(inputGrab.grabDistPx).toBe(88);
       expect(inputGrab.grabDxPx).toBe(0);
 
       const queueGrab = computeDepotStationTravelPx({
@@ -113,6 +115,7 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
       expect(bottomSlot.grabDxPx).toBe(0);
       expect(highSlot.grabDistPx).toBe(116);
       expect(bottomSlot.grabDistPx).toBeGreaterThan(highSlot.grabDistPx);
+      expect(inputGrab.grabDistPx).toBeLessThan(bottomSlot.grabDistPx);
 
       const queuePlace = computeDepotStationTravelPx({
         type: 'PLACE',
@@ -143,13 +146,13 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
       const inputHtml = renderDepot(grabbedInput);
       expect(inputHtml).toContain('data-anim-action="GRAB"');
       expect(inputHtml).toContain('data-anim-duration="1350"');
-      expect(inputHtml).toContain('--depot-grab-dist:178px');
+      expect(inputHtml).toContain('--depot-grab-dist:88px');
       expect(inputHtml).toContain('depotSpringPlunge 1350ms linear both');
       expect(inputHtml).toContain('depotJawsPlunge 1350ms linear both');
       expect(inputHtml).toContain('depotJawLeftGrab 1350ms linear both');
       expect(inputHtml).toContain('data-testid="depot-claw-held-crate"');
       expect(inputHtml).toContain('depotHeldRingGrabLiftQueue 1350ms linear both');
-      expect(inputHtml).toContain('depotInputSlideDown 1350ms cubic-bezier(0.22, 1, 0.36, 1) both');
+      expect(inputHtml).toContain('depotInputAdvanceUp 1350ms cubic-bezier(0.22, 1, 0.36, 1) both');
 
       // GRAB from STACK_1 (slotIdx 1 -> 182 - 22 = 160px)
       const atStack1 = applyDepotAction('DEPOT_MOVE_TO', s0, { station: 'STACK_1' }).nextState;
@@ -326,6 +329,104 @@ describe('Depot Speed-Scaled Animations, Bidirectional Icon & High-Contrast Ghos
       expect(html).toContain('border-dashed');
       expect(html).toContain('rgba(203, 213, 225, 0.55)');
       expect(html).not.toContain('opacity-25');
+    });
+  });
+
+  describe('5. Depot Stage Max Height, Claw Wrist Sensor Light & Top-Aligned INPUT Dispenser', () => {
+    it('bounds .depot-stage max-height inside an items-end wrapper and mounts sensor LED on claw wrist', () => {
+      const state = createInitialDepotState({
+        input: [{ color: 'RED' }, { color: 'BLUE' }],
+        stacks: [['GREEN'], [], []],
+        queue: [{ color: 'AMBER' }],
+        workerStation: 'STACK_1',
+        activeStationsMask: ALL_STATIONS_MASK,
+      });
+
+      const html = renderDepot(state);
+      expect(html).toContain('items-end px-3 sm:px-5 pb-0 pt-1');
+      expect(html).toContain('depot-stage relative w-full h-full max-h-[336px] sm:max-h-[352px]');
+      expect(html).toContain('data-testid="depot-claw-sensor-led"');
+    });
+
+    it('renders INPUT top-aligned (flex-col justify-start) with crate-0 first and top-down thumbnail rings', () => {
+      const state = createInitialDepotState({
+        input: [{ color: 'RED' }, { color: 'BLUE' }],
+        stacks: [['GREEN'], [], []],
+        workerStation: 'INPUT',
+        activeStationsMask: ALL_STATIONS_MASK,
+      });
+
+      const html = renderDepot(state);
+      const inputStationIdx = html.indexOf('data-testid="depot-input-station"');
+      const crate0Idx = html.indexOf('data-testid="depot-input-crate-0"');
+      const crate1Idx = html.indexOf('data-testid="depot-input-crate-1"');
+      expect(inputStationIdx).toBeGreaterThan(-1);
+      expect(crate0Idx).toBeGreaterThan(inputStationIdx);
+      expect(crate1Idx).toBeGreaterThan(crate0Idx);
+
+      const inputStationTag = html.slice(inputStationIdx, html.indexOf('>', inputStationIdx));
+      expect(inputStationTag).toContain('flex-col items-center justify-start');
+      expect(inputStationTag).not.toContain('flex-col-reverse');
+
+      const svg = renderDepotWorkshopSvg(state);
+      const redIdx = svg.indexOf('fill="#ef4444"');
+      const blueIdx = svg.indexOf('fill="#3b82f6"');
+      expect(svg).toContain('y="52"');
+      expect(svg).toContain('y="62"');
+      expect(redIdx).toBeGreaterThan(-1);
+      expect(blueIdx).toBeGreaterThan(redIdx);
+    });
+
+    it('emits claw wrist sensor-beam only on matching workerStation and highlights remote $topValue targets', () => {
+      const baseState = createInitialDepotState({
+        input: [{ color: 'RED', value: 5 }],
+        stacks: [['BLUE'], [], []],
+        stackValues: [[4], [], []],
+        queue: [{ color: 'GREEN', value: 2 }],
+        workerStation: 'STACK_1',
+        activeStationsMask: ALL_STATIONS_MASK,
+      });
+
+      // Spotlight sensor-beam while parked on STACK_1 must emit exactly 1 claw sensor beam and not leak onto QUEUE
+      const spotlightHtml = renderToStaticMarkup(
+        React.createElement(DepotCanvas, {
+          state: baseState,
+          spotlightsOverride: ['sensor-beam'],
+        })
+      );
+      expect((spotlightHtml.match(/data-testid="depot-sensor-beam"/g) ?? []).length).toBe(1);
+
+      // Remote $topValue[STACK_1] while crane is parked on INPUT highlights STACK_1 top crate cleanly
+      const remoteWs: WorkspaceState = {
+        MAIN: [
+          {
+            id: 'if_remote',
+            type: 'IF',
+            params: {
+              condition: { kind: 'cmp', op: '>', left: '$heldValue', right: '$topValue[STACK_1]' },
+            },
+          },
+          { id: 'ei', type: 'END_IF' },
+        ],
+        F1: [],
+        F2: [],
+        F3: [],
+      };
+      useAppStore.setState({ workspace: remoteWs });
+
+      const remoteHtml = renderToStaticMarkup(
+        React.createElement(DepotCanvas, {
+          state: { ...baseState, workerStation: 'INPUT', heldCrate: 'RED', heldValue: 5 },
+          activeBlockId: 'if_remote',
+        })
+      );
+      expect((remoteHtml.match(/data-testid="depot-sensor-beam"/g) ?? []).length).toBe(1);
+      const stack1CrateIdx = remoteHtml.indexOf('data-testid="depot-stack-1-crate-0"');
+      const beamIdx = remoteHtml.indexOf('data-testid="depot-sensor-beam"');
+      const queueCrateIdx = remoteHtml.indexOf('data-testid="depot-queue-crate-0"');
+      expect(stack1CrateIdx).toBeGreaterThan(-1);
+      expect(beamIdx).toBeGreaterThan(stack1CrateIdx);
+      expect(beamIdx).toBeLessThan(queueCrateIdx);
     });
   });
 });

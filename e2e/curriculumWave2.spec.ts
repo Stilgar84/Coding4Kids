@@ -139,12 +139,16 @@ test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholder
     expect(initialCount).toBeGreaterThanOrEqual(6);
     await expect(page.locator('[data-testid^="block-params-container-"]')).toHaveCount(0);
 
-    // 3 auto-rendered SVG variation thumbnails are visible
-    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(3);
+    // Starter + 3 auto-rendered SVG variation thumbnails (4 total) are visible
+    await expect(page.locator('[data-testid^="variation-thumbnail-"]')).toHaveCount(4);
 
-    // Load a variation card and then Undo via canonical header Undo button back to starter workspace
+    // Load a variation card, restore the default starter card directly from the dock, then Undo back
     await page.locator('[data-testid^="btn-load-variation-"]').nth(1).click();
     await expect(page.getByTestId('btn-undo')).toBeEnabled();
+    await page.getByTestId('btn-load-variation-seq.6-starter').click();
+    await expect(page.locator('[data-testid^="block-"]')).toHaveCount(initialCount);
+    await page.getByTestId('btn-undo').click();
+    await expect(page.locator('[data-testid^="block-"]')).not.toHaveCount(initialCount);
     await page.getByTestId('btn-undo').click();
     await expect(page.locator('[data-testid^="block-"]')).toHaveCount(initialCount);
   });

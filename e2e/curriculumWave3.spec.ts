@@ -97,7 +97,7 @@ test.describe('Wave 3: Lesson Save Slots, Constraint Solver, Demo Runner (seq.0)
     expect(starterBlockCount).toBeGreaterThanOrEqual(6);
 
     const previewButtons = page.locator('[data-testid^="btn-preview-variation-"]');
-    await expect(previewButtons).toHaveCount(3);
+    await expect(previewButtons).toHaveCount(4);
 
     // Start preview on Card 1, then switch preview to Card 2 -> Card 1 stops, main blocks unchanged
     await previewButtons.nth(0).click();
