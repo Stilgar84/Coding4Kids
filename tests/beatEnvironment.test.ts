@@ -1096,5 +1096,75 @@ describe('Beat & Light Matrix Environment (Commit 10)', () => {
       expect(hudHtml).toContain('a=3');
       expect(hudHtml).toContain('b=7');
     });
+
+    it('renders tool-random-seed with 🎲, data-seed, and touch targets in BeatCanvas header and rerolls Beat output deterministically', () => {
+      const store = useAppStore.getState();
+      store.setAppMode('sandbox');
+      store.setSimEnvironment('beat');
+      store.setRandomSeed(12345);
+
+      const html = renderToStaticMarkup(
+        React.createElement(BeatCanvas, { state: useAppStore.getState().beatState })
+      );
+      const seedMatch = html.match(/<button[^>]*data-testid="tool-random-seed"[^>]*>[\s\S]*?<\/button>/);
+      expect(seedMatch).not.toBeNull();
+      expect(seedMatch![0]).toContain('🎲');
+      expect(seedMatch![0]).toContain('data-seed="12345"');
+      expect(seedMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+
+      const muteMatch = html.match(/<button[^>]*data-testid="tool-beat-mute"[^>]*>/);
+      expect(muteMatch).not.toBeNull();
+      expect(muteMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+
+      const loopMatch = html.match(/<button[^>]*data-testid="tool-loop-playback"[^>]*>/);
+      expect(loopMatch).not.toBeNull();
+      expect(loopMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+
+      // Empty workspace: updates randomSeed without starting playback
+      const randSpy = vi.spyOn(Math, 'random');
+      randSpy.mockReturnValueOnce(0.11).mockReturnValueOnce(0.73).mockReturnValueOnce(0.42);
+      const emptySeed = store.rerollRandomSeed();
+      expect(emptySeed).not.toBe(12345);
+      expect(useAppStore.getState().randomSeed).toBe(emptySeed);
+      expect(useAppStore.getState().isPlaying).toBe(false);
+      expect(countLitLeds(useAppStore.getState().beatState.leds)).toBe(0);
+
+      // Non-empty workspace with SET_BEAT_DELAY=0: rerollRandomSeed renders synchronously and same seed is reproducible
+      store.addBlock('MAIN', 'SET_BEAT_DELAY', undefined, undefined, { delay: 0 });
+      store.addBlock('MAIN', 'VAR_ASSIGN', undefined, undefined, { a: 'x', b: '$randD8' });
+      store.addBlock('MAIN', 'VAR_ASSIGN', undefined, undefined, { a: 'y', b: '$randD8' });
+      store.addBlock('MAIN', 'SET_LED_COLOR', undefined, undefined, { color: '$randomColor' });
+      store.addBlock('MAIN', 'LIGHT_PIXEL', undefined, undefined, { x: 'x', y: 'y' });
+
+      const seed1 = store.rerollRandomSeed();
+      expect(seed1).not.toBe(emptySeed);
+      expect(useAppStore.getState().isPlaying).toBe(false);
+      const ledsSeed1 = useAppStore.getState().beatState.leds;
+      expect(countLitLeds(ledsSeed1)).toBe(1);
+
+      // Same seed reproduces identical Beat LED grid
+      store.reset();
+      store.play();
+      expect(useAppStore.getState().beatState.leds).toEqual(ledsSeed1);
+
+      // Subsequent reroll changes seed and updates Beat LED output
+      const seed2 = store.rerollRandomSeed();
+      expect(seed2).not.toBe(seed1);
+      const ledsSeed2 = useAppStore.getState().beatState.leds;
+      expect(countLitLeds(ledsSeed2)).toBe(1);
+      expect(ledsSeed2).not.toEqual(ledsSeed1);
+
+      // Timed playback mode (default 1x beat delay): rerollRandomSeed resets and restarts playback
+      store.clearWorkspace();
+      store.addBlock('MAIN', 'DRUM_KICK');
+      store.addBlock('MAIN', 'DRUM_SNARE');
+      store.setSpeed(400);
+      const seed3 = store.rerollRandomSeed();
+      expect(seed3).not.toBe(seed2);
+      expect(useAppStore.getState().isPlaying).toBe(true);
+      expect(useAppStore.getState().beatState.beatIndex).toBe(1);
+      store.pause();
+      randSpy.mockRestore();
+    });
   });
 });

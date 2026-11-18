@@ -14,10 +14,6 @@ for condition, each selection should be independent. e.g. not show color or posi
 * negation is a flag which can be flipped
 * how to handle AND/OR? do we need it ? should it be composible?
 
-use app store file is enormous, and is used for many things.
-it is hard for llm to understand and edit.
-can we modularise it?
-
 
 dock env: when view port height is big, grabber is far from station which have max height. adjust so that grabber distance from station also has max or is fixed.
 also the sensor light is badly placed.

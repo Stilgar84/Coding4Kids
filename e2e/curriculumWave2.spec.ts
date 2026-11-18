@@ -163,6 +163,14 @@ test.describe('Wave 2: Staged Palettes, Profiles, Ordered Waypoints, Placeholder
     await expect(page.getByTestId('beat-canvas')).toBeVisible();
     await expect(page.getByTestId('beat-led-grid')).toBeVisible();
     await expect(page.getByTestId('tool-beat-mute')).toBeVisible();
+    const beatSeedBtn = page.getByTestId('tool-random-seed');
+    await expect(beatSeedBtn).toBeVisible();
+    await expect(beatSeedBtn).toHaveText(/🎲/);
+    const initialBeatSeed = await beatSeedBtn.getAttribute('data-seed');
+    await beatSeedBtn.click();
+    const updatedBeatSeed = await beatSeedBtn.getAttribute('data-seed');
+    expect(updatedBeatSeed).not.toBeNull();
+    expect(updatedBeatSeed).not.toBe(initialBeatSeed);
 
     // Add Variable Assign + Kick Drum + Heart Stamp and verify BeatCanvas renders a single SimulationTopLeftHud
     await page.getByTestId('palette-var-assign').click();

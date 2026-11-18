@@ -315,6 +315,8 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
     isLowQuality,
     isLoopPlayback,
     toggleLoopPlayback,
+    randomSeed,
+    rerollRandomSeed,
     appMode,
     activeActivityId,
     activeActivityVersion,
@@ -331,6 +333,8 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
     isLowQuality: isLowQualityActive(s),
     isLoopPlayback: s.isLoopPlayback,
     toggleLoopPlayback: s.toggleLoopPlayback,
+    randomSeed: s.randomSeed,
+    rerollRandomSeed: s.rerollRandomSeed,
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
@@ -487,8 +491,8 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
           </span>
         </div>
 
-        {/* Right Controls: Active LED Color Swatch + Autoplay Unlock Pill + Mute Toggle */}
-        <div className="flex items-center gap-1.5">
+        {/* Right Controls: Active LED Color Swatch + Autoplay Unlock Pill + Mute Toggle + Loop + Random Seed */}
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {showActiveColorTool && (
             <div
               data-testid="tool-beat-active-color"
@@ -499,7 +503,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
               aria-label={`Active LED Color: ${swatchMeta?.label || activeColor}${
                 isActiveColorOff ? ' (Off / Erase)' : ''
               }`}
-              className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 border border-slate-700"
+              className="flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-lg bg-slate-900 border border-slate-700"
             >
               {isActiveColorOff ? (
                 <span
@@ -539,7 +543,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
               data-testid="beat-tap-for-sound-pill"
               onClick={handleTapForSound}
               aria-label="Audio paused by browser — Tap for Sound"
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/70 text-[11px] font-extrabold shadow-md transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 min-h-9 sm:min-h-11 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/70 text-[11px] font-extrabold shadow-md transition-all active:scale-95 cursor-pointer"
             >
               <VolumeX className="w-3.5 h-3.5 text-amber-300" />
               <span className="hidden sm:inline">Tap for Sound</span>
@@ -553,7 +557,7 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
             aria-label={isMuted ? 'Unmute Beat Audio' : 'Mute Beat Audio'}
             title={isMuted ? 'Sound Muted (Tap to Unmute)' : 'Sound On (Tap to Mute)'}
             onClick={handleToggleMute}
-            className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+            className={`flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border transition-all active:scale-95 cursor-pointer ${
               isMuted
                 ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-400/80 shadow-md'
                 : 'bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border-slate-700'
@@ -569,13 +573,29 @@ export const BeatCanvas: React.FC<BeatCanvasProps> = ({
             aria-label={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
             title={isLoopPlayback ? 'Loop Playback: On' : 'Loop Playback: Off'}
             onClick={toggleLoopPlayback}
-            className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+            className={`flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border transition-all active:scale-95 cursor-pointer ${
               isLoopPlayback
                 ? 'bg-amber-500/25 border-amber-400 text-amber-200 ring-2 ring-amber-400/30'
                 : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700'
             }`}
           >
             <InfinityIcon className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            data-testid="tool-random-seed"
+            data-seed={randomSeed}
+            onClick={() => {
+              rerollRandomSeed();
+            }}
+            title="New Random Seed"
+            aria-label="New random seed"
+            className="flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-200 hover:text-white transition-all active:scale-95 cursor-pointer"
+          >
+            <span className="text-sm sm:text-base leading-none select-none" aria-hidden="true">
+              🎲
+            </span>
           </button>
         </div>
       </div>
