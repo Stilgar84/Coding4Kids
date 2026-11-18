@@ -471,6 +471,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({
     toggleLoopPlayback,
     setLoopPlayback,
     toggleTurtleVisible,
+    randomSeed,
+    rerollRandomSeed,
     appMode,
     activeActivityId,
     activeActivityVersion,
@@ -489,6 +491,8 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({
     toggleLoopPlayback: s.toggleLoopPlayback,
     setLoopPlayback: s.setLoopPlayback,
     toggleTurtleVisible: s.toggleTurtleVisible,
+    randomSeed: s.randomSeed,
+    rerollRandomSeed: s.rerollRandomSeed,
     appMode: s.appMode,
     activeActivityId: s.activeActivityId,
     activeActivityVersion: s.activeActivityVersion,
@@ -1438,7 +1442,7 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({
         </g>
       </svg>
 
-      {/* Top-Right HUD: Show/Hide Turtle (🐢👁️) & Loop Playback */}
+      {/* Top-Right HUD: Show/Hide Turtle (🐢👁️), Loop Playback (∞) & Random Seed (🎲) */}
       <div
         className={`absolute top-3 right-3 z-20 flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-lg ${
           isLowQuality ? '' : 'backdrop-blur'
@@ -1493,6 +1497,21 @@ export const TurtleCanvas: React.FC<TurtleCanvasProps> = ({
           }`}
         >
           <InfinityIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${isLoopPlayback ? 'stroke-[2.5]' : 'stroke-[2.25]'}`} />
+        </button>
+        <button
+          type="button"
+          data-testid="tool-random-seed"
+          data-seed={randomSeed}
+          onClick={() => {
+            rerollRandomSeed();
+          }}
+          title="New Random Seed"
+          aria-label="New random seed"
+          className="flex items-center justify-center min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 w-9 h-9 sm:w-11 sm:h-11 rounded-lg border bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 hover:text-white transition-all active:scale-95 cursor-pointer"
+        >
+          <span className="text-sm sm:text-base leading-none select-none" aria-hidden="true">
+            🎲
+          </span>
         </button>
 
         {showLiveToggle && (

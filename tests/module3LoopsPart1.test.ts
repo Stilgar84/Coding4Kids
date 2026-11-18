@@ -5,11 +5,14 @@ import {
   BlockItem,
   computeLoopNestingMetadata,
 } from '../src/components/BlockItem';
+import { BlockPalette } from '../src/components/BlockPalette';
+import { SolutionModal } from '../src/components/SolutionModal';
 import { WorkspaceCanvas } from '../src/components/WorkspaceCanvas';
 import { renderTurtleVariationPreview } from '../src/components/VariationCardsPanel';
 import {
   CURRICULUM_ACTIVITIES,
   LOOP_ACTIVITIES,
+  CurriculumActivity,
   createCurriculumBlock,
   createCurriculumGridState,
   getActivitiesForModule,
@@ -293,6 +296,310 @@ describe('Loops (loop): Visual Loop Nesting Brackets & Core Loop Lessons (loop.0
       );
       expect(itemHtml).toContain('data-testid="loop-iteration-badge"');
       expect(itemHtml).toContain('iteration 4 of 4');
+    });
+
+    it('renders END text (no arrow SVG) on END_IF in BlockItem, BlockPalette, and SolutionModal while keeping CornerDownLeft on LOOP_END and END_WHILE', () => {
+      const endIfBlock: CodeBlock = { id: 'ei_1', type: 'END_IF' };
+      const loopEndBlock: CodeBlock = { id: 'le_1', type: 'LOOP_END' };
+      const endWhileBlock: CodeBlock = { id: 'ew_1', type: 'END_WHILE' };
+
+      const endIfHtml = renderToStaticMarkup(
+        React.createElement(BlockItem, {
+          block: endIfBlock,
+          index: 0,
+          scope: 'MAIN',
+          isActive: false,
+        })
+      );
+      expect(endIfHtml).toContain('>END<');
+      expect(endIfHtml).not.toContain('<svg');
+
+      const loopEndHtml = renderToStaticMarkup(
+        React.createElement(BlockItem, {
+          block: loopEndBlock,
+          index: 0,
+          scope: 'MAIN',
+          isActive: false,
+        })
+      );
+      expect(loopEndHtml).toContain('<svg');
+
+      const endWhileHtml = renderToStaticMarkup(
+        React.createElement(BlockItem, {
+          block: endWhileBlock,
+          index: 0,
+          scope: 'MAIN',
+          isActive: false,
+        })
+      );
+      expect(endWhileHtml).toContain('<svg');
+
+      // BlockPalette in sandbox mode renders END on palette-end-if and <svg> on loop/while closers
+      useAppStore.setState({ appMode: 'sandbox', activeSimId: 'grid' });
+      const paletteHtml = renderToStaticMarkup(React.createElement(BlockPalette));
+      const endIfPaletteBtnMatch = paletteHtml.match(
+        /<button[^>]*data-testid="palette-end-if"[^>]*>[\s\S]*?<\/button>/
+      );
+      expect(endIfPaletteBtnMatch).not.toBeNull();
+      expect(endIfPaletteBtnMatch![0]).toContain('>END<');
+      expect(endIfPaletteBtnMatch![0]).not.toContain('<svg');
+
+      const loopEndPaletteBtnMatch = paletteHtml.match(
+        /<button[^>]*data-testid="palette-loop-end"[^>]*>[\s\S]*?<\/button>/
+      );
+      expect(loopEndPaletteBtnMatch).not.toBeNull();
+      expect(loopEndPaletteBtnMatch![0]).toContain('<svg');
+
+      const endWhilePaletteBtnMatch = paletteHtml.match(
+        /<button[^>]*data-testid="palette-end-while"[^>]*>[\s\S]*?<\/button>/
+      );
+      expect(endWhilePaletteBtnMatch).not.toBeNull();
+      expect(endWhilePaletteBtnMatch![0]).toContain('<svg');
+
+      // SolutionModal mini-blocks
+      const solActivity: CurriculumActivity = {
+        id: 'branch.end.label.test',
+        version: 1,
+        moduleId: 'branch',
+        format: 'puzzle',
+        simId: 'grid',
+        icon: '🤖',
+        title: 'End Label Check',
+        concept: 'branch',
+        palette: {
+          allowedSimBlocks: ['MOVE_FWD'],
+          allowedControlBlocks: ['IF', 'WHILE', 'LOOP_START'],
+        },
+        referenceSolution: {
+          MAIN: [
+            { id: 's_w', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+            { id: 's_i', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+            { id: 's_m', type: 'MOVE_FWD' },
+            { id: 's_ei', type: 'END_IF' },
+            { id: 's_ew', type: 'END_WHILE' },
+          ],
+          F1: [],
+          F2: [],
+          F3: [],
+        },
+      };
+      useAppStore.setState({ appMode: 'curriculum', isSolutionOpen: true });
+      const solHtml = renderToStaticMarkup(
+        React.createElement(SolutionModal, {
+          activityOverride: solActivity,
+          defaultTier2Revealed: true,
+          defaultAdultUnlocked: true,
+        })
+      );
+      expect(solHtml).toContain('bg-cyan-950 border-cyan-500 text-cyan-200');
+      expect(solHtml).toContain('>END<');
+      expect(solHtml).toContain('bg-amber-600 border-amber-400 text-white');
+      expect(solHtml).toContain('bg-amber-950 border-amber-500 text-amber-200');
+    });
+
+    it('renders solid cyan under-block bracket rails with branch divider ticks for IF..ELSE_IF..ELSE..END_IF and runtime condStack highlight', () => {
+      const blocks: CodeBlock[] = [
+        { id: 'if_1', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'act_1', type: 'MOVE_FWD' },
+        { id: 'ei_1', type: 'ELSE_IF', params: { condition: { kind: 'sensor', sensor: 'pathRight' } } },
+        { id: 'act_2', type: 'TURN_RIGHT' },
+        { id: 'el_1', type: 'ELSE' },
+        { id: 'act_3', type: 'TURN_LEFT' },
+        { id: 'end_1', type: 'END_IF' },
+      ];
+
+      const analysis = computeLoopNestingMetadata(blocks);
+      expect(analysis.matchedSpans).toHaveLength(1);
+      expect(analysis.matchedSpans[0]).toMatchObject({
+        kind: 'if',
+        colorFamily: 'cyan',
+        startIndex: 0,
+        endIndex: 6,
+        branchIndices: [2, 4],
+        depth: 1,
+        tier: 0,
+        strokeStyle: 'solid',
+      });
+
+      useAppStore.setState({ workspace: emptyWorkspace(blocks) });
+      const idleHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+
+      expect(idleHtml).toContain('data-control-kind="if"');
+      expect(idleHtml).toContain('data-loop-role="branch"');
+      expect(idleHtml).toContain('data-testid="loop-bracket-branch-tick"');
+      expect(idleHtml).toContain('border-cyan-400/95');
+      expect(idleHtml).toContain('bg-cyan-400/95');
+      expect(idleHtml).toContain('data-loop-active="false"');
+      expect(idleHtml).toContain('If level 1');
+      expect(idleHtml).toContain('Inside if level 1');
+
+      const runtime = {
+        ...createInitialInterpreterState(),
+        status: 'PAUSED' as const,
+        activeBlockId: 'act_1',
+        condStack: [{ scope: 'MAIN' as const, ifPc: 0, endIfPc: 6, branchTaken: true }],
+      };
+      useAppStore.setState({ workspace: emptyWorkspace(blocks), runtime });
+      const activeHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+
+      expect(activeHtml).toContain('data-loop-active="true"');
+      expect(activeHtml).toContain('border-yellow-300');
+      expect(activeHtml).toContain('bg-yellow-300');
+    });
+
+    it('renders solid amber under-block bracket rails for WHILE..END_WHILE and runtime whileStack highlight', () => {
+      const blocks: CodeBlock[] = [
+        { id: 'w_1', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'act_1', type: 'MOVE_FWD' },
+        { id: 'ew_1', type: 'END_WHILE' },
+      ];
+
+      const analysis = computeLoopNestingMetadata(blocks);
+      expect(analysis.matchedSpans).toHaveLength(1);
+      expect(analysis.matchedSpans[0]).toMatchObject({
+        kind: 'while',
+        colorFamily: 'amber',
+        startIndex: 0,
+        endIndex: 2,
+        depth: 1,
+        tier: 0,
+        strokeStyle: 'solid',
+      });
+
+      useAppStore.setState({ workspace: emptyWorkspace(blocks) });
+      const idleHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+
+      expect(idleHtml).toContain('data-control-kind="while"');
+      expect(idleHtml).toContain('border-amber-400/95');
+      expect(idleHtml).toContain('data-loop-active="false"');
+      expect(idleHtml).toContain('While level 1');
+      expect(idleHtml).toContain('Inside while level 1');
+
+      const runtime = {
+        ...createInitialInterpreterState(),
+        status: 'PAUSED' as const,
+        activeBlockId: 'act_1',
+        whileStack: [{ scope: 'MAIN' as const, whileStartPc: 0, whileEndPc: 2 }],
+      };
+      useAppStore.setState({ workspace: emptyWorkspace(blocks), runtime });
+      const activeHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+
+      expect(activeHtml).toContain('data-loop-active="true"');
+      expect(activeHtml).toContain('border-yellow-300');
+    });
+
+    it('assigns non-crossing bottom-up tiers and collision-free colors across mixed & nested structures, and preserves unclosed IF inside LOOP', () => {
+      // 1. LOOP wrapping IF..ELSE..END_IF -> LOOP (purple, tier 1), IF (cyan, tier 0)
+      const loopIfBlocks: CodeBlock[] = [
+        createCurriculumBlock('LOOP_START', 3, undefined, 'l_1'),
+        { id: 'i_1', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'm_1', type: 'MOVE_FWD' },
+        { id: 'el_1', type: 'ELSE' },
+        { id: 't_1', type: 'TURN_RIGHT' },
+        { id: 'ei_1', type: 'END_IF' },
+        createCurriculumBlock('LOOP_END', undefined, undefined, 'le_1'),
+      ];
+      const loopIfMeta = computeLoopNestingMetadata(loopIfBlocks);
+      expect(loopIfMeta.matchedSpans[0]).toMatchObject({
+        kind: 'loop',
+        colorFamily: 'purple',
+        depth: 1,
+        tier: 1,
+      });
+      expect(loopIfMeta.matchedSpans[1]).toMatchObject({
+        kind: 'if',
+        colorFamily: 'cyan',
+        depth: 2,
+        tier: 0,
+      });
+
+      // 2. WHILE wrapping IF -> WHILE (amber, tier 1), IF (cyan, tier 0)
+      const whileIfBlocks: CodeBlock[] = [
+        { id: 'w_1', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'i_1', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'itemHere' } } },
+        { id: 'p_1', type: 'PICK_UP' },
+        { id: 'ei_1', type: 'END_IF' },
+        { id: 'ew_1', type: 'END_WHILE' },
+      ];
+      const whileIfMeta = computeLoopNestingMetadata(whileIfBlocks);
+      expect(whileIfMeta.matchedSpans[0]).toMatchObject({
+        kind: 'while',
+        colorFamily: 'amber',
+        tier: 1,
+      });
+      expect(whileIfMeta.matchedSpans[1]).toMatchObject({
+        kind: 'if',
+        colorFamily: 'cyan',
+        tier: 0,
+      });
+
+      // 3. IF nested inside IF -> outer cyan (tier 1), inner emerald (tier 0)
+      const nestedIfBlocks: CodeBlock[] = [
+        { id: 'i_out', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'i_in', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'itemHere' } } },
+        { id: 'p_1', type: 'PICK_UP' },
+        { id: 'ei_in', type: 'END_IF' },
+        { id: 'ei_out', type: 'END_IF' },
+      ];
+      const nestedIfMeta = computeLoopNestingMetadata(nestedIfBlocks);
+      expect(nestedIfMeta.matchedSpans[0]).toMatchObject({
+        kind: 'if',
+        colorFamily: 'cyan',
+        tier: 1,
+      });
+      expect(nestedIfMeta.matchedSpans[1]).toMatchObject({
+        kind: 'if',
+        colorFamily: 'emerald',
+        tier: 0,
+      });
+
+      // 4. WHILE nested inside WHILE -> outer amber (tier 1), inner rose (tier 0)
+      const nestedWhileBlocks: CodeBlock[] = [
+        { id: 'w_out', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'w_in', type: 'WHILE', params: { condition: { kind: 'sensor', sensor: 'itemHere' } } },
+        { id: 'p_1', type: 'PICK_UP' },
+        { id: 'ew_in', type: 'END_WHILE' },
+        { id: 'ew_out', type: 'END_WHILE' },
+      ];
+      const nestedWhileMeta = computeLoopNestingMetadata(nestedWhileBlocks);
+      expect(nestedWhileMeta.matchedSpans[0]).toMatchObject({
+        kind: 'while',
+        colorFamily: 'amber',
+        tier: 1,
+      });
+      expect(nestedWhileMeta.matchedSpans[1]).toMatchObject({
+        kind: 'while',
+        colorFamily: 'rose',
+        tier: 0,
+      });
+
+      // 5. IF inside depth-2 LOOP (cyan) -> avoids cyan collision by choosing emerald
+      const depth2LoopIfBlocks: CodeBlock[] = [
+        createCurriculumBlock('LOOP_START', 2, undefined, 'l1'),
+        createCurriculumBlock('LOOP_START', 2, undefined, 'l2'),
+        { id: 'i_in', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'm_1', type: 'MOVE_FWD' },
+        { id: 'ei_in', type: 'END_IF' },
+        createCurriculumBlock('LOOP_END', undefined, undefined, 'le2'),
+        createCurriculumBlock('LOOP_END', undefined, undefined, 'le1'),
+      ];
+      const depth2LoopIfMeta = computeLoopNestingMetadata(depth2LoopIfBlocks);
+      expect(depth2LoopIfMeta.matchedSpans[0]).toMatchObject({ kind: 'loop', colorFamily: 'purple', tier: 2 });
+      expect(depth2LoopIfMeta.matchedSpans[1]).toMatchObject({ kind: 'loop', colorFamily: 'cyan', tier: 1 });
+      expect(depth2LoopIfMeta.matchedSpans[2]).toMatchObject({ kind: 'if', colorFamily: 'emerald', tier: 0 });
+
+      // 6. Unclosed IF inside a matched LOOP stays cyan and renders badge-loop-error-*
+      const unclosedIfInsideLoop: CodeBlock[] = [
+        createCurriculumBlock('LOOP_START', 2, undefined, 'l_ok'),
+        { id: 'if_broken', type: 'IF', params: { condition: { kind: 'sensor', sensor: 'pathAhead' } } },
+        { id: 'm_ok', type: 'MOVE_FWD' },
+        createCurriculumBlock('LOOP_END', undefined, undefined, 'le_ok'),
+      ];
+      useAppStore.setState({ workspace: emptyWorkspace(unclosedIfInsideLoop) });
+      const brokenHtml = renderToStaticMarkup(React.createElement(WorkspaceCanvas));
+      expect(brokenHtml).toContain('data-testid="badge-loop-error-if_broken"');
+      expect(brokenHtml).toContain('data-testid="loop-error-banner"');
+      expect(brokenHtml).toContain('bg-cyan-700');
     });
   });
 

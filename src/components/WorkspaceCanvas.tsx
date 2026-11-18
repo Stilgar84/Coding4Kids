@@ -3,6 +3,10 @@ import { useAppStoreSelector } from '../store/useAppStore';
 import {
   BlockItem,
   computeLoopNestingMetadata,
+  getControlSpanVisualSpec,
+  type ControlSpanKind,
+  type ControlSpanColorFamily,
+  type ControlBlockRole,
   type LoopStrokeStyle,
   type MatchedLoopSpan,
   type BlockLoopRoleSpan,
@@ -19,6 +23,10 @@ import {
 
 export {
   computeLoopNestingMetadata,
+  getControlSpanVisualSpec,
+  type ControlSpanKind,
+  type ControlSpanColorFamily,
+  type ControlBlockRole,
   type LoopStrokeStyle,
   type MatchedLoopSpan,
   type BlockLoopRoleSpan,
@@ -106,20 +114,32 @@ export const WorkspaceCanvas: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeScope, selectedBlockId, removeBlock]);
 
-  // Loop validation diagnostics & matched nesting bracket metadata
+  // Control-structure validation diagnostics & matched nesting bracket metadata
   const loopValidation = useMemo(() => validateLoopStructure(blocks), [blocks]);
   const unclosedSet = useMemo(
     () =>
       new Set([
         ...loopValidation.unclosedLoopStartIds,
         ...loopValidation.orphanLoopEndIds,
+        ...loopValidation.unclosedIfIds,
+        ...loopValidation.orphanElseIds,
+        ...loopValidation.orphanEndIfIds,
+        ...loopValidation.unclosedWhileIds,
+        ...loopValidation.orphanEndWhileIds,
       ]),
     [loopValidation]
   );
-  const activeLoopStartPcsKey = (runtime?.loopStack ?? [])
-    .filter((frame) => frame.scope === activeScope)
-    .map((frame) => frame.loopStartPc)
-    .join(',');
+  const activeLoopStartPcsKey = [
+    ...(runtime?.loopStack ?? [])
+      .filter((frame) => frame.scope === activeScope)
+      .map((frame) => frame.loopStartPc),
+    ...(runtime?.whileStack ?? [])
+      .filter((frame) => frame.scope === activeScope)
+      .map((frame) => frame.whileStartPc),
+    ...(runtime?.condStack ?? [])
+      .filter((frame) => frame.scope === activeScope)
+      .map((frame) => frame.ifPc),
+  ].join(',');
   const loopAnalysis = useMemo(() => {
     const activeLoopStartPcs = new Set(
       activeLoopStartPcsKey
@@ -129,7 +149,9 @@ export const WorkspaceCanvas: React.FC = () => {
     return computeLoopNestingMetadata(blocks, activeLoopStartPcs);
   }, [blocks, activeLoopStartPcsKey]);
   const sequenceGapClass =
-    loopAnalysis.maxTier >= 2
+    loopAnalysis.maxTier >= 3
+      ? 'gap-x-1.5 gap-y-11 pb-11'
+      : loopAnalysis.maxTier >= 2
       ? 'gap-x-1.5 gap-y-9 pb-9'
       : loopAnalysis.maxTier >= 1
       ? 'gap-x-1.5 gap-y-7 pb-7'
@@ -281,7 +303,7 @@ export const WorkspaceCanvas: React.FC = () => {
       onClick={handleCanvasClick}
       data-bg-canvas="true"
     >
-      {/* Unclosed Loop Warning Banner */}
+      {/* Unclosed Control Structure Warning Banner */}
       {loopValidation.hasError && (
         <div
           data-testid="loop-error-banner"
@@ -289,7 +311,14 @@ export const WorkspaceCanvas: React.FC = () => {
         >
           <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
           <span>
-            ⚠️ Loop not closed: Missing matching Loop Start or Loop End block
+            {loopValidation.unclosedLoopStartIds.length > 0 ||
+            loopValidation.orphanLoopEndIds.length > 0
+              ? '⚠️ Loop not closed: Missing matching Loop Start or Loop End block'
+              : loopValidation.unclosedIfIds.length > 0 ||
+                loopValidation.orphanElseIds.length > 0 ||
+                loopValidation.orphanEndIfIds.length > 0
+              ? '⚠️ If block not closed: Missing matching IF or END block'
+              : '⚠️ While loop not closed: Missing matching WHILE or End While block'}
           </span>
         </div>
       )}

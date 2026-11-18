@@ -810,6 +810,19 @@ test.describe('Robot Emulator E2E Suite', () => {
     await toggleTurtleBtn.click();
     await expect(toggleTurtleBtn).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('turtle-robot')).toBeVisible();
+
+    // Random Seed (🎲) button sits alongside visibility & loop in top-right HUD and restarts drawing with a new seed
+    const loopBtn = page.getByTestId('tool-loop-playback');
+    const seedBtn = page.getByTestId('tool-random-seed');
+    await expect(loopBtn).toBeVisible();
+    await expect(seedBtn).toBeVisible();
+    await expect(seedBtn).toHaveText(/🎲/);
+    const initialSeed = await seedBtn.getAttribute('data-seed');
+    await seedBtn.click();
+    const updatedSeed = await seedBtn.getAttribute('data-seed');
+    expect(updatedSeed).not.toBeNull();
+    expect(updatedSeed).not.toBe(initialSeed);
+    await expect(page.getByTestId('turtle-line-0')).toBeAttached({ timeout: 5000 });
   });
 
   test('supports undo via toolbar button and redo via unified menu drawer for code edits', async ({ page }) => {

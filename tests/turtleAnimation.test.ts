@@ -478,6 +478,12 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       expect(loopMatch).not.toBeNull();
       expect(loopMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
 
+      const seedMatch = visibleHtml.match(/<button[^>]*data-testid="tool-random-seed"[^>]*>[\s\S]*?<\/button>/);
+      expect(seedMatch).not.toBeNull();
+      expect(seedMatch![0]).toContain('🎲');
+      expect(seedMatch![0]).toContain(`data-seed="${store.randomSeed}"`);
+      expect(seedMatch![0]).toContain('min-h-9 min-w-9 sm:min-h-11 sm:min-w-11');
+
       const toolbarHtml = renderToStaticMarkup(React.createElement(TurtleToolbarTools));
       for (const id of ['tool-zoom-in', 'tool-zoom-out', 'tool-fit-content', 'tool-reset-view']) {
         const btnMatch = toolbarHtml.match(new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`));
@@ -588,6 +594,152 @@ describe('Constant-Speed Turtle Drawing Animation', () => {
       expect(resetTransition.emittedTrail).toBeNull();
       expect(resetTransition.nextSnapshot).toBeNull();
       expect(emittedTrails).toHaveLength(2);
+    });
+
+    it('rerollRandomSeed changes randomSeed, starts drawing from idle, and reproduces drawings for the same seed', () => {
+      const store = useAppStore.getState();
+      store.setRandomSeed(12345);
+      store.addBlock('MAIN', 'VAR_ASSIGN', undefined, undefined, { a: 'd', b: '$randD20' });
+      store.addBlock('MAIN', 'VAR_OP', undefined, undefined, { a: 'd', b: 'd', op: '*', c: 10 });
+      store.addBlock('MAIN', 'SET_PEN_COLOR', undefined, undefined, { color: '$randomColor' });
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 'd' });
+
+      const drainAnimatedRun = () => {
+        let guard = 0;
+        while (useAppStore.getState().isPlaying && guard < 20) {
+          guard++;
+          const anim = useAppStore.getState().turtleState.activeAnimation;
+          const cb = rafCallbacks.pop();
+          if (!anim || !cb) break;
+          cb(anim.startTime + anim.duration);
+        }
+      };
+
+      const randSpy = vi.spyOn(Math, 'random');
+      randSpy.mockReturnValueOnce(0.11).mockReturnValueOnce(0.73);
+
+      const seed1 = store.rerollRandomSeed();
+      expect(seed1).not.toBe(12345);
+      expect(useAppStore.getState().randomSeed).toBe(seed1);
+      expect(useAppStore.getState().isPlaying).toBe(true);
+      expect(useAppStore.getState().turtleState.activeAnimation).not.toBeNull();
+
+      drainAnimatedRun();
+      const pathsSeed1 = useAppStore.getState().turtleState.paths;
+      expect(pathsSeed1).toHaveLength(1);
+      expect(useAppStore.getState().isPlaying).toBe(false);
+
+      // Reset and play again with the exact same seed -> identical output
+      store.reset();
+      store.play();
+      drainAnimatedRun();
+      expect(useAppStore.getState().turtleState.paths).toEqual(pathsSeed1);
+
+      // Reroll again -> different seed and different path
+      const seed2 = store.rerollRandomSeed();
+      expect(seed2).not.toBe(seed1);
+      expect(useAppStore.getState().isPlaying).toBe(true);
+      drainAnimatedRun();
+      const pathsSeed2 = useAppStore.getState().turtleState.paths;
+      expect(pathsSeed2).toHaveLength(1);
+      expect(pathsSeed2).not.toEqual(pathsSeed1);
+    });
+
+    it('rerollRandomSeed cancels mid-animation runs and clears Live trail strokes before restarting from origin', () => {
+      const store = useAppStore.getState();
+      store.setRandomSeed(12345);
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 100 });
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 100 });
+
+      store.play();
+      // Complete first segment so paths has 1 committed line and 2nd segment is mid-animation
+      const anim1 = useAppStore.getState().turtleState.activeAnimation!;
+      rafCallbacks.pop()!(anim1.startTime + anim1.duration);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(1);
+      const anim2 = useAppStore.getState().turtleState.activeAnimation!;
+      rafCallbacks.pop()!(anim2.startTime + anim2.duration * 0.4);
+      expect(useAppStore.getState().turtleState.activeAnimation).not.toBeNull();
+
+      store.rerollRandomSeed();
+      expect((globalThis as any).cancelAnimationFrame).toHaveBeenCalled();
+      const restarted = useAppStore.getState().turtleState;
+      expect(restarted.paths).toHaveLength(0);
+      expect(restarted.activeAnimation).not.toBeNull();
+      expect(restarted.activeAnimation!.fromPose).toEqual({ x: 0, y: 0, heading: 0 });
+      store.pause();
+
+      // Live trail mode (mode: 'live', clearBetweenFrames: false, status: 'RUNNING') also resets cleanly
+      useAppStore.setState({
+        turtleState: {
+          ...createInitialTurtleState(),
+          mode: 'live',
+          clearBetweenFrames: false,
+          status: 'RUNNING',
+          instantMode: true,
+          paths: [
+            {
+              type: 'LINE',
+              fromX: 999,
+              fromY: 999,
+              toX: 888,
+              toY: 888,
+              color: '#ef4444',
+              width: 6,
+            },
+          ],
+        },
+      });
+      store.clearWorkspace();
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 50 });
+
+      store.rerollRandomSeed();
+      const liveRestarted = useAppStore.getState().turtleState;
+      expect(liveRestarted.paths.some((p) => p.fromX === 999)).toBe(false);
+      expect(liveRestarted.paths).toHaveLength(1);
+      expect(liveRestarted.paths[0]).toMatchObject({
+        type: 'LINE',
+        fromX: 0,
+        fromY: 0,
+        toX: 0,
+        toY: -50,
+      });
+
+      store.pause();
+      useAppStore.setState({ turtleState: createInitialTurtleState() });
+    });
+
+    it('rerollRandomSeed redraws synchronously in instant mode and stays idle on an empty workspace', () => {
+      const store = useAppStore.getState();
+      store.setSpeed('instant');
+
+      // Empty workspace: changes seed without starting playback
+      const prevSeed = useAppStore.getState().randomSeed;
+      const seedOnEmpty = store.rerollRandomSeed();
+      expect(seedOnEmpty).not.toBe(prevSeed);
+      expect(useAppStore.getState().randomSeed).toBe(seedOnEmpty);
+      expect(useAppStore.getState().isPlaying).toBe(false);
+      expect(useAppStore.getState().turtleState.paths).toHaveLength(0);
+
+      // Non-empty workspace in instant mode: synchronously draws using the new seed
+      store.addBlock('MAIN', 'VAR_ASSIGN', undefined, undefined, { a: 'd', b: '$randD20' });
+      store.addBlock('MAIN', 'VAR_OP', undefined, undefined, { a: 'd', b: 'd', op: '*', c: 10 });
+      store.addBlock('MAIN', 'SET_PEN_COLOR', undefined, undefined, { color: '$randomColor' });
+      store.addBlock('MAIN', 'FORWARD', undefined, undefined, { length: 'd' });
+
+      const randSpy = vi.spyOn(Math, 'random');
+      randSpy.mockReturnValueOnce(0.25).mockReturnValueOnce(0.85);
+
+      store.rerollRandomSeed();
+      const stateA = useAppStore.getState();
+      expect(stateA.isPlaying).toBe(false);
+      expect(stateA.turtleState.paths.length).toBeGreaterThan(0);
+      const pathsA = stateA.turtleState.paths;
+
+      store.rerollRandomSeed();
+      const stateB = useAppStore.getState();
+      expect(stateB.isPlaying).toBe(false);
+      expect(stateB.turtleState.paths.length).toBeGreaterThan(0);
+      expect(stateB.turtleState.paths).not.toEqual(pathsA);
     });
   });
 

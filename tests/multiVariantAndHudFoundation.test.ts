@@ -347,5 +347,124 @@ describe('Commit 19: M4-M6 Foundations, Multi-Variant Runner, HUD Slots & Challe
         if (idx >= 0) CURRICULUM_ACTIVITIES.splice(idx, 1);
       }
     });
+
+    it('keeps the currently focused map active across reset, play re-run, instant edits, undo/redo, and resetActivityToStarter', () => {
+      const store = useAppStore.getState();
+      store.setCurriculumActivity('branch.1', 1);
+      store.resetActivityToStarter();
+
+      // Switch to Map 2 (Variant 1: star at x=4)
+      store.setFocusedVariantIndex(1);
+      let state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+      expect(state.grid.robot.x).toBe(0);
+
+      // Step forward through LOOP_START -> MOVE_FWD, then reset(): Map 2 stays active and rewinds
+      store.step();
+      store.step();
+      state = useAppStore.getState();
+      expect(state.grid.robot.x).toBe(1);
+
+      store.reset();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.variantRuns.every((v) => v.status === 'IDLE')).toBe(true);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+      expect(state.grid.robot.x).toBe(0);
+
+      // Run starter loop to completion on Map 2, then call play() to trigger hasEndedOrFail -> reset()
+      let stepGuard = 0;
+      while (
+        stepGuard++ < 50 &&
+        (useAppStore.getState().runtime === null || useAppStore.getState().runtime!.callStack.length > 0)
+      ) {
+        useAppStore.getState().step();
+      }
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.robot.x).toBe(5);
+      expect(state.grid.status).not.toBe('SUCCESS');
+
+      store.play();
+      store.pause();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+
+      // Instant speed: partial edit + reset() + resetActivityToStarter() + undo()/redo() must keep Map 2 active
+      store.setSpeed('instant');
+      store.clearWorkspace();
+      store.addBlock('MAIN', 'MOVE_FWD');
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+
+      store.reset();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+      expect(state.grid.robot.x).toBe(0);
+
+      store.undo();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+
+      store.redo();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+
+      store.resetActivityToStarter();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.grid.worldItems?.[0]?.x).toBe(4);
+
+      // Switching to another lesson still starts on Map 1 (index 0)
+      store.setCurriculumActivity('branch.3', 1);
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(0);
+    });
+
+    it('keeps focusedVariantIndex active on reset() for Switchyard, Depot, and Beat multi-variant lessons', () => {
+      const store = useAppStore.getState();
+
+      // Switchyard (branch.3)
+      store.setCurriculumActivity('branch.3', 1);
+      store.setFocusedVariantIndex(1);
+      expect(useAppStore.getState().switchyardState.queue[0]?.id).toBe('b3_v2_1');
+      store.step(); // LOAD_SCANNER
+      expect(useAppStore.getState().switchyardState.scannerLoaded).toBe(true);
+      store.reset();
+      let state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.switchyardState.scannerLoaded).toBeFalsy();
+      expect(state.switchyardState.queue[0]?.id).toBe('b3_v2_1');
+
+      // Depot (while.3)
+      store.setCurriculumActivity('while.3', 1);
+      store.setFocusedVariantIndex(1);
+      expect(useAppStore.getState().depotState.queue).toHaveLength(5);
+      store.step(); // WHILE
+      store.step(); // DEPOT_MOVE_TO QUEUE
+      store.step(); // DEPOT_GRAB
+      expect(useAppStore.getState().depotState.queue).toHaveLength(4);
+      store.reset();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.depotState.queue).toHaveLength(5);
+
+      // Beat (cmp.5a)
+      store.setCurriculumActivity('cmp.5a', 1);
+      store.setFocusedVariantIndex(1);
+      expect(useAppStore.getState().beatState.cursor.y).toBe(2);
+      store.step();
+      store.reset();
+      state = useAppStore.getState();
+      expect(state.focusedVariantIndex).toBe(1);
+      expect(state.beatState.cursor.y).toBe(2);
+      expect(state.beatState.expectedRow?.row).toBe(2);
+    });
   });
 });

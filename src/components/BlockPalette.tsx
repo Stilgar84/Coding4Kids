@@ -167,7 +167,9 @@ const CORE_CONTROL_ITEMS: CoreControlItem[] = [
     type: 'END_IF',
     name: 'End If',
     testId: 'palette-end-if',
-    icon: <CornerDownLeft className="w-5 h-5 md:w-8 md:h-8 text-cyan-200 stroke-[3]" />,
+    icon: (
+      <span className="font-bold text-xs md:text-sm text-cyan-200 tracking-wider">END</span>
+    ),
     bgClass: 'bg-cyan-950 hover:bg-cyan-900',
     borderClass: 'border-cyan-500',
     supportsRepeat: false,

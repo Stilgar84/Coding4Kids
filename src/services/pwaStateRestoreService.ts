@@ -54,6 +54,7 @@ export interface AppUpdateStateInput {
   isMapHidden: boolean;
   isFunctionBarOpen: boolean;
   isLoopPlayback?: boolean;
+  randomSeed?: number;
   past: HistorySnapshot[];
   future: HistorySnapshot[];
 }
@@ -785,6 +786,9 @@ export function saveStateBeforeUpdate(state: AppUpdateStateInput, now: number = 
     isMapHidden: state.isMapHidden,
     isFunctionBarOpen: state.isFunctionBarOpen,
     ...(typeof state.isLoopPlayback === 'boolean' ? { isLoopPlayback: state.isLoopPlayback } : {}),
+    ...(typeof state.randomSeed === 'number' && Number.isFinite(state.randomSeed)
+      ? { randomSeed: Math.trunc(state.randomSeed) }
+      : {}),
     past: (state.past || []).slice(-MAX_PERSISTED_HISTORY),
     future: (state.future || []).slice(-MAX_PERSISTED_HISTORY),
   };
@@ -938,6 +942,9 @@ export function consumeRestoredStateAfterUpdate(
       isMapHidden: Boolean(parsed.isMapHidden),
       isFunctionBarOpen: Boolean(parsed.isFunctionBarOpen),
       ...(typeof parsed.isLoopPlayback === 'boolean' ? { isLoopPlayback: parsed.isLoopPlayback } : {}),
+      ...(typeof parsed.randomSeed === 'number' && Number.isFinite(parsed.randomSeed)
+        ? { randomSeed: Math.trunc(parsed.randomSeed) }
+        : {}),
       past: sanitizeHistoryList(parsed.past, fallbackGrid),
       future: sanitizeHistoryList(parsed.future, fallbackGrid),
     };

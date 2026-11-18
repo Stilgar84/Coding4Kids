@@ -402,27 +402,27 @@ const SolutionModalContent: React.FC<SolutionModalProps> = ({
         );
         break;
       case 'IF':
-        bg = 'bg-amber-700 border-amber-400 text-white';
+        bg = 'bg-cyan-700 border-cyan-400 text-white';
         icon = <span className="font-mono text-xs font-black">IF</span>;
         break;
       case 'ELSE_IF':
-        bg = 'bg-amber-800 border-amber-500 text-white';
+        bg = 'bg-cyan-800 border-cyan-400 text-white';
         icon = <span className="font-mono text-xs font-black">ELSE IF</span>;
         break;
       case 'ELSE':
-        bg = 'bg-amber-900 border-amber-600 text-amber-200';
+        bg = 'bg-cyan-800 border-cyan-500 text-cyan-200';
         icon = <span className="font-mono text-xs font-black">ELSE</span>;
         break;
       case 'END_IF':
-        bg = 'bg-slate-800 border-amber-600/50 text-amber-300';
-        icon = <CornerDownLeft className="w-4 h-4 stroke-[2.5]" />;
+        bg = 'bg-cyan-950 border-cyan-500 text-cyan-200';
+        icon = <span className="font-mono text-xs font-black">END</span>;
         break;
       case 'WHILE':
-        bg = 'bg-indigo-700 border-indigo-400 text-white';
-        icon = <Repeat className="w-5 h-5 stroke-[2.5]" />;
+        bg = 'bg-amber-600 border-amber-400 text-white';
+        icon = <span className="font-mono text-xs font-black">WHILE</span>;
         break;
       case 'END_WHILE':
-        bg = 'bg-indigo-900 border-indigo-500 text-indigo-200';
+        bg = 'bg-amber-950 border-amber-500 text-amber-200';
         icon = <CornerDownLeft className="w-5 h-5 stroke-[2.5]" />;
         break;
       case 'SWITCH_LEFT':

@@ -1,18 +1,28 @@
 
+# to fix
 
-end icon for if should just spell END instead of the arrow
-also if and all multiblock structure should use the line under block system that loop use.
-
-in loop.5 bot start on plank, making it invisible
-
-in multi map lesson, reseting should keep current map.
-
-add button to change random seed on click (and start/restart drawing)
 
 next to try a variation add a reset to initial button or show it in the variation
 
 
 for condition, each selection should be independent. e.g. not show color or position in first selector, only station empty, top or held color icon
+=> actually the condition are too small, display them as a parameter, or better as 2 parameters (for condition which need it). this also allow to use variable for some of those like specific colors
+=> yes condition should be:
+* parameter1: sensor (or special condition like key held)
+* parameter2: value (e.g. color) only if needed (i.e. if sensor is not boolean)
+  * can also be special value, like e.g. for key held
+* negation is a flag which can be flipped
+* how to handle AND/OR? do we need it ? should it be composible?
+
+use app store file is enormous, and is used for many things.
+it is hard for llm to understand and edit.
+can we modularise it?
+
+
+dock env: when view port height is big, grabber is far from station which have max height. adjust so that grabber distance from station also has max or is fixed.
+also the sensor light is badly placed.
+input station element get taken from bottom that is not intuitive as opposite or all other station. change the order.
+make first element at the top. align to top to differentiate from stack, similar to the ouput side of the queue.
 
 ---
 

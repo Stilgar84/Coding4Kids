@@ -28,13 +28,21 @@ import {
 } from '../utils/curriculumStagePolicy';
 
 export type LoopStrokeStyle = 'solid';
+export type ControlSpanKind = 'loop' | 'if' | 'while';
+export type ControlSpanColorFamily = 'purple' | 'cyan' | 'amber' | 'emerald' | 'rose' | 'fuchsia';
+export type ControlBlockRole = 'start' | 'branch' | 'body' | 'end';
 
 export interface MatchedLoopSpan {
   loopId: string;
+  kind: ControlSpanKind;
+  colorFamily: ControlSpanColorFamily;
   startIndex: number;
   endIndex: number;
-  /** 1-based nesting depth (1 = outer loop, 2 = nested loop, 3+ = deeply nested) */
+  branchIndices: number[];
+  /** 1-based nesting depth across all control spans (1 = outer, 2+ = nested) */
   depth: number;
+  /** 1-based nesting depth within the same ControlSpanKind */
+  kindDepth: number;
   /** 0-based bottom-up rail tier (0 = innermost bracket closest to blocks, higher = outer cradles below) */
   tier: number;
   strokeStyle: LoopStrokeStyle;
@@ -43,22 +51,29 @@ export interface MatchedLoopSpan {
 
 export interface BlockLoopRoleSpan {
   loopId: string;
+  kind: ControlSpanKind;
+  colorFamily: ControlSpanColorFamily;
   depth: number;
+  kindDepth: number;
   tier: number;
   strokeStyle: LoopStrokeStyle;
-  role: 'start' | 'body' | 'end';
+  role: ControlBlockRole;
   isActiveLoop: boolean;
 }
 
 export interface BlockLoopMetadata {
-  /** Enclosing matched loop spans ordered outermost (depth 1) -> innermost */
+  /** Enclosing matched control spans ordered outermost (depth 1) -> innermost */
   enclosingSpans: BlockLoopRoleSpan[];
-  /** Nesting depth of the innermost matched loop enclosing this block (0 if outside matched loops) */
+  /** Nesting depth of the innermost matched control span enclosing this block (0 if outside matched spans) */
   innermostDepth: number;
-  /** Stroke style of the innermost matched loop */
+  /** Control span kind of the innermost enclosing span */
+  innermostKind?: ControlSpanKind;
+  /** Color family of the innermost enclosing span */
+  innermostColorFamily?: ControlSpanColorFamily;
+  /** Stroke style of the innermost matched span */
   innermostStroke?: LoopStrokeStyle;
-  /** Structural role of this block within its innermost enclosing loop */
-  primaryRole: 'start' | 'body' | 'end' | 'none';
+  /** Structural role of this block within its innermost enclosing span */
+  primaryRole: ControlBlockRole | 'none';
 }
 
 export interface ScopeLoopNestingAnalysis {
@@ -66,6 +81,135 @@ export interface ScopeLoopNestingAnalysis {
   blockMeta: BlockLoopMetadata[];
   maxDepth: number;
   maxTier: number;
+}
+
+export interface ControlSpanVisualSpec {
+  strokeStyle: LoopStrokeStyle;
+  startBgClass: string;
+  startBorderClass: string;
+  branchBgClass: string;
+  branchBorderClass: string;
+  branchTextColorClass: string;
+  endBgClass: string;
+  endBorderClass: string;
+  endIconColorClass: string;
+  railBorderColorClass: string;
+  railTickBgClass: string;
+  railActiveBorderColorClass: string;
+  railActiveTickBgClass: string;
+  borderStyleClass: string;
+}
+
+export function getControlSpanVisualSpec(
+  colorFamily: ControlSpanColorFamily,
+  kind: ControlSpanKind
+): ControlSpanVisualSpec {
+  switch (colorFamily) {
+    case 'purple':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-purple-700',
+        startBorderClass: 'border-purple-400 border-solid',
+        branchBgClass: 'bg-purple-800',
+        branchBorderClass: 'border-purple-400 border-solid',
+        branchTextColorClass: 'text-purple-200',
+        endBgClass: 'bg-purple-900',
+        endBorderClass: 'border-purple-400 border-solid',
+        endIconColorClass: 'text-purple-200',
+        railBorderColorClass: 'border-purple-400/90',
+        railTickBgClass: 'bg-purple-400/90',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(250,204,21,0.55)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+    case 'cyan':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-cyan-700',
+        startBorderClass:
+          kind === 'loop' ? 'border-cyan-300 border-solid' : 'border-cyan-400 border-solid',
+        branchBgClass: 'bg-cyan-800',
+        branchBorderClass: 'border-cyan-400 border-solid',
+        branchTextColorClass: 'text-cyan-200',
+        endBgClass: kind === 'if' ? 'bg-cyan-950' : 'bg-cyan-900',
+        endBorderClass:
+          kind === 'if' ? 'border-cyan-500 border-solid' : 'border-cyan-400 border-solid',
+        endIconColorClass: 'text-cyan-200',
+        railBorderColorClass: 'border-cyan-400/95',
+        railTickBgClass: 'bg-cyan-400/95',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(34,211,238,0.6)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+    case 'amber':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-amber-600',
+        startBorderClass: 'border-amber-400 border-solid',
+        branchBgClass: 'bg-amber-800',
+        branchBorderClass: 'border-amber-400 border-solid',
+        branchTextColorClass: 'text-amber-200',
+        endBgClass: 'bg-amber-950',
+        endBorderClass: 'border-amber-500 border-solid',
+        endIconColorClass: 'text-amber-200',
+        railBorderColorClass: 'border-amber-400/95',
+        railTickBgClass: 'bg-amber-400/95',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(251,191,36,0.6)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+    case 'emerald':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-emerald-700',
+        startBorderClass: 'border-emerald-300 border-solid',
+        branchBgClass: 'bg-emerald-800',
+        branchBorderClass: 'border-emerald-400 border-solid',
+        branchTextColorClass: 'text-emerald-200',
+        endBgClass: kind === 'loop' ? 'bg-emerald-900' : 'bg-emerald-950',
+        endBorderClass: 'border-emerald-400 border-solid',
+        endIconColorClass: 'text-emerald-200',
+        railBorderColorClass: 'border-emerald-400/95',
+        railTickBgClass: 'bg-emerald-400/95',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(52,211,153,0.6)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+    case 'rose':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-rose-700',
+        startBorderClass: 'border-rose-400 border-solid',
+        branchBgClass: 'bg-rose-800',
+        branchBorderClass: 'border-rose-400 border-solid',
+        branchTextColorClass: 'text-rose-200',
+        endBgClass: 'bg-rose-950',
+        endBorderClass: 'border-rose-400 border-solid',
+        endIconColorClass: 'text-rose-200',
+        railBorderColorClass: 'border-rose-400/95',
+        railTickBgClass: 'bg-rose-400/95',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(251,113,133,0.6)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+    case 'fuchsia':
+      return {
+        strokeStyle: 'solid',
+        startBgClass: 'bg-fuchsia-700',
+        startBorderClass: 'border-fuchsia-400 border-solid',
+        branchBgClass: 'bg-fuchsia-800',
+        branchBorderClass: 'border-fuchsia-400 border-solid',
+        branchTextColorClass: 'text-fuchsia-200',
+        endBgClass: 'bg-fuchsia-950',
+        endBorderClass: 'border-fuchsia-400 border-solid',
+        endIconColorClass: 'text-fuchsia-200',
+        railBorderColorClass: 'border-fuchsia-400/95',
+        railTickBgClass: 'bg-fuchsia-400/95',
+        railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(232,121,249,0.6)]',
+        railActiveTickBgClass: 'bg-yellow-300',
+        borderStyleClass: 'border-solid',
+      };
+  }
 }
 
 export function getLoopDepthVisualSpec(depth: number): {
@@ -79,68 +223,100 @@ export function getLoopDepthVisualSpec(depth: number): {
   railActiveBorderColorClass: string;
   borderStyleClass: string;
 } {
-  if (depth <= 1) {
-    return {
-      strokeStyle: 'solid',
-      startBgClass: 'bg-purple-700',
-      startBorderClass: 'border-purple-400 border-solid',
-      endBgClass: 'bg-purple-900',
-      endBorderClass: 'border-purple-400 border-solid',
-      endIconColorClass: 'text-purple-200',
-      railBorderColorClass: 'border-purple-400/90',
-      railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(250,204,21,0.55)]',
-      borderStyleClass: 'border-solid',
-    };
+  const family: ControlSpanColorFamily =
+    depth <= 1 ? 'purple' : depth === 2 ? 'cyan' : 'emerald';
+  return getControlSpanVisualSpec(family, 'loop');
+}
+
+const KIND_COLOR_PALETTES: Record<ControlSpanKind, readonly ControlSpanColorFamily[]> = {
+  loop: ['purple', 'cyan', 'emerald', 'fuchsia'],
+  if: ['cyan', 'emerald', 'fuchsia', 'purple'],
+  while: ['amber', 'rose', 'emerald', 'fuchsia'],
+};
+
+function findOwnControlSpan(
+  enclosingSpans: readonly BlockLoopRoleSpan[],
+  kind: ControlSpanKind,
+  allowedRoles: readonly ControlBlockRole[]
+): BlockLoopRoleSpan | undefined {
+  for (let i = enclosingSpans.length - 1; i >= 0; i--) {
+    const s = enclosingSpans[i];
+    if (s.kind === kind && allowedRoles.includes(s.role)) {
+      return s;
+    }
   }
-  if (depth === 2) {
-    return {
-      strokeStyle: 'solid',
-      startBgClass: 'bg-cyan-700',
-      startBorderClass: 'border-cyan-300 border-solid',
-      endBgClass: 'bg-cyan-900',
-      endBorderClass: 'border-cyan-400 border-solid',
-      endIconColorClass: 'text-cyan-200',
-      railBorderColorClass: 'border-cyan-400/95',
-      railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(34,211,238,0.6)]',
-      borderStyleClass: 'border-solid',
-    };
-  }
-  return {
-    strokeStyle: 'solid',
-    startBgClass: 'bg-emerald-700',
-    startBorderClass: 'border-emerald-300 border-solid',
-    endBgClass: 'bg-emerald-900',
-    endBorderClass: 'border-emerald-400 border-solid',
-    endIconColorClass: 'text-emerald-200',
-    railBorderColorClass: 'border-emerald-400/95',
-    railActiveBorderColorClass: 'border-yellow-300 shadow-[0_2px_8px_rgba(52,211,153,0.6)]',
-    borderStyleClass: 'border-solid',
-  };
+  return undefined;
 }
 
 /**
- * Computes matched `LOOP_START .. LOOP_END` spans, 1-based nesting depths, non-crossing
- * bottom-up visual bracket tiers, and per-block loop metadata across `blocks`.
- * Gracefully ignores unclosed `LOOP_START` and orphan `LOOP_END` blocks without crashing.
+ * Computes matched `LOOP_START .. LOOP_END`, `IF .. (ELSE_IF/ELSE) .. END_IF`, and
+ * `WHILE .. END_WHILE` spans, 1-based nesting depths, non-crossing bottom-up visual
+ * bracket tiers, and per-block metadata across `blocks`.
+ * Gracefully ignores unclosed openers and orphan closers/branches without crashing.
  */
 export function computeLoopNestingMetadata(
   blocks: readonly CodeBlock[],
   activeLoopStartPcs?: ReadonlySet<number>
 ): ScopeLoopNestingAnalysis {
-  const openStack: number[] = [];
-  const rawPairs: Array<{ loopId: string; startIndex: number; endIndex: number }> = [];
+  const loopStack: number[] = [];
+  const ifStack: Array<{ startIndex: number; hasElse: boolean; branchIndices: number[] }> = [];
+  const whileStack: number[] = [];
+  const rawPairs: Array<{
+    loopId: string;
+    kind: ControlSpanKind;
+    startIndex: number;
+    endIndex: number;
+    branchIndices: number[];
+  }> = [];
 
   for (let i = 0; i < blocks.length; i++) {
     const blk = blocks[i];
     if (blk.type === 'LOOP_START') {
-      openStack.push(i);
+      loopStack.push(i);
     } else if (blk.type === 'LOOP_END') {
-      if (openStack.length > 0) {
-        const startIdx = openStack.pop()!;
+      if (loopStack.length > 0) {
+        const startIdx = loopStack.pop()!;
         rawPairs.push({
           loopId: blocks[startIdx].id,
+          kind: 'loop',
           startIndex: startIdx,
           endIndex: i,
+          branchIndices: [],
+        });
+      }
+    } else if (blk.type === 'IF') {
+      ifStack.push({ startIndex: i, hasElse: false, branchIndices: [] });
+    } else if (blk.type === 'ELSE_IF') {
+      if (ifStack.length > 0 && !ifStack[ifStack.length - 1].hasElse) {
+        ifStack[ifStack.length - 1].branchIndices.push(i);
+      }
+    } else if (blk.type === 'ELSE') {
+      if (ifStack.length > 0 && !ifStack[ifStack.length - 1].hasElse) {
+        ifStack[ifStack.length - 1].branchIndices.push(i);
+        ifStack[ifStack.length - 1].hasElse = true;
+      }
+    } else if (blk.type === 'END_IF') {
+      if (ifStack.length > 0) {
+        const frame = ifStack.pop()!;
+        rawPairs.push({
+          loopId: blocks[frame.startIndex].id,
+          kind: 'if',
+          startIndex: frame.startIndex,
+          endIndex: i,
+          branchIndices: frame.branchIndices,
+        });
+      }
+    } else if (blk.type === 'WHILE') {
+      whileStack.push(i);
+    } else if (blk.type === 'END_WHILE') {
+      if (whileStack.length > 0) {
+        const startIdx = whileStack.pop()!;
+        rawPairs.push({
+          loopId: blocks[startIdx].id,
+          kind: 'while',
+          startIndex: startIdx,
+          endIndex: i,
+          branchIndices: [],
         });
       }
     }
@@ -160,43 +336,85 @@ export function computeLoopNestingMetadata(
     return 1 + enclosingCount;
   });
 
-  // Compute bottom-up tier: 0 for innermost loops with no nested matched children,
-  // 1 + max(child.tier) for enclosing parent loops so brackets never cross.
+  const kindDepths = rawPairs.map((pair, idx) => {
+    let enclosingSameKindCount = 0;
+    for (let j = 0; j < rawPairs.length; j++) {
+      if (j === idx) continue;
+      const other = rawPairs[j];
+      if (
+        other.kind === pair.kind &&
+        other.startIndex < pair.startIndex &&
+        pair.endIndex < other.endIndex
+      ) {
+        enclosingSameKindCount++;
+      }
+    }
+    return 1 + enclosingSameKindCount;
+  });
+
+  // Compute bottom-up tier: 0 for innermost spans with no overlapping assigned spans,
+  // 1 + max(overlapping.tier) for enclosing/crossed spans so bracket lines never collide.
   const tiers = new Array<number>(rawPairs.length).fill(0);
   const bySpanLengthAsc = rawPairs
     .map((pair, idx) => ({ pair, idx, len: pair.endIndex - pair.startIndex }))
-    .sort((a, b) => a.len - b.len);
+    .sort((a, b) => a.len - b.len || b.pair.startIndex - a.pair.startIndex);
 
+  const assignedIndices = new Set<number>();
   for (const item of bySpanLengthAsc) {
-    let maxChildTier = -1;
-    for (let j = 0; j < rawPairs.length; j++) {
-      if (j === item.idx) continue;
-      const candidateChild = rawPairs[j];
-      if (
-        item.pair.startIndex < candidateChild.startIndex &&
-        candidateChild.endIndex < item.pair.endIndex
-      ) {
-        if (tiers[j] > maxChildTier) {
-          maxChildTier = tiers[j];
+    let maxOverlapTier = -1;
+    for (const j of assignedIndices) {
+      const other = rawPairs[j];
+      if (other.startIndex <= item.pair.endIndex && item.pair.startIndex <= other.endIndex) {
+        if (tiers[j] > maxOverlapTier) {
+          maxOverlapTier = tiers[j];
         }
       }
     }
-    tiers[item.idx] = maxChildTier + 1;
+    tiers[item.idx] = maxOverlapTier + 1;
+    assignedIndices.add(item.idx);
+  }
+
+  // Assign color families outermost -> innermost so child spans never collide with parent color
+  const colorFamilies = new Array<ControlSpanColorFamily>(rawPairs.length);
+  for (let idx = 0; idx < rawPairs.length; idx++) {
+    const pair = rawPairs[idx];
+    const palette = KIND_COLOR_PALETTES[pair.kind];
+    let immediateParentIdx = -1;
+    for (let p = 0; p < idx; p++) {
+      const other = rawPairs[p];
+      if (other.startIndex < pair.startIndex && pair.endIndex < other.endIndex) {
+        if (immediateParentIdx === -1 || depths[p] > depths[immediateParentIdx]) {
+          immediateParentIdx = p;
+        }
+      }
+    }
+    const parentColor = immediateParentIdx >= 0 ? colorFamilies[immediateParentIdx] : undefined;
+    const preferred = palette[Math.min(kindDepths[idx] - 1, palette.length - 1)];
+    colorFamilies[idx] =
+      parentColor && preferred === parentColor
+        ? palette.find((c) => c !== parentColor) ?? preferred
+        : preferred;
   }
 
   let maxDepth = 0;
   let maxTier = 0;
   const matchedSpans: MatchedLoopSpan[] = rawPairs.map((pair, idx) => {
     const depth = depths[idx];
+    const kindDepth = kindDepths[idx];
     const tier = tiers[idx];
+    const colorFamily = colorFamilies[idx];
     if (depth > maxDepth) maxDepth = depth;
     if (tier > maxTier) maxTier = tier;
-    const spec = getLoopDepthVisualSpec(depth);
+    const spec = getControlSpanVisualSpec(colorFamily, pair.kind);
     return {
       loopId: pair.loopId,
+      kind: pair.kind,
+      colorFamily,
       startIndex: pair.startIndex,
       endIndex: pair.endIndex,
+      branchIndices: pair.branchIndices,
       depth,
+      kindDepth,
       tier,
       strokeStyle: spec.strokeStyle,
       isActiveLoop: Boolean(activeLoopStartPcs?.has(pair.startIndex)),
@@ -207,15 +425,20 @@ export function computeLoopNestingMetadata(
     const enclosingSpans: BlockLoopRoleSpan[] = [];
     for (const span of matchedSpans) {
       if (span.startIndex <= blockIdx && blockIdx <= span.endIndex) {
-        const role: 'start' | 'body' | 'end' =
+        const role: ControlBlockRole =
           blockIdx === span.startIndex
             ? 'start'
             : blockIdx === span.endIndex
             ? 'end'
+            : span.branchIndices.includes(blockIdx)
+            ? 'branch'
             : 'body';
         enclosingSpans.push({
           loopId: span.loopId,
+          kind: span.kind,
+          colorFamily: span.colorFamily,
           depth: span.depth,
+          kindDepth: span.kindDepth,
           tier: span.tier,
           strokeStyle: span.strokeStyle,
           role,
@@ -224,13 +447,15 @@ export function computeLoopNestingMetadata(
       }
     }
 
-    enclosingSpans.sort((a, b) => a.depth - b.depth);
+    enclosingSpans.sort((a, b) => a.depth - b.depth || b.tier - a.tier);
     const innermost =
       enclosingSpans.length > 0 ? enclosingSpans[enclosingSpans.length - 1] : undefined;
 
     return {
       enclosingSpans,
       innermostDepth: innermost ? innermost.depth : 0,
+      innermostKind: innermost?.kind,
+      innermostColorFamily: innermost?.colorFamily,
       innermostStroke: innermost?.strokeStyle,
       primaryRole: innermost ? innermost.role : 'none',
     };
@@ -336,20 +561,48 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     block.type === 'LOOP_START';
 
   const scopeBlocks = workspace[scope] || [];
-  const activeLoopStartPcs = new Set(
-    (runtime?.loopStack ?? [])
+  const activeStartPcs = new Set<number>([
+    ...(runtime?.loopStack ?? [])
       .filter((frame) => frame.scope === scope)
-      .map((frame) => frame.loopStartPc)
-  );
+      .map((frame) => frame.loopStartPc),
+    ...(runtime?.whileStack ?? [])
+      .filter((frame) => frame.scope === scope)
+      .map((frame) => frame.whileStartPc),
+    ...(runtime?.condStack ?? [])
+      .filter((frame) => frame.scope === scope)
+      .map((frame) => frame.ifPc),
+  ]);
   const effectiveLoopMeta: BlockLoopMetadata =
     loopMeta ??
     (scopeBlocks[index]?.id === block.id
-      ? computeLoopNestingMetadata(scopeBlocks, activeLoopStartPcs).blockMeta[index]
+      ? computeLoopNestingMetadata(scopeBlocks, activeStartPcs).blockMeta[index]
       : undefined) ?? {
       enclosingSpans: [],
       innermostDepth: 0,
       primaryRole: 'none',
     };
+  const ownLoopSpan = findOwnControlSpan(effectiveLoopMeta.enclosingSpans, 'loop', [
+    'start',
+    'end',
+  ]);
+  const ownIfSpan = findOwnControlSpan(effectiveLoopMeta.enclosingSpans, 'if', [
+    'start',
+    'branch',
+    'end',
+  ]);
+  const ownWhileSpan = findOwnControlSpan(effectiveLoopMeta.enclosingSpans, 'while', [
+    'start',
+    'end',
+  ]);
+  const ownLoopSpec = ownLoopSpan
+    ? getControlSpanVisualSpec(ownLoopSpan.colorFamily, 'loop')
+    : null;
+  const ownIfSpec = ownIfSpan
+    ? getControlSpanVisualSpec(ownIfSpan.colorFamily, 'if')
+    : null;
+  const ownWhileSpec = ownWhileSpan
+    ? getControlSpanVisualSpec(ownWhileSpan.colorFamily, 'while')
+    : null;
 
   const currentSimEnv = getSimEnvironment(activeSimId);
   const simPaletteItems = currentSimEnv?.paletteItems || [];
@@ -396,6 +649,12 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     'CALL_F3',
     'VAR_ASSIGN',
     'VAR_OP',
+    'IF',
+    'ELSE_IF',
+    'ELSE',
+    'END_IF',
+    'WHILE',
+    'END_WHILE',
   ];
   const supportsMultiplier = paletteItem
     ? paletteItem.supportsRepeat !== false
@@ -484,10 +743,9 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
         break;
 
       case 'LOOP_START': {
-        if (effectiveLoopMeta.innermostDepth > 0) {
-          const depthSpec = getLoopDepthVisualSpec(effectiveLoopMeta.innermostDepth);
-          bgClass = depthSpec.startBgClass;
-          borderClass = depthSpec.startBorderClass;
+        if (ownLoopSpec) {
+          bgClass = ownLoopSpec.startBgClass;
+          borderClass = ownLoopSpec.startBorderClass;
         } else {
           bgClass = 'bg-purple-700';
           borderClass = 'border-purple-400 border-solid';
@@ -496,10 +754,9 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
       }
 
       case 'LOOP_END': {
-        if (effectiveLoopMeta.innermostDepth > 0) {
-          const depthSpec = getLoopDepthVisualSpec(effectiveLoopMeta.innermostDepth);
-          bgClass = depthSpec.endBgClass;
-          borderClass = depthSpec.endBorderClass;
+        if (ownLoopSpec) {
+          bgClass = ownLoopSpec.endBgClass;
+          borderClass = ownLoopSpec.endBorderClass;
         } else {
           bgClass = 'bg-purple-900';
           borderClass = 'border-purple-500 border-solid';
@@ -532,35 +789,41 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
         borderClass = 'border-indigo-400';
         break;
 
-      case 'IF':
-        bgClass = 'bg-cyan-700';
-        borderClass = 'border-cyan-400';
+      case 'IF': {
+        bgClass = ownIfSpec ? ownIfSpec.startBgClass : 'bg-cyan-700';
+        borderClass = ownIfSpec ? ownIfSpec.startBorderClass : 'border-cyan-400';
         break;
+      }
 
-      case 'ELSE_IF':
-        bgClass = 'bg-cyan-800';
-        borderClass = 'border-cyan-400';
+      case 'ELSE_IF': {
+        bgClass = ownIfSpec ? ownIfSpec.branchBgClass : 'bg-cyan-800';
+        borderClass = ownIfSpec ? ownIfSpec.branchBorderClass : 'border-cyan-400';
         break;
+      }
 
-      case 'ELSE':
-        bgClass = 'bg-cyan-800';
-        borderClass = 'border-cyan-500';
+      case 'ELSE': {
+        bgClass = ownIfSpec ? ownIfSpec.branchBgClass : 'bg-cyan-800';
+        borderClass = ownIfSpec ? ownIfSpec.endBorderClass : 'border-cyan-500';
         break;
+      }
 
-      case 'END_IF':
-        bgClass = 'bg-cyan-950';
-        borderClass = 'border-cyan-500';
+      case 'END_IF': {
+        bgClass = ownIfSpec ? ownIfSpec.endBgClass : 'bg-cyan-950';
+        borderClass = ownIfSpec ? ownIfSpec.endBorderClass : 'border-cyan-500';
         break;
+      }
 
-      case 'WHILE':
-        bgClass = 'bg-amber-600';
-        borderClass = 'border-amber-400';
+      case 'WHILE': {
+        bgClass = ownWhileSpec ? ownWhileSpec.startBgClass : 'bg-amber-600';
+        borderClass = ownWhileSpec ? ownWhileSpec.startBorderClass : 'border-amber-400';
         break;
+      }
 
-      case 'END_WHILE':
-        bgClass = 'bg-amber-950';
-        borderClass = 'border-amber-500';
+      case 'END_WHILE': {
+        bgClass = ownWhileSpec ? ownWhileSpec.endBgClass : 'bg-amber-950';
+        borderClass = ownWhileSpec ? ownWhileSpec.endBorderClass : 'border-amber-500';
         break;
+      }
 
       default: {
         if (paletteItem) {
@@ -700,10 +963,7 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
         return <Repeat className={`w-5 h-5 md:w-7 md:h-7 ${iconColor}`} />;
 
       case 'LOOP_END': {
-        const endColor =
-          effectiveLoopMeta.innermostDepth > 0
-            ? getLoopDepthVisualSpec(effectiveLoopMeta.innermostDepth).endIconColorClass
-            : 'text-purple-200';
+        const endColor = ownLoopSpec ? ownLoopSpec.endIconColorClass : 'text-purple-200';
         return (
           <CornerDownLeft
             className={`w-5 h-5 md:w-7 md:h-7 ${
@@ -834,19 +1094,27 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           </div>
         );
 
-      case 'ELSE':
+      case 'ELSE': {
+        const elseColor = ownIfSpec ? ownIfSpec.branchTextColorClass : 'text-cyan-200';
         return (
-          <span className={`text-xs md:text-sm font-black uppercase tracking-wider ${isActive ? 'text-slate-950' : 'text-cyan-200'}`}>
+          <span className={`text-xs md:text-sm font-black uppercase tracking-wider ${isActive ? 'text-slate-950' : elseColor}`}>
             ELSE
           </span>
         );
+      }
 
-      case 'END_IF':
+      case 'END_IF': {
+        const endColor = ownIfSpec ? ownIfSpec.endIconColorClass : 'text-cyan-200';
         return (
-          <CornerDownLeft
-            className={`w-5 h-5 md:w-7 md:h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-cyan-200 stroke-[3]'}`}
-          />
+          <span
+            className={`text-xs md:text-sm font-black uppercase tracking-wider ${
+              isActive ? 'text-slate-950' : endColor
+            }`}
+          >
+            END
+          </span>
         );
+      }
 
       case 'WHILE':
         return (
@@ -858,12 +1126,14 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
           </div>
         );
 
-      case 'END_WHILE':
+      case 'END_WHILE': {
+        const endColor = ownWhileSpec ? ownWhileSpec.endIconColorClass : 'text-amber-200';
         return (
           <CornerDownLeft
-            className={`w-5 h-5 md:w-7 md:h-7 ${isActive ? 'text-slate-950 stroke-[3]' : 'text-amber-200 stroke-[3]'}`}
+            className={`w-5 h-5 md:w-7 md:h-7 ${isActive ? 'text-slate-950 stroke-[3]' : `${endColor} stroke-[3]`}`}
           />
         );
+      }
 
       default:
         if (paletteItem?.icon) {
@@ -1015,25 +1285,53 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
     }
   };
 
+  const controlBlockLabels: Record<string, string> = {
+    LOOP_START: 'Loop Start',
+    LOOP_END: 'Loop End',
+    IF: 'If',
+    ELSE_IF: 'Else If',
+    ELSE: 'Else',
+    END_IF: 'End If',
+    WHILE: 'While',
+    END_WHILE: 'End While',
+  };
   const blockLabelName =
     paletteItem?.name ||
-    (block.type === 'LOOP_START'
-      ? 'Loop Start'
-      : block.type === 'LOOP_END'
-      ? 'Loop End'
-      : block.type.replace(/_/g, ' '));
+    controlBlockLabels[block.type] ||
+    block.type.replace(/_/g, ' ');
   const loopDepth = effectiveLoopMeta.innermostDepth;
+  const innermostKindLabel =
+    effectiveLoopMeta.innermostKind === 'if'
+      ? 'if'
+      : effectiveLoopMeta.innermostKind === 'while'
+      ? 'while'
+      : 'loop';
+  const innermostKindCap =
+    effectiveLoopMeta.innermostKind === 'if'
+      ? 'If'
+      : effectiveLoopMeta.innermostKind === 'while'
+      ? 'While'
+      : 'Loop';
+  const unmatchedKindLabel =
+    block.type === 'IF' ||
+    block.type === 'ELSE_IF' ||
+    block.type === 'ELSE' ||
+    block.type === 'END_IF'
+      ? 'unmatched if'
+      : block.type === 'WHILE' || block.type === 'END_WHILE'
+      ? 'unmatched while'
+      : 'unmatched loop';
   const loopRolePhrase =
     loopDepth > 0
       ? effectiveLoopMeta.primaryRole === 'body'
         ? loopDepth === 1
-          ? 'Inside loop level 1'
-          : `Inside loop level ${loopDepth} (nested)`
+          ? `Inside ${innermostKindLabel} level 1`
+          : `Inside ${innermostKindLabel} level ${loopDepth} (nested)`
         : loopDepth === 1
-        ? 'Loop level 1'
-        : `Loop level ${loopDepth} (nested)`
+        ? `${innermostKindCap} level 1`
+        : `${innermostKindCap} level ${loopDepth} (nested)`
       : isLoopError
-      ? 'unmatched loop'
+      ? unmatchedKindLabel
       : '';
   const activeLoopIterationAria =
     block.type === 'LOOP_START' && iterationProgress
@@ -1161,9 +1459,9 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
         )}
       </div>
 
-      {/* Visual Loop Nesting Bracket / Under-Bar Connectors (Color-Coded by Depth) */}
+      {/* Visual Control Nesting Bracket / Under-Bar Connectors (Color-Coded by Kind & Depth) */}
       {effectiveLoopMeta.enclosingSpans.map((span) => {
-        const spec = getLoopDepthVisualSpec(span.depth);
+        const spec = getControlSpanVisualSpec(span.colorFamily, span.kind);
         const bottomPx = -(8 + span.tier * 8);
         const hookHeightPx = span.role === 'body' ? 4 : 7 + span.tier * 6;
         const horizontalClass =
@@ -1184,8 +1482,9 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
 
         return (
           <div
-            key={`loop-bracket-${span.loopId}-${span.role}`}
+            key={`loop-bracket-${span.kind}-${span.loopId}-${span.role}`}
             data-testid="loop-bracket-segment"
+            data-control-kind={span.kind}
             data-loop-id={span.loopId}
             data-loop-depth={span.depth}
             data-loop-tier={span.tier}
@@ -1198,7 +1497,16 @@ export const BlockItem: React.FC<BlockItemProps> = React.memo(({
               height: `${hookHeightPx}px`,
             }}
             className={`absolute ${horizontalClass} ${borderThicknessClass} ${spec.borderStyleClass} ${colorClass} pointer-events-none z-10 transition-colors`}
-          />
+          >
+            {span.role === 'branch' && (
+              <span
+                data-testid="loop-bracket-branch-tick"
+                className={`absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-[3px] rounded-t-sm ${
+                  span.isActiveLoop ? spec.railActiveTickBgClass : spec.railTickBgClass
+                }`}
+              />
+            )}
+          </div>
         );
       })}
 

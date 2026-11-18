@@ -1749,6 +1749,7 @@ export function tickInterpreter<TState = GridState>(
           status: finalStatus,
           stepCount: runtime.stepCount + 1,
           activeRepeatProgress,
+          randomSeed: evalContext.seed ?? runtime.randomSeed,
         },
         nextGrid,
         done: true,
